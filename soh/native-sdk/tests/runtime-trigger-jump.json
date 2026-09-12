@@ -1,0 +1,10 @@
+[
+  { "action": "press", "key": "J", "ms": 40 },
+  { "action": "wait", "ms": 80 },
+  { "action": "capture", "path": "D:/Desenvolvimento/ship-lua-worktrees/OOT-NATIVE-001/build/runtime-evidence/native-jump-early.png" },
+  { "action": "wait", "ms": 160 },
+  { "action": "capture", "path": "D:/Desenvolvimento/ship-lua-worktrees/OOT-NATIVE-001/build/runtime-evidence/native-jump-air.png" },
+  { "action": "wait", "ms": 800 },
+  { "action": "capture", "path": "D:/Desenvolvimento/ship-lua-worktrees/OOT-NATIVE-001/build/runtime-evidence/native-jump-later.png" },
+  { "action": "release_all" }
+]

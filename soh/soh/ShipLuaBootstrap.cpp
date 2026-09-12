@@ -1,4 +1,5 @@
 #include "ShipLuaBootstrap.h"
+#include "native/OotNativeEngine.h"
 #include "OotActorProvider.h"
 #include "OotHotkeyRegistry.h"
 #include "OotWorldAdapter.h"
@@ -34,6 +35,8 @@
 #include <cstring>
 
 #include <ship/Context.h>
+#include <ship/controller/controldeck/ControlDeck.h>
+#include <ship/controller/controldevice/controller/mapping/sdl/SDLButtonToButtonMapping.h>
 #include <ship/debug/Console.h>
 #include <ship/resource/File.h>
 #include <ship/resource/ResourceManager.h>
@@ -116,6 +119,198 @@ std::unique_ptr<ShipLua::ModHost> gModHost;
 std::shared_ptr<OotActorProvider> gActorProvider;
 std::shared_ptr<ShipLua::CapabilityRegistry> gCapabilityRegistry;
 std::shared_ptr<OotHotkeyRegistry> gHotkeys;
+std::map<uint64_t, std::shared_ptr<Ship::Archive>> gNativeResourceArchives;
+uint64_t gNextNativeResourceArchive = 1;
+
+std::shared_ptr<Ship::ResourceManager> NativeResourceManager() {
+    auto* context = Ship::Context::GetRawInstance();
+    return context ? context->GetResourceManager() : nullptr;
+}
+
+uint8_t NativeHasResourceFile(const char* path) {
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    return archives && archives->HasFile(path) ? 1 : 0;
+}
+
+ShipNativeStatus NativeReadResourceFile(const char* path, uint8_t* output, uint32_t capacity,
+                                        uint32_t* outputSize) {
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    const auto file = archives ? archives->LoadFile(path) : nullptr;
+    if (!file || !file->IsLoaded || !file->Buffer || file->Buffer->size() > UINT32_MAX) {
+        *outputSize = 0;
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    *outputSize = static_cast<uint32_t>(file->Buffer->size());
+    if (!output && capacity == 0) return SHIP_NATIVE_OK;
+    if (capacity < *outputSize) return SHIP_NATIVE_LIMIT;
+    if (*outputSize) std::memcpy(output, file->Buffer->data(), *outputSize);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeListResourceFiles(const char* mask, ShipOotResourcePathFn callback, void* user) {
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    const auto files = archives ? archives->ListFiles(mask) : nullptr;
+    if (!files) return SHIP_NATIVE_UNSUPPORTED;
+    auto ordered = *files;
+    std::sort(ordered.begin(), ordered.end());
+    for (const auto& path : ordered) {
+        if (path.size() > UINT32_MAX) return SHIP_NATIVE_LIMIT;
+        const auto status = callback(user, path.c_str(), static_cast<uint32_t>(path.size()));
+        if (status != SHIP_NATIVE_OK) return status;
+    }
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeDirtyResources(const char* mask) {
+    const auto manager = NativeResourceManager();
+    if (!manager) return SHIP_NATIVE_UNSUPPORTED;
+    manager->DirtyResources(mask);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeUnloadResource(const char* path) {
+    const auto manager = NativeResourceManager();
+    if (!manager) return SHIP_NATIVE_UNSUPPORTED;
+    manager->UnloadResource(path);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeMountResourceArchive(const char* archivePath, uint64_t* handle) {
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+    std::error_code error;
+    const auto absolute = std::filesystem::absolute(archivePath, error).lexically_normal();
+    if (error || (!std::filesystem::is_regular_file(absolute, error) &&
+                  !std::filesystem::is_directory(absolute, error))) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const auto mounted = archives->AddArchive(absolute.string());
+    if (!mounted) return SHIP_NATIVE_FAILURE;
+    for (const auto& [hash, path] : *mounted->ListFiles()) {
+        (void)hash;
+        manager->UnloadResource(path);
+    }
+    const uint64_t next = gNextNativeResourceArchive++;
+    if (!next) return SHIP_NATIVE_LIMIT;
+    gNativeResourceArchives.emplace(next, mounted);
+    *handle = next;
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeUnmountResourceArchive(uint64_t handle) {
+    const auto entry = gNativeResourceArchives.find(handle);
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    if (entry == gNativeResourceArchives.end()) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+    for (const auto& [hash, path] : *entry->second->ListFiles()) {
+        (void)hash;
+        manager->UnloadResource(path);
+    }
+    if (archives->RemoveArchive(entry->second) != 1) return SHIP_NATIVE_FAILURE;
+    gNativeResourceArchives.erase(entry);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeGetResourceGameVersions(uint32_t* output, uint32_t capacity, uint32_t* outputCount) {
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+    auto versions = archives->GetGameVersions();
+    std::sort(versions.begin(), versions.end());
+    versions.erase(std::unique(versions.begin(), versions.end()), versions.end());
+    if (versions.size() > UINT32_MAX) return SHIP_NATIVE_LIMIT;
+    *outputCount = static_cast<uint32_t>(versions.size());
+    if (!output && capacity == 0) return SHIP_NATIVE_OK;
+    if (capacity < *outputCount) return SHIP_NATIVE_LIMIT;
+    std::copy(versions.begin(), versions.end(), output);
+    return SHIP_NATIVE_OK;
+}
+
+void ClearNativeResourceArchives() {
+    std::vector<uint64_t> handles;
+    for (const auto& [handle, archive] : gNativeResourceArchives) {
+        (void)archive;
+        handles.push_back(handle);
+    }
+    for (const auto handle : handles) NativeUnmountResourceArchive(handle);
+    gNativeResourceArchives.clear();
+}
+
+std::shared_ptr<Ship::Controller> GetNativeController(uint8_t port) {
+    auto* context = Ship::Context::GetRawInstance();
+    auto deck = context ? context->GetControlDeck() : nullptr;
+    return deck && port < 4 ? deck->GetControllerByPort(port) : nullptr;
+}
+
+uint8_t NativeHasGamepad(uint8_t port) {
+    auto* context = Ship::Context::GetRawInstance();
+    auto deck = context ? context->GetControlDeck() : nullptr;
+    auto manager = deck ? deck->GetConnectedPhysicalDeviceManager() : nullptr;
+    return manager && !manager->GetConnectedSDLGamepadsForPort(port).empty() ? 1 : 0;
+}
+
+uint32_t NativeGamepadButtons(uint8_t port) {
+    auto* context = Ship::Context::GetRawInstance();
+    auto deck = context ? context->GetControlDeck() : nullptr;
+    auto manager = deck ? deck->GetConnectedPhysicalDeviceManager() : nullptr;
+    if (!manager || deck->GamepadGameInputBlocked()) {
+        return 0;
+    }
+    uint32_t buttons = 0;
+    for (const auto& [instanceId, gamepad] : manager->GetConnectedSDLGamepadsForPort(port)) {
+        (void)instanceId;
+        for (uint8_t button = 0; button < SDL_CONTROLLER_BUTTON_MAX && button < 32; ++button) {
+            if (SDL_GameControllerGetButton(gamepad, static_cast<SDL_GameControllerButton>(button))) {
+                buttons |= uint32_t{ 1 } << button;
+            }
+        }
+    }
+    return buttons;
+}
+
+ShipNativeStatus NativeClearGamepadButtonBindings(uint8_t port, uint16_t virtualButton) {
+    auto controller = GetNativeController(port);
+    auto button = controller ? controller->GetButtonByBitmask(virtualButton) : nullptr;
+    if (!button) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    button->ClearAllButtonMappingsForDeviceTypeTransient(Ship::PhysicalDeviceType::SDLGamepad);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeBindGamepadButton(uint8_t port, uint16_t virtualButton, uint8_t sdlButton) {
+    auto controller = GetNativeController(port);
+    auto button = controller ? controller->GetButtonByBitmask(virtualButton) : nullptr;
+    if (!button || sdlButton >= SDL_CONTROLLER_BUTTON_MAX) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    button->AddButtonMapping(std::make_shared<Ship::SDLButtonToButtonMapping>(
+        port, virtualButton, static_cast<SDL_GameControllerButton>(sdlButton)));
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeReloadGamepadMappings(uint8_t port) {
+    auto controller = GetNativeController(port);
+    if (!controller) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    controller->ReloadAllMappingsFromConfig();
+    return SHIP_NATIVE_OK;
+}
+
+int32_t NativeGetSettingInt(const char* name, int32_t fallback) {
+    return CVarGetInteger(name, fallback);
+}
+
+ShipNativeStatus NativeSetSettingInt(const char* name, int32_t value) {
+    CVarSetInteger(name, value);
+    return SHIP_NATIVE_OK;
+}
 // Timers por frame (ship.timer.after/every). Precisa de Tick() todo frame —
 // ver o hook OnGameFrameUpdate no Initialize. Sem isto, core.timers fica
 // indisponível e mods que dependem de sequenciamento (por exemplo a animação
@@ -6710,7 +6905,14 @@ void Initialize() {
     }
     ShipLua::LuaApiHostContext context = std::move(*contextResult.value);
     SPDLOG_INFO("ShipLua inicializando para {} {} (commit {})", context.gameId, context.hostVersion, gGitCommitHash);
-    gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger());
+    SetOotNativeGamepadBridge({ NativeHasGamepad, NativeGamepadButtons, NativeClearGamepadButtonBindings,
+                                NativeBindGamepadButton, NativeReloadGamepadMappings, NativeGetSettingInt,
+                                NativeSetSettingInt });
+    SetOotNativeResourceBridge({ NativeHasResourceFile, NativeReadResourceFile, NativeListResourceFiles,
+                                 NativeDirtyResources, NativeUnloadResource, NativeMountResourceArchive,
+                                 NativeUnmountResourceArchive, NativeGetResourceGameVersions });
+    gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
+    SPDLOG_INFO("Link-Span: providers nativos ABI 1.1 e core extensions ativos; serviços linkspan.oot.engine/movement/resources v1; pacotes ZIP/SHIPMOD");
     MountCrossWorldArchives();
     MountModAssetArchives();
     // Diagnóstico da Fase 1 do port de áudio do MM (handoff OOT-AUDIO-001).
@@ -6740,6 +6942,9 @@ void Shutdown() {
         }
     }
     gModHost.reset();
+    ClearNativeResourceArchives();
+    SetOotNativeGamepadBridge({});
+    SetOotNativeResourceBridge({});
     if (gLoadGameHook != 0) {
         GameInteractor::Instance->UnregisterGameHook<GameInteractor::OnLoadGame>(gLoadGameHook);
         gLoadGameHook = 0;
