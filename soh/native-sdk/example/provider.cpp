@@ -24,7 +24,7 @@ enum class Phase { Ready, Airborne, Rolling, Running };
 struct Mod {
     const ShipOotEngineV1* engine;
     const ShipOotMovementV1* movement;
-    const ShipOotResourcesV1* resources;
+    const ShipOotResourcesV2* resources;
     const ShipOotRegistryV1* registry;
     uint64_t registrySpace = 0;
     uint64_t jumpEntry = 0;
@@ -158,6 +158,53 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceProbe(void* user, const char*, uint32_
         : read;
     delete[] bytes;
     return written;
+}
+
+struct LayerProbeState {
+    char archives[320]{};
+    uint32_t used = 0;
+    uint32_t count = 0;
+    uint64_t mergedHash = 14695981039346656037ULL;
+};
+
+ShipNativeStatus SHIP_NATIVE_CALL CollectLayer(void* user, const ShipOotResourceLayerV2* layer,
+                                               const char* archivePath, const uint8_t* data) {
+    auto& state = *static_cast<LayerProbeState*>(user);
+    if (!layer || layer->size < sizeof(ShipOotResourceLayerV2) || !archivePath ||
+        (!data && layer->data_size) || layer->layer_index != state.count) {
+        return SHIP_NATIVE_FAILURE;
+    }
+    const int written = std::snprintf(state.archives + state.used, sizeof(state.archives) - state.used,
+                                      "%s%.*s", state.count ? ">" : "",
+                                      static_cast<int>(layer->archive_path_length), archivePath);
+    if (written < 0 || static_cast<uint32_t>(written) >= sizeof(state.archives) - state.used) {
+        return SHIP_NATIVE_LIMIT;
+    }
+    state.used += static_cast<uint32_t>(written);
+    for (uint32_t i = 0; i < layer->data_size; ++i) {
+        state.mergedHash ^= data[i];
+        state.mergedHash *= 1099511628211ULL;
+    }
+    ++state.count;
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL LayerProbe(void* user, const char* payload, uint32_t length,
+                                             ShipNativeWriteFn write, void* writer) {
+    if ((!payload && length) || length > 4096) return SHIP_NATIVE_INVALID_ARGUMENT;
+    char path[4097]{};
+    if (length) std::memcpy(path, payload, length);
+    else std::memcpy(path, "test/layers.json", sizeof("test/layers.json"));
+    LayerProbeState state;
+    const auto& mod = *static_cast<Mod*>(user);
+    const auto status = mod.resources->read_file_layers(path, CollectLayer, &state);
+    if (status != SHIP_NATIVE_OK) return status;
+    char report[448];
+    const int size = std::snprintf(report, sizeof(report), "layers=%u; order=%s; merged=%016llx",
+                                   state.count, state.archives,
+                                   static_cast<unsigned long long>(state.mergedHash));
+    return size > 0 && size < int(sizeof(report)) ? write(writer, report, uint32_t(size))
+                                                  : SHIP_NATIVE_FAILURE;
 }
 
 // Decodifica o arquivo "version" do archive: byte 0 = endianness
@@ -409,9 +456,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     const auto* movement = static_cast<const ShipOotMovementV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION,
         sizeof(ShipOotMovementV1)));
-    const auto* resources = static_cast<const ShipOotResourcesV1*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION,
-        sizeof(ShipOotResourcesV1)));
+    const auto* resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
+        sizeof(ShipOotResourcesV2)));
     const auto* registry = static_cast<const ShipOotRegistryV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION,
         sizeof(ShipOotRegistryV1)));
@@ -429,10 +476,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         !movement->is_player_grounded ||
         !movement->is_player_rolling || !movement->player_jump || !movement->player_roll)
         return SHIP_NATIVE_UNSUPPORTED;
-    if (!resources || resources->size < sizeof(ShipOotResourcesV1) || !resources->has_file ||
+    if (!resources || resources->size < sizeof(ShipOotResourcesV2) || !resources->has_file ||
         !resources->read_file || !resources->list_files || !resources->dirty_resources ||
         !resources->unload_resource || !resources->mount_archive || !resources->unmount_archive ||
-        !resources->get_game_versions) return SHIP_NATIVE_UNSUPPORTED;
+        !resources->get_game_versions || !resources->read_file_layers) return SHIP_NATIVE_UNSUPPORTED;
     if (!registry || registry->size < sizeof(ShipOotRegistryV1) || !registry->create_space ||
         !registry->find_space || !registry->destroy_space || !registry->register_entry ||
         !registry->unregister_entry || !registry->find_entry_by_name || !registry->find_entry_by_id ||
@@ -466,6 +513,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "configure", Configure, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "jump", Jump, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "resource_probe", ResourceProbe, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "layer_probe", LayerProbe, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "resource_runtime_probe", ResourceRuntimeProbe, mod) !=
             SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "registry_probe", RegistryProbe, mod) != SHIP_NATIVE_OK ||

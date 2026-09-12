@@ -108,6 +108,33 @@ registrou:
 O resultado da sessão ficou `valid: true`; `soh.exe`, `oot.o2r`, `soh.o2r` e os
 ZIPs rastreados mantiveram seus hashes antes e depois.
 
+## Serviço `linkspan.oot.resources` v2 (OOT-UNBOUND-002A)
+
+Header do contrato: `soh/soh/native/oot_resources.h`. A v2 é prefixo binário
+compatível com a v1 e adiciona `read_file_layers`: o host enumera **todas** as
+cópias montadas de um mesmo caminho virtual, da menor para a maior prioridade,
+chamando um callback síncrono por camada com:
+
+- bytes do arquivo (válidos apenas durante o callback);
+- caminho do archive de origem (`base.o2r`, `override.shipmod`, ...);
+- versão de jogo do archive (0 quando ausente);
+- hash FNV-1a 64 do conteúdo e o tamanho em bytes;
+- `layer_index` / `layer_count` para detecção de ordem e total.
+
+A regra de merge (JSON por schema, substituição binária etc.) pertence ao
+provider; o host apenas entrega as camadas em ordem estável. Retornar outro
+status no callback interrompe a enumeração e propaga o status. Chamadas fora da
+thread do jogo são recusadas com `SHIP_NATIVE_INVALID_ARGUMENT`. No
+libultraship, `ArchiveManager::LoadFileFromAllLayers` oferece a mesma
+enumeração para consumidores internos.
+
+O provider de exemplo expõe `layer_probe`, que compõe um hash determinístico
+sobre as camadas na ordem recebida; o teste `oot_native_engine_tests` valida
+ordem, bytes, origem, hash, interrupção do callback e recusa de thread externa
+com dois archives sintéticos, e a prova independente recompila a DLL fora da
+árvore contra o mesmo `soh.exe`. É o substrato que o Unbound precisa para
+aplicar deltas JSON sobre cenas vanilla sem loader específico no executável.
+
 Aviso de robustez (descoberto no playtest, fora do escopo do serviço): o boot
 crasha com 0xc0000005 em `Fast3dGui::LoadGuiTexture` se o `soh.o2r` instalado
 não contém as texturas custom do SoH (ex: `textures/parameter_static/gTriforcePiece`,

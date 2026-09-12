@@ -115,6 +115,23 @@ ShipNativeStatus GetGameVersions(uint32_t* output, uint32_t capacity, uint32_t* 
     std::copy(std::begin(versions), std::end(versions), output);
     return SHIP_NATIVE_OK;
 }
+ShipNativeStatus ReadResourceFileLayers(const char* path, ShipOotResourceLayerFn callback, void* user) {
+    if (!path || std::string(path) != "test/layers.json") return SHIP_NATIVE_UNSUPPORTED;
+    static const char* archivePaths[] = {"base.o2r", "override.shipmod"};
+    static const char* contents[] = {"{\"base\":1}", "{\"mod\":2}"};
+    static const uint64_t hashes[] = {0x1111111111111111ULL, 0x2222222222222222ULL};
+    for (uint32_t i = 0; i < 2; ++i) {
+        const ShipOotResourceLayerV2 layer{
+            sizeof(ShipOotResourceLayerV2), i, 2, i ? 0u : 0xEC7011B7u, hashes[i],
+            static_cast<uint32_t>(std::strlen(contents[i])),
+            static_cast<uint32_t>(std::strlen(archivePaths[i]))
+        };
+        const auto status = callback(user, &layer, archivePaths[i],
+                                     reinterpret_cast<const uint8_t*>(contents[i]));
+        if (status != SHIP_NATIVE_OK) return status;
+    }
+    return SHIP_NATIVE_OK;
+}
 ShipNativeStatus SHIP_NATIVE_CALL CollectPath(void* user, const char* path, uint32_t length) {
     static_cast<std::vector<std::string>*>(user)->emplace_back(path, length);
     return SHIP_NATIVE_OK;
@@ -147,17 +164,21 @@ int main(int argc, char** argv) {
         {HasGamepad, GetGamepadButtons, ClearButton, BindButton, ReloadMappings, GetSettingInt, SetSettingInt});
     ShipLuaHost::SetOotNativeResourceBridge(
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
-         MountArchive, UnmountArchive, GetGameVersions});
+         MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 4 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 5 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_RESOURCES_VERSION &&
-          policy.services[3].version == LINKSPAN_OOT_REGISTRY_VERSION,
-          "host deve publicar engine, movement, resources e registry V1");
+          policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION_2 &&
+          policy.services[4].version == LINKSPAN_OOT_REGISTRY_VERSION,
+          "host deve publicar engine, movement, resources V1/V2 e registry V1");
     const auto* engine = static_cast<const ShipOotEngineV1*>(policy.services[0].table);
     const auto* movement = static_cast<const ShipOotMovementV1*>(policy.services[1].table);
     const auto* resources = static_cast<const ShipOotResourcesV1*>(policy.services[2].table);
-    const auto* registry = static_cast<const ShipOotRegistryV1*>(policy.services[3].table);
+    const auto* resourcesV2 = static_cast<const ShipOotResourcesV2*>(policy.services[3].table);
+    const auto* registry = static_cast<const ShipOotRegistryV1*>(policy.services[4].table);
+    Check(resourcesV2 && resourcesV2->size == sizeof(ShipOotResourcesV2) && resourcesV2->read_file_layers,
+          "resources V2 deve preservar V1 e publicar leitura de camadas");
     Check(registry && registry->size == sizeof(ShipOotRegistryV1),
           "registry V1 deve estar disponível pela policy do host");
     uint32_t resourceSize = 0;
@@ -174,6 +195,33 @@ int main(int argc, char** argv) {
     std::vector<std::string> listed;
     Check(resources->list_files("test/*", CollectPath, &listed) == SHIP_NATIVE_OK && listed.size() == 2,
           "resources V1 deve enumerar caminhos por callback");
+    struct LayerCapture {
+        std::vector<std::string> archives;
+        std::vector<std::string> contents;
+        std::vector<uint64_t> hashes;
+    } layers;
+    const auto collectLayer = [](void* user, const ShipOotResourceLayerV2* layer, const char* archive,
+                                 const uint8_t* data) -> ShipNativeStatus {
+        auto& capture = *static_cast<LayerCapture*>(user);
+        if (!layer || layer->size < sizeof(ShipOotResourceLayerV2) ||
+            layer->layer_index != capture.archives.size() || layer->layer_count != 2) {
+            return SHIP_NATIVE_FAILURE;
+        }
+        capture.archives.emplace_back(archive, layer->archive_path_length);
+        capture.contents.emplace_back(reinterpret_cast<const char*>(data), layer->data_size);
+        capture.hashes.push_back(layer->content_hash);
+        return SHIP_NATIVE_OK;
+    };
+    Check(resourcesV2->read_file_layers("test/layers.json", collectLayer, &layers) == SHIP_NATIVE_OK &&
+          layers.archives == std::vector<std::string>{"base.o2r", "override.shipmod"} &&
+          layers.contents == std::vector<std::string>{"{\"base\":1}", "{\"mod\":2}"} &&
+          layers.hashes[0] != layers.hashes[1],
+          "resources V2 deve enumerar bytes, origem e hash da menor para a maior prioridade");
+    const auto stopLayer = [](void*, const ShipOotResourceLayerV2*, const char*, const uint8_t*) {
+        return SHIP_NATIVE_LIMIT;
+    };
+    Check(resourcesV2->read_file_layers("test/layers.json", stopLayer, nullptr) == SHIP_NATIVE_LIMIT,
+          "resources V2 deve propagar interrupção do callback");
     uint32_t versionCount = 0;
     std::array<uint32_t, 2> versions{};
     Check(resources->get_game_versions(nullptr, 0, &versionCount) == SHIP_NATIVE_OK && versionCount == 2 &&
@@ -223,6 +271,9 @@ int main(int argc, char** argv) {
         Check(!resources->has_file("test/core.json") &&
               resources->read_file("test/core.json", nullptr, 0, &size) == SHIP_NATIVE_INVALID_ARGUMENT,
               "resources V1 deve recusar thread externa");
+        Check(resourcesV2->read_file_layers("test/layers.json", collectLayer, &layers) ==
+                  SHIP_NATIVE_INVALID_ARGUMENT,
+              "resources V2 deve recusar thread externa");
     });
     worker.join();
     Check(engine->spawn_actor(42, 1, 2, 3, 4, 5, 6, 123) == &spawned &&

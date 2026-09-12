@@ -22,6 +22,7 @@ struct OotNativeResourceBridge {
     ShipNativeStatus (*mountArchive)(const char* archivePath, uint64_t* handle) = nullptr;
     ShipNativeStatus (*unmountArchive)(uint64_t handle) = nullptr;
     ShipNativeStatus (*getGameVersions)(uint32_t* output, uint32_t capacity, uint32_t* outputCount) = nullptr;
+    ShipNativeStatus (*readFileLayers)(const char* path, ShipOotResourceLayerFn callback, void* user) = nullptr;
 };
 void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge);
 void SetOotNativeResourceBridge(OotNativeResourceBridge bridge);

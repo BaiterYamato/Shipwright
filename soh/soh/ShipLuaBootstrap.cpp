@@ -41,6 +41,7 @@
 #include <ship/debug/Console.h>
 #include <ship/resource/File.h>
 #include <ship/resource/ResourceManager.h>
+#include <ship/resource/archive/Archive.h>
 #include <ship/resource/archive/ArchiveManager.h>
 #include <ship/resource/archive/O2rArchive.h>
 #include <shiplua/generated/ApiBindings.h>
@@ -229,6 +230,54 @@ ShipNativeStatus NativeGetResourceGameVersions(uint32_t* output, uint32_t capaci
     if (!output && capacity == 0) return SHIP_NATIVE_OK;
     if (capacity < *outputCount) return SHIP_NATIVE_LIMIT;
     std::copy(versions.begin(), versions.end(), output);
+    return SHIP_NATIVE_OK;
+}
+
+uint64_t NativeResourceContentHash(const uint8_t* data, size_t size) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (size_t i = 0; i < size; ++i) {
+        hash ^= data[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+ShipNativeStatus NativeReadResourceFileLayers(const char* path, ShipOotResourceLayerFn callback, void* user) {
+    const auto manager = NativeResourceManager();
+    const auto archiveManager = manager ? manager->GetArchiveManager() : nullptr;
+    const auto archives = archiveManager ? archiveManager->GetArchives() : nullptr;
+    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+
+    struct Layer {
+        std::shared_ptr<Ship::Archive> archive;
+        std::shared_ptr<Ship::File> file;
+    };
+    std::vector<Layer> layers;
+    for (const auto& archive : *archives) {
+        if (!archive || !archive->HasFile(path)) continue;
+        auto file = archive->LoadFile(path);
+        if (file && file->IsLoaded && file->Buffer && file->Buffer->size() <= UINT32_MAX) {
+            layers.push_back({ archive, std::move(file) });
+        }
+    }
+    if (layers.empty() || layers.size() > UINT32_MAX) return SHIP_NATIVE_UNSUPPORTED;
+
+    const uint32_t layerCount = static_cast<uint32_t>(layers.size());
+    for (uint32_t i = 0; i < layerCount; ++i) {
+        const auto& archive = layers[i].archive;
+        const auto& buffer = *layers[i].file->Buffer;
+        const auto* data = reinterpret_cast<const uint8_t*>(buffer.data());
+        const auto& archivePath = archive->GetPath();
+        if (archivePath.size() > UINT32_MAX) return SHIP_NATIVE_LIMIT;
+        const ShipOotResourceLayerV2 info{
+            sizeof(ShipOotResourceLayerV2), i, layerCount,
+            archive->HasGameVersion() ? archive->GetGameVersion() : 0,
+            NativeResourceContentHash(data, buffer.size()), static_cast<uint32_t>(buffer.size()),
+            static_cast<uint32_t>(archivePath.size())
+        };
+        const auto status = callback(user, &info, archivePath.c_str(), data);
+        if (status != SHIP_NATIVE_OK) return status;
+    }
     return SHIP_NATIVE_OK;
 }
 
@@ -6911,10 +6960,11 @@ void Initialize() {
                                 NativeSetSettingInt });
     SetOotNativeResourceBridge({ NativeHasResourceFile, NativeReadResourceFile, NativeListResourceFiles,
                                  NativeDirtyResources, NativeUnloadResource, NativeMountResourceArchive,
-                                 NativeUnmountResourceArchive, NativeGetResourceGameVersions });
+                                 NativeUnmountResourceArchive, NativeGetResourceGameVersions,
+                                 NativeReadResourceFileLayers });
     gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
     SPDLOG_INFO("Link-Span: providers nativos ABI 1.1 e core extensions ativos; serviços "
-                "linkspan.oot.engine/movement/resources/registry v1; pacotes ZIP/SHIPMOD");
+                "linkspan.oot.engine/movement/registry v1; resources v1/v2; pacotes ZIP/SHIPMOD");
     MountCrossWorldArchives();
     MountModAssetArchives();
     // Diagnóstico da Fase 1 do port de áudio do MM (handoff OOT-AUDIO-001).

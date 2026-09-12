@@ -175,6 +175,12 @@ ShipNativeStatus SHIP_NATIVE_CALL GetGameVersions(uint32_t* output, uint32_t cap
     try { return resourceBridge.getGameVersions(output, capacity, outputCount); }
     catch (...) { return SHIP_NATIVE_FAILURE; }
 }
+ShipNativeStatus SHIP_NATIVE_CALL ReadFileLayers(const char* path, ShipOotResourceLayerFn callback, void* user) {
+    if (!OnGameThread() || !ValidText(path) || !callback || !resourceBridge.readFileLayers)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    try { return resourceBridge.readFileLayers(path, callback, user); }
+    catch (...) { return SHIP_NATIVE_FAILURE; }
+}
 const ShipOotEngineV1 engineV1{
     sizeof(ShipOotEngineV1), LINKSPAN_OOT_LAYOUT_ID,
     sizeof(PlayState), sizeof(Player), sizeof(SaveContext), Play, CurrentPlayer, Save, Spawn, Kill
@@ -189,6 +195,10 @@ const ShipOotMovementV1 movementV1{
 const ShipOotResourcesV1 resourcesV1{
     sizeof(ShipOotResourcesV1), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
     MountArchive, UnmountArchive, GetGameVersions
+};
+const ShipOotResourcesV2 resourcesV2{
+    sizeof(ShipOotResourcesV2), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
+    MountArchive, UnmountArchive, GetGameVersions, ReadFileLayers
 };
 }
 
@@ -211,6 +221,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
                                sizeof(movementV1), &movementV1});
     policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION,
                                sizeof(resourcesV1), &resourcesV1});
+    policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
+                               sizeof(resourcesV2), &resourcesV2});
     const auto& registry = GetOotNativeRegistryService();
     policy.services.push_back({LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION,
                                sizeof(registry), &registry});
