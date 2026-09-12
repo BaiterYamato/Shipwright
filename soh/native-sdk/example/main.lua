@@ -50,5 +50,8 @@ ship.events.on("game.ready", function()
     end
     local status, status_error = ship.native.call("status", "")
     ship.log.info("dynamic-movement: " .. (status or tostring(status_error)))
+    -- Prova de runtime do OOT-CORE-001 contra o VFS real.
+    local probe, probe_error = ship.native.call("resource_runtime_probe", "")
+    ship.log.info("core-001-probe: " .. (probe or ("falhou: " .. tostring(probe_error))))
     ship.events.on("game.frame", update_movement)
 end)

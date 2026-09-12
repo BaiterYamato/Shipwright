@@ -155,6 +155,122 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceProbe(void* user, const char*, uint32_
     return written;
 }
 
+// Decodifica o arquivo "version" do archive: byte 0 = endianness
+// (0 = little, 1 = big), seguido de uint32 com a versão do jogo.
+uint32_t ParseVersionFile(const uint8_t* bytes, uint32_t size) {
+    if (!bytes || size != 5) return 0;
+    if (bytes[0] == 1) {
+        return (uint32_t(bytes[1]) << 24) | (uint32_t(bytes[2]) << 16) | (uint32_t(bytes[3]) << 8) |
+               uint32_t(bytes[4]);
+    }
+    return uint32_t(bytes[1]) | (uint32_t(bytes[2]) << 8) | (uint32_t(bytes[3]) << 16) |
+           (uint32_t(bytes[4]) << 24);
+}
+
+struct ListCounter {
+    uint32_t count = 0;
+    char first[96]{};
+};
+
+ShipNativeStatus SHIP_NATIVE_CALL CountPath(void* user, const char* path, uint32_t pathLength) {
+    auto& counter = *static_cast<ListCounter*>(user);
+    if (!counter.count && path && pathLength < sizeof(counter.first)) {
+        std::memcpy(counter.first, path, pathLength);
+        counter.first[pathLength] = '\0';
+    }
+    ++counter.count;
+    return SHIP_NATIVE_OK;
+}
+
+// Prova de runtime do OOT-CORE-001: exercita o serviço linkspan.oot.resources
+// v1 contra o VFS real do jogo (versions, has_file, read_file, list_files e
+// montagem/desmontagem de um archive auxiliar com marcador conhecido).
+ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, uint32_t length,
+                                                       ShipNativeWriteFn write, void* writer) {
+    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    const char* step = "versions";
+    char report[768];
+    int used = 0;
+
+    uint32_t versionCount = 0;
+    if (mod.resources->get_game_versions(nullptr, 0, &versionCount) != SHIP_NATIVE_OK || !versionCount ||
+        versionCount > 8) {
+        return Write(write, writer, "fail@versions-count");
+    }
+    uint32_t versions[8]{};
+    if (mod.resources->get_game_versions(versions, 8, &versionCount) != SHIP_NATIVE_OK) {
+        return Write(write, writer, "fail@versions-read");
+    }
+    used = std::snprintf(report, sizeof(report), "versions=%u", versionCount);
+    for (uint32_t i = 0; i < versionCount && used > 0 && used < int(sizeof(report)) - 24; ++i) {
+        used += std::snprintf(report + used, sizeof(report) - used, "%s0x%08X", i ? "," : ":", versions[i]);
+    }
+
+    step = "has_file";
+    const uint8_t hasReal = mod.resources->has_file("objects/gameplay_keep/gArrow1Anim");
+    const uint8_t hasMissing = mod.resources->has_file("linkspan/definitely-missing.bin");
+    if (hasReal != 1 || hasMissing != 0) {
+        std::snprintf(report + used, sizeof(report) - used, "; fail@has_file real=%u missing=%u", hasReal,
+                      hasMissing);
+        return Write(write, writer, report);
+    }
+    used += std::snprintf(report + used, sizeof(report) - used, "; has=1/0");
+
+    step = "read_file";
+    uint32_t versionSize = 0;
+    if (mod.resources->read_file("version", nullptr, 0, &versionSize) != SHIP_NATIVE_OK || versionSize != 5) {
+        std::snprintf(report + used, sizeof(report) - used, "; fail@version-size %u", versionSize);
+        return Write(write, writer, report);
+    }
+    uint8_t versionBytes[5]{};
+    if (mod.resources->read_file("version", versionBytes, sizeof(versionBytes), &versionSize) != SHIP_NATIVE_OK) {
+        std::snprintf(report + used, sizeof(report) - used, "; fail@version-read");
+        return Write(write, writer, report);
+    }
+    const uint32_t fileVersion = ParseVersionFile(versionBytes, versionSize);
+    bool versionListed = false;
+    for (uint32_t i = 0; i < versionCount; ++i) versionListed = versionListed || versions[i] == fileVersion;
+    used += std::snprintf(report + used, sizeof(report) - used, "; version_file=0x%08X listed=%u", fileVersion,
+                          versionListed ? 1u : 0u);
+
+    step = "list_files";
+    ListCounter counter;
+    if (mod.resources->list_files("objects/gameplay_keep/gArrow*", CountPath, &counter) != SHIP_NATIVE_OK ||
+        !counter.count) {
+        std::snprintf(report + used, sizeof(report) - used, "; fail@list_files");
+        return Write(write, writer, report);
+    }
+    used += std::snprintf(report + used, sizeof(report) - used, "; arrows=%u first=%s", counter.count,
+                          counter.first);
+
+    step = "mount_archive";
+    uint64_t handle = 0;
+    if (mod.resources->mount_archive("mods/linkspan-resource-probe.zip", &handle) != SHIP_NATIVE_OK || !handle) {
+        std::snprintf(report + used, sizeof(report) - used, "; fail@mount");
+        return Write(write, writer, report);
+    }
+    const char* markerPath = "test/linkspan-core-001-marker.txt";
+    const char* markerExpected = "linkspan-oot-core-001-marker";
+    char marker[64]{};
+    uint32_t markerSize = 0;
+    const bool mountedVisible = mod.resources->has_file(markerPath) == 1;
+    const bool markerOk = mountedVisible &&
+        mod.resources->read_file(markerPath, reinterpret_cast<uint8_t*>(marker), sizeof(marker) - 1,
+                                 &markerSize) == SHIP_NATIVE_OK &&
+        markerSize == std::strlen(markerExpected) && !std::memcmp(marker, markerExpected, markerSize);
+    const auto unmount = mod.resources->unmount_archive(handle);
+    const bool gone = mod.resources->has_file(markerPath) == 0;
+    used += std::snprintf(report + used, sizeof(report) - used,
+                          "; mount=ok handle=%llu marker=%s unmount=%s gone=%u",
+                          static_cast<unsigned long long>(handle), markerOk ? "match" : "fail",
+                          unmount == SHIP_NATIVE_OK ? "ok" : "fail", gone ? 1u : 0u);
+    if (!markerOk || unmount != SHIP_NATIVE_OK || !gone) {
+        std::snprintf(report + used, sizeof(report) - used, "; fail@%s", step);
+    }
+    return Write(write, writer, report);
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length,
                                         ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -266,6 +382,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "configure", Configure, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "jump", Jump, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "resource_probe", ResourceProbe, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "resource_runtime_probe", ResourceRuntimeProbe, mod) !=
+            SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
         delete mod;
         *instance = nullptr;
