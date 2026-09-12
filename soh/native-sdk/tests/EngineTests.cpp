@@ -1,5 +1,6 @@
 #include "OotNativeEngine.h"
 #include "oot_engine.h"
+#include "oot_registry.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <array>
 #include <cmath>
@@ -148,13 +149,17 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 3 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 4 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
-          policy.services[2].version == LINKSPAN_OOT_RESOURCES_VERSION,
-          "host deve publicar engine, movement e resources V1");
+          policy.services[2].version == LINKSPAN_OOT_RESOURCES_VERSION &&
+          policy.services[3].version == LINKSPAN_OOT_REGISTRY_VERSION,
+          "host deve publicar engine, movement, resources e registry V1");
     const auto* engine = static_cast<const ShipOotEngineV1*>(policy.services[0].table);
     const auto* movement = static_cast<const ShipOotMovementV1*>(policy.services[1].table);
     const auto* resources = static_cast<const ShipOotResourcesV1*>(policy.services[2].table);
+    const auto* registry = static_cast<const ShipOotRegistryV1*>(policy.services[3].table);
+    Check(registry && registry->size == sizeof(ShipOotRegistryV1),
+          "registry V1 deve estar disponível pela policy do host");
     uint32_t resourceSize = 0;
     Check(resources->has_file("test/core.json") && !resources->has_file("missing"),
           "resources V1 deve consultar o VFS");
@@ -245,6 +250,20 @@ int main(int argc, char** argv) {
         Check(resourceProbe.code == ShipLua::ErrorCode::Ok &&
               std::string(response.data(), resourceProbe.size) == "{\"ok\":1}",
               "DLL independente deve ler o VFS pelo serviço resources V1");
+        response.fill(0);
+        const auto layerProbe = (*loaded.value)->Call("layer_probe", "", 0, response.data(),
+                                                      uint32_t(response.size()));
+        Check(layerProbe.code == ShipLua::ErrorCode::Ok &&
+              std::string(response.data(), layerProbe.size).starts_with(
+                  "layers=2; order=base.o2r>override.shipmod; merged="),
+              "DLL independente deve combinar camadas pelo serviço resources V2");
+        response.fill(0);
+        const auto registryProbe = (*loaded.value)->Call("registry_probe", "", 0, response.data(),
+                                                         uint32_t(response.size()));
+        Check(registryProbe.code == ShipLua::ErrorCode::Ok &&
+              std::string(response.data(), registryProbe.size) ==
+                  "space=ok; entries=2; first=128; jump=example/dynamic_movement/jump:action=jump; id=128",
+              "DLL independente deve criar e consultar catálogo pelo registry V1");
         auto callUpdate = [&]() {
             response.fill(0);
             const auto result = (*loaded.value)->Call("update", "", 0, response.data(), uint32_t(response.size()));
@@ -291,6 +310,9 @@ int main(int argc, char** argv) {
               boundButtons[boundButtons.size() - 1] == std::pair<uint16_t, uint8_t>{BTN_B, 0},
               "perfil deve mapear A contextual, Y espada e B cancelar");
         loaded.value->reset();
+        uint64_t removedSpace = 0;
+        Check(registry->find_space("example/dynamic_movement/actions", &removedSpace) == SHIP_NATIVE_UNSUPPORTED,
+              "unload da DLL deve remover seu espaço e entradas em cascata");
         Check(mappingReloads > 0, "unload deve restaurar os mapeamentos do usuário");
         Check(settingValue == 0, "unload deve restaurar a configuração de câmera livre");
 

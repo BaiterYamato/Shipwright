@@ -1,4 +1,5 @@
 #include "OotNativeEngine.h"
+#include "OotNativeRegistry.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
 #include <cmath>
@@ -201,6 +202,7 @@ void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
 
 ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
+    InitializeOotNativeRegistry(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
     policy.services.push_back({LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION,
@@ -209,6 +211,9 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
                                sizeof(movementV1), &movementV1});
     policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION,
                                sizeof(resourcesV1), &resourcesV1});
+    const auto& registry = GetOotNativeRegistryService();
+    policy.services.push_back({LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION,
+                               sizeof(registry), &registry});
     return policy;
 }
 }

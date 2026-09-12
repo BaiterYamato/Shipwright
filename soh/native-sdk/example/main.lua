@@ -53,5 +53,8 @@ ship.events.on("game.ready", function()
     -- Prova de runtime do OOT-CORE-001 contra o VFS real.
     local probe, probe_error = ship.native.call("resource_runtime_probe", "")
     ship.log.info("core-001-probe: " .. (probe or ("falhou: " .. tostring(probe_error))))
+    -- Prova do OOT-CORE-002: o próprio mod criou este catálogo ao carregar a DLL.
+    local registry_probe, registry_error = ship.native.call("registry_probe", "")
+    ship.log.info("core-002-registry: " .. (registry_probe or ("falhou: " .. tostring(registry_error))))
     ship.events.on("game.frame", update_movement)
 end)

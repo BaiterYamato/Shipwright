@@ -69,6 +69,45 @@ screen, sem exceções, executável e archives inalterados (SHA-256 antes=depois
 Linha de prova registrada no log:
 `core-001-probe: versions=1:0xD43DA81F; has=1/0; version_file=0xD43DA81F listed=1; arrows=13 first=objects/gameplay_keep/gArrow1Anim; mount=ok handle=1 marker=match unmount=ok gone=1`.
 
+## Serviço `linkspan.oot.registry` v1 (OOT-CORE-002)
+
+Header do contrato: `soh/soh/native/oot_registry.h`. O serviço oferece um
+registro dinâmico genérico; o Shipwright guarda identidade e bytes, enquanto o
+coremod decide se eles representam cenas, entradas, itens, transformações ou
+outro catálogo. A tabela `ShipOotRegistryV1` contém:
+
+- `create_space` / `find_space` / `destroy_space`;
+- `register_entry` / `unregister_entry`;
+- `find_entry_by_name` / `find_entry_by_id`;
+- `read_entry` para copiar nome, payload e ID;
+- `list_entries` para enumeração determinística.
+
+Cada espaço declara um intervalo numérico e um `stride`. Ao passar
+`LINKSPAN_OOT_REGISTRY_AUTO_ID`, o host escolhe o menor ID livre alinhado. Nome
+e ID são únicos dentro do espaço. O host copia todos os dados, limita nomes a
+255 bytes, cada payload a 64 KiB, mantém no máximo 64 espaços e 65.536 entradas
+vivas e recusa chamadas fora da thread do jogo.
+
+`read_entry` aceita consulta inicial com os dois buffers nulos e capacidades
+zero. O nome devolvido tem comprimento explícito e não inclui terminador NUL.
+`destroy_space` remove suas entradas em cascata; o provider que criou o espaço
+deve chamá-lo no shutdown. Assim, desativar ou trocar o `.shipmod` não deixa IDs
+ocupados no processo.
+
+O provider de exemplo cria `example/dynamic_movement/actions` e registra as
+entradas `jump` e `sprint` durante seu próprio `init`. `registry_probe` confirma
+busca por nome, leitura do payload e listagem, e o teste do host confirma que o
+espaço desaparece após o unload. Adicionar novas entradas a esse catálogo exige
+recompilar somente a DLL do mod.
+
+Validação de 2026-09-12: a sessão isolada
+`build/runtime-evidence/core-002-20260912-1445/` iniciou o Shipwright 9.2.3,
+carregou o ZIP 0.2.4, chegou a `ShipLua inicializado`, encerrou normalmente e
+registrou:
+`core-002-registry: space=ok; entries=2; first=128; jump=example/dynamic_movement/jump:action=jump; id=128`.
+O resultado da sessão ficou `valid: true`; `soh.exe`, `oot.o2r`, `soh.o2r` e os
+ZIPs rastreados mantiveram seus hashes antes e depois.
+
 Aviso de robustez (descoberto no playtest, fora do escopo do serviço): o boot
 crasha com 0xc0000005 em `Fast3dGui::LoadGuiTexture` se o `soh.o2r` instalado
 não contém as texturas custom do SoH (ex: `textures/parameter_static/gTriforcePiece`,
@@ -130,8 +169,8 @@ Nesta fatia funcional:
 
 O `main.lua` registra o esquema final: analógicos esquerdo/direito, X pulo, A
 contexto/rolamento/sprint, Y espada, B cancelar, ZL target, ZR item, R Quick
-Swap, L escudo, Ocarina/Navi, seletores de Gear/Boots e +/- para menu/mapa. As
-Os atalhos e hotbars permanecem nas próximas fatias.
+Swap, L escudo, Ocarina/Navi, seletores de Gear/Boots e +/- para menu/mapa. Os
+atalhos e hotbars permanecem nas próximas fatias.
 
 ## Compatibilidade e alcance
 
@@ -146,7 +185,8 @@ as funções internas do executável nem implementa Mixins ou hot reload de DLLs
 O teste `oot_native_independent_mod` usa o bridge real e estruturas reais, com
 stubs de spawn/kill; isso comprova ABI e escrita, mas não gameplay em jogo.
 O serviço `resources` v1, por sua vez, já tem prova em jogo na sessão
-`core-001-20260912-1155`.
+`core-001-20260912-1155`. O serviço `registry` v1 está validado sem ROM; a ligação
+das entradas a SceneDB e ao gameplay será o próximo adapter Unbound.
 
 ## Validação local de 2026-09-09
 

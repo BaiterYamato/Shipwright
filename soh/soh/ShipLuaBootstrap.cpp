@@ -1,5 +1,6 @@
 #include "ShipLuaBootstrap.h"
 #include "native/OotNativeEngine.h"
+#include "native/OotNativeRegistry.h"
 #include "OotActorProvider.h"
 #include "OotHotkeyRegistry.h"
 #include "OotWorldAdapter.h"
@@ -6912,7 +6913,8 @@ void Initialize() {
                                  NativeDirtyResources, NativeUnloadResource, NativeMountResourceArchive,
                                  NativeUnmountResourceArchive, NativeGetResourceGameVersions });
     gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
-    SPDLOG_INFO("Link-Span: providers nativos ABI 1.1 e core extensions ativos; serviços linkspan.oot.engine/movement/resources v1; pacotes ZIP/SHIPMOD");
+    SPDLOG_INFO("Link-Span: providers nativos ABI 1.1 e core extensions ativos; serviços "
+                "linkspan.oot.engine/movement/resources/registry v1; pacotes ZIP/SHIPMOD");
     MountCrossWorldArchives();
     MountModAssetArchives();
     // Diagnóstico da Fase 1 do port de áudio do MM (handoff OOT-AUDIO-001).
@@ -6942,6 +6944,7 @@ void Shutdown() {
         }
     }
     gModHost.reset();
+    ResetOotNativeRegistry();
     ClearNativeResourceArchives();
     SetOotNativeGamepadBridge({});
     SetOotNativeResourceBridge({});

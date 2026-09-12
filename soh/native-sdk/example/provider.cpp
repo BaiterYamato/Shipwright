@@ -5,6 +5,7 @@
 #include <cstring>
 #include <new>
 #include "oot_engine.h"
+#include "oot_registry.h"
 #include "oot_resources.h"
 #include "oot_layout_id.h"
 #include "z64.h"
@@ -24,6 +25,10 @@ struct Mod {
     const ShipOotEngineV1* engine;
     const ShipOotMovementV1* movement;
     const ShipOotResourcesV1* resources;
+    const ShipOotRegistryV1* registry;
+    uint64_t registrySpace = 0;
+    uint64_t jumpEntry = 0;
+    uint64_t sprintEntry = 0;
     uint16_t keyboardJumpMask = 0;
     Phase phase = Phase::Ready;
     bool jumpWasDown = false;
@@ -180,6 +185,56 @@ ShipNativeStatus SHIP_NATIVE_CALL CountPath(void* user, const char* path, uint32
     }
     ++counter.count;
     return SHIP_NATIVE_OK;
+}
+
+struct RegistryCounter {
+    uint32_t count = 0;
+    int32_t firstId = LINKSPAN_OOT_REGISTRY_AUTO_ID;
+};
+
+ShipNativeStatus SHIP_NATIVE_CALL CountRegistryEntry(void* user, uint64_t, int32_t id,
+                                                     const char*, uint32_t) {
+    auto& counter = *static_cast<RegistryCounter*>(user);
+    if (!counter.count) counter.firstId = id;
+    ++counter.count;
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL RegistryProbe(void* user, const char*, uint32_t length,
+                                                ShipNativeWriteFn write, void* writer) {
+    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    uint64_t space = 0;
+    if (mod.registry->find_space("example/dynamic_movement/actions", &space) != SHIP_NATIVE_OK ||
+        space != mod.registrySpace) {
+        return Write(write, writer, "fail@space");
+    }
+    uint64_t entry = 0;
+    int32_t id = 0;
+    if (mod.registry->find_entry_by_name(space, "example/dynamic_movement/jump", &entry, &id) !=
+            SHIP_NATIVE_OK ||
+        entry != mod.jumpEntry) {
+        return Write(write, writer, "fail@jump");
+    }
+    char name[64]{};
+    uint8_t payload[64]{};
+    uint32_t nameSize = 0;
+    uint32_t payloadSize = 0;
+    int32_t readId = 0;
+    if (mod.registry->read_entry(entry, name, sizeof(name), &nameSize, payload, sizeof(payload),
+                                 &payloadSize, &readId) != SHIP_NATIVE_OK) {
+        return Write(write, writer, "fail@read");
+    }
+    RegistryCounter counter;
+    if (mod.registry->list_entries(space, CountRegistryEntry, &counter) != SHIP_NATIVE_OK) {
+        return Write(write, writer, "fail@list");
+    }
+    char report[256];
+    const int size = std::snprintf(
+        report, sizeof(report), "space=ok; entries=%u; first=%d; jump=%.*s:%.*s; id=%d",
+        counter.count, counter.firstId, static_cast<int>(nameSize), name,
+        static_cast<int>(payloadSize), reinterpret_cast<const char*>(payload), readId);
+    return size > 0 && size < int(sizeof(report)) ? write(writer, report, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
 // Prova de runtime do OOT-CORE-001: exercita o serviço linkspan.oot.resources
@@ -357,6 +412,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     const auto* resources = static_cast<const ShipOotResourcesV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION,
         sizeof(ShipOotResourcesV1)));
+    const auto* registry = static_cast<const ShipOotRegistryV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION,
+        sizeof(ShipOotRegistryV1)));
     if (!engine || engine->size < sizeof(ShipOotEngineV1) || !engine->layout_id ||
         std::strcmp(engine->layout_id, LINKSPAN_OOT_LAYOUT_ID) ||
         engine->player_size != sizeof(Player) || engine->play_state_size != sizeof(PlayState) ||
@@ -375,16 +433,44 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         !resources->read_file || !resources->list_files || !resources->dirty_resources ||
         !resources->unload_resource || !resources->mount_archive || !resources->unmount_archive ||
         !resources->get_game_versions) return SHIP_NATIVE_UNSUPPORTED;
-    auto* mod = new (std::nothrow) Mod{engine, movement, resources};
+    if (!registry || registry->size < sizeof(ShipOotRegistryV1) || !registry->create_space ||
+        !registry->find_space || !registry->destroy_space || !registry->register_entry ||
+        !registry->unregister_entry || !registry->find_entry_by_name || !registry->find_entry_by_id ||
+        !registry->read_entry || !registry->list_entries) return SHIP_NATIVE_UNSUPPORTED;
+    auto* mod = new (std::nothrow) Mod{engine, movement, resources, registry};
     if (!mod) return SHIP_NATIVE_FAILURE;
     *instance = mod;
+    if (registry->create_space("example/dynamic_movement/actions", 0x80, 0xFF, 1,
+                               &mod->registrySpace) != SHIP_NATIVE_OK) {
+        delete mod;
+        *instance = nullptr;
+        return SHIP_NATIVE_FAILURE;
+    }
+    int32_t assignedId = 0;
+    static const char jumpPayload[] = "action=jump";
+    static const char sprintPayload[] = "action=sprint";
+    if (registry->register_entry(mod->registrySpace, "example/dynamic_movement/jump",
+                                 LINKSPAN_OOT_REGISTRY_AUTO_ID,
+                                 reinterpret_cast<const uint8_t*>(jumpPayload), sizeof(jumpPayload) - 1,
+                                 &mod->jumpEntry, &assignedId) != SHIP_NATIVE_OK ||
+        registry->register_entry(mod->registrySpace, "example/dynamic_movement/sprint",
+                                 LINKSPAN_OOT_REGISTRY_AUTO_ID,
+                                 reinterpret_cast<const uint8_t*>(sprintPayload), sizeof(sprintPayload) - 1,
+                                 &mod->sprintEntry, &assignedId) != SHIP_NATIVE_OK) {
+        registry->destroy_space(mod->registrySpace);
+        delete mod;
+        *instance = nullptr;
+        return SHIP_NATIVE_FAILURE;
+    }
     if (runtime->register_function(runtime->context, "status", Status, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "configure", Configure, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "jump", Jump, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "resource_probe", ResourceProbe, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "resource_runtime_probe", ResourceRuntimeProbe, mod) !=
             SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "registry_probe", RegistryProbe, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
+        registry->destroy_space(mod->registrySpace);
         delete mod;
         *instance = nullptr;
         return SHIP_NATIVE_FAILURE;
@@ -396,6 +482,7 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* mod = static_cast<Mod*>(instance);
     if (mod && mod->faceBindingsApplied) mod->movement->reload_gamepad_mappings(0);
     if (mod && mod->freeLookApplied) mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
+    if (mod && mod->registrySpace) mod->registry->destroy_space(mod->registrySpace);
     delete mod;
 }
 }
