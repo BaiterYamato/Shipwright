@@ -1,7 +1,8 @@
 local ship = require("ship")
 
 -- Perfil canônico do mod para controles Nintendo. Índices SDL físicos no Switch
--- Pro: B=0, A=1, Y=2, X=3, "-"=4, R3=8, L=9, R=10 e D-pad direita=14; ZR é o eixo 5.
+-- Pro: B=0, A=1, Y=2, X=3, "-"=4, R3=8, L=9, R=10 e D-pad cima/baixo/esquerda/
+-- direita=11/12/13/14; ZR é o eixo 5.
 local controls = {
     profile = "nintendo",
     move = { physical = "left_stick" },
@@ -20,7 +21,24 @@ local controls = {
     lens = { physical = "R3", sdl_button = 8, gesture = "tap" },
     mask = { physical = "R3", sdl_button = 8, gesture = "hold", hold_ms = 400 },
     navi_first_person = { physical = "dpad_right", sdl_button = 14, virtual_mask = 0x0008 },
+    ocarina = { physical = "dpad_left", sdl_button = 13, gesture = "tap" },
+    gear = { physical = "dpad_up", sdl_button = 11, tap = "toggle_last", hold = "quick_swap", hold_ms = 400 },
+    boots = { physical = "dpad_down", sdl_button = 12, tap = "toggle_kokiri", hold = "quick_swap", hold_ms = 400 },
     menu = { physical = "+" },
+}
+
+-- Ícones vanilla de icon_item_static (RGBA32 32x32) por valor de equipamento 1..3.
+local EQUIP_ICONS = {
+    tunic = {
+        "textures/icon_item_static/gItemIconTunicKokiriTex",
+        "textures/icon_item_static/gItemIconTunicGoronTex",
+        "textures/icon_item_static/gItemIconTunicZoraTex",
+    },
+    boots = {
+        "textures/icon_item_static/gItemIconBootsKokiriTex",
+        "textures/icon_item_static/gItemIconBootsIronTex",
+        "textures/icon_item_static/gItemIconBootsHoverTex",
+    },
 }
 
 local last_state = nil
@@ -55,6 +73,34 @@ local function draw_item_selection()
     ship.hud.draw_ring(tonumber(x) + half, tonumber(y) + half, half + 3, 2, 1.0, 255, 255, 255, tonumber(alpha))
 end
 
+-- Troca rápida de traje/botas enquanto o D-pad está segurado: ícones centralizados
+-- na parte de baixo e anel no destacado, que é vestido ao soltar.
+local function draw_quick_swap()
+    local state = ship.native.call("hud_quick_swap", "")
+    if not state or state == "none" then
+        return
+    end
+    local kind, selected, list = state:match("^(%a+);(%d);([%d,]+)$")
+    local icons = kind and EQUIP_ICONS[kind]
+    if not icons then
+        return
+    end
+    local values = {}
+    for value in list:gmatch("%d") do
+        values[#values + 1] = tonumber(value)
+    end
+    local size, gap, y = 24, 8, 176
+    local left = 160 - (#values * size + (#values - 1) * gap) / 2
+    for index, value in ipairs(values) do
+        local x = math.floor(left + (index - 1) * (size + gap))
+        ship.hud.draw_rect(x - 3, y - 3, size + 6, size + 6, 0, 0, 0, 150)
+        ship.hud.draw_icon(icons[value], x, y, size, size, { alpha = 255 })
+        if value == tonumber(selected) then
+            ship.hud.draw_ring(x + size / 2, y + size / 2, size / 2 + 5, 2, 1.0, 255, 255, 255, 255)
+        end
+    end
+end
+
 ship.events.on("game.ready", function()
     -- Zero desliga fallback por botão virtual: X é lido fisicamente no gamepad.
     -- 500 ms sem analógico direito antes de a câmera voltar a seguir Link ao andar.
@@ -76,5 +122,8 @@ ship.events.on("game.ready", function()
     local registry_probe, registry_error = ship.native.call("registry_probe", "")
     ship.log.info("core-002-registry: " .. (registry_probe or ("falhou: " .. tostring(registry_error))))
     ship.events.on("game.frame", update_movement)
-    ship.events.on("hook.oot.hud.draw", draw_item_selection)
+    ship.events.on("hook.oot.hud.draw", function()
+        draw_item_selection()
+        draw_quick_swap()
+    end)
 end)

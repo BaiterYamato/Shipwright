@@ -25,6 +25,10 @@ constexpr uint8_t SDL_BUTTON_L = 9;
 constexpr uint8_t SDL_BUTTON_R = 10;
 // D-pad direita (SDL_CONTROLLER_BUTTON_DPAD_RIGHT): C-Up nativo, Navi e primeira pessoa.
 constexpr uint8_t SDL_BUTTON_DPAD_RIGHT = 14;
+// D-pad cima, baixo e esquerda (SDL_CONTROLLER_BUTTON_DPAD_UP/DOWN/LEFT): traje, botas e ocarina.
+constexpr uint8_t SDL_BUTTON_DPAD_UP = 11;
+constexpr uint8_t SDL_BUTTON_DPAD_DOWN = 12;
+constexpr uint8_t SDL_BUTTON_DPAD_LEFT = 13;
 // ZR (SDL_CONTROLLER_AXIS_TRIGGERRIGHT): usa o item do botão C selecionado.
 constexpr uint8_t SDL_AXIS_ZR = 5;
 constexpr int16_t ZR_HELD = 8000;
@@ -33,10 +37,25 @@ constexpr const char* FREE_LOOK_SETTING = "gSettings.FreeLook.Enabled";
 constexpr const char* PERSISTENT_MASKS_SETTING = "gEnhancements.PersistentMasks";
 // Toque rápido no R3 alterna a lente; segurar por este tempo alterna a máscara.
 constexpr long long SHORTCUT_HOLD_MILLISECONDS = 400;
+// Segurar o D-pad cima/baixo por este tempo abre a troca rápida, que avança a cada passo.
+constexpr long long QUICK_SWAP_HOLD_MILLISECONDS = 400;
+constexpr long long QUICK_SWAP_STEP_MILLISECONDS = 450;
+constexpr const char* TUNIC_RESULTS[] = { "tunic-blocked", "tunic-kokiri", "tunic-goron", "tunic-zora" };
+constexpr const char* BOOTS_RESULTS[] = { "boots-blocked", "boots-kokiri", "boots-iron", "boots-hover" };
 // Botão virtual de cada índice de SaveContext.equips.buttonItems (1..3 = C).
 constexpr uint16_t ITEM_BUTTONS[] = { 0, BTN_CLEFT, BTN_CDOWN, BTN_CRIGHT };
 
 enum class Phase { Ready, Airborne, Rolling, Running };
+
+// Toque/segurar do D-pad para traje ou botas. Valores de equipamento 1..3 (EQUIP_VALUE_*).
+struct EquipGesture {
+    bool wasDown = false;
+    bool quickSwap = false;
+    uint8_t highlight = 0;
+    uint8_t last = 0;
+    std::chrono::steady_clock::time_point pressedAt{};
+    std::chrono::steady_clock::time_point lastStep{};
+};
 
 struct Mod {
     const ShipOotEngineV1* engine;
@@ -63,6 +82,9 @@ struct Mod {
     std::chrono::steady_clock::time_point shortcutPressedAt{};
     uint8_t selectedItemButton = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT;
     bool selectWasDown = false;
+    bool ocarinaWasDown = false;
+    EquipGesture tunic{};
+    EquipGesture boots{};
 };
 
 enum class CameraChange { None, FreeLook, Automatic };
@@ -152,8 +174,10 @@ ShipNativeStatus ApplyNintendoBindings(Mod& mod) {
     // A físico vira a ação contextual N64 A. Y e B alimentam N64 B: ataque e
     // cancelar/guardar continuam sendo decididos pelo estado normal do jogo.
     // D-pad direita alimenta o C-Up nativo (Navi e primeira pessoa), L físico o
-    // escudo (R do N64) e "−" o L do N64. R3 e R são lidos fisicamente.
-    const uint16_t remappedButtons[] = { BTN_A, BTN_B, BTN_CUP, BTN_DRIGHT, BTN_R, BTN_L };
+    // escudo (R do N64) e "−" o L do N64. R3, R e o resto do D-pad (ocarina, traje e
+    // botas) são lidos fisicamente, sem botão virtual.
+    const uint16_t remappedButtons[] = { BTN_A, BTN_B, BTN_CUP, BTN_DRIGHT, BTN_R, BTN_L,
+                                         BTN_DUP, BTN_DDOWN, BTN_DLEFT };
     for (const uint16_t button : remappedButtons) {
         if (mod.movement->clear_gamepad_button_bindings(0, button) != SHIP_NATIVE_OK) {
             mod.movement->reload_gamepad_mappings(0);
@@ -203,15 +227,109 @@ const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
                                                      : "item-c-right";
 }
 
+// D-pad esquerda tira a ocarina do inventário sem ocupar botão C.
+const char* UpdateOcarina(Mod& mod, uint32_t physical) {
+    const bool down = (physical & PhysicalButton(SDL_BUTTON_DPAD_LEFT)) != 0;
+    const bool pressed = down && !mod.ocarinaWasDown;
+    mod.ocarinaWasDown = down;
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!pressed || !save) return nullptr;
+    const uint8_t ocarina = save->inventory.items[SLOT_OCARINA];
+    if (ocarina != ITEM_OCARINA_FAIRY && ocarina != ITEM_OCARINA_TIME) return "ocarina-blocked";
+    return mod.movement->player_use_item_shortcut(ocarina) == SHIP_NATIVE_OK ? "ocarina" : "ocarina-blocked";
+}
+
+uint8_t CurrentEquip(const SaveContext& save, uint8_t type) {
+    return static_cast<uint8_t>((save.equips.equipment >> (4 * type)) & 0xF);
+}
+
+// Obtido (inventory.equipment) e permitido pela idade: Goron, Zora, ferro e flutuantes são
+// de adulto (gEquipAgeReqs), salvo TimelessEquipment. O host confere de novo ao equipar.
+bool EquipAvailable(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t value) {
+    if (value < 1 || value > 3 || !(save.inventory.equipment & (1u << (4 * type + value - 1)))) return false;
+    return value == 1 || save.linkAge == LINK_AGE_ADULT ||
+           mod.movement->get_setting_int("gCheats.TimelessEquipment", 0) != 0;
+}
+
+uint8_t NextEquip(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t from) {
+    for (uint8_t step = 1; step <= 3; ++step) {
+        const uint8_t candidate = static_cast<uint8_t>((from + 2 + step) % 3 + 1);
+        if (EquipAvailable(mod, save, type, candidate)) return candidate;
+    }
+    return from;
+}
+
+// Toque: o traje volta ao último usado e as botas alternam com as Kokiri. Sem histórico,
+// vai do Kokiri para o primeiro especial disponível.
+uint8_t TapTarget(const Mod& mod, const SaveContext& save, uint8_t type, const EquipGesture& gesture) {
+    const uint8_t current = CurrentEquip(save, type);
+    if (type == EQUIP_TYPE_BOOTS && current != EQUIP_VALUE_BOOTS_KOKIRI) return EQUIP_VALUE_BOOTS_KOKIRI;
+    if (gesture.last != current && EquipAvailable(mod, save, type, gesture.last)) return gesture.last;
+    return current != 1 ? 1 : NextEquip(mod, save, type, 1);
+}
+
+// D-pad cima (traje) e baixo (botas): toque troca; segurar percorre as opções com o HUD e
+// veste a destacada ao soltar.
+const char* UpdateEquipGesture(Mod& mod, EquipGesture& gesture, uint32_t physical, uint8_t button, uint8_t type) {
+    const bool down = (physical & PhysicalButton(button)) != 0;
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!save) {
+        gesture.wasDown = false;
+        gesture.quickSwap = false;
+        return nullptr;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const bool tunic = type == EQUIP_TYPE_TUNIC;
+    const uint8_t current = CurrentEquip(*save, type);
+    const char* result = nullptr;
+    if (down && !gesture.wasDown) {
+        gesture.pressedAt = now;
+        gesture.quickSwap = false;
+    }
+    if (down && !gesture.quickSwap &&
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - gesture.pressedAt).count() >=
+            QUICK_SWAP_HOLD_MILLISECONDS) {
+        const uint8_t next = NextEquip(mod, *save, type, current);
+        if (next != current) {
+            gesture.quickSwap = true;
+            gesture.highlight = next;
+            gesture.lastStep = now;
+            result = tunic ? "tunic-quick-swap" : "boots-quick-swap";
+        }
+    } else if (down && gesture.quickSwap &&
+               std::chrono::duration_cast<std::chrono::milliseconds>(now - gesture.lastStep).count() >=
+                   QUICK_SWAP_STEP_MILLISECONDS) {
+        gesture.highlight = NextEquip(mod, *save, type, gesture.highlight);
+        gesture.lastStep = now;
+    }
+    if (!down && gesture.wasDown) {
+        const uint8_t target = gesture.quickSwap ? gesture.highlight : TapTarget(mod, *save, type, gesture);
+        gesture.quickSwap = false;
+        if (target != current) {
+            const auto* results = tunic ? TUNIC_RESULTS : BOOTS_RESULTS;
+            const uint8_t item = static_cast<uint8_t>((tunic ? ITEM_TUNIC_KOKIRI : ITEM_BOOTS_KOKIRI) + target - 1);
+            if (mod.movement->player_use_item_shortcut(item) == SHIP_NATIVE_OK) {
+                gesture.last = current;
+                result = results[target];
+            } else {
+                result = results[0];
+            }
+        }
+    }
+    gesture.wasDown = down;
+    return result;
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t length,
                                         ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
-    char result[448];
+    char result[640];
     const int size = std::snprintf(result, sizeof(result),
         "perfil=nintendo; X=pulo %.2f; A=contexto/rolar/sprint; Y=espada; B=cancelar; "
         "ZR=item do C selecionado; R=troca o C; L=escudo; -=L do N64; "
-        "R3=lente (toque)/máscara (segurar); D-pad direita=C-Up; "
+        "R3=lente (toque)/máscara (segurar); D-pad direita=C-Up; D-pad esquerda=ocarina; "
+        "D-pad cima=traje (toque: último; segurar: escolher); D-pad baixo=botas (toque: Kokiri; segurar: escolher); "
         "câmera=stick direito, volta a seguir ao andar após %.2fs; gamepad=%s",
         double(JUMP_VELOCITY), double(mod.cameraFollowDelayMilliseconds) / 1000.0,
         mod.movement->has_gamepad(0) ? "conectado" : "ausente");
@@ -548,6 +666,27 @@ ShipNativeStatus SHIP_NATIVE_CALL HudSelection(void* user, const char*, uint32_t
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
+// Troca rápida aberta para o HUD Lua: "tunic;<destaque>;<opções>", "boots;..." ou "none".
+ShipNativeStatus SHIP_NATIVE_CALL HudQuickSwap(void* user, const char*, uint32_t length,
+                                              ShipNativeWriteFn write, void* writer) {
+    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    const bool tunic = mod.tunic.quickSwap;
+    if (!save || (!tunic && !mod.boots.quickSwap)) return Write(write, writer, "none");
+    const uint8_t type = tunic ? EQUIP_TYPE_TUNIC : EQUIP_TYPE_BOOTS;
+    const EquipGesture& gesture = tunic ? mod.tunic : mod.boots;
+    char result[32];
+    int size = std::snprintf(result, sizeof(result), "%s;%u;", tunic ? "tunic" : "boots", unsigned(gesture.highlight));
+    bool first = true;
+    for (uint8_t value = 1; value <= 3 && size > 0 && size < int(sizeof(result)) - 3; ++value) {
+        if (!EquipAvailable(mod, *save, type, value)) continue;
+        size += std::snprintf(result + size, sizeof(result) - size, first ? "%u" : ",%u", unsigned(value));
+        first = false;
+    }
+    return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length,
                                         ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -560,6 +699,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         mod.shortcutWasDown = false;
         mod.shortcutHoldFired = false;
         mod.selectWasDown = false;
+        mod.ocarinaWasDown = false;
+        mod.tunic.wasDown = mod.tunic.quickSwap = false;
+        mod.boots.wasDown = mod.boots.quickSwap = false;
         return Write(write, writer, "unavailable");
     }
     const CameraChange cameraChange = UpdateCamera(mod);
@@ -574,6 +716,15 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     }
     if (const char* shortcut = UpdateShortcut(mod, *player, physical)) {
         return Write(write, writer, shortcut);
+    }
+    if (const char* ocarina = UpdateOcarina(mod, physical)) {
+        return Write(write, writer, ocarina);
+    }
+    if (const char* tunic = UpdateEquipGesture(mod, mod.tunic, physical, SDL_BUTTON_DPAD_UP, EQUIP_TYPE_TUNIC)) {
+        return Write(write, writer, tunic);
+    }
+    if (const char* boots = UpdateEquipGesture(mod, mod.boots, physical, SDL_BUTTON_DPAD_DOWN, EQUIP_TYPE_BOOTS)) {
+        return Write(write, writer, boots);
     }
     const uint16_t current = mod.movement->get_input_current(0);
     const bool jumpDown = hasGamepad
@@ -705,6 +856,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
             SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "registry_probe", RegistryProbe, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_selection", HudSelection, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "hud_quick_swap", HudQuickSwap, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
         registry->destroy_space(mod->registrySpace);
         delete mod;

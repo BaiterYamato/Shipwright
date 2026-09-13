@@ -27,6 +27,11 @@ s8 Player_ItemToItemAction(s32 item);
 s32 Player_UpperAction_ChangeHeldItem(Player* player, PlayState* play);
 void Player_Action_WaitForPutAway(Player* player, PlayState* play);
 uint8_t GameInteractor_PacifistModeActive();
+// Tira a ocarina no mesmo frame (z_player.c:6003) e toca o som do Player (1816).
+s32 Player_ActionHandler_13(Player* player, PlayState* play);
+void func_808328EC(Player* player, u16 sfxId);
+// Idade por equipamento do menu de pausa (z_kaleido_scope_PAL.c:971).
+extern u8 gEquipAgeReqs[][4];
 }
 
 namespace ShipLuaHost {
@@ -178,24 +183,44 @@ bool ItemButtonsActive(Player* player, PlayState* play) {
            play->pauseCtx.state == 0 && play->msgCtx.msgMode == MSGMODE_NONE;
 }
 constexpr uint8_t AGE_REQ_NONE_VALUE = 9; // AGE_REQ_NONE, z_kaleido_scope.h:21
-// Regras de func_80083108 (z_parameter.c:800-1317) que desabilitariam a lente ou a
-// máscara num botão C, mais a idade de CHECK_AGE_REQ_ITEM (z_kaleido_scope.h:25).
+bool IsOcarinaItem(uint8_t item) {
+    return item == ITEM_OCARINA_FAIRY || item == ITEM_OCARINA_TIME;
+}
+bool IsEquipmentItem(uint8_t item) {
+    return item >= ITEM_TUNIC_KOKIRI && item <= ITEM_BOOTS_HOVER;
+}
+// Regras de func_80083108 (z_parameter.c:800-1317) que desabilitariam o item num botão
+// C, mais a idade de CHECK_AGE_REQ_ITEM e CHECK_AGE_REQ_EQUIP (z_kaleido_scope.h:23-25).
 bool ItemEnabledLikeCButton(Player* player, PlayState* play, uint8_t item) {
+    const bool ocarina = IsOcarinaItem(item);
+    const bool equipment = IsEquipmentItem(item);
     const s32 hazard = Player_GetEnvironmentalHazard(play);
     if ((player->stateFlags1 & (PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_CLIMBING_LADDER)) ||
         (player->stateFlags2 & PLAYER_STATE2_CRAWLING) || play->shootingGalleryStatus > 1 ||
         play->bombchuBowlingStatus != 0 || play->sceneNum == SCENE_FISHING_POND ||
-        GameInteractor_PacifistModeActive() || (hazard >= 2 && hazard < 5) ||
-        (gSaveContext.eventInf[0] & 0xF) == 1) {
+        GameInteractor_PacifistModeActive()) {
         return false;
     }
-    if (!SettingEnabled("gCheats.TimelessEquipment") && gItemAgeReqs[item] != AGE_REQ_NONE_VALUE &&
-        gItemAgeReqs[item] != gSaveContext.linkAge) {
+    // Submerso só o equipamento continua (z_parameter.c:924-968); no evento de arco a
+    // cavalo, só a ocarina (983-1039).
+    if ((hazard >= 2 && hazard < 5 && !equipment) || ((gSaveContext.eventInf[0] & 0xF) == 1 && !ocarina)) {
+        return false;
+    }
+    const bool timeless = SettingEnabled("gCheats.TimelessEquipment");
+    if (equipment) {
+        const bool tunic = item <= ITEM_TUNIC_ZORA;
+        const uint8_t value = static_cast<uint8_t>(item - (tunic ? ITEM_TUNIC_KOKIRI : ITEM_BOOTS_KOKIRI) + 1);
+        const uint8_t age = gEquipAgeReqs[tunic ? EQUIP_TYPE_TUNIC : EQUIP_TYPE_BOOTS][value];
+        // Equipamento num botão C fica sempre habilitado (z_parameter.c:1096-1106).
+        return timeless || age == AGE_REQ_NONE_VALUE || age == gSaveContext.linkAge;
+    }
+    if (!timeless && gItemAgeReqs[item] != AGE_REQ_NONE_VALUE && gItemAgeReqs[item] != gSaveContext.linkAge) {
         return false;
     }
     if (item == ITEM_LENS) {
         return play->interfaceCtx.restrictions.all == 0 || play->sceneNum == SCENE_TREASURE_BOX_SHOP;
     }
+    if (ocarina) return play->interfaceCtx.restrictions.ocarina == 0;
     return play->interfaceCtx.restrictions.tradeItems == 0 || SettingEnabled("gEnhancements.MMBunnyHood");
 }
 // Botões que mantêm a máscara sem PersistentMasks (z_player.c:2516-2530).
@@ -208,12 +233,60 @@ bool ItemOnItemButton(uint8_t item) {
 }
 // Lente ligada pelo atalho: Magic_Update a mantém fora dos botões (z_parameter.c).
 bool lensKeptWithoutButton = false;
+// Traje e botas trocam "apesar do estado" como no AssignableTunicsAndBoots
+// (soh/soh/Enhancements/Items/AssignableTunicsAndBoots.cpp:18-24), fora de pausa e texto.
+bool EquipmentShortcutActive(Player* player, PlayState* play) {
+    constexpr uint32_t blocking = PLAYER_STATE1_LOADING | PLAYER_STATE1_INPUT_DISABLED | PLAYER_STATE1_IN_ITEM_CS |
+                                  PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_TALKING | PLAYER_STATE1_DEAD;
+    return player->actor.category == ACTORCAT_PLAYER && !(player->stateFlags1 & blocking) &&
+           !(player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) && player->csAction == 0 &&
+           gSaveContext.health != 0 && play->csCtx.state == CS_STATE_IDLE && play->pauseCtx.state == 0 &&
+           play->msgCtx.msgMode == MSGMODE_NONE;
+}
+ShipNativeStatus UseEquipmentShortcut(Player* player, PlayState* play, uint8_t item) {
+    const bool tunic = item <= ITEM_TUNIC_ZORA;
+    const s16 type = tunic ? EQUIP_TYPE_TUNIC : EQUIP_TYPE_BOOTS;
+    const u16 value = static_cast<u16>(item - (tunic ? ITEM_TUNIC_KOKIRI : ITEM_BOOTS_KOKIRI) + 1);
+    if (!EquipmentShortcutActive(player, play) || !ItemEnabledLikeCButton(player, play, item) ||
+        !CHECK_OWNED_EQUIP(type, value - 1))
+        return SHIP_NATIVE_UNSUPPORTED;
+    // Usar o equipado volta ao Kokiri, como o botão do SoH.
+    const u16 current = static_cast<u16>(CUR_EQUIP_VALUE(type));
+    const u16 next = current == value ? (tunic ? EQUIP_VALUE_TUNIC_KOKIRI : EQUIP_VALUE_BOOTS_KOKIRI) : value;
+    if (next == current) return SHIP_NATIVE_UNSUPPORTED;
+    Inventory_ChangeEquipment(type, next);
+    Player_SetEquipmentData(play, player);
+    func_808328EC(player, !tunic && next == EQUIP_VALUE_BOOTS_IRON ? NA_SE_PL_WALK_HEAVYBOOTS : NA_SE_PL_CHANGE_ARMS);
+    return SHIP_NATIVE_OK;
+}
+// Ocarina: Player_UseItem arma unk_6AD como o botão C e Player_ActionHandler_13 começa a
+// tocar no mesmo frame, igual a func_8084B4D4 (z_player.c:12892). Chamado depois do update,
+// sem isso o Player_ProcessItemButtons do frame seguinte guardaria a ocarina fora dos botões.
+ShipNativeStatus UseOcarinaShortcut(Player* player, PlayState* play, uint8_t item) {
+    if (gSaveContext.inventory.items[SLOT_OCARINA] != item || player->actionFunc == Player_Action_Roll ||
+        player->upperActionFunc == Player_UpperAction_ChangeHeldItem ||
+        (player->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM))
+        return SHIP_NATIVE_UNSUPPORTED;
+    const s8 expected = Player_ItemToItemAction(item);
+    Player_UseItem(play, player, item);
+    if (player->unk_6AD != 4 || player->itemAction != expected) return SHIP_NATIVE_UNSUPPORTED;
+    Player_ActionHandler_13(player, play);
+    if (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) return SHIP_NATIVE_OK;
+    // Fora do chão o handler recusa: desfaz o pedido para não sobrar no próximo frame.
+    player->itemAction = player->heldItemAction;
+    player->unk_6AD = 0;
+    return SHIP_NATIVE_UNSUPPORTED;
+}
 ShipNativeStatus SHIP_NATIVE_CALL UseItemShortcut(uint8_t item) {
     const bool lens = item == ITEM_LENS;
-    if (!lens && (item < ITEM_MASK_KEATON || item > ITEM_MASK_TRUTH)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    const bool mask = item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH;
+    if (!lens && !mask && !IsOcarinaItem(item) && !IsEquipmentItem(item)) return SHIP_NATIVE_INVALID_ARGUMENT;
     auto* player = static_cast<Player*>(CurrentPlayer());
-    if (!player || !ItemButtonsActive(player, gPlayState) || !ItemEnabledLikeCButton(player, gPlayState, item))
+    if (!player) return SHIP_NATIVE_UNSUPPORTED;
+    if (IsEquipmentItem(item)) return UseEquipmentShortcut(player, gPlayState, item);
+    if (!ItemButtonsActive(player, gPlayState) || !ItemEnabledLikeCButton(player, gPlayState, item))
         return SHIP_NATIVE_UNSUPPORTED;
+    if (IsOcarinaItem(item)) return UseOcarinaShortcut(player, gPlayState, item);
     if (lens) {
         if (gSaveContext.inventory.items[SLOT_LENS] != ITEM_LENS) return SHIP_NATIVE_UNSUPPORTED;
         const bool wasActive = gPlayState->actorCtx.lensActive != 0;

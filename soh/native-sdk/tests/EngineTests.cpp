@@ -16,12 +16,21 @@
 #include <utility>
 #include <vector>
 #include "z64.h"
+#include "macros.h"
 extern "C" {
 #include "functions.h"
 PlayState* gPlayState = nullptr;
 SaveContext gSaveContext{};
 u8 gItemAgeReqs[ITEM_NONE]{};
 OcarinaSongInfo gOcarinaSongNotes[OCARINA_SONG_MAX]{};
+// Tabelas reais de z_inventory.c:9-24 e z_kaleido_scope_PAL.c:971-997.
+u32 gBitFlags[32]{};
+u16 gEquipMasks[4]{0x000F, 0x00F0, 0x0F00, 0xF000};
+u8 gEquipShifts[4]{0, 4, 8, 12};
+u8 gEquipAgeReqs[4][4]{{LINK_AGE_ADULT, LINK_AGE_CHILD, LINK_AGE_ADULT, LINK_AGE_ADULT},
+                       {9, LINK_AGE_CHILD, 9, LINK_AGE_ADULT},
+                       {LINK_AGE_ADULT, 9, LINK_AGE_ADULT, LINK_AGE_ADULT},
+                       {9, 9, LINK_AGE_ADULT, LINK_AGE_ADULT}};
 }
 namespace {
 PlayState play{};
@@ -41,6 +50,8 @@ std::vector<std::tuple<uint16_t, uint8_t, int8_t>> boundAxes;
 std::vector<int32_t> usedItems;
 s32 environmentalHazard = 0;
 uint8_t pacifistMode = 0;
+bool hostileLockOn = false;
+u16 lastPlayerSfx = 0;
 std::map<std::string, std::vector<uint8_t>> resourceFiles{
     {"test/core.json", {'{', '"', 'o', 'k', '"', ':', '1', '}' }},
     {"test/other.bin", {1, 2, 3}},
@@ -182,7 +193,27 @@ extern "C" void func_80838940(Player* target, LinkAnimationHeader* animation, f3
     target->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
     target->stateFlags1 |= PLAYER_STATE1_JUMPING;
 }
-extern "C" s8 Player_ItemToItemAction(s32) { return PLAYER_IA_NONE; }
+extern "C" s8 Player_ItemToItemAction(s32 item) {
+    return item == ITEM_OCARINA_FAIRY ? PLAYER_IA_OCARINA_FAIRY
+         : item == ITEM_OCARINA_TIME  ? PLAYER_IA_OCARINA_OF_TIME
+                                      : PLAYER_IA_NONE;
+}
+// Ramo da ocarina de Player_ActionHandler_13 (z_player.c:6009-6012 e 6119-6145).
+extern "C" s32 Player_ActionHandler_13(Player* user, PlayState*) {
+    if (user->unk_6AD == 0 || !(user->actor.bgCheckFlags & BGCHECKFLAG_GROUND)) return 0;
+    user->stateFlags2 |= PLAYER_STATE2_OCARINA_PLAYING;
+    user->stateFlags1 |= PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_IN_CUTSCENE;
+    return 1;
+}
+extern "C" void Inventory_ChangeEquipment(s16 equipment, u16 value) {
+    gSaveContext.equips.equipment =
+        static_cast<u16>((gSaveContext.equips.equipment & ~gEquipMasks[equipment]) | (value << gEquipShifts[equipment]));
+}
+extern "C" void Player_SetEquipmentData(PlayState*, Player* user) {
+    user->currentTunic = static_cast<u8>(CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) - 1);
+    user->currentBoots = static_cast<u8>(CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) - 1);
+}
+extern "C" void func_808328EC(Player*, u16 sfxId) { lastPlayerSfx = sfxId; }
 extern "C" s32 Player_UpperAction_ChangeHeldItem(Player*, PlayState*) { return 0; }
 extern "C" void Player_Action_WaitForPutAway(Player*, PlayState*) {}
 extern "C" uint8_t GameInteractor_PacifistModeActive() { return pacifistMode; }
@@ -196,6 +227,10 @@ extern "C" void Player_UseItem(PlayState* target, Player* user, s32 item) {
         user->currentMask = user->currentMask != PLAYER_MASK_NONE
             ? PLAYER_MASK_NONE
             : static_cast<u8>(item - ITEM_MASK_KEATON + PLAYER_MASK_KEATON);
+    } else if ((item == ITEM_OCARINA_FAIRY || item == ITEM_OCARINA_TIME) && !hostileLockOn) {
+        // "Cutscene items" (z_player.c:3491-3499): lock-on hostil impede.
+        user->itemAction = Player_ItemToItemAction(item);
+        user->unk_6AD = 4;
     }
 }
 extern "C" s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
@@ -204,6 +239,7 @@ extern "C" void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags)
 extern "C" s32 OotNative_TakePendingOcarinaSong(void);
 
 int main(int argc, char** argv) {
+    for (int bit = 0; bit < 32; ++bit) gBitFlags[bit] = uint32_t{1} << bit;
     ShipLuaHost::SetOotNativeGamepadBridge(
         {HasGamepad, GetGamepadButtons, ClearButton, BindButton, ReloadMappings, GetSettingInt, SetSettingInt,
          GetGamepadAxis, BindAxis});
@@ -430,6 +466,83 @@ int main(int argc, char** argv) {
     play.interfaceCtx.restrictions.tradeItems = 0;
     otherSettings.clear();
     gSaveContext.linkAge = LINK_AGE_ADULT;
+
+    const auto shortcut = movementV2->player_use_item_shortcut;
+    const auto resetPlayerAction = [&] {
+        player.stateFlags1 = 0;
+        player.stateFlags2 = 0;
+        player.itemAction = player.heldItemAction;
+        player.unk_6AD = 0;
+    };
+    player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
+    Check(shortcut(ITEM_OCARINA_TIME) == SHIP_NATIVE_UNSUPPORTED, "ocarina fora do inventário deve ser recusada");
+    gSaveContext.inventory.items[SLOT_OCARINA] = ITEM_OCARINA_TIME;
+    play.interfaceCtx.restrictions.ocarina = 1;
+    Check(shortcut(ITEM_OCARINA_TIME) == SHIP_NATIVE_UNSUPPORTED, "restrição de ocarina da cena deve bloquear");
+    play.interfaceCtx.restrictions.ocarina = 0;
+    hostileLockOn = true;
+    Check(shortcut(ITEM_OCARINA_TIME) == SHIP_NATIVE_UNSUPPORTED && player.unk_6AD == 0 &&
+              !(player.stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING),
+          "lock-on hostil deve impedir a ocarina como no botão C");
+    hostileLockOn = false;
+    player.actor.bgCheckFlags = 0;
+    Check(shortcut(ITEM_OCARINA_TIME) == SHIP_NATIVE_UNSUPPORTED && player.unk_6AD == 0 &&
+              player.itemAction == player.heldItemAction,
+          "ocarina recusada fora do chão não deve deixar pedido pendente");
+    player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
+    Check(shortcut(ITEM_OCARINA_FAIRY) == SHIP_NATIVE_UNSUPPORTED,
+          "ocarina diferente da do inventário deve ser recusada");
+    Check(shortcut(ITEM_OCARINA_TIME) == SHIP_NATIVE_OK && (player.stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) &&
+              usedItems.back() == ITEM_OCARINA_TIME,
+          "atalho deve tirar a ocarina no mesmo frame pelo handler nativo");
+    resetPlayerAction();
+    gSaveContext.eventInf[0] = 1;
+    Check(shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED && shortcut(ITEM_OCARINA_TIME) == SHIP_NATIVE_OK,
+          "evento de arco a cavalo deve liberar só a ocarina");
+    gSaveContext.eventInf[0] = 0;
+    resetPlayerAction();
+
+    gSaveContext.equips.equipment =
+        static_cast<u16>((EQUIP_VALUE_TUNIC_KOKIRI << 8) | (EQUIP_VALUE_BOOTS_KOKIRI << 12));
+    gSaveContext.inventory.equipment = static_cast<u16>(OWNED_EQUIP_FLAG(EQUIP_TYPE_TUNIC, EQUIP_INV_TUNIC_KOKIRI) |
+                                                        OWNED_EQUIP_FLAG(EQUIP_TYPE_BOOTS, EQUIP_INV_BOOTS_KOKIRI));
+    Check(shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_UNSUPPORTED, "traje não obtido deve ser recusado");
+    gSaveContext.inventory.equipment |= static_cast<u16>(OWNED_EQUIP_FLAG(EQUIP_TYPE_TUNIC, EQUIP_INV_TUNIC_GORON) |
+                                                         OWNED_EQUIP_FLAG(EQUIP_TYPE_BOOTS, EQUIP_INV_BOOTS_IRON));
+    player.stateFlags1 = PLAYER_STATE1_SHIELDING;
+    Check(shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_OK &&
+              CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_GORON && lastPlayerSfx == NA_SE_PL_CHANGE_ARMS,
+          "traje Goron deve ser vestido mesmo com escudo erguido");
+    Check(shortcut(ITEM_TUNIC_KOKIRI) == SHIP_NATIVE_OK &&
+              CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_KOKIRI &&
+              shortcut(ITEM_TUNIC_KOKIRI) == SHIP_NATIVE_UNSUPPORTED,
+          "Kokiri deve voltar do Goron e não mudar nada quando já vestido");
+    Check(shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_OK && shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_OK &&
+              CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_KOKIRI,
+          "usar o traje vestido deve voltar ao Kokiri, como no SoH");
+    player.stateFlags1 = 0;
+    environmentalHazard = 3;
+    Check(shortcut(ITEM_BOOTS_IRON) == SHIP_NATIVE_OK &&
+              CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == EQUIP_VALUE_BOOTS_IRON &&
+              lastPlayerSfx == NA_SE_PL_WALK_HEAVYBOOTS && player.currentBoots == EQUIP_VALUE_BOOTS_IRON - 1,
+          "botas de ferro devem calçar submerso com o som pesado");
+    environmentalHazard = 0;
+    gSaveContext.linkAge = LINK_AGE_CHILD;
+    Check(shortcut(ITEM_BOOTS_IRON) == SHIP_NATIVE_UNSUPPORTED && shortcut(ITEM_BOOTS_KOKIRI) == SHIP_NATIVE_OK &&
+              CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == EQUIP_VALUE_BOOTS_KOKIRI,
+          "criança não deve calçar ferro, mas volta às Kokiri");
+    gSaveContext.linkAge = LINK_AGE_ADULT;
+    player.stateFlags1 = PLAYER_STATE1_TALKING;
+    Check(shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_UNSUPPORTED, "conversa deve bloquear a troca de traje");
+    player.stateFlags1 = PLAYER_STATE1_ON_HORSE;
+    Check(shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_UNSUPPORTED, "cavalo deve bloquear a troca de traje");
+    player.stateFlags1 = 0;
+    player.stateFlags2 = PLAYER_STATE2_OCARINA_PLAYING;
+    Check(shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_UNSUPPORTED, "tocando ocarina não deve trocar de traje");
+    player.stateFlags2 = 0;
+    play.pauseCtx.state = 1;
+    Check(shortcut(ITEM_BOOTS_IRON) == SHIP_NATIVE_UNSUPPORTED, "pausa deve bloquear a troca de botas");
+    play.pauseCtx.state = 0;
     gamepadAxes[5] = 1234;
 
     gOcarinaSongNotes[OCARINA_SONG_SARIAS] = {6, {1, 2, 3, 1, 2, 3}};
@@ -486,6 +599,8 @@ int main(int argc, char** argv) {
         Check(movementV2->get_gamepad_axis(0, 5) == 0 &&
                   movementV2->bind_gamepad_axis(0, BTN_CLEFT, 5, 1) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->player_use_item_shortcut(ITEM_TUNIC_GORON) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->player_use_item_shortcut(ITEM_OCARINA_TIME) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->get_item_button_rect(2, &x, &y, &side, &alpha) == SHIP_NATIVE_UNSUPPORTED,
               "movement V2 deve recusar thread externa");
         uint32_t count = 0;
@@ -639,6 +754,50 @@ int main(int argc, char** argv) {
               "segurar o R3 deve colocar a máscara do slot infantil");
         gamepadButtons = 0;
         Check(callUpdate() != "lens-on", "soltar o R3 depois de segurar não deve alternar a lente");
+
+        const auto pressAndRelease = [&](uint8_t sdlButton) {
+            gamepadButtons = uint32_t{1} << sdlButton;
+            callUpdate();
+            gamepadButtons = 0;
+            return callUpdate();
+        };
+        const auto quickSwapState = [&] {
+            response.fill(0);
+            const auto result = (*loaded.value)->Call("hud_quick_swap", "", 0, response.data(), uint32_t(response.size()));
+            return result.code == ShipLua::ErrorCode::Ok ? std::string(response.data(), result.size) : std::string("erro");
+        };
+        gSaveContext.linkAge = LINK_AGE_ADULT;
+        player.currentMask = PLAYER_MASK_NONE;
+        player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
+        resetPlayerAction();
+        gamepadButtons = uint32_t{1} << 13;
+        Check(callUpdate() == "ocarina" && (player.stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING),
+              "D-pad esquerda deve tirar a ocarina do inventário");
+        gamepadButtons = 0;
+        callUpdate();
+        resetPlayerAction();
+        Check(pressAndRelease(11) == "tunic-goron" && CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_GORON,
+              "toque no D-pad cima sem histórico deve vestir o primeiro traje especial");
+        Check(pressAndRelease(11) == "tunic-kokiri" && CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_KOKIRI,
+              "novo toque no D-pad cima deve voltar ao último traje");
+        gSaveContext.inventory.equipment |= static_cast<u16>(OWNED_EQUIP_FLAG(EQUIP_TYPE_TUNIC, EQUIP_INV_TUNIC_ZORA));
+        Check(quickSwapState() == "none", "HUD da troca rápida deve ficar fechado sem segurar");
+        gamepadButtons = uint32_t{1} << 11;
+        callUpdate();
+        std::this_thread::sleep_for(std::chrono::milliseconds(430));
+        Check(callUpdate() == "tunic-quick-swap" && quickSwapState() == "tunic;2;1,2,3",
+              "segurar o D-pad cima deve abrir a troca rápida destacando o próximo traje");
+        std::this_thread::sleep_for(std::chrono::milliseconds(470));
+        callUpdate();
+        Check(quickSwapState() == "tunic;3;1,2,3", "manter segurado deve avançar o destaque");
+        gamepadButtons = 0;
+        Check(callUpdate() == "tunic-zora" && CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_ZORA &&
+                  quickSwapState() == "none",
+              "soltar deve vestir o traje destacado e fechar o HUD");
+        Check(pressAndRelease(12) == "boots-iron" && CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == EQUIP_VALUE_BOOTS_IRON,
+              "toque no D-pad baixo com Kokiri deve calçar as primeiras botas especiais");
+        Check(pressAndRelease(12) == "boots-kokiri" && CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == EQUIP_VALUE_BOOTS_KOKIRI,
+              "novo toque no D-pad baixo deve voltar às Kokiri");
         loaded.value->reset();
         uint64_t removedSpace = 0;
         Check(registry->find_space("example/dynamic_movement/actions", &removedSpace) == SHIP_NATIVE_UNSUPPORTED,

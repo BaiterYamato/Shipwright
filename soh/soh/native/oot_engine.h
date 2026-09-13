@@ -63,12 +63,14 @@ typedef struct ShipOotMovementV1 {
  * bind_gamepad_axis: liga só em memória metade de um eixo SDL a um botão virtual
  *   (direction 1 = positiva, -1 = negativa) com o limiar global do SDL;
  *   clear_gamepad_button_bindings e reload_gamepad_mappings também o desfazem.
- * player_use_item_shortcut: usa ITEM_LENS ou ITEM_MASK_* como se o item estivesse
- *   num botão C habilitado, sem exigir que esteja. Aplica as condições do jogo
- *   (Player, cena, idade, inventário e magia) e retorna SHIP_NATIVE_UNSUPPORTED
- *   quando o jogo recusaria o uso ou nada mudou. A lente ligada assim segue ativa
- *   fora dos botões; máscara fora dos botões exige gEnhancements.PersistentMasks,
- *   sem a qual o jogo a tiraria no frame seguinte.
+ * player_use_item_shortcut: usa ITEM_LENS, ITEM_MASK_*, ITEM_OCARINA_FAIRY/TIME,
+ *   ITEM_TUNIC_* ou ITEM_BOOTS_* como se o item estivesse num botão C habilitado,
+ *   sem exigir que esteja. Aplica as condições do jogo (Player, cena, idade,
+ *   inventário e magia) e retorna SHIP_NATIVE_UNSUPPORTED quando o jogo recusaria o
+ *   uso ou nada mudou. A lente ligada assim segue ativa fora dos botões; máscara
+ *   fora dos botões exige gEnhancements.PersistentMasks. A ocarina começa a tocar
+ *   no mesmo frame. Traje e botas seguem o AssignableTunicsAndBoots do SoH: trocam
+ *   com escudo ou item na mão, e usar o equipado volta ao Kokiri.
  * get_item_button_rect: posição no HUD, lado e alpha do botão C desenhado no frame
  *   atual ou no anterior; botão oculto ou HUD não desenhado retorna
  *   SHIP_NATIVE_UNSUPPORTED. */
