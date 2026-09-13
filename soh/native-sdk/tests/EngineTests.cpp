@@ -1,6 +1,7 @@
 #include "OotNativeEngine.h"
 #include "oot_engine.h"
 #include "oot_registry.h"
+#include "oot_ocarina.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <array>
 #include <cmath>
@@ -20,6 +21,7 @@ extern "C" {
 PlayState* gPlayState = nullptr;
 SaveContext gSaveContext{};
 u8 gItemAgeReqs[ITEM_NONE]{};
+OcarinaSongInfo gOcarinaSongNotes[OCARINA_SONG_MAX]{};
 }
 namespace {
 PlayState play{};
@@ -198,6 +200,8 @@ extern "C" void Player_UseItem(PlayState* target, Player* user, s32 item) {
 }
 extern "C" s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
 extern "C" void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha);
+extern "C" void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags);
+extern "C" s32 OotNative_TakePendingOcarinaSong(void);
 
 int main(int argc, char** argv) {
     ShipLuaHost::SetOotNativeGamepadBridge(
@@ -207,13 +211,16 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 6 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 7 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
           policy.services[4].version == LINKSPAN_OOT_RESOURCES_VERSION_2 &&
-          policy.services[5].version == LINKSPAN_OOT_REGISTRY_VERSION,
-          "host deve publicar engine, movement V1/V2, resources V1/V2 e registry V1");
+          policy.services[5].version == LINKSPAN_OOT_REGISTRY_VERSION &&
+          std::string(policy.services[6].name) == LINKSPAN_OOT_OCARINA_SERVICE &&
+          policy.services[6].version == LINKSPAN_OOT_OCARINA_VERSION,
+          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1 e ocarina V1");
+    const auto* ocarina = static_cast<const ShipOotOcarinaV1*>(policy.services[6].table);
     const auto* engine = static_cast<const ShipOotEngineV1*>(policy.services[0].table);
     const auto* movement = static_cast<const ShipOotMovementV1*>(policy.services[1].table);
     const auto* movementV2 = static_cast<const ShipOotMovementV2*>(policy.services[2].table);
@@ -424,6 +431,46 @@ int main(int argc, char** argv) {
     otherSettings.clear();
     gSaveContext.linkAge = LINK_AGE_ADULT;
     gamepadAxes[5] = 1234;
+
+    gOcarinaSongNotes[OCARINA_SONG_SARIAS] = {6, {1, 2, 3, 1, 2, 3}};
+    std::array<uint8_t, LINKSPAN_OOT_OCARINA_MAX_NOTES> songNotes{};
+    uint32_t songNoteCount = 0;
+    Check(ocarina && ocarina->size == sizeof(ShipOotOcarinaV1) && !ocarina->is_active() &&
+              ocarina->get_available_song_flags() == 0 && ocarina->get_song_count() == OCARINA_SONG_SCARECROW,
+          "ocarina V1 deve começar inativa com as doze músicas fixas");
+    Check(ocarina->get_song_pattern(OCARINA_SONG_SARIAS, nullptr, 0, &songNoteCount) == SHIP_NATIVE_OK &&
+              songNoteCount == 6 &&
+              ocarina->get_song_pattern(OCARINA_SONG_SARIAS, songNotes.data(), 4, &songNoteCount) ==
+                  SHIP_NATIVE_LIMIT &&
+              ocarina->get_song_pattern(OCARINA_SONG_SARIAS, songNotes.data(), uint32_t(songNotes.size()),
+                                        &songNoteCount) == SHIP_NATIVE_OK &&
+              songNotes[0] == 1 && songNotes[2] == 3 && songNotes[5] == 3,
+          "ocarina V1 deve consultar tamanho, limitar e copiar os índices de nota do jogo");
+    Check(ocarina->get_song_pattern(OCARINA_SONG_MINUET, songNotes.data(), uint32_t(songNotes.size()),
+                                    &songNoteCount) == SHIP_NATIVE_UNSUPPORTED &&
+              ocarina->get_song_pattern(OCARINA_SONG_MEMORY_GAME, songNotes.data(), uint32_t(songNotes.size()),
+                                        &songNoteCount) == SHIP_NATIVE_INVALID_ARGUMENT,
+          "ocarina V1 deve recusar padrão vazio e música fora do catálogo");
+    gOcarinaSongNotes[OCARINA_SONG_SCARECROW] = {8, {0, 1, 2, 3, 4, 3, 2, 1}};
+    Check(ocarina->get_song_count() == OCARINA_SONG_SCARECROW + 1,
+          "música gravada do Espantalho deve entrar no catálogo");
+    Check(ocarina->submit_song(OCARINA_SONG_SARIAS) == SHIP_NATIVE_UNSUPPORTED &&
+              OotNative_TakePendingOcarinaSong() == -1,
+          "entrega com a ocarina fechada deve ser recusada");
+    OotNative_PublishOcarinaState(1, uint16_t(1u << OCARINA_SONG_SARIAS));
+    Check(ocarina->is_active() && ocarina->get_available_song_flags() == (1u << OCARINA_SONG_SARIAS) &&
+              ocarina->submit_song(OCARINA_SONG_SUNS) == SHIP_NATIVE_UNSUPPORTED &&
+              ocarina->submit_song(OCARINA_SONG_MEMORY_GAME) == SHIP_NATIVE_INVALID_ARGUMENT,
+          "ocarina ativa deve aceitar só as músicas esperadas pelo jogo");
+    Check(ocarina->submit_song(OCARINA_SONG_SARIAS) == SHIP_NATIVE_OK &&
+              OotNative_TakePendingOcarinaSong() == OCARINA_SONG_SARIAS && OotNative_TakePendingOcarinaSong() == -1,
+          "música entregue deve ser consumida uma única vez pelo update da ocarina");
+    Check(ocarina->submit_song(OCARINA_SONG_SARIAS) == SHIP_NATIVE_OK, "segunda entrega deve ser aceita");
+    OotNative_PublishOcarinaState(0, uint16_t(1u << OCARINA_SONG_SARIAS));
+    Check(!ocarina->is_active() && ocarina->get_available_song_flags() == 0 &&
+              OotNative_TakePendingOcarinaSong() == -1,
+          "fechar a ocarina deve descartar a música pendente");
+    OotNative_PublishOcarinaState(1, uint16_t(1u << OCARINA_SONG_SARIAS));
     std::thread worker([&] {
         Check(!engine->get_player() && !engine->get_save_context() && !movement->get_input_current(0),
               "thread externa deve ser recusada");
@@ -441,7 +488,15 @@ int main(int argc, char** argv) {
                   movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->get_item_button_rect(2, &x, &y, &side, &alpha) == SHIP_NATIVE_UNSUPPORTED,
               "movement V2 deve recusar thread externa");
+        uint32_t count = 0;
+        std::array<uint8_t, LINKSPAN_OOT_OCARINA_MAX_NOTES> notes{};
+        Check(!ocarina->is_active() && ocarina->get_available_song_flags() == 0 && ocarina->get_song_count() == 0 &&
+                  ocarina->get_song_pattern(OCARINA_SONG_SARIAS, notes.data(), uint32_t(notes.size()), &count) ==
+                      SHIP_NATIVE_UNSUPPORTED &&
+                  ocarina->submit_song(OCARINA_SONG_SARIAS) == SHIP_NATIVE_UNSUPPORTED,
+              "ocarina V1 deve recusar thread externa");
     });
+    OotNative_PublishOcarinaState(0, 0);
     worker.join();
     gamepadAxes[5] = 0;
     boundAxes.clear();

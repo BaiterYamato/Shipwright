@@ -6995,7 +6995,7 @@ void Initialize() {
                                  NativeReadResourceFileLayers });
     gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
     SPDLOG_INFO("Link-Span: providers nativos ABI 1.1 e core extensions ativos; serviços "
-                "linkspan.oot.engine/registry v1; movement v1/v2; resources v1/v2; pacotes ZIP/SHIPMOD");
+                "linkspan.oot.engine/registry/ocarina v1; movement v1/v2; resources v1/v2; pacotes ZIP/SHIPMOD");
     MountCrossWorldArchives();
     MountModAssetArchives();
     // Diagnóstico da Fase 1 do port de áudio do MM (handoff OOT-AUDIO-001).

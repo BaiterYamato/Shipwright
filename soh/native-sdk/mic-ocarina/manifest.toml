@@ -1,0 +1,10 @@
+id = "baiteryamato.mic_ocarina"
+name = "Mic Ocarina"
+version = "0.1.0"
+api = ">=0.5.0 <0.6.0"
+entrypoint = "main.lua"
+games = ["oot"]
+
+[provider]
+abi_version = "1.0"
+win64 = "provider/mic_ocarina.dll"

@@ -2,8 +2,10 @@
 #include "OotNativeRegistry.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
+#include "oot_ocarina.h"
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <thread>
@@ -257,6 +259,46 @@ ShipNativeStatus SHIP_NATIVE_CALL ItemButtonRect(uint8_t button, int16_t* x, int
     *alpha = captured.alpha;
     return SHIP_NATIVE_OK;
 }
+// linkspan.oot.ocarina v1 (OOT-MIC-001). func_800EE6F4 (code_800EC960.c) publica o
+// estado a cada update de input da ocarina, dentro de func_800F3054 (graph.c:393),
+// na thread do jogo e depois do game.frame; a música pendente é consumida ali.
+std::atomic<uint8_t> ocarinaActive{0};
+std::atomic<uint16_t> ocarinaSongFlags{0};
+std::atomic<int32_t> pendingOcarinaSong{-1};
+bool OcarinaPatternValid(uint8_t song) {
+    return song <= OCARINA_SONG_SCARECROW && gOcarinaSongNotes[song].len >= 2 &&
+           gOcarinaSongNotes[song].len <= LINKSPAN_OOT_OCARINA_MAX_NOTES;
+}
+uint8_t SHIP_NATIVE_CALL OcarinaActive() {
+    return OnGameThread() ? ocarinaActive.load() : 0;
+}
+uint16_t SHIP_NATIVE_CALL OcarinaSongFlags() {
+    return OnGameThread() ? ocarinaSongFlags.load() : 0;
+}
+// Doze músicas fixas; a do Espantalho (12) só existe depois de gravada (code_800EC960.c:1420).
+uint8_t SHIP_NATIVE_CALL OcarinaSongCount() {
+    if (!OnGameThread()) return 0;
+    return OcarinaPatternValid(OCARINA_SONG_SCARECROW) ? OCARINA_SONG_SCARECROW + 1 : OCARINA_SONG_SCARECROW;
+}
+ShipNativeStatus SHIP_NATIVE_CALL OcarinaSongPattern(uint8_t song, uint8_t* notes, uint32_t capacity,
+                                                     uint32_t* outputCount) {
+    if (!outputCount || (!notes && capacity) || song > OCARINA_SONG_SCARECROW) return SHIP_NATIVE_INVALID_ARGUMENT;
+    *outputCount = 0;
+    if (!OnGameThread() || !OcarinaPatternValid(song)) return SHIP_NATIVE_UNSUPPORTED;
+    const auto& info = gOcarinaSongNotes[song];
+    *outputCount = info.len;
+    if (!notes) return SHIP_NATIVE_OK;
+    if (capacity < info.len) return SHIP_NATIVE_LIMIT;
+    std::memcpy(notes, info.notesIdx, info.len);
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL OcarinaSubmitSong(uint8_t song) {
+    if (song > OCARINA_SONG_SCARECROW) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!OnGameThread() || !ocarinaActive.load() || !(ocarinaSongFlags.load() & (1u << song)))
+        return SHIP_NATIVE_UNSUPPORTED;
+    pendingOcarinaSong.store(song);
+    return SHIP_NATIVE_OK;
+}
 uint8_t SHIP_NATIVE_CALL HasFile(const char* path) {
     if (!OnGameThread() || !ValidText(path) || !resourceBridge.hasFile) return 0;
     try { return resourceBridge.hasFile(path); } catch (...) { return 0; }
@@ -337,6 +379,10 @@ const ShipOotResourcesV2 resourcesV2{
     sizeof(ShipOotResourcesV2), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
     MountArchive, UnmountArchive, GetGameVersions, ReadFileLayers
 };
+const ShipOotOcarinaV1 ocarinaV1{
+    sizeof(ShipOotOcarinaV1), OcarinaActive, OcarinaSongFlags, OcarinaSongCount, OcarinaSongPattern,
+    OcarinaSubmitSong
+};
 }
 
 void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
@@ -351,6 +397,9 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
     lensKeptWithoutButton = false;
     itemButtons = {};
+    ocarinaActive.store(0);
+    ocarinaSongFlags.store(0);
+    pendingOcarinaSong.store(-1);
     InitializeOotNativeRegistry(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
@@ -367,6 +416,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& registry = GetOotNativeRegistryService();
     policy.services.push_back({LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION,
                                sizeof(registry), &registry});
+    policy.services.push_back({LINKSPAN_OOT_OCARINA_SERVICE, LINKSPAN_OOT_OCARINA_VERSION,
+                               sizeof(ocarinaV1), &ocarinaV1});
     return policy;
 }
 }
@@ -388,4 +439,16 @@ extern "C" void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s
         return;
     ShipLuaHost::itemButtons[button] = {x, y, size, static_cast<uint8_t>(std::min<u16>(alpha, 255)),
                                         play->state.frames, true};
+}
+
+// Chamadas por func_800EE6F4 (code_800EC960.c) a cada update de input da ocarina.
+extern "C" void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags) {
+    ShipLuaHost::ocarinaActive.store(active ? 1 : 0);
+    ShipLuaHost::ocarinaSongFlags.store(active ? availableSongFlags : 0);
+    // Música entregue para uma ocarina que já fechou não vale para a próxima.
+    if (!active) ShipLuaHost::pendingOcarinaSong.store(-1);
+}
+
+extern "C" s32 OotNative_TakePendingOcarinaSong(void) {
+    return ShipLuaHost::pendingOcarinaSong.exchange(-1);
 }

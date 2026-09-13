@@ -200,6 +200,31 @@ dos botões exige `gEnhancements.PersistentMasks`; sem ela o host recusa o uso. 
 anterior é aceita. O header do contrato entra no layout id: recompile providers
 nativos contra o SDK do host novo.
 
+## Serviço `linkspan.oot.ocarina` v1 (OOT-MIC-001)
+
+Header do contrato: `soh/soh/native/oot_ocarina.h`; decisão em
+`NATIVE-001/rfcs/0019-oot-ocarina-service.md`. O update de input da ocarina
+(`func_800EE6F4`) publica se o jogo espera uma música e quais aceita. O serviço
+oferece:
+
+- `is_active()` e `get_available_song_flags()`: um bit por `OcarinaSongId`;
+- `get_song_count()` e `get_song_pattern(song, notes, capacity, count)`: índices
+  de nota de `gOcarinaSongNotes` (0=A, 1=C-Down, 2=C-Right, 3=C-Left, 4=C-Up);
+- `submit_song(song)`: entrega uma música aceita, que o jogo recebe no próximo
+  update como se tivesse sido tocada.
+
+O mod `soh/native-sdk/mic-ocarina` usa o serviço: com a ocarina aberta, Start/+
+liga o microfone padrão, o detector YIN reconhece o contorno da melodia
+cantarolada e B desliga. O provider liga o SDL2 estático e só precisa do SDK para
+os headers:
+
+```powershell
+$sdl2 = "<vcpkg>/installed/x64-windows-static/share/sdl2"
+cmake -S soh/native-sdk/mic-ocarina -B build/mic-ocarina -G "Visual Studio 17 2022" -A x64 -DOOT_NATIVE_SDK="$sdk" -DSDL2_DIR="$sdl2"
+cmake --build build/mic-ocarina --config Release
+ctest --test-dir build/mic-ocarina -C Release
+```
+
 ## Compilar o host uma vez
 
 Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O
