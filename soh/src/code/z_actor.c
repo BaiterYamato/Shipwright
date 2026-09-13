@@ -22,6 +22,11 @@
 #include <stdlib.h>
 #include <assert.h>
 
+// ShipLua: permite a um mod trocar o item de uma check antes de ser entregue
+// (randomizer). Definido em ShipLuaBootstrap.cpp; no-op quando nenhum mod
+// assina hook.oot.item.give.
+extern void ShipLua_TransformGivenItem(GetItemEntry* entry);
+
 #if defined(_MSC_VER) || defined(__GNUC__)
 #include "textures/place_title_cards/g_pn_49.h"
 #include "textures/place_title_cards/g_pn_01.h"
@@ -2090,6 +2095,9 @@ s32 GiveItemEntryFromActor(Actor* actor, PlayState* play, GetItemEntry getItemEn
 
                 if ((getItemEntry.getItemId != GI_NONE) || (player->getItemDirection < absYawDiff)) {
                     iceTrapScale = 0.0f;
+                    // ShipLua item.give: deixa um mod trocar o item desta check
+                    // (randomizer). Opera na cópia local antes de armazená-la.
+                    ShipLua_TransformGivenItem(&getItemEntry);
                     player->getItemEntry = getItemEntry;
                     player->getItemId = getItemEntry.getItemId;
                     player->interactRangeActor = actor;
@@ -3338,7 +3346,7 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
         osSyncPrintf("アクタークラス追加 [%d:%s]\n", actorId, dbEntry->name);
     }
 
-    if (actorCtx->total > ACTOR_NUMBER_MAX) {
+    if (actorCtx->total >= ACTOR_NUMBER_MAX) {
         LUSLOG_WARN("Actor_Spawn: Actor number max exceeded");
         // "Ａｃｔｏｒ set number exceeded"
         osSyncPrintf(VT_COL(YELLOW, BLACK) "Ａｃｔｏｒセット数オーバー\n" VT_RST);
@@ -3449,7 +3457,7 @@ Actor* Actor_SpawnAsChild(ActorContext* actorCtx, Actor* parent, PlayState* play
 
 void Actor_SpawnTransitionActors(PlayState* play, ActorContext* actorCtx) {
     TransitionActorEntry* transitionActor;
-    u8 numActors;
+    u16 numActors; // SOH [Unbound] preserve transition lists above 255 entries
     s32 i;
 
     transitionActor = play->transiActorCtx.list;

@@ -36,6 +36,8 @@
 #include "Enhancements/randomizer/randomizer_entrance_tracker.h"
 #include "Enhancements/randomizer/randomizer_check_tracker.h"
 #include "Enhancements/randomizer/static_data.h"
+#include "soh/mmaudio/MmSfxPlayer.h"
+#include "soh/mmaudio/mmseq/MmAudioEngine.h"
 #include "soh/Enhancements/randomizer/settings.h"
 #include "soh/Enhancements/savestates.h"
 #include "frame_interpolation.h"
@@ -113,6 +115,8 @@
 
 #include "soh/config/ConfigUpdaters.h"
 #include "soh/ShipInit.hpp"
+#include "soh/ShipLuaBootstrap.h"
+#include "soh/OotHotkeyRegistry.h"
 
 #ifdef _MSC_VER
 #define strdup _strdup
@@ -1552,6 +1556,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     CustomMessageManager::Instance = new CustomMessageManager();
     ItemTableManager::Instance = new ItemTableManager();
     GameInteractor::Instance = new GameInteractor();
+    ShipLuaHost::Initialize();
     SaveManager::Instance = new SaveManager();
 
     std::shared_ptr<Ship::Config> conf = OTRGlobals::Instance->context->GetConfig();
@@ -1629,6 +1634,7 @@ extern "C" void SaveManager_ThreadPoolWait() {
 
 extern "C" void DeinitOTR() {
     SaveManager_ThreadPoolWait();
+    ShipLuaHost::Shutdown();
     OTRAudio_Exit();
     if (CVarGetInteger(CVAR_REMOTE_CROWD_CONTROL("Enabled"), 0)) {
         CrowdControl::Instance->Disable();
@@ -1693,6 +1699,22 @@ extern "C" void Graph_StartFrame() {
     using Ship::KbScancode;
     int32_t dwScancode = OTRGlobals::Instance->context->GetWindow()->GetLastScancode();
     OTRGlobals::Instance->context->GetWindow()->SetLastScancode(-1);
+
+#ifdef _WIN32
+    static bool logChordWasDown = false;
+    const SHORT f3State = GetAsyncKeyState(VK_F3);
+    const SHORT shiftState = GetAsyncKeyState(VK_SHIFT);
+    const bool logChordIsDown = (f3State & 0x8000) != 0 && (shiftState & 0x8000) != 0;
+    const bool logChordPressed = logChordIsDown || ((f3State & 1) != 0 && (shiftState & 0x8001) != 0);
+    if (logChordPressed && !logChordWasDown) {
+        ShipLuaHost::OpenLogWindow();
+    }
+    logChordWasDown = logChordIsDown;
+#endif
+
+    if (ShipLuaHost::OotHotkeyRegistry* hotkeys = ShipLuaHost::Hotkeys(); hotkeys != nullptr) {
+        hotkeys->DispatchScancode(dwScancode);
+    }
 
     switch (dwScancode) {
         case KbScancode::LUS_KB_F1: {
@@ -2269,6 +2291,33 @@ extern "C" int AudioPlayer_GetDesiredBuffered(void) {
 }
 
 extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
+    // Áudio vindo do mm.o2r é sintetizado fora do motor do OoT e somado aqui, no
+    // funil único, logo antes de ir para o dispositivo. O formato dos dois lados
+    // é o mesmo — 32 kHz, estéreo, s16 intercalado — então não há resample.
+    // Ver coordination/handoffs/OOT-AUDIO-001-port-mm-sfx.md.
+    const bool hasSample = ShipLua::MmAudio_HasPending();
+    const bool hasSequence = ShipLua::MmSeq_IsReady();
+
+    if (hasSample || hasSequence) {
+        static thread_local std::vector<uint8_t> mixed;
+        mixed.assign(buf, buf + len);
+        int16_t* pcm = reinterpret_cast<int16_t*>(mixed.data());
+        const uint32_t frames = len / (2 * sizeof(int16_t));
+
+        // Amostra crua (Fase 1) e interpretador de sequência (Fase 2) somam no
+        // mesmo buffer; são caminhos independentes de propósito, para o primeiro
+        // continuar servindo de referência caso o segundo saia errado.
+        if (hasSample) {
+            ShipLua::MmAudio_MixInto(pcm, frames);
+        }
+        if (hasSequence) {
+            ShipLua::MmSeq_RenderInto(pcm, frames);
+        }
+
+        AudioPlayerPlayFrame(mixed.data(), len);
+        return;
+    }
+
     AudioPlayerPlayFrame(buf, len);
 }
 

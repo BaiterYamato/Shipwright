@@ -8,6 +8,12 @@ RomFile sNaviMsgFiles[];
 s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId) {
     size_t size;
 
+    if (objectCtx->num >= OBJECT_EXCHANGE_BANK_MAX) {
+        osSyncPrintf("[Unbound] object bank full (%d slots); object %d was not loaded\n", OBJECT_EXCHANGE_BANK_MAX,
+                     objectId);
+        return -1;
+    }
+
     objectCtx->status[objectCtx->num].id = objectId;
     size = gObjectTable[objectId].vromEnd - gObjectTable[objectId].vromStart;
 
@@ -129,6 +135,10 @@ s32 Object_GetIndex(ObjectContext* objectCtx, s16 objectId) {
 }
 
 s32 Object_IsLoaded(ObjectContext* objectCtx, s32 bankIndex) {
+    if ((bankIndex < 0) || (bankIndex >= objectCtx->num) || (bankIndex >= OBJECT_EXCHANGE_BANK_MAX)) {
+        return false;
+    }
+
     if (objectCtx->status[bankIndex].id > 0) {
         return true;
     } else {

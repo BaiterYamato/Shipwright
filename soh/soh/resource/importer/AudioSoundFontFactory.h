@@ -1,11 +1,14 @@
 #pragma once
 
+#include <string>
+
 #include <ship/resource/Resource.h>
 #include <ship/resource/ResourceFactoryBinary.h>
 #include <ship/resource/ResourceFactoryXML.h>
 #include "soh/resource/type/AudioSoundFont.h"
 
 namespace SOH {
+
 class ResourceFactoryBinaryAudioSoundFontV2 final : public Ship::ResourceFactoryBinary {
   public:
     std::shared_ptr<Ship::IResource> ReadResource(std::shared_ptr<Ship::File> file,

@@ -106,6 +106,10 @@ if (NOT TARGET libultraship)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../libultraship ${CMAKE_BINARY_DIR}/libultraship SYSTEM)
 endif()
 
+if (NOT TARGET shiplua)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../extern/ship-lua ${CMAKE_BINARY_DIR}/ship-lua)
+endif()
+
 set(PROJECT_NAME soh)
 
 ################################################################################
@@ -227,6 +231,28 @@ set(ALL_FILES
 # Target
 ################################################################################
 add_executable(${PROJECT_NAME} ${ALL_FILES})
+
+enable_testing()
+add_executable(oot_actor_provider_tests
+    tests/OotActorProviderTests.cpp
+    soh/OotActorProvider.cpp
+)
+target_include_directories(oot_actor_provider_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(oot_actor_provider_tests PRIVATE shiplua)
+if(MSVC)
+    set_property(TARGET oot_actor_provider_tests PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(oot_actor_provider_tests PRIVATE /EHsc)
+endif()
+add_test(NAME oot_actor_provider_tests COMMAND oot_actor_provider_tests)
+
+add_executable(oot_unbound_collision_tests tests/OotUnboundCollisionTests.cpp)
+target_include_directories(oot_unbound_collision_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+    set_property(TARGET oot_unbound_collision_tests PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+add_test(NAME oot_unbound_collision_tests COMMAND oot_unbound_collision_tests)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
@@ -722,10 +748,6 @@ if(USE_ASAN)
     target_link_options(libultraship PRIVATE -fsanitize=address)
     target_compile_options(soh PRIVATE -fsanitize=address)
     target_link_options(soh PRIVATE -fsanitize=address)
-    target_link_options(ZAPD PRIVATE -fsanitize=address)
-    target_link_options(OTRExporter PRIVATE -fsanitize=address)
-    target_compile_options(ZAPD PRIVATE -fsanitize=address)
-    target_compile_options(OTRExporter PRIVATE -fsanitize=address)
     if (MSVC)
         target_compile_definitions(ImGui PRIVATE _DISABLE_VECTOR_ANNOTATION)
         target_compile_definitions(ImGui PRIVATE _DISABLE_STRING_ANNOTATION)
@@ -773,6 +795,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS")
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE "${ADDITIONAL_LIBRARY_DEPENDENCIES}")
 endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE shiplua)
 
 if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch")
 

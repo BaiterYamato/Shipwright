@@ -1,0 +1,12 @@
+[
+  { "action": "press", "key": "game_start", "ms": 100 },
+  { "action": "wait", "ms": 1200 },
+  { "action": "press", "key": "game_start", "ms": 100 },
+  { "action": "wait", "ms": 1200 },
+  { "action": "press", "key": "game_a", "ms": 100 },
+  { "action": "wait", "ms": 1200 },
+  { "action": "press", "key": "game_a", "ms": 100 },
+  { "action": "wait", "ms": 7000 },
+  { "action": "capture", "path": "D:/Desenvolvimento/ship-lua-worktrees/OOT-NATIVE-001/build/runtime-evidence/after-open.png" },
+  { "action": "release_all" }
+]

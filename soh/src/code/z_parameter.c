@@ -29,6 +29,10 @@ extern MessageTableEntry* sGerMessageEntryTablePtr;
 extern MessageTableEntry* sFraMessageEntryTablePtr;
 extern MessageTableEntry* sJpnMessageEntryTablePtr;
 
+// Link-Span (OOT-MOVE-004): linkspan.oot.movement v2, em soh/soh/native/OotNativeEngine.cpp.
+s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
+void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha);
+
 #define DO_ACTION_TEX_WIDTH() 48
 #define DO_ACTION_TEX_HEIGHT() 16
 #define DO_ACTION_TEX_SIZE() ((DO_ACTION_TEX_WIDTH() * DO_ACTION_TEX_HEIGHT()) / 2)
@@ -3341,6 +3345,8 @@ void Interface_UpdateMagicBar(PlayState* play) {
                         break;
                     }
                 }
+                // Link-Span (OOT-MOVE-004): a lente ligada pelo atalho nativo segue ativa fora dos botões.
+                hasLens = LinkSpan_KeepLensWithoutButton(play, hasLens);
                 if ((gSaveContext.magic == 0) ||
                     ((Player_GetEnvironmentalHazard(play) >= 2) && (Player_GetEnvironmentalHazard(play) < 5)) ||
                     !hasLens || !play->actorCtx.lensActive) {
@@ -4151,6 +4157,14 @@ void Interface_DrawItemButtons(PlayState* play) {
         C_Down_BTN_Pos[1] = C_Down_BTN_Pos_ori[1];
         C_Down_BTN_Pos[0] = OTRGetRectDimensionFromRightEdge(C_Down_BTN_Pos_ori[0]);
     }
+
+    // Link-Span (OOT-MOVE-004): posição final dos botões C para providers nativos.
+    LinkSpan_CaptureItemButton(play, 1, C_Left_BTN_Pos[0], C_Left_BTN_Pos[1], R_ITEM_BTN_WIDTH(1),
+                               interfaceCtx->cLeftAlpha);
+    LinkSpan_CaptureItemButton(play, 2, C_Down_BTN_Pos[0], C_Down_BTN_Pos[1], R_ITEM_BTN_WIDTH(2),
+                               interfaceCtx->cDownAlpha);
+    LinkSpan_CaptureItemButton(play, 3, C_Right_BTN_Pos[0], C_Right_BTN_Pos[1], R_ITEM_BTN_WIDTH(3),
+                               interfaceCtx->cRightAlpha);
 
     OPEN_DISPS(play->state.gfxCtx);
 

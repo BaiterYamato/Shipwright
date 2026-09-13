@@ -1,10 +1,13 @@
-#include <memory>
+#include "savestates.h"
 
+#include <algorithm>
+#include <memory>
 #include <spdlog/spdlog.h>
+#include <vector>
+
 #include <ship/Context.h>
 #include <ship/window/Window.h>
 
-#include "savestates.h"
 #include <soh/OTRGlobals.h>
 #include <soh/OTRAudio.h>
 #include "savestate_serialize.h"
@@ -152,8 +155,8 @@ typedef struct SaveStateInfo {
     std::unique_ptr<uint8_t[]> enHeishi1State;
     std::unique_ptr<uint8_t[]> playerState;
 
-    u8 transitionActorCount_copy;
-    s16 transitionActorIds_copy[256];
+    u16 transitionActorCount_copy;
+    std::vector<s16> transitionActorIds_copy;
 
 } SaveStateInfo;
 
@@ -336,13 +339,15 @@ void SaveState::LoadOverlayStaticData(void) {
 
 void SaveState::SaveTransitionActors(void) {
     info->transitionActorCount_copy = gPlayState->transiActorCtx.numActors;
+    info->transitionActorIds_copy.resize(info->transitionActorCount_copy);
     for (u32 i = 0; i < info->transitionActorCount_copy; i++) {
         info->transitionActorIds_copy[i] = gPlayState->transiActorCtx.list[i].id;
     }
 }
 
 void SaveState::LoadTransitionActors(void) {
-    u32 numActors = MIN(info->transitionActorCount_copy, gPlayState->transiActorCtx.numActors);
+    u32 numActors = std::min<u32>({ info->transitionActorCount_copy, gPlayState->transiActorCtx.numActors,
+                                    static_cast<u32>(info->transitionActorIds_copy.size()) });
     for (u32 i = 0; i < numActors; i++) {
         gPlayState->transiActorCtx.list[i].id = info->transitionActorIds_copy[i];
     }

@@ -7,6 +7,15 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags);
+s32 OotNative_TakePendingOcarinaSong(void);
+#ifdef __cplusplus
+}
+#endif
+
 // TODO: can these macros be shared between files? code_800F9280 seems to use
 // versions without any casts...
 #define Audio_DisableSeq(playerIdx, fadeOut) Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16), fadeOut)
@@ -2452,6 +2461,19 @@ s32 AudioOcarina_MemoryGameNextNote(void) {
 }
 
 void AudioOcarina_Update(void) {
+    const u8 linkSpanOcarinaActive = (sOcarinaInstrumentId != OCARINA_INSTRUMENT_OFF) &&
+                                     (sIsOcarinaInputEnabled == true) && (sOcarinaFlags != 0);
+    OotNative_PublishOcarinaState(linkSpanOcarinaActive,
+                                  linkSpanOcarinaActive ? sAvailOcarinaSongFlags : 0);
+    const s32 linkSpanForcedSong = OotNative_TakePendingOcarinaSong();
+    if (linkSpanOcarinaActive && linkSpanForcedSong >= 0 &&
+        linkSpanForcedSong <= OCARINA_SONG_SCARECROW_SPAWN &&
+        (sAvailOcarinaSongFlags & (u16)(1 << linkSpanForcedSong))) {
+        sPlayedOcarinaSongIndexPlusOne = linkSpanForcedSong + 1;
+        sIsOcarinaInputEnabled = false;
+        sOcarinaFlags = 0;
+    }
+
     sOcarinaUpdateTaskStart = gAudioContext.totalTaskCnt;
     if (sOcarinaInstrumentId != OCARINA_INSTRUMENT_OFF) {
         if (sIsOcarinaInputEnabled == true) {

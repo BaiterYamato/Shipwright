@@ -232,6 +232,7 @@ void Play_Destroy(GameState* thisx) {
     }
 
     func_80031C3C(&play->actorCtx, play);
+    BgCheck_Free(&play->colCtx); // SOH [Unbound] collision tables live on the heap; after actor cleanup (dyna)
     func_80110990(play);
     KaleidoScopeCall_Destroy(play);
     KaleidoManager_Destroy();
@@ -473,6 +474,8 @@ void Play_Init(GameState* thisx) {
         gSaveContext.sceneLayer = (Flags_GetEventChkInf(EVENTCHKINF_USED_FOREST_TEMPLE_BLUE_WARP)) ? 3 : 2;
     }
 
+    // SOH [Unbound] the game state is not zeroed; BgCheck_Free (Play_Destroy) must only see NULL or heap tables
+    memset(&play->colCtx, 0, sizeof(play->colCtx));
     Play_SpawnScene(play,
                     gEntranceTable[((void)0, gSaveContext.entranceIndex) + ((void)0, gSaveContext.sceneLayer)].scene,
                     gEntranceTable[((void)0, gSaveContext.sceneLayer) + ((void)0, gSaveContext.entranceIndex)].spawn);

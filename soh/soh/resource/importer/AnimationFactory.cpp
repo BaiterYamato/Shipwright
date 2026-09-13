@@ -3,8 +3,42 @@
 #include <ship/resource/ResourceManager.h>
 #include "spdlog/spdlog.h"
 #include <ship/Context.h>
+#include <string_view>
 
 namespace SOH {
+namespace {
+
+// LinkAnimationHeader stores its keyframe segment as a separate resource path.
+// Archives produced for a standalone game use an unqualified path such as
+// "misc/link_animetion/...".  A cross-world resource keeps that internal path,
+// even though its header is exposed to OoT as "mm/...".  The unqualified path
+// can collide with OoT's own link-animation archive, so prefer the MM
+// namespace when the owner animation came from the mounted MM archive.
+std::string ResolveCrossWorldLinkAnimationSegmentPath(const std::string& ownerPath, const std::string& segmentPath) {
+    constexpr std::string_view kOtrPrefix = "__OTR__";
+    constexpr std::string_view kMmPrefix = "mm/";
+
+    std::string_view owner = ownerPath;
+    if (owner.starts_with(kOtrPrefix)) {
+        owner.remove_prefix(kOtrPrefix.size());
+    }
+    if (!owner.starts_with(kMmPrefix)) {
+        return {};
+    }
+
+    std::string_view segment = segmentPath;
+    if (segment.starts_with(kOtrPrefix)) {
+        segment.remove_prefix(kOtrPrefix.size());
+    }
+    if (segment.starts_with(kMmPrefix)) {
+        return {};
+    }
+
+    return std::string(kOtrPrefix) + std::string(kMmPrefix) + std::string(segment);
+}
+
+} // namespace
+
 std::shared_ptr<Ship::IResource>
 ResourceFactoryBinaryAnimationV0::ReadResource(std::shared_ptr<Ship::File> file,
                                                std::shared_ptr<Ship::ResourceInitData> initData) {
@@ -86,8 +120,23 @@ ResourceFactoryBinaryAnimationV0::ReadResource(std::shared_ptr<Ship::File> file,
 
         // Read the segment pointer (always 32 bit, doesn't adjust for system pointer size)
         std::string path = reader->ReadString();
-        auto animData = std::static_pointer_cast<Animation>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(path.c_str()));
+        std::shared_ptr<Animation> animData = nullptr;
+        std::string crossWorldPath;
+        if (initData != nullptr) {
+            crossWorldPath = ResolveCrossWorldLinkAnimationSegmentPath(initData->Path, path);
+        }
+
+        // MM Link-animation headers retain their original, unqualified keyframe path after being mounted below
+        // mm/. Resolve the matching cross-world blob first: a same-named OoT blob may otherwise be accepted
+        // silently and deform the skeleton.
+        if (!crossWorldPath.empty()) {
+            animData = std::static_pointer_cast<Animation>(
+                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(crossWorldPath.c_str()));
+        }
+        if (animData == nullptr) {
+            animData = std::static_pointer_cast<Animation>(
+                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(path.c_str()));
+        }
 
         // If direct load failed and alt assets are enabled, try with alt/ prefix
         if (animData == nullptr && Ship::Context::GetRawInstance()->GetResourceManager()->IsAltAssetsEnabled()) {
