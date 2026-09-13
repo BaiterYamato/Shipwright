@@ -187,9 +187,13 @@ v1 e acrescenta:
 - `bind_gamepad_axis(port, virtual_button, sdl_axis, direction)`: metade de um
   eixo ligada a um botão virtual, só em memória. Com ZR segurando um botão C, o
   jogo mira arco e gancho como no botão nativo;
-- `player_use_item_shortcut(item)`: Lente da Verdade ou máscara sem exigir o item
-  num botão C. O host aplica as regras do jogo para Player, cena, idade,
-  inventário e magia e chama o `Player_UseItem` nativo;
+- `player_use_item_shortcut(item)`: Lente da Verdade, máscara, ocarina, traje ou
+  botas sem exigir o item num botão C. O host aplica as regras do jogo para Player,
+  cena, idade, inventário e magia. Cada família segue seu caminho nativo:
+  - lente e máscaras passam pelo `Player_UseItem`;
+  - a ocarina começa a tocar no mesmo frame pelo `Player_ActionHandler_13`;
+  - traje e botas seguem o `AssignableTunicsAndBoots`, e usar o equipado volta ao
+    Kokiri;
 - `get_item_button_rect(button, x, y, size, alpha)`: posição final de C-Left,
   C-Down e C-Right desenhada pelo HUD no frame atual ou no anterior.
 
@@ -268,7 +272,7 @@ parado há 500 ms (`configure "0,500"`, aceita 0 a 60000), o `FreeLook` é desli
 e a câmera automática assume a partir da posição atual, sem salto. O acesso a
 settings inteiros é uma primitiva genérica do SDK, não uma regra fixa deste mod.
 
-Na versão 0.2.7:
+Na versão 0.2.8:
 
 1. X executa o pulo dedicado;
 2. A permanece como ação contextual e produz o rolamento normal quando Link se
@@ -280,9 +284,14 @@ Na versão 0.2.7:
 6. L físico é o escudo (R do N64) e `-` é o L do N64;
 7. toque no R3 liga ou desliga a Lente da Verdade sem ocupar um C; segurar R3 por
    400 ms coloca ou tira a máscara do slot infantil;
-8. D-pad direita é o C-Up nativo: Navi e primeira pessoa.
+8. D-pad direita é o C-Up nativo: Navi e primeira pessoa;
+9. D-pad esquerda tira a ocarina do inventário sem ocupar um C;
+10. D-pad cima veste o traje: o toque volta ao último usado;
+11. D-pad baixo alterna as botas com as Kokiri;
+12. segurar D-pad cima ou baixo por 400 ms abre a troca rápida com os ícones no
+    HUD; o destaque avança a cada 450 ms e o destacado é vestido ao soltar.
 
-Ocarina, seletores de Gear/Boots e hotbars permanecem nas próximas fatias.
+Hotbars permanecem nas próximas fatias.
 
 ## Compatibilidade e alcance
 
