@@ -235,7 +235,13 @@ atalhos e hotbars permanecem nas próximas fatias.
 ## Compatibilidade e alcance
 
 O provider confere fingerprint dos headers e tamanhos dos tipos antes de acessar
-layouts. Quando o host muda esses layouts, recompile o provider contra o SDK
+layouts. O fingerprint (`LINKSPAN_OOT_LAYOUT_ID`, gerado em `ExportSdk.cmake`)
+cobre apenas a superfície que atravessa a fronteira C: as structs z64 de
+`soh/include`, os contratos de serviço de `soh/soh/native` e os headers
+`shiplua/native` do SDK, além das flags do compilador. Mudanças internas em
+`soh/src`, no restante de `soh/soh` ou no `libultraship` **não** alteram o
+fingerprint nem invalidam mods compilados; mudanças em structs z64 ou nos
+contratos de serviço alteram, e nesse caso recompile o provider contra o SDK
 correspondente. Código nativo roda com os poderes do processo; erros de memória
 podem derrubar o jogo. A verificação de layout não transforma a DLL em sandbox.
 

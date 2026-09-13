@@ -1,11 +1,13 @@
 # SDK local de headers; o mod é um projeto separado e não linka o jogo.
+# O fingerprint cobre apenas a superfície real da ABI nativa: as structs z64
+# expostas pelo serviço engine (soh/include), os contratos de serviço
+# (soh/soh/native) e a ABI do SDK (shiplua/native). Headers internos de
+# soh/src, soh/soh e libultraship não atravessam a fronteira C e não podem
+# invalidar mods já compilados.
 file(GLOB_RECURSE layout_headers CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/soh/include/*.h"
-    "${CMAKE_SOURCE_DIR}/soh/src/*.h"
-    "${CMAKE_SOURCE_DIR}/soh/soh/*.h"
-    "${CMAKE_SOURCE_DIR}/soh/soh/*.hpp"
-    "${CMAKE_SOURCE_DIR}/libultraship/include/*.h"
-    "${CMAKE_SOURCE_DIR}/libultraship/include/*.hpp")
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/*.h"
+    "${LINKSPAN_SDK_SOURCE_DIR}/include/shiplua/native/*.h")
 list(SORT layout_headers)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${layout_headers})
 set(layout_material "oot-native-v2;${CMAKE_SIZEOF_VOID_P};${CMAKE_CXX_COMPILER_ID};${CMAKE_CXX_COMPILER_VERSION};${CMAKE_GENERATOR_PLATFORM};${CMAKE_CXX_FLAGS};${CMAKE_CXX_FLAGS_RELEASE}")
