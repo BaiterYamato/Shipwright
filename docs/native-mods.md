@@ -147,6 +147,34 @@ não contém as texturas custom do SoH (ex: `textures/parameter_static/gTriforce
 null-check ao carregar ícones GUI. O `soh.o2r` precisa ser o gerado pela mesma
 árvore/branch do executável.
 
+## Coremod `linkspan.unbound.json_factory` v1 (OOT-UNBOUND-002B)
+
+O projeto externo `soh/native-sdk/unbound-core` prova que uma core extension
+pode implementar uma factory sem adicionar regras do Unbound ao executável. O
+coremod consulta `linkspan.oot.resources` v2, registra o schema
+`linkspan.unbound.actor-patch/v1` e publica a tabela C
+`LinkSpanUnboundJsonFactoryV1` para outros mods.
+
+O serviço enumera schemas, carrega todas as camadas de um caminho, valida
+`$schema`, mescla objetos recursivamente e substitui arrays e escalares pela
+camada de maior prioridade. O resultado fica em um handle opaco pertencente ao
+coremod; o consumidor consulta JSON, quantidade de camadas e hash FNV-1a 64 e
+depois chama `release`. JSON e handles são limitados e todas as chamadas
+ocorrem na thread do jogo.
+
+`tools/package-unbound-factory-demo.ps1` gera dois mods independentes, duas
+camadas de fixture e um bundle que instala apenas em `mods/`. A sessão isolada
+`build/runtime-evidence/unbound-002b-20260912-1938/` carregou primeiro o
+framework e depois o consumidor, sem recompilar ou alterar `soh.exe`, e
+registrou:
+
+`unbound-002b-factory: schema=linkspan.unbound.actor-patch/v1; layers=2; hash=412c9d58a4e6de21; json={..."health":8,"speed":1..."drops":["heart"]...}; cleanup=ok`
+
+Esta fatia ainda não conecta o resultado a uma scene factory do
+`ResourceLoader`. Os operadores `null`, `$replace` e `$order`, factories de
+cena/sala e o adapter que materializa o recurso pertencem aos recortes
+seguintes do Unbound.
+
 ## Compilar o host uma vez
 
 Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O
