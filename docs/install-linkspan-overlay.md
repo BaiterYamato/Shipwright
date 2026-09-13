@@ -21,7 +21,7 @@ o carregamento da interface.
 1. Extraia `SoH-Ackbar-Delta-Win64.zip` da release 9.2.3 em uma pasta nova.
 2. Execute o Shipwright uma vez e conclua a geração normal do seu `oot.o2r`.
 3. Feche o jogo.
-4. Extraia `LinkSpan-Shipwright-9.2.3-OOT-CORE-002-RegistryV1-Win64-overlay.zip`
+4. Extraia `LinkSpan-Shipwright-9.2.3-OOT-UNBOUND-002A-ResourcesV2-Win64-overlay.zip`
    nessa mesma pasta.
 5. Confirme a substituição de `soh.exe` e `soh.o2r`.
 6. Coloque mods `.zip` ou `.shipmod` diretamente em `mods` e execute `soh.exe`.
@@ -39,9 +39,12 @@ versionados para outros ZIPs sem recompilar novamente o Shipwright.
 pwsh -File tools/package-linkspan-overlay.ps1 `
   -HostExecutable x64/Release/soh.exe `
   -HostResources build/native-runtime/soh.o2r `
-  -ExampleMod build/distribution/Dynamic-Movement-Remake-0.2.4.zip `
-  -OutputPath build/distribution/LinkSpan-Shipwright-9.2.3-OOT-CORE-002-RegistryV1-Win64-overlay.zip
+  -ExampleMod build/distribution/Dynamic-Movement-Remake-0.2.5.zip `
+  -OutputPath build/distribution/LinkSpan-Shipwright-9.2.3-OOT-UNBOUND-002A-ResourcesV2-Win64-overlay.zip
 ```
 
 O script cria o ZIP por um diretório temporário único, gera
 `linkspan-overlay.json` e `checksums.sha256`, e não lê nem empacota `oot.o2r`.
+O overlay de validação de `OOT-UNBOUND-002A` também inclui três fixtures
+`linkspan-*-probe.zip`; elas demonstram montagem, prioridade e desmontagem das
+camadas e não contêm assets do jogo.

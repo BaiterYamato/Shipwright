@@ -116,10 +116,12 @@ ShipNativeStatus GetGameVersions(uint32_t* output, uint32_t capacity, uint32_t* 
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus ReadResourceFileLayers(const char* path, ShipOotResourceLayerFn callback, void* user) {
-    if (!path || std::string(path) != "test/layers.json") return SHIP_NATIVE_UNSUPPORTED;
-    static const char* archivePaths[] = {"base.o2r", "override.shipmod"};
-    static const char* contents[] = {"{\"base\":1}", "{\"mod\":2}"};
-    static const uint64_t hashes[] = {0x1111111111111111ULL, 0x2222222222222222ULL};
+    if (!path || (std::string(path) != "test/layers.json" && std::string(path) != "unbound/layer-probe.json")) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    static const char* archivePaths[] = { "base.o2r", "override.shipmod" };
+    static const char* contents[] = { "{\"base\":1}", "{\"mod\":2}" };
+    static const uint64_t hashes[] = { 0x1111111111111111ULL, 0x2222222222222222ULL };
     for (uint32_t i = 0; i < 2; ++i) {
         const ShipOotResourceLayerV2 layer{
             sizeof(ShipOotResourceLayerV2), i, 2, i ? 0u : 0xEC7011B7u, hashes[i],
@@ -305,15 +307,23 @@ int main(int argc, char** argv) {
         const auto layerProbe = (*loaded.value)->Call("layer_probe", "", 0, response.data(),
                                                       uint32_t(response.size()));
         Check(layerProbe.code == ShipLua::ErrorCode::Ok &&
-              std::string(response.data(), layerProbe.size).starts_with(
-                  "layers=2; order=base.o2r>override.shipmod; merged="),
+                  std::string(response.data(), layerProbe.size)
+                      .starts_with("layers=2; order=base.o2r>override.shipmod; merged="),
               "DLL independente deve combinar camadas pelo serviço resources V2");
         response.fill(0);
-        const auto registryProbe = (*loaded.value)->Call("registry_probe", "", 0, response.data(),
-                                                         uint32_t(response.size()));
+        const auto layerRuntimeProbe =
+            (*loaded.value)->Call("layer_runtime_probe", "", 0, response.data(), uint32_t(response.size()));
+        Check(layerRuntimeProbe.code == ShipLua::ErrorCode::Ok &&
+                  std::string(response.data(), layerRuntimeProbe.size)
+                      .starts_with("layers=2; order=base.o2r>override.shipmod; merged=") &&
+                  std::string(response.data(), layerRuntimeProbe.size).ends_with("; cleanup=ok"),
+              "DLL independente deve montar, combinar e desmontar duas camadas");
+        response.fill(0);
+        const auto registryProbe =
+            (*loaded.value)->Call("registry_probe", "", 0, response.data(), uint32_t(response.size()));
         Check(registryProbe.code == ShipLua::ErrorCode::Ok &&
-              std::string(response.data(), registryProbe.size) ==
-                  "space=ok; entries=2; first=128; jump=example/dynamic_movement/jump:action=jump; id=128",
+                  std::string(response.data(), registryProbe.size) ==
+                      "space=ok; entries=2; first=128; jump=example/dynamic_movement/jump:action=jump; id=128",
               "DLL independente deve criar e consultar catálogo pelo registry V1");
         auto callUpdate = [&]() {
             response.fill(0);

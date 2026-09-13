@@ -203,8 +203,36 @@ ShipNativeStatus SHIP_NATIVE_CALL LayerProbe(void* user, const char* payload, ui
     const int size = std::snprintf(report, sizeof(report), "layers=%u; order=%s; merged=%016llx",
                                    state.count, state.archives,
                                    static_cast<unsigned long long>(state.mergedHash));
-    return size > 0 && size < int(sizeof(report)) ? write(writer, report, uint32_t(size))
-                                                  : SHIP_NATIVE_FAILURE;
+    return size > 0 && size < int(sizeof(report)) ? write(writer, report, uint32_t(size)) : SHIP_NATIVE_FAILURE;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL LayerRuntimeProbe(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                                    void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    uint64_t base = 0;
+    uint64_t overrideLayer = 0;
+    if (mod.resources->mount_archive("mods/linkspan-layer-base.zip", &base) != SHIP_NATIVE_OK || !base) {
+        return Write(write, writer, "fail@mount-base");
+    }
+    const auto mountedOverride = mod.resources->mount_archive("mods/linkspan-layer-override.zip", &overrideLayer);
+    if (mountedOverride != SHIP_NATIVE_OK || !overrideLayer) {
+        mod.resources->unmount_archive(base);
+        return Write(write, writer, "fail@mount-override");
+    }
+
+    LayerProbeState state;
+    const auto read = mod.resources->read_file_layers("unbound/layer-probe.json", CollectLayer, &state);
+    const auto unmountOverride = mod.resources->unmount_archive(overrideLayer);
+    const auto unmountBase = mod.resources->unmount_archive(base);
+    if (read != SHIP_NATIVE_OK || unmountOverride != SHIP_NATIVE_OK || unmountBase != SHIP_NATIVE_OK) {
+        return Write(write, writer, "fail@read-or-cleanup");
+    }
+    char report[448];
+    const int size = std::snprintf(report, sizeof(report), "layers=%u; order=%s; merged=%016llx; cleanup=ok",
+                                   state.count, state.archives, static_cast<unsigned long long>(state.mergedHash));
+    return size > 0 && size < int(sizeof(report)) ? write(writer, report, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
 // Decodifica o arquivo "version" do archive: byte 0 = endianness
@@ -514,6 +542,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "jump", Jump, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "resource_probe", ResourceProbe, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "layer_probe", LayerProbe, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "layer_runtime_probe", LayerRuntimeProbe, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "resource_runtime_probe", ResourceRuntimeProbe, mod) !=
             SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "registry_probe", RegistryProbe, mod) != SHIP_NATIVE_OK ||

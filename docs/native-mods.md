@@ -135,6 +135,11 @@ com dois archives sintéticos, e a prova independente recompila a DLL fora da
 árvore contra o mesmo `soh.exe`. É o substrato que o Unbound precisa para
 aplicar deltas JSON sobre cenas vanilla sem loader específico no executável.
 
+A prova de runtime `layer_runtime_probe` monta dois ZIPs com
+`unbound/layer-probe.json`, confirma a ordem base → override, compõe o hash e
+desmonta ambos antes de retornar. Ela existe para validar o contrato; uma
+factory real do Unbound consumirá a mesma função com seu próprio schema.
+
 Aviso de robustez (descoberto no playtest, fora do escopo do serviço): o boot
 crasha com 0xc0000005 em `Fast3dGui::LoadGuiTexture` se o `soh.o2r` instalado
 não contém as texturas custom do SoH (ex: `textures/parameter_static/gTriforcePiece`,
