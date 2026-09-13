@@ -11,6 +11,7 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include "z64.h"
@@ -18,6 +19,7 @@ extern "C" {
 #include "functions.h"
 PlayState* gPlayState = nullptr;
 SaveContext gSaveContext{};
+u8 gItemAgeReqs[ITEM_NONE]{};
 }
 namespace {
 PlayState play{};
@@ -31,6 +33,12 @@ std::vector<uint16_t> clearedButtons;
 std::vector<std::pair<uint16_t, uint8_t>> boundButtons;
 int mappingReloads = 0;
 int32_t settingValue = 0;
+std::map<std::string, int32_t> otherSettings;
+std::array<int16_t, 6> gamepadAxes{};
+std::vector<std::tuple<uint16_t, uint8_t, int8_t>> boundAxes;
+std::vector<int32_t> usedItems;
+s32 environmentalHazard = 0;
+uint8_t pacifistMode = 0;
 std::map<std::string, std::vector<uint8_t>> resourceFiles{
     {"test/core.json", {'{', '"', 'o', 'k', '"', ':', '1', '}' }},
     {"test/other.bin", {1, 2, 3}},
@@ -61,11 +69,23 @@ ShipNativeStatus ReloadMappings(uint8_t port) {
     return SHIP_NATIVE_OK;
 }
 int32_t GetSettingInt(const char* name, int32_t fallback) {
-    return name && std::string(name) == "gSettings.FreeLook.Enabled" ? settingValue : fallback;
+    if (!name) return fallback;
+    if (std::string(name) == "gSettings.FreeLook.Enabled") return settingValue;
+    const auto found = otherSettings.find(name);
+    return found == otherSettings.end() ? fallback : found->second;
 }
 ShipNativeStatus SetSettingInt(const char* name, int32_t value) {
-    if (!name || std::string(name) != "gSettings.FreeLook.Enabled") return SHIP_NATIVE_INVALID_ARGUMENT;
-    settingValue = value;
+    if (!name || !*name) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (std::string(name) == "gSettings.FreeLook.Enabled") settingValue = value;
+    else otherSettings[name] = value;
+    return SHIP_NATIVE_OK;
+}
+int16_t GetGamepadAxis(uint8_t port, uint8_t axis) {
+    return port == 0 && axis < gamepadAxes.size() ? gamepadAxes[axis] : 0;
+}
+ShipNativeStatus BindAxis(uint8_t port, uint16_t button, uint8_t axis, int8_t direction) {
+    if (port != 0 || !button || axis >= gamepadAxes.size()) return SHIP_NATIVE_INVALID_ARGUMENT;
+    boundAxes.emplace_back(button, axis, direction);
     return SHIP_NATIVE_OK;
 }
 uint8_t HasResourceFile(const char* path) {
@@ -160,25 +180,46 @@ extern "C" void func_80838940(Player* target, LinkAnimationHeader* animation, f3
     target->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
     target->stateFlags1 |= PLAYER_STATE1_JUMPING;
 }
+extern "C" s8 Player_ItemToItemAction(s32) { return PLAYER_IA_NONE; }
+extern "C" s32 Player_UpperAction_ChangeHeldItem(Player*, PlayState*) { return 0; }
+extern "C" void Player_Action_WaitForPutAway(Player*, PlayState*) {}
+extern "C" uint8_t GameInteractor_PacifistModeActive() { return pacifistMode; }
+extern "C" s32 Player_GetEnvironmentalHazard(PlayState*) { return environmentalHazard; }
+// Só o efeito observável dos ramos de lente e máscara de Player_UseItem (z_player.c:3451-3490).
+extern "C" void Player_UseItem(PlayState* target, Player* user, s32 item) {
+    usedItems.push_back(item);
+    if (item == ITEM_LENS) {
+        target->actorCtx.lensActive = !target->actorCtx.lensActive;
+    } else if (item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH) {
+        user->currentMask = user->currentMask != PLAYER_MASK_NONE
+            ? PLAYER_MASK_NONE
+            : static_cast<u8>(item - ITEM_MASK_KEATON + PLAYER_MASK_KEATON);
+    }
+}
+extern "C" s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
+extern "C" void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha);
 
 int main(int argc, char** argv) {
     ShipLuaHost::SetOotNativeGamepadBridge(
-        {HasGamepad, GetGamepadButtons, ClearButton, BindButton, ReloadMappings, GetSettingInt, SetSettingInt});
+        {HasGamepad, GetGamepadButtons, ClearButton, BindButton, ReloadMappings, GetSettingInt, SetSettingInt,
+         GetGamepadAxis, BindAxis});
     ShipLuaHost::SetOotNativeResourceBridge(
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 5 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 6 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
-          policy.services[2].version == LINKSPAN_OOT_RESOURCES_VERSION &&
-          policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION_2 &&
-          policy.services[4].version == LINKSPAN_OOT_REGISTRY_VERSION,
-          "host deve publicar engine, movement, resources V1/V2 e registry V1");
+          policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
+          policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
+          policy.services[4].version == LINKSPAN_OOT_RESOURCES_VERSION_2 &&
+          policy.services[5].version == LINKSPAN_OOT_REGISTRY_VERSION,
+          "host deve publicar engine, movement V1/V2, resources V1/V2 e registry V1");
     const auto* engine = static_cast<const ShipOotEngineV1*>(policy.services[0].table);
     const auto* movement = static_cast<const ShipOotMovementV1*>(policy.services[1].table);
-    const auto* resources = static_cast<const ShipOotResourcesV1*>(policy.services[2].table);
-    const auto* resourcesV2 = static_cast<const ShipOotResourcesV2*>(policy.services[3].table);
-    const auto* registry = static_cast<const ShipOotRegistryV1*>(policy.services[4].table);
+    const auto* movementV2 = static_cast<const ShipOotMovementV2*>(policy.services[2].table);
+    const auto* resources = static_cast<const ShipOotResourcesV1*>(policy.services[3].table);
+    const auto* resourcesV2 = static_cast<const ShipOotResourcesV2*>(policy.services[4].table);
+    const auto* registry = static_cast<const ShipOotRegistryV1*>(policy.services[5].table);
     Check(resourcesV2 && resourcesV2->size == sizeof(ShipOotResourcesV2) && resourcesV2->read_file_layers,
           "resources V2 deve preservar V1 e publicar leitura de camadas");
     Check(registry && registry->size == sizeof(ShipOotRegistryV1),
@@ -266,6 +307,123 @@ int main(int argc, char** argv) {
     Check(movement->player_roll() == SHIP_NATIVE_OK && movement->is_player_rolling(),
           "rolamento deve entrar na ação nativa do Player");
     player.actionFunc = nullptr;
+    Check(movementV2 && movementV2->size == sizeof(ShipOotMovementV2) &&
+              movementV2->get_input_current == movement->get_input_current &&
+              movementV2->player_roll == movement->player_roll && movementV2->get_gamepad_axis &&
+              movementV2->bind_gamepad_axis && movementV2->player_use_item_shortcut &&
+              movementV2->get_item_button_rect,
+          "movement V2 deve preservar o prefixo da V1 e publicar as funções novas");
+    gamepadAxes[5] = 32000;
+    Check(movementV2->get_gamepad_axis(0, 5) == 32000 && movementV2->get_gamepad_axis(4, 5) == 0,
+          "movement V2 deve expor eixos físicos SDL por porta");
+    Check(movementV2->bind_gamepad_axis(0, BTN_CLEFT, 5, 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+              movementV2->bind_gamepad_axis(0, BTN_CLEFT, 5, 1) == SHIP_NATIVE_OK && boundAxes.size() == 1 &&
+              boundAxes[0] == std::tuple<uint16_t, uint8_t, int8_t>{BTN_CLEFT, 5, 1},
+          "movement V2 deve ligar metade de eixo a botão virtual e recusar direção inválida");
+
+    int16_t rectX = 0, rectY = 0, rectSize = 0;
+    uint8_t rectAlpha = 0;
+    play.state.frames = 40;
+    Check(movementV2->get_item_button_rect(1, &rectX, &rectY, &rectSize, &rectAlpha) == SHIP_NATIVE_UNSUPPORTED &&
+              movementV2->get_item_button_rect(0, &rectX, &rectY, &rectSize, &rectAlpha) ==
+                  SHIP_NATIVE_INVALID_ARGUMENT &&
+              movementV2->get_item_button_rect(2, nullptr, &rectY, &rectSize, &rectAlpha) ==
+                  SHIP_NATIVE_INVALID_ARGUMENT,
+          "posição de botão C sem captura ou com argumento inválido deve ser recusada");
+    LinkSpan_CaptureItemButton(&play, 2, 227, 18, 27, 300);
+    play.state.frames = 41;
+    Check(movementV2->get_item_button_rect(2, &rectX, &rectY, &rectSize, &rectAlpha) == SHIP_NATIVE_OK &&
+              rectX == 227 && rectY == 18 && rectSize == 27 && rectAlpha == 255,
+          "HUD Lua deve ler a posição do botão C desenhada no frame anterior");
+    play.state.frames = 42;
+    Check(movementV2->get_item_button_rect(2, &rectX, &rectY, &rectSize, &rectAlpha) == SHIP_NATIVE_UNSUPPORTED,
+          "captura de dois frames atrás deve ser recusada");
+    LinkSpan_CaptureItemButton(&play, 3, -9999, 18, 27, 255);
+    Check(movementV2->get_item_button_rect(3, &rectX, &rectY, &rectSize, &rectAlpha) == SHIP_NATIVE_UNSUPPORTED,
+          "botão C oculto pelo HUD deve ser recusado");
+
+    player.actor.category = ACTORCAT_PLAYER;
+    player.stateFlags1 = 0;
+    gSaveContext.health = 0x30;
+    gSaveContext.linkAge = LINK_AGE_ADULT;
+    gItemAgeReqs[ITEM_LENS] = 9;
+    gItemAgeReqs[ITEM_MASK_BUNNY] = LINK_AGE_CHILD;
+    Check(movementV2->player_use_item_shortcut(ITEM_BOW) == SHIP_NATIVE_INVALID_ARGUMENT &&
+              movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED && usedItems.empty(),
+          "atalho deve recusar item fora de lente/máscara e lente fora do inventário");
+    gSaveContext.inventory.items[SLOT_LENS] = ITEM_LENS;
+    Check(movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_OK && play.actorCtx.lensActive &&
+              usedItems.back() == ITEM_LENS && LinkSpan_KeepLensWithoutButton(&play, 0) == 1,
+          "atalho deve ligar a lente pelo Player_UseItem nativo e mantê-la fora dos botões");
+    Check(LinkSpan_KeepLensWithoutButton(&play, 1) == 1 && LinkSpan_KeepLensWithoutButton(&play, 0) == 0,
+          "lente num botão deve devolver a regra normal do jogo");
+    play.actorCtx.lensActive = false;
+    Check(movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_OK &&
+              LinkSpan_KeepLensWithoutButton(&play, 0) == 1,
+          "religar pelo atalho deve restaurar a exceção");
+    const auto refused = [&](const char* text) {
+        const auto before = usedItems.size();
+        Check(movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED &&
+                  usedItems.size() == before,
+              text);
+    };
+    play.interfaceCtx.restrictions.all = 1;
+    refused("restrição geral da cena deve bloquear a lente");
+    play.sceneNum = SCENE_TREASURE_BOX_SHOP;
+    Check(movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_OK && !play.actorCtx.lensActive &&
+              LinkSpan_KeepLensWithoutButton(&play, 0) == 0,
+          "Treasure Box Shop libera a lente mesmo com restrição geral");
+    play.sceneNum = 0;
+    play.interfaceCtx.restrictions.all = 0;
+    environmentalHazard = 2;
+    refused("perigo ambiental submerso deve bloquear a lente");
+    environmentalHazard = 0;
+    player.stateFlags1 = PLAYER_STATE1_CLIMBING_LADDER;
+    refused("escada deve bloquear a lente");
+    player.stateFlags1 = PLAYER_STATE1_CARRYING_ACTOR;
+    refused("carregar ator deve bloquear a lente");
+    player.stateFlags1 = 0;
+    play.pauseCtx.state = 1;
+    refused("pausa deve bloquear a lente");
+    play.pauseCtx.state = 0;
+    play.csCtx.state = CS_STATE_SKIPPABLE_EXEC;
+    refused("cutscene deve bloquear a lente");
+    play.csCtx.state = CS_STATE_IDLE;
+    pacifistMode = 1;
+    refused("modo pacifista deve bloquear a lente");
+    pacifistMode = 0;
+
+    gSaveContext.inventory.items[SLOT_TRADE_CHILD] = ITEM_MASK_BUNNY;
+    Check(movementV2->player_use_item_shortcut(ITEM_MASK_BUNNY) == SHIP_NATIVE_UNSUPPORTED,
+          "adulto sem AdultMasks não deve usar máscara");
+    gSaveContext.linkAge = LINK_AGE_CHILD;
+    Check(movementV2->player_use_item_shortcut(ITEM_MASK_BUNNY) == SHIP_NATIVE_UNSUPPORTED &&
+              player.currentMask == PLAYER_MASK_NONE,
+          "máscara fora dos botões sem PersistentMasks seria removida pelo jogo");
+    gSaveContext.equips.buttonItems[1] = ITEM_MASK_BUNNY;
+    Check(movementV2->player_use_item_shortcut(ITEM_MASK_BUNNY) == SHIP_NATIVE_OK &&
+              player.currentMask == PLAYER_MASK_BUNNY,
+          "máscara num botão C deve ser colocada pelo atalho");
+    gSaveContext.equips.buttonItems[1] = 0;
+    Check(movementV2->player_use_item_shortcut(ITEM_MASK_BUNNY) == SHIP_NATIVE_OK &&
+              player.currentMask == PLAYER_MASK_NONE,
+          "atalho deve tirar a máscara em uso");
+    otherSettings["gEnhancements.PersistentMasks"] = 1;
+    Check(movementV2->player_use_item_shortcut(ITEM_MASK_KEATON) == SHIP_NATIVE_UNSUPPORTED &&
+              movementV2->player_use_item_shortcut(ITEM_MASK_BUNNY) == SHIP_NATIVE_OK &&
+              player.currentMask == PLAYER_MASK_BUNNY,
+          "com PersistentMasks só a máscara do slot infantil deve ser colocada");
+    play.interfaceCtx.restrictions.tradeItems = 1;
+    Check(movementV2->player_use_item_shortcut(ITEM_MASK_BUNNY) == SHIP_NATIVE_UNSUPPORTED,
+          "restrição de itens de troca deve bloquear máscaras");
+    otherSettings["gEnhancements.MMBunnyHood"] = 1;
+    Check(movementV2->player_use_item_shortcut(ITEM_MASK_BUNNY) == SHIP_NATIVE_OK &&
+              player.currentMask == PLAYER_MASK_NONE,
+          "MMBunnyHood libera máscaras com restrição de troca");
+    play.interfaceCtx.restrictions.tradeItems = 0;
+    otherSettings.clear();
+    gSaveContext.linkAge = LINK_AGE_ADULT;
+    gamepadAxes[5] = 1234;
     std::thread worker([&] {
         Check(!engine->get_player() && !engine->get_save_context() && !movement->get_input_current(0),
               "thread externa deve ser recusada");
@@ -276,8 +434,17 @@ int main(int argc, char** argv) {
         Check(resourcesV2->read_file_layers("test/layers.json", collectLayer, &layers) ==
                   SHIP_NATIVE_INVALID_ARGUMENT,
               "resources V2 deve recusar thread externa");
+        int16_t x = 0, y = 0, side = 0;
+        uint8_t alpha = 0;
+        Check(movementV2->get_gamepad_axis(0, 5) == 0 &&
+                  movementV2->bind_gamepad_axis(0, BTN_CLEFT, 5, 1) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->get_item_button_rect(2, &x, &y, &side, &alpha) == SHIP_NATIVE_UNSUPPORTED,
+              "movement V2 deve recusar thread externa");
     });
     worker.join();
+    gamepadAxes[5] = 0;
+    boundAxes.clear();
     Check(engine->spawn_actor(42, 1, 2, 3, 4, 5, 6, 123) == &spawned &&
           spawned.id == 42 && spawned.params == 123 && spawned.world.pos.y == 2 && spawned.world.rot.z == 6,
           "spawn deve encaminhar argumentos sem catálogo por mod");
@@ -333,8 +500,9 @@ int main(int argc, char** argv) {
         };
         response.fill(0);
         auto configured = (*loaded.value)->Call("configure", "0,5", 3, response.data(), uint32_t(response.size()));
-        Check(configured.code == ShipLua::ErrorCode::Ok && settingValue == 1,
-              "mod deve ativar câmera livre pelo serviço genérico de settings");
+        Check(configured.code == ShipLua::ErrorCode::Ok && settingValue == 1 &&
+                  otherSettings["gEnhancements.PersistentMasks"] == 1,
+              "mod deve ativar câmera livre e PersistentMasks pelo serviço genérico de settings");
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         player.actionFunc = nullptr;
         player.stateFlags1 = 0;
@@ -361,21 +529,69 @@ int main(int argc, char** argv) {
         play.state.input[0].rel.right_stick_y = 0;
         std::this_thread::sleep_for(std::chrono::milliseconds(8));
         Check(callUpdate() == "camera-auto" && settingValue == 0,
-              "dez segundos configuráveis sem câmera devem restaurar o comportamento automático");
+              "câmera deve voltar a seguir Link quando ele anda após o atraso configurado");
         play.state.input[0].rel.right_stick_x = 30;
         Check(callUpdate() == "camera-free" && settingValue == 1,
               "mover o analógico direito deve reativar a câmera livre");
-        Check(clearedButtons.size() >= 6 && boundButtons.size() >= 3 &&
-              boundButtons[boundButtons.size() - 3] == std::pair<uint16_t, uint8_t>{BTN_A, 1} &&
-              boundButtons[boundButtons.size() - 2] == std::pair<uint16_t, uint8_t>{BTN_B, 2} &&
-              boundButtons[boundButtons.size() - 1] == std::pair<uint16_t, uint8_t>{BTN_B, 0},
-              "perfil deve mapear A contextual, Y espada e B cancelar");
+        using Binding = std::pair<uint16_t, uint8_t>;
+        using AxisBinding = std::tuple<uint16_t, uint8_t, int8_t>;
+        Check(clearedButtons.size() >= 9 && boundButtons.size() >= 6 &&
+                  std::vector<Binding>(boundButtons.end() - 6, boundButtons.end()) ==
+                      std::vector<Binding>{{BTN_A, 1}, {BTN_B, 2}, {BTN_B, 0}, {BTN_CUP, 14}, {BTN_R, 9}, {BTN_L, 4}} &&
+                  !boundAxes.empty() && boundAxes.back() == AxisBinding{BTN_CLEFT, 5, 1},
+              "perfil deve mapear A, Y/B, D-pad direita=C-Up, L=escudo, -=L do N64 e ZR=C-Left");
+        gSaveContext.equips.buttonItems[1] = ITEM_BOW;
+        gSaveContext.equips.buttonItems[2] = ITEM_NONE;
+        gSaveContext.equips.buttonItems[3] = ITEM_HOOKSHOT;
+        gamepadButtons = uint32_t{1} << 10;
+        Check(callUpdate() == "item-c-right" && boundAxes.back() == AxisBinding{BTN_CRIGHT, 5, 1},
+              "R deve levar o ZR ao próximo C com item, pulando C vazio");
+        Check(callUpdate().rfind("item-", 0) != 0, "manter R pressionado não deve trocar de novo");
+        gamepadButtons = 0;
+        callUpdate();
+        gamepadAxes[5] = 32000;
+        gamepadButtons = uint32_t{1} << 10;
+        const auto axesWhileHeld = boundAxes.size();
+        Check(callUpdate().rfind("item-", 0) != 0 && boundAxes.size() == axesWhileHeld,
+              "R não deve trocar o C enquanto o ZR está pressionado");
+        gamepadButtons = 0;
+        gamepadAxes[5] = 0;
+        callUpdate();
+        play.state.frames = 90;
+        LinkSpan_CaptureItemButton(&play, 3, 250, 20, 27, 200);
+        response.fill(0);
+        auto hud = (*loaded.value)->Call("hud_selection", "", 0, response.data(), uint32_t(response.size()));
+        Check(hud.code == ShipLua::ErrorCode::Ok && std::string(response.data(), hud.size) == "250,20,27,200",
+              "hud_selection deve devolver a posição do C selecionado");
+        play.state.frames = 95;
+        response.fill(0);
+        hud = (*loaded.value)->Call("hud_selection", "", 0, response.data(), uint32_t(response.size()));
+        Check(hud.code == ShipLua::ErrorCode::Ok && std::string(response.data(), hud.size) == "none",
+              "hud_selection sem desenho recente deve responder none");
+        play.actorCtx.lensActive = false;
+        gamepadButtons = uint32_t{1} << 8;
+        callUpdate();
+        gamepadButtons = 0;
+        Check(callUpdate() == "lens-on" && play.actorCtx.lensActive && usedItems.back() == ITEM_LENS,
+              "toque no R3 deve ligar a lente pelo host sem exigir botão C");
+        gSaveContext.linkAge = LINK_AGE_CHILD;
+        gSaveContext.inventory.items[SLOT_TRADE_CHILD] = ITEM_MASK_BUNNY;
+        player.currentMask = PLAYER_MASK_NONE;
+        gamepadButtons = uint32_t{1} << 8;
+        callUpdate();
+        std::this_thread::sleep_for(std::chrono::milliseconds(420));
+        Check(callUpdate() == "mask-on" && player.currentMask == PLAYER_MASK_BUNNY,
+              "segurar o R3 deve colocar a máscara do slot infantil");
+        gamepadButtons = 0;
+        Check(callUpdate() != "lens-on", "soltar o R3 depois de segurar não deve alternar a lente");
         loaded.value->reset();
         uint64_t removedSpace = 0;
         Check(registry->find_space("example/dynamic_movement/actions", &removedSpace) == SHIP_NATIVE_UNSUPPORTED,
               "unload da DLL deve remover seu espaço e entradas em cascata");
         Check(mappingReloads > 0, "unload deve restaurar os mapeamentos do usuário");
         Check(settingValue == 0, "unload deve restaurar a configuração de câmera livre");
+        Check(otherSettings["gEnhancements.PersistentMasks"] == 0 && !play.actorCtx.lensActive,
+              "unload deve restaurar PersistentMasks e desligar a lente mantida só pelo atalho");
 
         ShipOotEngineV1 incompatible = *engine;
         incompatible.layout_id = "incompatible";

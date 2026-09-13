@@ -37,6 +37,7 @@
 
 #include <ship/Context.h>
 #include <ship/controller/controldeck/ControlDeck.h>
+#include <ship/controller/controldevice/controller/mapping/sdl/SDLAxisDirectionToButtonMapping.h>
 #include <ship/controller/controldevice/controller/mapping/sdl/SDLButtonToButtonMapping.h>
 #include <ship/debug/Console.h>
 #include <ship/resource/File.h>
@@ -341,6 +342,36 @@ ShipNativeStatus NativeBindGamepadButton(uint8_t port, uint16_t virtualButton, u
     }
     button->AddButtonMapping(std::make_shared<Ship::SDLButtonToButtonMapping>(
         port, virtualButton, static_cast<SDL_GameControllerButton>(sdlButton)));
+    return SHIP_NATIVE_OK;
+}
+
+int16_t NativeGamepadAxis(uint8_t port, uint8_t axis) {
+    auto* context = Ship::Context::GetRawInstance();
+    auto deck = context ? context->GetControlDeck() : nullptr;
+    auto manager = deck ? deck->GetConnectedPhysicalDeviceManager() : nullptr;
+    if (!manager || deck->GamepadGameInputBlocked() || axis >= SDL_CONTROLLER_AXIS_MAX) {
+        return 0;
+    }
+    int16_t strongest = 0;
+    for (const auto& [instanceId, gamepad] : manager->GetConnectedSDLGamepadsForPort(port)) {
+        (void)instanceId;
+        const int16_t value = SDL_GameControllerGetAxis(gamepad, static_cast<SDL_GameControllerAxis>(axis));
+        if (std::abs(static_cast<int>(value)) > std::abs(static_cast<int>(strongest))) {
+            strongest = value;
+        }
+    }
+    return strongest;
+}
+
+// Transitório como NativeBindGamepadButton: sem SaveToConfig, o unload recarrega o perfil.
+ShipNativeStatus NativeBindGamepadAxis(uint8_t port, uint16_t virtualButton, uint8_t axis, int8_t direction) {
+    auto controller = GetNativeController(port);
+    auto button = controller ? controller->GetButtonByBitmask(virtualButton) : nullptr;
+    if (!button || axis >= SDL_CONTROLLER_AXIS_MAX || (direction != 1 && direction != -1)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    button->AddButtonMapping(
+        std::make_shared<Ship::SDLAxisDirectionToButtonMapping>(port, virtualButton, axis, direction));
     return SHIP_NATIVE_OK;
 }
 
@@ -6957,14 +6988,14 @@ void Initialize() {
     SPDLOG_INFO("ShipLua inicializando para {} {} (commit {})", context.gameId, context.hostVersion, gGitCommitHash);
     SetOotNativeGamepadBridge({ NativeHasGamepad, NativeGamepadButtons, NativeClearGamepadButtonBindings,
                                 NativeBindGamepadButton, NativeReloadGamepadMappings, NativeGetSettingInt,
-                                NativeSetSettingInt });
+                                NativeSetSettingInt, NativeGamepadAxis, NativeBindGamepadAxis });
     SetOotNativeResourceBridge({ NativeHasResourceFile, NativeReadResourceFile, NativeListResourceFiles,
                                  NativeDirtyResources, NativeUnloadResource, NativeMountResourceArchive,
                                  NativeUnmountResourceArchive, NativeGetResourceGameVersions,
                                  NativeReadResourceFileLayers });
     gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
     SPDLOG_INFO("Link-Span: providers nativos ABI 1.1 e core extensions ativos; serviços "
-                "linkspan.oot.engine/movement/registry v1; resources v1/v2; pacotes ZIP/SHIPMOD");
+                "linkspan.oot.engine/registry v1; movement v1/v2; resources v1/v2; pacotes ZIP/SHIPMOD");
     MountCrossWorldArchives();
     MountModAssetArchives();
     // Diagnóstico da Fase 1 do port de áudio do MM (handoff OOT-AUDIO-001).

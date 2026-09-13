@@ -16,14 +16,31 @@ constexpr uint8_t SDL_BUTTON_B_NINTENDO = 0;
 constexpr uint8_t SDL_BUTTON_A_NINTENDO = 1;
 constexpr uint8_t SDL_BUTTON_Y_NINTENDO = 2;
 constexpr uint8_t SDL_BUTTON_X_NINTENDO = 3;
+// Botão "−" (SDL_CONTROLLER_BUTTON_BACK): L do N64.
+constexpr uint8_t SDL_BUTTON_MINUS = 4;
+// Clique do analógico direito (SDL_CONTROLLER_BUTTON_RIGHTSTICK): atalho de lente e máscara.
+constexpr uint8_t SDL_BUTTON_RIGHT_STICK = 8;
+// L e R físicos (SDL_CONTROLLER_BUTTON_LEFTSHOULDER/RIGHTSHOULDER): escudo e seleção de item.
+constexpr uint8_t SDL_BUTTON_L = 9;
+constexpr uint8_t SDL_BUTTON_R = 10;
+// D-pad direita (SDL_CONTROLLER_BUTTON_DPAD_RIGHT): C-Up nativo, Navi e primeira pessoa.
+constexpr uint8_t SDL_BUTTON_DPAD_RIGHT = 14;
+// ZR (SDL_CONTROLLER_AXIS_TRIGGERRIGHT): usa o item do botão C selecionado.
+constexpr uint8_t SDL_AXIS_ZR = 5;
+constexpr int16_t ZR_HELD = 8000;
 constexpr uint32_t PhysicalButton(uint8_t button) { return uint32_t{ 1 } << button; }
 constexpr const char* FREE_LOOK_SETTING = "gSettings.FreeLook.Enabled";
+constexpr const char* PERSISTENT_MASKS_SETTING = "gEnhancements.PersistentMasks";
+// Toque rápido no R3 alterna a lente; segurar por este tempo alterna a máscara.
+constexpr long long SHORTCUT_HOLD_MILLISECONDS = 400;
+// Botão virtual de cada índice de SaveContext.equips.buttonItems (1..3 = C).
+constexpr uint16_t ITEM_BUTTONS[] = { 0, BTN_CLEFT, BTN_CDOWN, BTN_CRIGHT };
 
 enum class Phase { Ready, Airborne, Rolling, Running };
 
 struct Mod {
     const ShipOotEngineV1* engine;
-    const ShipOotMovementV1* movement;
+    const ShipOotMovementV2* movement;
     const ShipOotResourcesV2* resources;
     const ShipOotRegistryV1* registry;
     uint64_t registrySpace = 0;
@@ -36,15 +53,28 @@ struct Mod {
     bool faceBindingsApplied = false;
     bool freeLookApplied = false;
     int32_t previousFreeLook = 0;
-    uint32_t cameraIdleMilliseconds = 10000;
+    uint32_t cameraFollowDelayMilliseconds = 500;
     bool cameraFreeLookActive = false;
     std::chrono::steady_clock::time_point lastCameraInput = std::chrono::steady_clock::now();
+    bool persistentMasksApplied = false;
+    int32_t previousPersistentMasks = 0;
+    bool shortcutWasDown = false;
+    bool shortcutHoldFired = false;
+    std::chrono::steady_clock::time_point shortcutPressedAt{};
+    uint8_t selectedItemButton = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT;
+    bool selectWasDown = false;
 };
 
 enum class CameraChange { None, FreeLook, Automatic };
 
+// Parado, a câmera livre mantém o ângulo escolhido. Quando Link volta a andar com
+// o analógico direito parado há cameraFollowDelayMilliseconds, o FreeLook é
+// desligado e o Camera_Normal1 do jogo assume a partir do eye atual: sem salto,
+// girando para trás de Link com a suavização nativa. Desligar a CVar (em vez de
+// só zerar play->manualCamera) impede que drift do analógico religue o modo manual.
 CameraChange UpdateCamera(Mod& mod) {
     constexpr int CAMERA_DEADZONE = 12;
+    constexpr int MOVE_DEADZONE = 20;
     const int x = mod.movement->get_right_stick_x(0);
     const int y = mod.movement->get_right_stick_y(0);
     const auto now = std::chrono::steady_clock::now();
@@ -54,34 +84,89 @@ CameraChange UpdateCamera(Mod& mod) {
             mod.cameraFreeLookActive = true;
             return CameraChange::FreeLook;
         }
-    } else if (mod.cameraFreeLookActive &&
-               std::chrono::duration_cast<std::chrono::milliseconds>(now - mod.lastCameraInput).count() >=
-                   mod.cameraIdleMilliseconds &&
-               mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
+        return CameraChange::None;
+    }
+    const int moveX = mod.movement->get_stick_x(0);
+    const int moveY = mod.movement->get_stick_y(0);
+    const bool moving = (moveX * moveX) + (moveY * moveY) >= MOVE_DEADZONE * MOVE_DEADZONE;
+    if (mod.cameraFreeLookActive && moving &&
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - mod.lastCameraInput).count() >=
+            mod.cameraFollowDelayMilliseconds &&
+        mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
         mod.cameraFreeLookActive = false;
         return CameraChange::Automatic;
     }
     return CameraChange::None;
 }
 
+// R3: soltar antes de SHORTCUT_HOLD_MILLISECONDS alterna a lente; segurar até o
+// limite alterna a máscara uma única vez e ignora a soltura. As regras do jogo
+// (estado do Player, cena, idade, magia) ficam no host (movement v2).
+const char* UpdateShortcut(Mod& mod, const Player& player, uint32_t physical) {
+    const bool down = (physical & PhysicalButton(SDL_BUTTON_RIGHT_STICK)) != 0;
+    const auto now = std::chrono::steady_clock::now();
+    if (down && !mod.shortcutWasDown) {
+        mod.shortcutPressedAt = now;
+        mod.shortcutHoldFired = false;
+    }
+    const char* result = nullptr;
+    const auto* play = static_cast<const PlayState*>(mod.engine->get_play_state());
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (play && save) {
+        if (down && !mod.shortcutHoldFired &&
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - mod.shortcutPressedAt).count() >=
+                SHORTCUT_HOLD_MILLISECONDS) {
+            mod.shortcutHoldFired = true;
+            // Máscara em uso: qualquer item de máscara a tira, como o botão C nativo.
+            const uint8_t mask = player.currentMask != PLAYER_MASK_NONE
+                ? static_cast<uint8_t>(ITEM_MASK_KEATON + player.currentMask - PLAYER_MASK_KEATON)
+                : save->inventory.items[SLOT_TRADE_CHILD];
+            result = mod.movement->player_use_item_shortcut(mask) != SHIP_NATIVE_OK ? "mask-blocked"
+                     : player.currentMask != PLAYER_MASK_NONE                      ? "mask-on"
+                                                                                    : "mask-off";
+        } else if (!down && mod.shortcutWasDown && !mod.shortcutHoldFired) {
+            result = mod.movement->player_use_item_shortcut(ITEM_LENS) != SHIP_NATIVE_OK ? "lens-blocked"
+                     : play->actorCtx.lensActive                                           ? "lens-on"
+                                                                                           : "lens-off";
+        }
+    }
+    mod.shortcutWasDown = down;
+    return result;
+}
+
 ShipNativeStatus Write(ShipNativeWriteFn write, void* writer, const char* text) {
     return write(writer, text, static_cast<uint32_t>(std::strlen(text)));
 }
 
-ShipNativeStatus ApplyNintendoFaceBindings(Mod& mod) {
+// ZR segura o botão C selecionado: o jogo o trata como o C nativo, inclusive
+// mirar arco e gancho enquanto o gatilho continua pressionado.
+ShipNativeStatus BindItemTrigger(Mod& mod, uint8_t itemButton) {
+    for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
+        if (mod.movement->clear_gamepad_button_bindings(0, ITEM_BUTTONS[button]) != SHIP_NATIVE_OK)
+            return SHIP_NATIVE_FAILURE;
+    }
+    return mod.movement->bind_gamepad_axis(0, ITEM_BUTTONS[itemButton], SDL_AXIS_ZR, 1);
+}
+
+ShipNativeStatus ApplyNintendoBindings(Mod& mod) {
     // A físico vira a ação contextual N64 A. Y e B alimentam N64 B: ataque e
     // cancelar/guardar continuam sendo decididos pelo estado normal do jogo.
-    const uint16_t remappedButtons[] = { BTN_A, BTN_B, BTN_CUP, BTN_CDOWN, BTN_CLEFT, BTN_CRIGHT };
+    // D-pad direita alimenta o C-Up nativo (Navi e primeira pessoa), L físico o
+    // escudo (R do N64) e "−" o L do N64. R3 e R são lidos fisicamente.
+    const uint16_t remappedButtons[] = { BTN_A, BTN_B, BTN_CUP, BTN_DRIGHT, BTN_R, BTN_L };
     for (const uint16_t button : remappedButtons) {
         if (mod.movement->clear_gamepad_button_bindings(0, button) != SHIP_NATIVE_OK) {
             mod.movement->reload_gamepad_mappings(0);
             return SHIP_NATIVE_FAILURE;
         }
     }
-    if (
-        mod.movement->bind_gamepad_button(0, BTN_A, SDL_BUTTON_A_NINTENDO) != SHIP_NATIVE_OK ||
+    if (mod.movement->bind_gamepad_button(0, BTN_A, SDL_BUTTON_A_NINTENDO) != SHIP_NATIVE_OK ||
         mod.movement->bind_gamepad_button(0, BTN_B, SDL_BUTTON_Y_NINTENDO) != SHIP_NATIVE_OK ||
-        mod.movement->bind_gamepad_button(0, BTN_B, SDL_BUTTON_B_NINTENDO) != SHIP_NATIVE_OK) {
+        mod.movement->bind_gamepad_button(0, BTN_B, SDL_BUTTON_B_NINTENDO) != SHIP_NATIVE_OK ||
+        mod.movement->bind_gamepad_button(0, BTN_CUP, SDL_BUTTON_DPAD_RIGHT) != SHIP_NATIVE_OK ||
+        mod.movement->bind_gamepad_button(0, BTN_R, SDL_BUTTON_L) != SHIP_NATIVE_OK ||
+        mod.movement->bind_gamepad_button(0, BTN_L, SDL_BUTTON_MINUS) != SHIP_NATIVE_OK ||
+        BindItemTrigger(mod, mod.selectedItemButton) != SHIP_NATIVE_OK) {
         mod.movement->reload_gamepad_mappings(0);
         return SHIP_NATIVE_FAILURE;
     }
@@ -89,14 +174,46 @@ ShipNativeStatus ApplyNintendoFaceBindings(Mod& mod) {
     return SHIP_NATIVE_OK;
 }
 
+// Próximo botão C com item, na ordem C-Left, C-Down, C-Right.
+uint8_t NextItemButton(uint8_t current, const SaveContext& save) {
+    for (uint8_t step = 1; step <= 3; ++step) {
+        const uint8_t candidate = static_cast<uint8_t>((current - 1 + step) % 3 + 1);
+        if (save.equips.buttonItems[candidate] != ITEM_NONE) return candidate;
+    }
+    return current;
+}
+
+// R troca o botão C usado pelo ZR. Com o ZR pressionado não troca: soltaria o item em uso.
+const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
+    const bool down = (physical & PhysicalButton(SDL_BUTTON_R)) != 0;
+    const bool pressed = down && !mod.selectWasDown;
+    mod.selectWasDown = down;
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!pressed || !save || mod.movement->get_gamepad_axis(0, SDL_AXIS_ZR) > ZR_HELD) return nullptr;
+    const uint8_t next = NextItemButton(mod.selectedItemButton, *save);
+    if (next == mod.selectedItemButton) return nullptr;
+    if (BindItemTrigger(mod, next) != SHIP_NATIVE_OK) {
+        mod.movement->reload_gamepad_mappings(0);
+        mod.faceBindingsApplied = false;
+        return "mapping-error";
+    }
+    mod.selectedItemButton = next;
+    return next == LINKSPAN_OOT_ITEM_BUTTON_C_LEFT   ? "item-c-left"
+           : next == LINKSPAN_OOT_ITEM_BUTTON_C_DOWN ? "item-c-down"
+                                                     : "item-c-right";
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t length,
                                         ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
-    char result[224];
+    char result[448];
     const int size = std::snprintf(result, sizeof(result),
-        "perfil=nintendo; X=pulo %.2f; A=contexto/rolar/sprint; Y=espada; B=cancelar; câmera=stick direito/auto %.1fs; gamepad=%s",
-        double(JUMP_VELOCITY), double(mod.cameraIdleMilliseconds) / 1000.0,
+        "perfil=nintendo; X=pulo %.2f; A=contexto/rolar/sprint; Y=espada; B=cancelar; "
+        "ZR=item do C selecionado; R=troca o C; L=escudo; -=L do N64; "
+        "R3=lente (toque)/máscara (segurar); D-pad direita=C-Up; "
+        "câmera=stick direito, volta a seguir ao andar após %.2fs; gamepad=%s",
+        double(JUMP_VELOCITY), double(mod.cameraFollowDelayMilliseconds) / 1000.0,
         mod.movement->has_gamepad(0) ? "conectado" : "ausente");
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
@@ -109,18 +226,20 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
     char* end = nullptr;
     const unsigned long parsed = std::strtoul(value, &end, 0);
     if (end == value || parsed > 0xFFFFu) return SHIP_NATIVE_INVALID_ARGUMENT;
-    unsigned long cameraTimeout = 10000;
+    // Segundo valor: atraso em ms (0..60000) sem analógico direito antes de a
+    // câmera voltar a seguir Link quando ele anda.
+    unsigned long followDelay = 500;
     if (*end == ',') {
-        char* timeoutEnd = nullptr;
-        cameraTimeout = std::strtoul(end + 1, &timeoutEnd, 10);
-        if (timeoutEnd == end + 1 || *timeoutEnd != '\0' || cameraTimeout < 1 || cameraTimeout > 60000)
+        char* delayEnd = nullptr;
+        followDelay = std::strtoul(end + 1, &delayEnd, 10);
+        if (delayEnd == end + 1 || *delayEnd != '\0' || followDelay > 60000)
             return SHIP_NATIVE_INVALID_ARGUMENT;
     } else if (*end != '\0') {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     auto& mod = *static_cast<Mod*>(user);
     mod.keyboardJumpMask = static_cast<uint16_t>(parsed);
-    mod.cameraIdleMilliseconds = static_cast<uint32_t>(cameraTimeout);
+    mod.cameraFollowDelayMilliseconds = static_cast<uint32_t>(followDelay);
     if (!mod.freeLookApplied) {
         mod.previousFreeLook = mod.movement->get_setting_int(FREE_LOOK_SETTING, 0);
         if (mod.movement->set_setting_int(FREE_LOOK_SETTING, 1) != SHIP_NATIVE_OK) {
@@ -129,6 +248,15 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
         mod.freeLookApplied = true;
         mod.cameraFreeLookActive = true;
         mod.lastCameraInput = std::chrono::steady_clock::now();
+    }
+    // A máscara colocada pelo R3 fica fora dos botões C; sem PersistentMasks o
+    // jogo a tiraria (Player_ProcessItemButtons) e o host recusa o uso.
+    if (!mod.persistentMasksApplied) {
+        mod.previousPersistentMasks = mod.movement->get_setting_int(PERSISTENT_MASKS_SETTING, 0);
+        if (mod.movement->set_setting_int(PERSISTENT_MASKS_SETTING, 1) != SHIP_NATIVE_OK) {
+            return SHIP_NATIVE_FAILURE;
+        }
+        mod.persistentMasksApplied = true;
     }
     return Write(write, writer, "configured");
 }
@@ -401,6 +529,25 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, 
     return Write(write, writer, report);
 }
 
+// Posição do botão C selecionado para o anel do HUD Lua: "x,y,lado,alpha" ou "none".
+ShipNativeStatus SHIP_NATIVE_CALL HudSelection(void* user, const char*, uint32_t length,
+                                              ShipNativeWriteFn write, void* writer) {
+    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    int16_t x = 0;
+    int16_t y = 0;
+    int16_t side = 0;
+    uint8_t alpha = 0;
+    if (!mod.faceBindingsApplied || !mod.movement->has_gamepad(0) ||
+        mod.movement->get_item_button_rect(mod.selectedItemButton, &x, &y, &side, &alpha) != SHIP_NATIVE_OK ||
+        !alpha) {
+        return Write(write, writer, "none");
+    }
+    char result[48];
+    const int size = std::snprintf(result, sizeof(result), "%d,%d,%d,%u", x, y, side, unsigned(alpha));
+    return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length,
                                         ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -410,15 +557,24 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         mod.phase = Phase::Ready;
         mod.jumpWasDown = false;
         mod.observedRoll = false;
+        mod.shortcutWasDown = false;
+        mod.shortcutHoldFired = false;
+        mod.selectWasDown = false;
         return Write(write, writer, "unavailable");
     }
     const CameraChange cameraChange = UpdateCamera(mod);
 
     const bool hasGamepad = mod.movement->has_gamepad(0) != 0;
-    if (hasGamepad && !mod.faceBindingsApplied && ApplyNintendoFaceBindings(mod) != SHIP_NATIVE_OK) {
+    if (hasGamepad && !mod.faceBindingsApplied && ApplyNintendoBindings(mod) != SHIP_NATIVE_OK) {
         return Write(write, writer, "mapping-error");
     }
     const uint32_t physical = hasGamepad ? mod.movement->get_gamepad_buttons(0) : 0;
+    if (const char* selection = UpdateItemSelection(mod, physical)) {
+        return Write(write, writer, selection);
+    }
+    if (const char* shortcut = UpdateShortcut(mod, *player, physical)) {
+        return Write(write, writer, shortcut);
+    }
     const uint16_t current = mod.movement->get_input_current(0);
     const bool jumpDown = hasGamepad
         ? (physical & PhysicalButton(SDL_BUTTON_X_NINTENDO)) != 0
@@ -481,9 +637,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
     const auto* engine = static_cast<const ShipOotEngineV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(ShipOotEngineV1)));
-    const auto* movement = static_cast<const ShipOotMovementV1*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION,
-        sizeof(ShipOotMovementV1)));
+    const auto* movement = static_cast<const ShipOotMovementV2*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2,
+        sizeof(ShipOotMovementV2)));
     const auto* resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
         sizeof(ShipOotResourcesV2)));
@@ -494,7 +650,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         std::strcmp(engine->layout_id, LINKSPAN_OOT_LAYOUT_ID) ||
         engine->player_size != sizeof(Player) || engine->play_state_size != sizeof(PlayState) ||
         engine->save_context_size != sizeof(SaveContext) || !engine->get_player || !movement ||
-        movement->size < sizeof(ShipOotMovementV1) || !movement->layout_id ||
+        movement->size < sizeof(ShipOotMovementV2) || !movement->layout_id ||
         std::strcmp(movement->layout_id, LINKSPAN_OOT_LAYOUT_ID) ||
         !movement->get_input_current || !movement->get_stick_x || !movement->get_stick_y ||
         !movement->get_right_stick_x || !movement->get_right_stick_y ||
@@ -502,7 +658,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         !movement->clear_gamepad_button_bindings || !movement->bind_gamepad_button ||
         !movement->reload_gamepad_mappings || !movement->get_setting_int || !movement->set_setting_int ||
         !movement->is_player_grounded ||
-        !movement->is_player_rolling || !movement->player_jump || !movement->player_roll)
+        !movement->is_player_rolling || !movement->player_jump || !movement->player_roll ||
+        !movement->get_gamepad_axis || !movement->bind_gamepad_axis || !movement->player_use_item_shortcut ||
+        !movement->get_item_button_rect)
         return SHIP_NATIVE_UNSUPPORTED;
     if (!resources || resources->size < sizeof(ShipOotResourcesV2) || !resources->has_file ||
         !resources->read_file || !resources->list_files || !resources->dirty_resources ||
@@ -546,6 +704,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "resource_runtime_probe", ResourceRuntimeProbe, mod) !=
             SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "registry_probe", RegistryProbe, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "hud_selection", HudSelection, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
         registry->destroy_space(mod->registrySpace);
         delete mod;
@@ -555,10 +714,28 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     return SHIP_NATIVE_OK;
 }
 
+bool LensOnItemButton(const Mod& mod, const SaveContext& save) {
+    const int count = mod.movement->get_setting_int("gEnhancements.DpadEquips", 0) != 0 ? 8 : 4;
+    for (int button = 1; button < count; ++button) {
+        if (save.equips.buttonItems[button] == ITEM_LENS) return true;
+    }
+    return false;
+}
+
 void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* mod = static_cast<Mod*>(instance);
     if (mod && mod->faceBindingsApplied) mod->movement->reload_gamepad_mappings(0);
     if (mod && mod->freeLookApplied) mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
+    if (mod && mod->persistentMasksApplied)
+        mod->movement->set_setting_int(PERSISTENT_MASKS_SETTING, mod->previousPersistentMasks);
+    // Lente fora dos botões só seguia ligada pelo atalho: desligá-la deixa o
+    // Magic_Update encerrar o consumo com o som nativo.
+    if (mod) {
+        auto* play = static_cast<PlayState*>(mod->engine->get_play_state());
+        const auto* save = static_cast<const SaveContext*>(mod->engine->get_save_context());
+        if (play && save && play->actorCtx.lensActive && !LensOnItemButton(*mod, *save))
+            play->actorCtx.lensActive = false;
+    }
     if (mod && mod->registrySpace) mod->registry->destroy_space(mod->registrySpace);
     delete mod;
 }

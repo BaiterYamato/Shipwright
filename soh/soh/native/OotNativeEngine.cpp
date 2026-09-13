@@ -2,6 +2,8 @@
 #include "OotNativeRegistry.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <thread>
@@ -17,6 +19,12 @@ extern PlayState* gPlayState;
 void Player_SetupRoll(Player* player, PlayState* play);
 void Player_Action_Roll(Player* player, PlayState* play);
 void func_80838940(Player* player, LinkAnimationHeader* anim, f32 velocity, PlayState* play, u16 sfxId);
+// z_player.c (não static): uso de item e as ações comparadas por Player_CanUpdateItems.
+void Player_UseItem(PlayState* play, Player* player, s32 item);
+s8 Player_ItemToItemAction(s32 item);
+s32 Player_UpperAction_ChangeHeldItem(Player* player, PlayState* play);
+void Player_Action_WaitForPutAway(Player* player, PlayState* play);
+uint8_t GameInteractor_PacifistModeActive();
 }
 
 namespace ShipLuaHost {
@@ -128,6 +136,127 @@ ShipNativeStatus SHIP_NATIVE_CALL Roll() {
     if (player->actionFunc != Player_Action_Roll) Player_SetupRoll(player, gPlayState);
     return SHIP_NATIVE_OK;
 }
+int16_t SHIP_NATIVE_CALL GamepadAxis(uint8_t port, uint8_t axis) {
+    return OnGameThread() && ValidPort(port) && gamepadBridge.getAxis ? gamepadBridge.getAxis(port, axis) : 0;
+}
+ShipNativeStatus SHIP_NATIVE_CALL BindGamepadAxis(uint8_t port, uint16_t virtualButton, uint8_t axis,
+                                                  int8_t direction) {
+    if (direction != 1 && direction != -1) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!OnGameThread() || !ValidPort(port) || !virtualButton || !gamepadBridge.bindAxis)
+        return SHIP_NATIVE_UNSUPPORTED;
+    return gamepadBridge.bindAxis(port, virtualButton, axis, direction);
+}
+// Nomes finais das CVars (prefixos de CMake/soh-cvars.cmake).
+bool SettingEnabled(const char* name) {
+    return gamepadBridge.getSettingInt && gamepadBridge.getSettingInt(name, 0) != 0;
+}
+// O jogo só lê botões de item quando Player_UpdateUpperBody roda (z_player.c:4189),
+// Player_CanUpdateItems (3566), Player_UpdateItems (2625) e Player_ProcessItemButtons
+// (2532) deixam; pausa e texto abertos também bloqueiam o botão.
+bool ItemButtonsActive(Player* player, PlayState* play) {
+    constexpr uint32_t blocking = PLAYER_STATE1_LOADING | PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE |
+                                  PLAYER_STATE1_CARRYING_ACTOR;
+    const bool waitingPutAway =
+        player->actionFunc == Player_Action_WaitForPutAway &&
+        !((player->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM) &&
+          (player->heldItemId == ITEM_LAST_USED || player->heldItemId == ITEM_NONE));
+    const bool changingHeldItem = player->upperActionFunc == Player_UpperAction_ChangeHeldItem &&
+                                  Player_ItemToItemAction(player->heldItemId) != player->heldItemAction;
+    const bool hookshotWithoutActor = (player->heldItemAction == PLAYER_IA_HOOKSHOT ||
+                                       player->heldItemAction == PLAYER_IA_LONGSHOT) &&
+                                      player->heldActor == nullptr;
+    return player->actor.category == ACTORCAT_PLAYER && !(player->stateFlags1 & blocking) && !waitingPutAway &&
+           !changingHeldItem && !hookshotWithoutActor &&
+           (SettingEnabled("gEnhancements.QuickPutaway") ||
+            !(player->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM)) &&
+           (player->heldItemAction == player->itemAction || (player->stateFlags1 & PLAYER_STATE1_SHIELDING)) &&
+           gSaveContext.health != 0 && play->csCtx.state == CS_STATE_IDLE && player->csAction == 0 &&
+           play->shootingGalleryStatus == 0 && play->activeCamera == CAM_ID_MAIN &&
+           play->transitionTrigger != TRANS_TRIGGER_START && gSaveContext.timerState != TIMER_STATE_STOP &&
+           play->pauseCtx.state == 0 && play->msgCtx.msgMode == MSGMODE_NONE;
+}
+constexpr uint8_t AGE_REQ_NONE_VALUE = 9; // AGE_REQ_NONE, z_kaleido_scope.h:21
+// Regras de func_80083108 (z_parameter.c:800-1317) que desabilitariam a lente ou a
+// máscara num botão C, mais a idade de CHECK_AGE_REQ_ITEM (z_kaleido_scope.h:25).
+bool ItemEnabledLikeCButton(Player* player, PlayState* play, uint8_t item) {
+    const s32 hazard = Player_GetEnvironmentalHazard(play);
+    if ((player->stateFlags1 & (PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_CLIMBING_LADDER)) ||
+        (player->stateFlags2 & PLAYER_STATE2_CRAWLING) || play->shootingGalleryStatus > 1 ||
+        play->bombchuBowlingStatus != 0 || play->sceneNum == SCENE_FISHING_POND ||
+        GameInteractor_PacifistModeActive() || (hazard >= 2 && hazard < 5) ||
+        (gSaveContext.eventInf[0] & 0xF) == 1) {
+        return false;
+    }
+    if (!SettingEnabled("gCheats.TimelessEquipment") && gItemAgeReqs[item] != AGE_REQ_NONE_VALUE &&
+        gItemAgeReqs[item] != gSaveContext.linkAge) {
+        return false;
+    }
+    if (item == ITEM_LENS) {
+        return play->interfaceCtx.restrictions.all == 0 || play->sceneNum == SCENE_TREASURE_BOX_SHOP;
+    }
+    return play->interfaceCtx.restrictions.tradeItems == 0 || SettingEnabled("gEnhancements.MMBunnyHood");
+}
+// Botões que mantêm a máscara sem PersistentMasks (z_player.c:2516-2530).
+bool ItemOnItemButton(uint8_t item) {
+    const int count = SettingEnabled("gEnhancements.DpadEquips") ? 8 : 4;
+    for (int button = 1; button < count; ++button) {
+        if (gSaveContext.equips.buttonItems[button] == item) return true;
+    }
+    return false;
+}
+// Lente ligada pelo atalho: Magic_Update a mantém fora dos botões (z_parameter.c).
+bool lensKeptWithoutButton = false;
+ShipNativeStatus SHIP_NATIVE_CALL UseItemShortcut(uint8_t item) {
+    const bool lens = item == ITEM_LENS;
+    if (!lens && (item < ITEM_MASK_KEATON || item > ITEM_MASK_TRUTH)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto* player = static_cast<Player*>(CurrentPlayer());
+    if (!player || !ItemButtonsActive(player, gPlayState) || !ItemEnabledLikeCButton(player, gPlayState, item))
+        return SHIP_NATIVE_UNSUPPORTED;
+    if (lens) {
+        if (gSaveContext.inventory.items[SLOT_LENS] != ITEM_LENS) return SHIP_NATIVE_UNSUPPORTED;
+        const bool wasActive = gPlayState->actorCtx.lensActive != 0;
+        Player_UseItem(gPlayState, player, ITEM_LENS);
+        const bool active = gPlayState->actorCtx.lensActive != 0;
+        if (active == wasActive) return SHIP_NATIVE_UNSUPPORTED;
+        lensKeptWithoutButton = active;
+        return SHIP_NATIVE_OK;
+    }
+    if (player->currentMask == PLAYER_MASK_NONE &&
+        (gSaveContext.inventory.items[SLOT_TRADE_CHILD] != item ||
+         (!ItemOnItemButton(item) && !SettingEnabled("gEnhancements.PersistentMasks")))) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    const auto previousMask = player->currentMask;
+    Player_UseItem(gPlayState, player, item);
+    return player->currentMask != previousMask ? SHIP_NATIVE_OK : SHIP_NATIVE_UNSUPPORTED;
+}
+// Posições capturadas em Interface_DrawItemButtons (z_parameter.c); HIDDEN usa x=-9999.
+struct CapturedItemButton {
+    int16_t x = 0;
+    int16_t y = 0;
+    int16_t size = 0;
+    uint8_t alpha = 0;
+    uint32_t frame = 0;
+    bool valid = false;
+};
+std::array<CapturedItemButton, 4> itemButtons{};
+ShipNativeStatus SHIP_NATIVE_CALL ItemButtonRect(uint8_t button, int16_t* x, int16_t* y, int16_t* size,
+                                                 uint8_t* alpha) {
+    if (button < LINKSPAN_OOT_ITEM_BUTTON_C_LEFT || button > LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT || !x || !y ||
+        !size || !alpha)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!OnGameThread() || !gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    const auto& captured = itemButtons[button];
+    // O HUD Lua desenha antes de Interface_Draw: vale a captura do frame anterior.
+    if (!captured.valid || gPlayState->state.frames - captured.frame > 1 || captured.x <= -9999 ||
+        captured.size <= 0)
+        return SHIP_NATIVE_UNSUPPORTED;
+    *x = captured.x;
+    *y = captured.y;
+    *size = captured.size;
+    *alpha = captured.alpha;
+    return SHIP_NATIVE_OK;
+}
 uint8_t SHIP_NATIVE_CALL HasFile(const char* path) {
     if (!OnGameThread() || !ValidText(path) || !resourceBridge.hasFile) return 0;
     try { return resourceBridge.hasFile(path); } catch (...) { return 0; }
@@ -192,6 +321,14 @@ const ShipOotMovementV1 movementV1{
     GetSettingInt, SetSettingInt,
     Grounded, Rolling, Jump, Roll
 };
+const ShipOotMovementV2 movementV2{
+    sizeof(ShipOotMovementV2), LINKSPAN_OOT_LAYOUT_ID,
+    InputCurrent, InputPressed, InputReleased, StickX, StickY, RightStickX, RightStickY,
+    HasGamepad, GamepadButtons, ClearGamepadButtonBindings, BindGamepadButton, ReloadGamepadMappings,
+    GetSettingInt, SetSettingInt,
+    Grounded, Rolling, Jump, Roll,
+    GamepadAxis, BindGamepadAxis, UseItemShortcut, ItemButtonRect
+};
 const ShipOotResourcesV1 resourcesV1{
     sizeof(ShipOotResourcesV1), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
     MountArchive, UnmountArchive, GetGameVersions
@@ -212,6 +349,8 @@ void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
 
 ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
+    lensKeptWithoutButton = false;
+    itemButtons = {};
     InitializeOotNativeRegistry(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
@@ -219,6 +358,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
                                sizeof(engineV1), &engineV1});
     policy.services.push_back({LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION,
                                sizeof(movementV1), &movementV1});
+    policy.services.push_back({LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2,
+                               sizeof(movementV2), &movementV2});
     policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION,
                                sizeof(resourcesV1), &resourcesV1});
     policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
@@ -228,4 +369,23 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
                                sizeof(registry), &registry});
     return policy;
 }
+}
+
+// Chamadas pelo código C do jogo (z_parameter.c), sempre na thread do jogo.
+extern "C" s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton) {
+    // Lente num botão ou já desligada encerra a exceção do atalho: religada por um
+    // botão C, volta a seguir a regra normal do jogo.
+    if (lensOnButton || !play || !play->actorCtx.lensActive) {
+        ShipLuaHost::lensKeptWithoutButton = false;
+        return lensOnButton;
+    }
+    return ShipLuaHost::lensKeptWithoutButton ? 1 : 0;
+}
+
+extern "C" void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha) {
+    if (!play || button < static_cast<s32>(LINKSPAN_OOT_ITEM_BUTTON_C_LEFT) ||
+        button > static_cast<s32>(LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT))
+        return;
+    ShipLuaHost::itemButtons[button] = {x, y, size, static_cast<uint8_t>(std::min<u16>(alpha, 255)),
+                                        play->state.frames, true};
 }

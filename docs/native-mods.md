@@ -7,7 +7,9 @@ parte do mod e suas funções não precisam ser cadastradas no loader.
 O serviço legado `linkspan.oot.engine` permanece na versão 1 para mods
 existentes. O serviço separado `linkspan.oot.movement` v1 oferece input virtual,
 botões físicos SDL, bindings transitórios, analógicos, estado de chão/rolamento
-e ações nativas de pulo e rolamento. O Lua chama funções privadas da DLL por
+e ações nativas de pulo e rolamento. A v2 acrescenta eixos físicos, gatilho ligado
+a botão virtual, atalho nativo de Lente e máscaras e a posição dos botões C no
+HUD. O Lua chama funções privadas da DLL por
 `ship.native.call`; eventos usam a API Lua existente.
 Os ponteiros ficam somente no código nativo e não devem ser retidos entre cenas
 ou frames. Consulte novamente o serviço durante cada chamada. Fora de gameplay
@@ -175,6 +177,29 @@ Esta fatia ainda não conecta o resultado a uma scene factory do
 cena/sala e o adapter que materializa o recurso pertencem aos recortes
 seguintes do Unbound.
 
+## Serviço `linkspan.oot.movement` v2 (OOT-MOVE-004)
+
+Header do contrato: `soh/soh/native/oot_engine.h`; decisão em
+`NATIVE-001/rfcs/0018-oot-movement-v2.md`. A tabela `ShipOotMovementV2` repete a
+v1 e acrescenta:
+
+- `get_gamepad_axis(port, sdl_axis)`: valor SDL bruto do eixo físico;
+- `bind_gamepad_axis(port, virtual_button, sdl_axis, direction)`: metade de um
+  eixo ligada a um botão virtual, só em memória. Com ZR segurando um botão C, o
+  jogo mira arco e gancho como no botão nativo;
+- `player_use_item_shortcut(item)`: Lente da Verdade ou máscara sem exigir o item
+  num botão C. O host aplica as regras do jogo para Player, cena, idade,
+  inventário e magia e chama o `Player_UseItem` nativo;
+- `get_item_button_rect(button, x, y, size, alpha)`: posição final de C-Left,
+  C-Down e C-Right desenhada pelo HUD no frame atual ou no anterior.
+
+A lente ligada pelo atalho continua ativa fora dos botões até ser desligada ou
+aparecer num botão (exceção no `Magic_Update` de `z_parameter.c`). Máscara fora
+dos botões exige `gEnhancements.PersistentMasks`; sem ela o host recusa o uso. O
+`hook.oot.hud.draw` roda antes de `Interface_Draw`, por isso a captura do frame
+anterior é aceita. O header do contrato entra no layout id: recompile providers
+nativos contra o SDK do host novo.
+
 ## Compilar o host uma vez
 
 Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O
@@ -208,29 +233,31 @@ mecânica, edite e recompile somente o mod.
 ## Perfil Nintendo
 
 O mod lê as posições físicas do Switch Pro: B=`SDL A`, A=`SDL B`, Y=`SDL X` e
-X=`SDL Y`. Os bindings de face são aplicados somente em memória e o mapeamento
-do usuário é restaurado quando o mod descarrega.
+X=`SDL Y`. Os bindings são aplicados somente em memória e o mapeamento do usuário
+é restaurado quando o mod descarrega.
 
-O mod também habilita `FreeLook`, libera o analógico direito dos atalhos C
-somente durante sua sessão e restaura a opção anterior no unload. Depois de quatro
-segundos sem movimento do analógico direito, a câmera volta ao comportamento
-automático; mover o stick novamente reativa o `FreeLook`. O acesso a settings
-inteiros é uma primitiva genérica do SDK, não uma regra fixa para este mod.
+O mod habilita `FreeLook` e `PersistentMasks` enquanto está carregado e restaura
+as opções anteriores no unload. O analógico direito controla a câmera livre:
+parada, ela mantém o ângulo; quando Link volta a andar com o analógico direito
+parado há 500 ms (`configure "0,500"`, aceita 0 a 60000), o `FreeLook` é desligado
+e a câmera automática assume a partir da posição atual, sem salto. O acesso a
+settings inteiros é uma primitiva genérica do SDK, não uma regra fixa deste mod.
 
-Nesta fatia funcional:
+Na versão 0.2.7:
 
 1. X executa o pulo dedicado;
 2. A permanece como ação contextual e produz o rolamento normal quando Link se
-   move;
-3. manter A até o fim do rolamento entra em sprint;
-4. soltar A encerra o sprint;
-5. Y aciona a função normal de espada e B a função normal de cancelar/guardar;
-6. o analógico direito controla a câmera livre.
+   move; manter A até o fim do rolamento entra em sprint e soltar A encerra;
+3. Y aciona a função normal de espada e B a de cancelar/guardar;
+4. ZR usa o item do botão C selecionado e mira enquanto segurado;
+5. R troca o C do ZR na ordem C-Left, C-Down, C-Right, pula C vazio e não troca
+   com ZR pressionado; um anel branco marca o C selecionado no HUD;
+6. L físico é o escudo (R do N64) e `-` é o L do N64;
+7. toque no R3 liga ou desliga a Lente da Verdade sem ocupar um C; segurar R3 por
+   400 ms coloca ou tira a máscara do slot infantil;
+8. D-pad direita é o C-Up nativo: Navi e primeira pessoa.
 
-O `main.lua` registra o esquema final: analógicos esquerdo/direito, X pulo, A
-contexto/rolamento/sprint, Y espada, B cancelar, ZL target, ZR item, R Quick
-Swap, L escudo, Ocarina/Navi, seletores de Gear/Boots e +/- para menu/mapa. Os
-atalhos e hotbars permanecem nas próximas fatias.
+Ocarina, seletores de Gear/Boots e hotbars permanecem nas próximas fatias.
 
 ## Compatibilidade e alcance
 

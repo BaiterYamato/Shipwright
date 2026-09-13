@@ -11,6 +11,8 @@ struct OotNativeGamepadBridge {
     ShipNativeStatus (*reloadMappings)(uint8_t port) = nullptr;
     int32_t (*getSettingInt)(const char* name, int32_t fallback) = nullptr;
     ShipNativeStatus (*setSettingInt)(const char* name, int32_t value) = nullptr;
+    int16_t (*getAxis)(uint8_t port, uint8_t sdlAxis) = nullptr;
+    ShipNativeStatus (*bindAxis)(uint8_t port, uint16_t virtualButton, uint8_t sdlAxis, int8_t direction) = nullptr;
 };
 struct OotNativeResourceBridge {
     uint8_t (*hasFile)(const char* path) = nullptr;
