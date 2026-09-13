@@ -1,4 +1,4 @@
-# Mic Ocarina 0.1.0
+# Mic Ocarina 0.1.1
 
 Mod nativo para o Link-Span/Shipwright OoT.
 
@@ -14,8 +14,9 @@ Mod nativo para o Link-Span/Shipwright OoT.
 1. Coloque o ZIP inteiro na pasta `mods`.
 2. Entre normalmente no modo de tocar ocarina.
 3. Aperte **Start/+** para iniciar a captura do microfone padrão.
-4. Cantarole a sequência relativa de uma música aceita naquele momento.
-5. Aperte **B** para encerrar o modo de áudio. Guardar a ocarina também encerra e libera o dispositivo.
+4. O aviso **MICROFONE ATIVO — B: SAIR** aparece no alto da tela enquanto o dispositivo estiver capturando.
+5. Cantarole a sequência relativa de uma música aceita naquele momento.
+6. Aperte **B** para encerrar o modo de áudio. Guardar a ocarina também encerra e libera o dispositivo.
 
 Em controles Nintendo, o mod lê os botões físicos **+** e **B**. Sem gamepad, usa os botões virtuais Start e B.
 A música reconhecida chega ao jogo como se tivesse sido tocada, com o efeito normal dela; músicas que o jogo não
