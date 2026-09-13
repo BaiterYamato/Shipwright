@@ -3342,7 +3342,7 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
         osSyncPrintf("アクタークラス追加 [%d:%s]\n", actorId, dbEntry->name);
     }
 
-    if (actorCtx->total > ACTOR_NUMBER_MAX) {
+    if (actorCtx->total >= ACTOR_NUMBER_MAX) {
         LUSLOG_WARN("Actor_Spawn: Actor number max exceeded");
         // "Ａｃｔｏｒ set number exceeded"
         osSyncPrintf(VT_COL(YELLOW, BLACK) "Ａｃｔｏｒセット数オーバー\n" VT_RST);
@@ -3453,7 +3453,7 @@ Actor* Actor_SpawnAsChild(ActorContext* actorCtx, Actor* parent, PlayState* play
 
 void Actor_SpawnTransitionActors(PlayState* play, ActorContext* actorCtx) {
     TransitionActorEntry* transitionActor;
-    u8 numActors;
+    u16 numActors; // SOH [Unbound] preserve transition lists above 255 entries
     s32 i;
 
     transitionActor = play->transiActorCtx.list;

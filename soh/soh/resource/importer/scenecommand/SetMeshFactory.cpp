@@ -19,7 +19,7 @@ std::shared_ptr<Ship::IResource> SetMeshFactory::ReadResource(std::shared_ptr<Sh
     int32_t polyNum = 1;
 
     if (setMesh->meshHeader.base.type != 1) {
-        polyNum = reader->ReadInt8();
+        polyNum = reader->ReadUByte(); // SOH [Unbound] binary v0 stores an unsigned u8 count
         if (setMesh->meshHeader.base.type == 0) {
             setMesh->meshHeader.polygon0.num = polyNum;
         } else if (setMesh->meshHeader.base.type == 2) {

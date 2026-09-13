@@ -8,6 +8,7 @@
 #include <ship/resource/type/Blob.h>
 #include <memory>
 #include <cassert>
+#include <limits>
 #include "soh/resource/type/scenecommand/SetCameraSettings.h"
 #include "soh/resource/type/scenecommand/SetCutscenes.h"
 #include "soh/resource/type/scenecommand/SetStartPositionList.h"
@@ -30,6 +31,20 @@
 #include "soh/resource/type/scenecommand/SetEchoSettings.h"
 #include "soh/resource/type/scenecommand/SetAlternateHeaders.h"
 #include <spdlog/spdlog.h>
+
+namespace {
+
+template <typename Target>
+Target ClampSceneCount(uint32_t count, const char* label) {
+    constexpr uint32_t max = std::numeric_limits<Target>::max();
+    if (count > max) {
+        SPDLOG_ERROR("[Unbound] {} count {} exceeds the runtime limit {}; truncating safely", label, count, max);
+        return static_cast<Target>(max);
+    }
+    return static_cast<Target>(count);
+}
+
+} // namespace
 
 extern Ship::IResource* OTRPlay_LoadFile(PlayState* play, const char* fileName);
 extern "C" s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId);
@@ -54,7 +69,7 @@ bool Scene_CommandActorList(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetActorList* cmdActor = std::static_pointer_cast<SOH::SetActorList>(cmd);
     SOH::SetActorList* cmdActor = (SOH::SetActorList*)cmd;
 
-    play->numSetupActors = cmdActor->numActors;
+    play->numSetupActors = ClampSceneCount<decltype(play->numSetupActors)>(cmdActor->numActors, "actor list");
     play->setupActorList = (ActorEntry*)cmdActor->GetRawPointer();
 
     return false;
@@ -79,7 +94,7 @@ bool Scene_CommandRoomList(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetRoomList* cmdRoomList = std::static_pointer_cast<SOH::SetRoomList>(cmd);
     SOH::SetRoomList* cmdRoomList = (SOH::SetRoomList*)cmd;
 
-    play->numRooms = cmdRoomList->numRooms;
+    play->numRooms = ClampSceneCount<decltype(play->numRooms)>(cmdRoomList->numRooms, "room list");
     play->roomList = (RomFile*)cmdRoomList->GetRawPointer();
 
     return false;
@@ -164,11 +179,15 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
         }
     }
 
-    // Continuing from the last index, add the remaining object ids from the command object list
-    for (; k < cmdObj->objects.size(); k++, i++) {
-        if (i < OBJECT_EXCHANGE_BANK_MAX - 1) {
-            OTRfunc_800982FC(&play->objectCtx, i, cmdObj->objects[k]);
-        }
+    // Continuing from the last index, add the remaining object ids from the command object list.
+    // SOH [Unbound] Keep the stored count inside the enlarged bank even when a malformed resource exceeds it.
+    for (; k < cmdObj->objects.size() && i < OBJECT_EXCHANGE_BANK_MAX; k++, i++) {
+        OTRfunc_800982FC(&play->objectCtx, i, cmdObj->objects[k]);
+    }
+
+    if (k < cmdObj->objects.size()) {
+        SPDLOG_ERROR("[Unbound] object list exceeds the bank ({} slots); dropping {} objects",
+                     OBJECT_EXCHANGE_BANK_MAX, cmdObj->objects.size() - k);
     }
 
     play->objectCtx.num = i;
@@ -199,7 +218,9 @@ bool Scene_CommandTransitionActorList(PlayState* play, SOH::ISceneCommand* cmd) 
     // SOH::SetTransitionActorList* cmdActor = static_pointer_cast<SOH::SetTransitionActorList>(cmd);
     SOH::SetTransitionActorList* cmdActor = (SOH::SetTransitionActorList*)cmd;
 
-    play->transiActorCtx.numActors = cmdActor->numTransitionActors;
+    play->transiActorCtx.numActors =
+        ClampSceneCount<decltype(play->transiActorCtx.numActors)>(cmdActor->numTransitionActors,
+                                                                  "transition actor list");
     play->transiActorCtx.list = (TransitionActorEntry*)cmdActor->GetRawPointer();
 
     // Loops transition actors and sets them to default values (not spawned yet)
