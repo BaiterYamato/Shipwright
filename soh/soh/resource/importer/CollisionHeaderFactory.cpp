@@ -1,9 +1,15 @@
 #include "soh/resource/importer/CollisionHeaderFactory.h"
 #include "soh/resource/type/CollisionHeader.h"
+#include "soh/unbound/CollisionVertexWords.h"
 #include "spdlog/spdlog.h"
 #include <tinyxml2.h>
 
 namespace SOH {
+
+// SOH [Unbound] The legacy (N64) poly layout packs a 13-bit vertex index and 3 flag bits into each u16.
+// The in-memory CollisionPoly is 32-bit with the flags in bits 29-31; unpack here so every existing
+// archive keeps loading. See docs/architecture/unbound-collision-layout.md.
+
 std::shared_ptr<Ship::IResource>
 ResourceFactoryBinaryCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> file,
                                                      std::shared_ptr<Ship::ResourceInitData> initData) {
@@ -24,7 +30,7 @@ ResourceFactoryBinaryCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File>
 
     collisionHeader->collisionHeaderData.numVertices = reader->ReadInt32();
     collisionHeader->vertices.reserve(collisionHeader->collisionHeaderData.numVertices);
-    for (int32_t i = 0; i < collisionHeader->collisionHeaderData.numVertices; i++) {
+    for (uint32_t i = 0; i < collisionHeader->collisionHeaderData.numVertices; i++) {
         Vec3s vtx;
         vtx.x = reader->ReadInt16();
         vtx.y = reader->ReadInt16();
@@ -40,8 +46,8 @@ ResourceFactoryBinaryCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File>
 
         polygon.type = reader->ReadUInt16();
 
-        polygon.flags_vIA = reader->ReadUInt16();
-        polygon.flags_vIB = reader->ReadUInt16();
+        polygon.flags_vIA = Unbound_UnpackLegacyVtxWord(reader->ReadUInt16());
+        polygon.flags_vIB = Unbound_UnpackLegacyVtxWord(reader->ReadUInt16());
         polygon.vIC = reader->ReadUInt16();
 
         polygon.normal.x = reader->ReadUInt16();
@@ -164,8 +170,17 @@ ResourceFactoryXMLCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> fi
 
             polygon.type = child->UnsignedAttribute("Type");
 
-            polygon.flags_vIA = child->UnsignedAttribute("VertexA");
-            polygon.flags_vIB = child->UnsignedAttribute("VertexB");
+            // SOH [Unbound] New form: VertexA/B/C are plain indices, flags live in XpFlags / Conveyor.
+            // Legacy form (neither attribute present): VertexA/B carry the N64 packed u16 words.
+            if (child->FindAttribute("XpFlags") != nullptr || child->FindAttribute("Conveyor") != nullptr) {
+                polygon.flags_vIA =
+                    Unbound_PackVtxWord(child->UnsignedAttribute("VertexA"), child->UnsignedAttribute("XpFlags"));
+                polygon.flags_vIB = Unbound_PackVtxWord(child->UnsignedAttribute("VertexB"),
+                                                        child->BoolAttribute("Conveyor") ? 1 : 0);
+            } else {
+                polygon.flags_vIA = Unbound_UnpackLegacyVtxWord((uint16_t)child->UnsignedAttribute("VertexA"));
+                polygon.flags_vIB = Unbound_UnpackLegacyVtxWord((uint16_t)child->UnsignedAttribute("VertexB"));
+            }
             polygon.vIC = child->UnsignedAttribute("VertexC");
 
             polygon.normal.x = child->IntAttribute("NormalX");
@@ -232,8 +247,8 @@ ResourceFactoryXMLCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> fi
         }
     }
 
-    collisionHeader->collisionHeaderData.numVertices = static_cast<u16>(collisionHeader->vertices.size());
-    collisionHeader->collisionHeaderData.numPolygons = static_cast<u16>(collisionHeader->polygons.size());
+    collisionHeader->collisionHeaderData.numVertices = static_cast<u32>(collisionHeader->vertices.size());
+    collisionHeader->collisionHeaderData.numPolygons = static_cast<u32>(collisionHeader->polygons.size());
     collisionHeader->surfaceTypesCount = static_cast<uint32_t>(collisionHeader->surfaceTypes.size());
     collisionHeader->camDataCount = static_cast<uint32_t>(collisionHeader->camData.size());
     collisionHeader->camPosCount = static_cast<int32_t>(collisionHeader->camPosData.size());

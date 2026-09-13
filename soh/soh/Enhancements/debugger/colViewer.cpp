@@ -386,7 +386,7 @@ void DrawDynapoly(std::vector<Gfx>& dl, CollisionHeader* col, int32_t bgId) {
     // This saves several hundred commands in larger scenes
     bool previousPoly = false;
 
-    for (int i = 0; i < col->numPolygons; i++) {
+    for (uint32_t i = 0; i < col->numPolygons; i++) {
         CollisionPoly* poly = &col->polyList[i];
 
         if (SurfaceType_IsHookshotSurface(&gPlayState->colCtx, poly, bgId)) {

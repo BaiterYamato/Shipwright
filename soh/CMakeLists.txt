@@ -248,6 +248,14 @@ if(MSVC)
 endif()
 add_test(NAME oot_actor_provider_tests COMMAND oot_actor_provider_tests)
 
+add_executable(oot_unbound_collision_tests tests/OotUnboundCollisionTests.cpp)
+target_include_directories(oot_unbound_collision_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+    set_property(TARGET oot_unbound_collision_tests PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+add_test(NAME oot_unbound_collision_tests COMMAND oot_unbound_collision_tests)
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 endif()
