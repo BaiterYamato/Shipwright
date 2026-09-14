@@ -741,8 +741,9 @@ int main(int argc, char** argv) {
         auto configured = (*loaded.value)->Call("configure", "0,5", 3, response.data(), uint32_t(response.size()));
         Check(configured.code == ShipLua::ErrorCode::Ok && settingValue == 1 &&
                   otherSettings["gEnhancements.PersistentMasks"] == 1 &&
-                  otherSettings["gSettings.FreeLook.InvertYAxis"] == 0,
-              "mod deve ativar câmera livre sem inverter o eixo vertical e PersistentMasks pelo serviço de settings");
+                  otherSettings["gSettings.FreeLook.InvertYAxis"] == 0 &&
+                  otherSettings["gSettings.Controls.RightStickAim"] == 1,
+              "mod deve ativar câmera livre sem inverter o eixo vertical, mira pelo analógico direito e PersistentMasks");
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         player.actionFunc = nullptr;
         player.stateFlags1 = 0;
@@ -773,6 +774,17 @@ int main(int argc, char** argv) {
         play.state.input[0].rel.right_stick_x = 30;
         Check(callUpdate() == "camera-free" && settingValue == 1,
               "mover o analógico direito deve reativar a câmera livre");
+        player.stateFlags1 = PLAYER_STATE1_FIRST_PERSON;
+        Check(callUpdate() != "camera-free" && settingValue == 0,
+              "em primeira pessoa o analógico direito mira e a câmera livre fica desligada");
+        player.stateFlags1 = 0;
+        Check(callUpdate() != "camera-free" && settingValue == 0,
+              "ao sair da primeira pessoa a câmera livre espera o analógico voltar ao centro");
+        play.state.input[0].rel.right_stick_x = 0;
+        callUpdate();
+        play.state.input[0].rel.right_stick_x = 30;
+        Check(callUpdate() == "camera-free" && settingValue == 1,
+              "com o analógico de volta ao centro a câmera livre responde de novo");
         using Binding = std::pair<uint16_t, uint8_t>;
         using AxisBinding = std::tuple<uint16_t, uint8_t, int8_t>;
         const bool shieldOnZl =
@@ -943,7 +955,8 @@ int main(int argc, char** argv) {
         Check(settingValue == 0, "unload deve restaurar a configuração de câmera livre");
         Check(otherSettings["gEnhancements.PersistentMasks"] == 0 && !play.actorCtx.lensActive,
               "unload deve restaurar PersistentMasks e desligar a lente mantida só pelo atalho");
-        Check(otherSettings["gSettings.FreeLook.InvertYAxis"] == 1 && LinkSpan_ItemButtonHidden(1) == 0 &&
+        Check(otherSettings["gSettings.FreeLook.InvertYAxis"] == 1 &&
+                  otherSettings["gSettings.Controls.RightStickAim"] == 0 && LinkSpan_ItemButtonHidden(1) == 0 &&
                   LinkSpan_ItemButtonHidden(2) == 0 && LinkSpan_ItemButtonHidden(3) == 0,
               "unload deve restaurar o eixo vertical e mostrar de novo todos os botões C");
         Input unloadedInput{};

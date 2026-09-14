@@ -38,6 +38,9 @@ constexpr uint32_t PhysicalButton(uint8_t button) { return uint32_t{ 1 } << butt
 constexpr const char* FREE_LOOK_SETTING = "gSettings.FreeLook.Enabled";
 // Sem a chave na config, o SoH usa o eixo vertical invertido (z_camera.c, Camera_FreeLook).
 constexpr const char* FREE_LOOK_INVERT_Y_SETTING = "gSettings.FreeLook.InvertYAxis";
+// Com a chave ligada, o analógico direito também move a visão em primeira pessoa e a mira de
+// arco, estilingue e gancho (func_8084ABD8 em z_player.c), somado ao esquerdo.
+constexpr const char* RIGHT_STICK_AIM_SETTING = "gSettings.Controls.RightStickAim";
 constexpr const char* PERSISTENT_MASKS_SETTING = "gEnhancements.PersistentMasks";
 // Settings transitórios do host: ficam só em memória e nunca vão para a config. A sonda
 // devolve a soma dos recursos que o host suporta.
@@ -103,6 +106,8 @@ struct Mod {
     int32_t previousFreeLook = 0;
     bool invertYApplied = false;
     int32_t previousInvertY = 1;
+    bool rightStickAimApplied = false;
+    int32_t previousRightStickAim = 0;
     uint32_t cameraFollowDelayMilliseconds = 500;
     bool cameraFreeLookActive = false;
     bool cameraWaitCenter = false;
@@ -149,16 +154,17 @@ int ReadMenuStep(const Mod& mod, int8_t& latch) {
 // desligado e o Camera_Normal1 do jogo assume a partir do eye atual: sem salto,
 // girando para trás de Link com a suavização nativa. Desligar a CVar (em vez de
 // só zerar play->manualCamera) impede que drift do analógico religue o modo manual.
-// Com um menu aberto o analógico direito escolhe a opção: o FreeLook fica desligado
-// e, ao fechar, o analógico precisa voltar ao centro antes de mover a câmera.
-CameraChange UpdateCamera(Mod& mod, bool menuOpen) {
+// Com um menu aberto ou em primeira pessoa o analógico direito tem outro uso (escolher a
+// opção ou mirar): o FreeLook fica desligado e, depois, o analógico precisa voltar ao
+// centro antes de mover a câmera.
+CameraChange UpdateCamera(Mod& mod, bool stickBusy) {
     constexpr int CAMERA_DEADZONE = 12;
     constexpr int MOVE_DEADZONE = 20;
     const int x = mod.movement->get_right_stick_x(0);
     const int y = mod.movement->get_right_stick_y(0);
     const auto now = std::chrono::steady_clock::now();
     const bool stickActive = (x * x) + (y * y) >= CAMERA_DEADZONE * CAMERA_DEADZONE;
-    if (menuOpen) {
+    if (stickBusy) {
         mod.cameraWaitCenter = true;
         if (mod.cameraFreeLookActive && mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
             mod.cameraFreeLookActive = false;
@@ -478,6 +484,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t lengt
         "D-pad cima=traje (toque: último; segurar: menu); D-pad baixo=botas (toque: Kokiri; segurar: menu); "
         "HUD=só o C equipado e o D-pad com traje, botas, ocarina e Navi; "
         "câmera=stick direito com vertical normal, volta a seguir ao andar após %.2fs; "
+        "primeira pessoa e mira=stick direito; "
         "gamepad=%s",
         double(JUMP_VELOCITY), double(mod.cameraFollowDelayMilliseconds) / 1000.0,
         mod.movement->has_gamepad(0) ? "conectado" : "ausente");
@@ -522,6 +529,14 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
             return SHIP_NATIVE_FAILURE;
         }
         mod.invertYApplied = true;
+    }
+    // Primeira pessoa e mira também pelo analógico direito, sem tirar o esquerdo.
+    if (!mod.rightStickAimApplied) {
+        mod.previousRightStickAim = mod.movement->get_setting_int(RIGHT_STICK_AIM_SETTING, 0);
+        if (mod.movement->set_setting_int(RIGHT_STICK_AIM_SETTING, 1) != SHIP_NATIVE_OK) {
+            return SHIP_NATIVE_FAILURE;
+        }
+        mod.rightStickAimApplied = true;
     }
     // A máscara colocada pelo R3 fica fora dos botões C; sem PersistentMasks o
     // jogo a tiraria (Player_ProcessItemButtons) e o host recusa o uso.
@@ -928,7 +943,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         UpdateEquipGesture(mod, mod.boots, physical, SDL_BUTTON_DPAD_DOWN, EQUIP_TYPE_BOOTS),
     };
     const bool menuOpen = mod.itemMenu.open || mod.tunic.quickSwap || mod.boots.quickSwap;
-    const CameraChange cameraChange = UpdateCamera(mod, menuOpen);
+    // Em primeira pessoa ou com a mira pronta, o analógico direito mira (RightStickAim).
+    const bool aiming = (player->stateFlags1 & (PLAYER_STATE1_FIRST_PERSON | PLAYER_STATE1_READY_TO_FIRE)) != 0;
+    const CameraChange cameraChange = UpdateCamera(mod, menuOpen || aiming);
     for (const char* event : events) {
         if (event) return Write(write, writer, event);
     }
@@ -1088,6 +1105,8 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     if (mod && mod->freeLookApplied) mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
     if (mod && mod->invertYApplied)
         mod->movement->set_setting_int(FREE_LOOK_INVERT_Y_SETTING, mod->previousInvertY);
+    if (mod && mod->rightStickAimApplied)
+        mod->movement->set_setting_int(RIGHT_STICK_AIM_SETTING, mod->previousRightStickAim);
     if (mod) RestoreItemHud(*mod);
     if (mod && mod->swordOverShieldApplied) mod->movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 0);
     if (mod && mod->dpadHudApplied) mod->movement->set_setting_int(DPAD_HUD_SETTING, 0);
