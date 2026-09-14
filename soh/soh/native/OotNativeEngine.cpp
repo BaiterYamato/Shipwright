@@ -102,14 +102,48 @@ ShipNativeStatus SHIP_NATIVE_CALL ReloadGamepadMappings(uint8_t port) {
     if (!OnGameThread() || !ValidPort(port) || !gamepadBridge.reloadMappings) return SHIP_NATIVE_UNSUPPORTED;
     return gamepadBridge.reloadMappings(port);
 }
+// Settings transitórios dos providers: ficam só em memória, nunca viram CVar nem vão para a
+// config, e zeram quando a ponte de gamepad e settings é trocada. A sonda devolve a soma dos
+// recursos deste host.
+constexpr const char* TRANSIENT_SETTINGS_PROBE = "linkspan.transient_settings";
+constexpr int32_t TRANSIENT_HIDE_ITEM_BUTTONS = 1;
+constexpr int32_t TRANSIENT_SWORD_OVER_SHIELD = 2;
+// Botões C do HUD, índices 1..3.
+constexpr const char* HIDDEN_ITEM_BUTTON_SETTINGS[] = { nullptr, "linkspan.hud.hide_item_button.c_left",
+                                                        "linkspan.hud.hide_item_button.c_down",
+                                                        "linkspan.hud.hide_item_button.c_right" };
+std::array<uint8_t, 4> hiddenItemButtons{};
+// Espada acima do escudo, aplicada por LinkSpan_FilterPlayerInput.
+constexpr const char* SWORD_OVER_SHIELD_SETTING = "linkspan.input.sword_over_shield";
+bool swordOverShield = false;
+bool shieldDelivered = false;
+bool swordPending = false;
+int HiddenItemButtonIndex(const char* name) {
+    for (int button = 1; button <= 3; ++button) {
+        if (std::strcmp(name, HIDDEN_ITEM_BUTTON_SETTINGS[button]) == 0) return button;
+    }
+    return 0;
+}
 int32_t SHIP_NATIVE_CALL GetSettingInt(const char* name, int32_t fallback) {
-    return OnGameThread() && name && *name && gamepadBridge.getSettingInt
-               ? gamepadBridge.getSettingInt(name, fallback)
-               : fallback;
+    if (!OnGameThread() || !name || !*name) return fallback;
+    if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0) return TRANSIENT_HIDE_ITEM_BUTTONS | TRANSIENT_SWORD_OVER_SHIELD;
+    if (const int button = HiddenItemButtonIndex(name)) return hiddenItemButtons[button];
+    if (std::strcmp(name, SWORD_OVER_SHIELD_SETTING) == 0) return swordOverShield ? 1 : 0;
+    return gamepadBridge.getSettingInt ? gamepadBridge.getSettingInt(name, fallback) : fallback;
 }
 ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value) {
-    if (!OnGameThread() || !name || !*name || !gamepadBridge.setSettingInt) return SHIP_NATIVE_UNSUPPORTED;
-    return gamepadBridge.setSettingInt(name, value);
+    if (!OnGameThread() || !name || !*name) return SHIP_NATIVE_UNSUPPORTED;
+    if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (const int button = HiddenItemButtonIndex(name)) {
+        hiddenItemButtons[button] = value != 0 ? 1 : 0;
+        return SHIP_NATIVE_OK;
+    }
+    if (std::strcmp(name, SWORD_OVER_SHIELD_SETTING) == 0) {
+        swordOverShield = value != 0;
+        shieldDelivered = swordPending = false;
+        return SHIP_NATIVE_OK;
+    }
+    return gamepadBridge.setSettingInt ? gamepadBridge.setSettingInt(name, value) : SHIP_NATIVE_UNSUPPORTED;
 }
 uint8_t SHIP_NATIVE_CALL Grounded() {
     auto* player = static_cast<Player*>(CurrentPlayer());
@@ -465,6 +499,9 @@ const ShipOotOcarinaV1 ocarinaV1{
 
 void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
     gamepadBridge = bridge;
+    // Os settings transitórios pertencem aos mods que usavam a ponte anterior.
+    hiddenItemButtons = {};
+    swordOverShield = shieldDelivered = swordPending = false;
 }
 
 void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
@@ -529,4 +566,33 @@ extern "C" void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags)
 
 extern "C" s32 OotNative_TakePendingOcarinaSong(void) {
     return ShipLuaHost::pendingOcarinaSong.exchange(-1);
+}
+
+// Chamada por Interface_DrawItemButtons e Interface_Draw (z_parameter.c) para cada botão C.
+extern "C" s32 LinkSpan_ItemButtonHidden(s32 button) {
+    return button >= 1 && button <= 3 && ShipLuaHost::hiddenItemButtons[button] ? 1 : 0;
+}
+
+// Chamada por Player_Update (z_player.c) com a cópia do input do Player. O OoT não ataca com o
+// escudo erguido (func_8083BB20 exige !PLAYER_STATE1_SHIELDING); com o escudo no gatilho da mira,
+// B pressionado tira o R do input. Se B foi apertado com o escudo erguido, o aperto chega no frame
+// seguinte, depois de o escudo baixar.
+extern "C" void LinkSpan_FilterPlayerInput(Input* input) {
+    if (!input || !ShipLuaHost::swordOverShield) {
+        ShipLuaHost::shieldDelivered = ShipLuaHost::swordPending = false;
+        return;
+    }
+    const bool swordHeld = CHECK_BTN_ALL(input->cur.button, BTN_B);
+    if (swordHeld || ShipLuaHost::swordPending) {
+        input->cur.button &= ~BTN_R;
+        input->press.button &= ~BTN_R;
+    }
+    if (ShipLuaHost::swordPending) {
+        input->press.button |= BTN_B;
+        ShipLuaHost::swordPending = false;
+    } else if (swordHeld && CHECK_BTN_ALL(input->press.button, BTN_B) && ShipLuaHost::shieldDelivered) {
+        input->press.button &= ~BTN_B;
+        ShipLuaHost::swordPending = true;
+    }
+    ShipLuaHost::shieldDelivered = CHECK_BTN_ALL(input->cur.button, BTN_R);
 }

@@ -44,6 +44,10 @@ extern u8 ShipLua_ShouldBlockLedgeGrabs(void);
 // returns 0 unless a mod asked for it.
 extern u8 ShipLua_ShouldBlockRoll(void);
 
+// Link-Span (OOT-MOVE-006): com o escudo no gatilho da mira, providers nativos podem dar
+// prioridade à espada sobre o escudo (OotNativeEngine.cpp).
+void LinkSpan_FilterPlayerInput(Input* input);
+
 // Some player animations are played at this reduced speed, for reasons yet unclear.
 // This is called "adjusted" for now.
 #define PLAYER_ANIM_ADJUSTED_SPEED (2.0f / 3.0f)
@@ -12256,6 +12260,7 @@ void Player_Update(Actor* thisx, PlayState* play) {
                 input.press.button &= ~(BTN_A | BTN_B | BTN_CUP);
             }
         }
+        LinkSpan_FilterPlayerInput(&input);
 
         if (CVarGetFloat(CVAR_CHEAT("SpeedModifier.Value"), 1.0f) != 1.0f &&
             CVarGetInteger(CVAR_CHEAT("SpeedModifier.SpeedToggle"), 0)) {

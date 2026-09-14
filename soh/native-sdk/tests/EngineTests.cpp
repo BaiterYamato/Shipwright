@@ -3,6 +3,7 @@
 #include "oot_registry.h"
 #include "oot_ocarina.h"
 #include <shiplua/manifest/ManifestParser.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <chrono>
@@ -183,6 +184,8 @@ extern "C" Actor* Actor_Spawn(ActorContext*, PlayState*, s16 id, f32 x, f32 y, f
     return &spawned;
 }
 extern "C" void Actor_Kill(Actor* actor) { killed = actor; }
+extern "C" s32 LinkSpan_ItemButtonHidden(s32 button);
+extern "C" void LinkSpan_FilterPlayerInput(Input* input);
 extern "C" void Player_Action_Roll(Player*, PlayState*) {}
 extern "C" void Player_SetupRoll(Player* target, PlayState*) {
     target->actionFunc = Player_Action_Roll;
@@ -597,6 +600,45 @@ int main(int argc, char** argv) {
               OotNative_TakePendingOcarinaSong() == -1,
           "fechar a ocarina deve descartar a música pendente");
     OotNative_PublishOcarinaState(1, uint16_t(1u << OCARINA_SONG_SARIAS));
+    Check(movementV2->get_setting_int("linkspan.transient_settings", 0) == 3 &&
+              movementV2->set_setting_int("linkspan.hud.hide_item_button.c_down", 1) == SHIP_NATIVE_OK &&
+              movementV2->get_setting_int("linkspan.hud.hide_item_button.c_down", 0) == 1 &&
+              LinkSpan_ItemButtonHidden(2) == 1 && LinkSpan_ItemButtonHidden(1) == 0 &&
+              otherSettings.find("linkspan.hud.hide_item_button.c_down") == otherSettings.end() &&
+              movementV2->set_setting_int("linkspan.transient_settings", 0) == SHIP_NATIVE_INVALID_ARGUMENT,
+          "ocultação dos botões C deve ficar só em memória no host");
+    Check(movementV2->set_setting_int("linkspan.hud.hide_item_button.c_down", 0) == SHIP_NATIVE_OK &&
+              LinkSpan_ItemButtonHidden(2) == 0,
+          "botão C deve voltar a aparecer quando a ocultação é desligada");
+    {
+        using Buttons = std::pair<u16, u16>;
+        const auto filter = [](u16 cur, u16 press) {
+            Input input{};
+            input.cur.button = cur;
+            input.press.button = press;
+            LinkSpan_FilterPlayerInput(&input);
+            return Buttons{ input.cur.button, input.press.button };
+        };
+        const u16 shieldAndSword = BTN_R | BTN_B;
+        Check(filter(shieldAndSword, BTN_B) == Buttons{ shieldAndSword, BTN_B },
+              "sem o setting, escudo e espada chegam ao Player como vieram");
+        Check(movementV2->set_setting_int("linkspan.input.sword_over_shield", 1) == SHIP_NATIVE_OK &&
+                  movementV2->get_setting_int("linkspan.input.sword_over_shield", 0) == 1 &&
+                  otherSettings.find("linkspan.input.sword_over_shield") == otherSettings.end(),
+              "espada acima do escudo deve ficar só em memória no host");
+        Check(filter(BTN_R, BTN_R) == Buttons{ BTN_R, BTN_R } && filter(shieldAndSword, BTN_B) == Buttons{ BTN_B, 0 } &&
+                  filter(shieldAndSword, 0) == Buttons{ BTN_B, BTN_B } && filter(shieldAndSword, 0) == Buttons{ BTN_B, 0 } &&
+                  filter(BTN_R, 0) == Buttons{ BTN_R, 0 },
+              "B com o escudo erguido deve baixar o escudo, atacar no frame seguinte e devolver o escudo ao soltar");
+        Check(filter(BTN_R, 0) == Buttons{ BTN_R, 0 } && filter(shieldAndSword, BTN_B) == Buttons{ BTN_B, 0 } &&
+                  filter(BTN_R, 0) == Buttons{ 0, BTN_B } && filter(BTN_R, 0) == Buttons{ BTN_R, 0 },
+              "toque rápido em B com o escudo erguido não pode perder o ataque");
+        Check(filter(0, 0) == Buttons{ 0, 0 } && filter(shieldAndSword, shieldAndSword) == Buttons{ BTN_B, BTN_B },
+              "B junto com o R, sem escudo erguido antes, ataca no mesmo frame");
+        Check(movementV2->set_setting_int("linkspan.input.sword_over_shield", 0) == SHIP_NATIVE_OK &&
+                  filter(shieldAndSword, 0) == Buttons{ shieldAndSword, 0 },
+              "desligar a espada acima do escudo deve devolver o R ao Player");
+    }
     std::thread worker([&] {
         Check(!engine->get_player() && !engine->get_save_context() && !movement->get_input_current(0),
               "thread externa deve ser recusada");
@@ -623,6 +665,10 @@ int main(int argc, char** argv) {
                       SHIP_NATIVE_UNSUPPORTED &&
                   ocarina->submit_song(OCARINA_SONG_SARIAS) == SHIP_NATIVE_UNSUPPORTED,
               "ocarina V1 deve recusar thread externa");
+        Check(movementV2->set_setting_int("linkspan.hud.hide_item_button.c_left", 1) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->set_setting_int("linkspan.input.sword_over_shield", 1) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->get_setting_int("linkspan.transient_settings", 7) == 7,
+              "settings transitórios devem recusar thread externa");
     });
     OotNative_PublishOcarinaState(0, 0);
     worker.join();
@@ -684,8 +730,9 @@ int main(int argc, char** argv) {
         response.fill(0);
         auto configured = (*loaded.value)->Call("configure", "0,5", 3, response.data(), uint32_t(response.size()));
         Check(configured.code == ShipLua::ErrorCode::Ok && settingValue == 1 &&
-                  otherSettings["gEnhancements.PersistentMasks"] == 1,
-              "mod deve ativar câmera livre e PersistentMasks pelo serviço genérico de settings");
+                  otherSettings["gEnhancements.PersistentMasks"] == 1 &&
+                  otherSettings["gSettings.FreeLook.InvertYAxis"] == 0,
+              "mod deve ativar câmera livre sem inverter o eixo vertical e PersistentMasks pelo serviço de settings");
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         player.actionFunc = nullptr;
         player.stateFlags1 = 0;
@@ -718,26 +765,53 @@ int main(int argc, char** argv) {
               "mover o analógico direito deve reativar a câmera livre");
         using Binding = std::pair<uint16_t, uint8_t>;
         using AxisBinding = std::tuple<uint16_t, uint8_t, int8_t>;
-        Check(clearedButtons.size() >= 9 && boundButtons.size() >= 6 &&
-                  std::vector<Binding>(boundButtons.end() - 6, boundButtons.end()) ==
-                      std::vector<Binding>{{BTN_A, 1}, {BTN_B, 2}, {BTN_B, 0}, {BTN_CUP, 14}, {BTN_R, 9}, {BTN_L, 4}} &&
-                  !boundAxes.empty() && boundAxes.back() == AxisBinding{BTN_CLEFT, 5, 1},
-              "perfil deve mapear A, Y/B, D-pad direita=C-Up, L=escudo, -=L do N64 e ZR=C-Left");
+        const bool shieldOnZl =
+            std::find(boundAxes.begin(), boundAxes.end(), AxisBinding{BTN_R, 4, 1}) != boundAxes.end();
+        Check(clearedButtons.size() >= 9 && boundButtons.size() >= 5 &&
+                  std::vector<Binding>(boundButtons.end() - 5, boundButtons.end()) ==
+                      std::vector<Binding>{{BTN_A, 1}, {BTN_B, 2}, {BTN_B, 0}, {BTN_CUP, 14}, {BTN_L, 4}} &&
+                  shieldOnZl && boundAxes.back() == AxisBinding{BTN_CLEFT, 5, 1},
+              "perfil deve mapear A, Y/B, D-pad direita=C-Up, ZL=escudo, -=L do N64 e ZR=C-Left");
+        Check(LinkSpan_ItemButtonHidden(1) == 0 && LinkSpan_ItemButtonHidden(2) == 1 &&
+                  LinkSpan_ItemButtonHidden(3) == 1 &&
+                  otherSettings.find("gCosmetics.HUD.CDownButton.PosType") == otherSettings.end(),
+              "HUD deve mostrar só o C equipado sem mexer nas CVars de cosméticos");
+        Input swordInput{};
+        swordInput.cur.button = BTN_R | BTN_B;
+        LinkSpan_FilterPlayerInput(&swordInput);
+        Check(swordInput.cur.button == BTN_B, "perfil com escudo no ZL deve dar prioridade à espada");
+        const auto itemMenuState = [&] {
+            response.fill(0);
+            const auto result = (*loaded.value)->Call("hud_item_menu", "", 0, response.data(), uint32_t(response.size()));
+            return result.code == ShipLua::ErrorCode::Ok ? std::string(response.data(), result.size) : std::string("erro");
+        };
         gSaveContext.equips.buttonItems[1] = ITEM_BOW;
         gSaveContext.equips.buttonItems[2] = ITEM_NONE;
         gSaveContext.equips.buttonItems[3] = ITEM_HOOKSHOT;
+        Check(itemMenuState() == "none", "menu de itens deve ficar fechado sem segurar o R");
         gamepadButtons = uint32_t{1} << 10;
-        Check(callUpdate() == "item-c-right" && boundAxes.back() == AxisBinding{BTN_CRIGHT, 5, 1},
-              "R deve levar o ZR ao próximo C com item, pulando C vazio");
-        Check(callUpdate().rfind("item-", 0) != 0, "manter R pressionado não deve trocar de novo");
-        gamepadButtons = 0;
+        Check(callUpdate() == "item-menu" && itemMenuState() == "1;1:3,3:10" && settingValue == 0,
+              "segurar R deve abrir o menu no C equipado, só com os C que têm item, e pausar a câmera livre");
+        play.state.input[0].rel.right_stick_x = 60;
         callUpdate();
+        Check(itemMenuState() == "3;1:3,3:10", "analógico direito para a direita deve pular o C vazio");
+        callUpdate();
+        Check(itemMenuState() == "3;1:3,3:10", "analógico mantido inclinado não deve andar de novo");
+        play.state.input[0].rel.right_stick_x = 0;
+        gamepadButtons = 0;
+        Check(callUpdate() == "item-c-right" && boundAxes.back() == AxisBinding{BTN_CRIGHT, 5, 1} &&
+                  itemMenuState() == "none" && LinkSpan_ItemButtonHidden(1) == 1 && LinkSpan_ItemButtonHidden(3) == 0,
+              "soltar o R deve equipar o destacado no ZR e deixar só ele no HUD");
         gamepadAxes[5] = 32000;
         gamepadButtons = uint32_t{1} << 10;
-        const auto axesWhileHeld = boundAxes.size();
-        Check(callUpdate().rfind("item-", 0) != 0 && boundAxes.size() == axesWhileHeld,
-              "R não deve trocar o C enquanto o ZR está pressionado");
+        callUpdate();
+        play.state.input[0].rel.right_stick_x = -60;
+        callUpdate();
+        play.state.input[0].rel.right_stick_x = 0;
         gamepadButtons = 0;
+        const auto axesWhileHeld = boundAxes.size();
+        Check(callUpdate() == "item-zr-held" && boundAxes.size() == axesWhileHeld,
+              "o menu não deve trocar o C enquanto o ZR está pressionado");
         gamepadAxes[5] = 0;
         callUpdate();
         play.state.frames = 90;
@@ -798,11 +872,19 @@ int main(int argc, char** argv) {
         gamepadButtons = uint32_t{1} << 11;
         callUpdate();
         std::this_thread::sleep_for(std::chrono::milliseconds(430));
-        Check(callUpdate() == "tunic-quick-swap" && quickSwapState() == "tunic;2;1,2,3",
-              "segurar o D-pad cima deve abrir a troca rápida destacando o próximo traje");
+        Check(callUpdate() == "tunic-quick-swap" && quickSwapState() == "tunic;1;1,2,3",
+              "segurar o D-pad cima deve abrir o menu no traje equipado");
         std::this_thread::sleep_for(std::chrono::milliseconds(470));
         callUpdate();
-        Check(quickSwapState() == "tunic;3;1,2,3", "manter segurado deve avançar o destaque");
+        Check(quickSwapState() == "tunic;1;1,2,3", "o menu não deve avançar sozinho");
+        play.state.input[0].rel.right_stick_x = 60;
+        callUpdate();
+        play.state.input[0].rel.right_stick_x = 0;
+        callUpdate();
+        play.state.input[0].rel.right_stick_x = 60;
+        callUpdate();
+        Check(quickSwapState() == "tunic;3;1,2,3", "cada inclinação do analógico direito deve andar uma opção");
+        play.state.input[0].rel.right_stick_x = 0;
         gamepadButtons = 0;
         Check(callUpdate() == "tunic-zora" && CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_ZORA &&
                   quickSwapState() == "none",
@@ -819,6 +901,13 @@ int main(int argc, char** argv) {
         Check(settingValue == 0, "unload deve restaurar a configuração de câmera livre");
         Check(otherSettings["gEnhancements.PersistentMasks"] == 0 && !play.actorCtx.lensActive,
               "unload deve restaurar PersistentMasks e desligar a lente mantida só pelo atalho");
+        Check(otherSettings["gSettings.FreeLook.InvertYAxis"] == 1 && LinkSpan_ItemButtonHidden(1) == 0 &&
+                  LinkSpan_ItemButtonHidden(2) == 0 && LinkSpan_ItemButtonHidden(3) == 0,
+              "unload deve restaurar o eixo vertical e mostrar de novo todos os botões C");
+        Input unloadedInput{};
+        unloadedInput.cur.button = BTN_R | BTN_B;
+        LinkSpan_FilterPlayerInput(&unloadedInput);
+        Check(unloadedInput.cur.button == (BTN_R | BTN_B), "unload deve devolver o escudo ao R");
 
         ShipOotEngineV1 incompatible = *engine;
         incompatible.layout_id = "incompatible";

@@ -32,6 +32,7 @@ extern MessageTableEntry* sJpnMessageEntryTablePtr;
 // Link-Span (OOT-MOVE-004): linkspan.oot.movement v2, em soh/soh/native/OotNativeEngine.cpp.
 s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
 void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha);
+s32 LinkSpan_ItemButtonHidden(s32 button);
 
 #define DO_ACTION_TEX_WIDTH() 48
 #define DO_ACTION_TEX_HEIGHT() 16
@@ -4158,6 +4159,18 @@ void Interface_DrawItemButtons(PlayState* play) {
         C_Down_BTN_Pos[0] = OTRGetRectDimensionFromRightEdge(C_Down_BTN_Pos_ori[0]);
     }
 
+    // Link-Span (OOT-MOVE-006): botão C ocultado por provider nativo, só em memória. Fica fora
+    // da tela como na posição "oculto" dos cosméticos; a seta e o ícone também são pulados.
+    if (LinkSpan_ItemButtonHidden(1)) {
+        C_Left_BTN_Pos[0] = -9999;
+    }
+    if (LinkSpan_ItemButtonHidden(2)) {
+        C_Down_BTN_Pos[0] = -9999;
+    }
+    if (LinkSpan_ItemButtonHidden(3)) {
+        C_Right_BTN_Pos[0] = -9999;
+    }
+
     // Link-Span (OOT-MOVE-004): posição final dos botões C para providers nativos.
     LinkSpan_CaptureItemButton(play, 1, C_Left_BTN_Pos[0], C_Left_BTN_Pos[1], R_ITEM_BTN_WIDTH(1),
                                interfaceCtx->cLeftAlpha);
@@ -4288,7 +4301,7 @@ void Interface_DrawItemButtons(PlayState* play) {
 
     // Empty C Button Arrows
     for (temp = 1; temp < 4; temp++) {
-        if (gSaveContext.equips.buttonItems[temp] > 0xF0) {
+        if (gSaveContext.equips.buttonItems[temp] > 0xF0 && !LinkSpan_ItemButtonHidden(temp)) {
             s16 X_Margins_CL;
             s16 X_Margins_CR;
             s16 X_Margins_CD;
@@ -5556,7 +5569,7 @@ void Interface_Draw(PlayState* play) {
         gDPPipeSync(OVERLAY_DISP++);
 
         // C-Left Button Icon & Ammo Count
-        if (gSaveContext.equips.buttonItems[1] < 0xF0) {
+        if (gSaveContext.equips.buttonItems[1] < 0xF0 && !LinkSpan_ItemButtonHidden(1)) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cLeftAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[1]], 1);
@@ -5569,7 +5582,7 @@ void Interface_Draw(PlayState* play) {
         gDPPipeSync(OVERLAY_DISP++);
 
         // C-Down Button Icon & Ammo Count
-        if (gSaveContext.equips.buttonItems[2] < 0xF0) {
+        if (gSaveContext.equips.buttonItems[2] < 0xF0 && !LinkSpan_ItemButtonHidden(2)) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cDownAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[2]], 2);
@@ -5582,7 +5595,7 @@ void Interface_Draw(PlayState* play) {
         gDPPipeSync(OVERLAY_DISP++);
 
         // C-Right Button Icon & Ammo Count
-        if (gSaveContext.equips.buttonItems[3] < 0xF0) {
+        if (gSaveContext.equips.buttonItems[3] < 0xF0 && !LinkSpan_ItemButtonHidden(3)) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cRightAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[3]], 3);

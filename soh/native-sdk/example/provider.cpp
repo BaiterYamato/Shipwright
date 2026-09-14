@@ -20,8 +20,7 @@ constexpr uint8_t SDL_BUTTON_X_NINTENDO = 3;
 constexpr uint8_t SDL_BUTTON_MINUS = 4;
 // Clique do analógico direito (SDL_CONTROLLER_BUTTON_RIGHTSTICK): atalho de lente e máscara.
 constexpr uint8_t SDL_BUTTON_RIGHT_STICK = 8;
-// L e R físicos (SDL_CONTROLLER_BUTTON_LEFTSHOULDER/RIGHTSHOULDER): escudo e seleção de item.
-constexpr uint8_t SDL_BUTTON_L = 9;
+// R físico (SDL_CONTROLLER_BUTTON_RIGHTSHOULDER): segurar abre o menu de itens.
 constexpr uint8_t SDL_BUTTON_R = 10;
 // D-pad direita (SDL_CONTROLLER_BUTTON_DPAD_RIGHT): C-Up nativo, Navi e primeira pessoa.
 constexpr uint8_t SDL_BUTTON_DPAD_RIGHT = 14;
@@ -29,17 +28,34 @@ constexpr uint8_t SDL_BUTTON_DPAD_RIGHT = 14;
 constexpr uint8_t SDL_BUTTON_DPAD_UP = 11;
 constexpr uint8_t SDL_BUTTON_DPAD_DOWN = 12;
 constexpr uint8_t SDL_BUTTON_DPAD_LEFT = 13;
-// ZR (SDL_CONTROLLER_AXIS_TRIGGERRIGHT): usa o item do botão C selecionado.
+// ZL (SDL_CONTROLLER_AXIS_TRIGGERLEFT): o Z (mira) do mapeamento padrão e também o escudo.
+constexpr uint8_t SDL_AXIS_ZL = 4;
+// ZR (SDL_CONTROLLER_AXIS_TRIGGERRIGHT): usa o item do botão C equipado.
 constexpr uint8_t SDL_AXIS_ZR = 5;
 constexpr int16_t ZR_HELD = 8000;
 constexpr uint32_t PhysicalButton(uint8_t button) { return uint32_t{ 1 } << button; }
 constexpr const char* FREE_LOOK_SETTING = "gSettings.FreeLook.Enabled";
+// Sem a chave na config, o SoH usa o eixo vertical invertido (z_camera.c, Camera_FreeLook).
+constexpr const char* FREE_LOOK_INVERT_Y_SETTING = "gSettings.FreeLook.InvertYAxis";
 constexpr const char* PERSISTENT_MASKS_SETTING = "gEnhancements.PersistentMasks";
+// Settings transitórios do host: ficam só em memória e nunca vão para a config. A sonda
+// devolve a soma dos recursos que o host suporta.
+constexpr const char* TRANSIENT_SETTINGS_PROBE = "linkspan.transient_settings";
+constexpr int32_t TRANSIENT_HIDE_ITEM_BUTTONS = 1;
+constexpr int32_t TRANSIENT_SWORD_OVER_SHIELD = 2;
+// Com B pressionado, o host não entrega o R ao Player: o escudo do ZL baixa para a espada.
+constexpr const char* SWORD_OVER_SHIELD_SETTING = "linkspan.input.sword_over_shield";
+constexpr const char* HIDDEN_ITEM_BUTTON_SETTINGS[] = { nullptr, "linkspan.hud.hide_item_button.c_left",
+                                                        "linkspan.hud.hide_item_button.c_down",
+                                                        "linkspan.hud.hide_item_button.c_right" };
 // Toque rápido no R3 alterna a lente; segurar por este tempo alterna a máscara.
 constexpr long long SHORTCUT_HOLD_MILLISECONDS = 400;
-// Segurar o D-pad cima/baixo por este tempo abre a troca rápida, que avança a cada passo.
+// Segurar o D-pad cima/baixo por este tempo abre o menu de traje ou botas.
 constexpr long long QUICK_SWAP_HOLD_MILLISECONDS = 400;
-constexpr long long QUICK_SWAP_STEP_MILLISECONDS = 450;
+// Nos menus, o analógico direito anda uma opção ao passar de MENU_STICK_PRESS e só anda
+// de novo depois de voltar para dentro de MENU_STICK_RELEASE.
+constexpr int MENU_STICK_PRESS = 45;
+constexpr int MENU_STICK_RELEASE = 20;
 constexpr const char* TUNIC_RESULTS[] = { "tunic-blocked", "tunic-kokiri", "tunic-goron", "tunic-zora" };
 constexpr const char* BOOTS_RESULTS[] = { "boots-blocked", "boots-kokiri", "boots-iron", "boots-hover" };
 // Botão virtual de cada índice de SaveContext.equips.buttonItems (1..3 = C).
@@ -53,8 +69,15 @@ struct EquipGesture {
     bool quickSwap = false;
     uint8_t highlight = 0;
     uint8_t last = 0;
+    int8_t stickLatch = 0;
     std::chrono::steady_clock::time_point pressedAt{};
-    std::chrono::steady_clock::time_point lastStep{};
+};
+
+// Menu do R: destaque entre C-Left, C-Down e C-Right, na ordem do HUD.
+struct ItemMenu {
+    bool open = false;
+    uint8_t highlight = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT;
+    int8_t stickLatch = 0;
 };
 
 struct Mod {
@@ -72,16 +95,22 @@ struct Mod {
     bool faceBindingsApplied = false;
     bool freeLookApplied = false;
     int32_t previousFreeLook = 0;
+    bool invertYApplied = false;
+    int32_t previousInvertY = 1;
     uint32_t cameraFollowDelayMilliseconds = 500;
     bool cameraFreeLookActive = false;
+    bool cameraWaitCenter = false;
     std::chrono::steady_clock::time_point lastCameraInput = std::chrono::steady_clock::now();
     bool persistentMasksApplied = false;
     int32_t previousPersistentMasks = 0;
+    bool itemHudApplied = false;
+    bool swordOverShieldApplied = false;
     bool shortcutWasDown = false;
     bool shortcutHoldFired = false;
     std::chrono::steady_clock::time_point shortcutPressedAt{};
     uint8_t selectedItemButton = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT;
     bool selectWasDown = false;
+    ItemMenu itemMenu{};
     bool ocarinaWasDown = false;
     EquipGesture tunic{};
     EquipGesture boots{};
@@ -89,18 +118,51 @@ struct Mod {
 
 enum class CameraChange { None, FreeLook, Automatic };
 
+// Um passo por inclinação do analógico direito: -1 esquerda, +1 direita, 0 parado.
+int ReadMenuStep(const Mod& mod, int8_t& latch) {
+    const int x = mod.movement->get_right_stick_x(0);
+    if (latch != 0) {
+        if (x > -MENU_STICK_RELEASE && x < MENU_STICK_RELEASE) latch = 0;
+        return 0;
+    }
+    if (x >= MENU_STICK_PRESS) {
+        latch = 1;
+        return 1;
+    }
+    if (x <= -MENU_STICK_PRESS) {
+        latch = -1;
+        return -1;
+    }
+    return 0;
+}
+
 // Parado, a câmera livre mantém o ângulo escolhido. Quando Link volta a andar com
 // o analógico direito parado há cameraFollowDelayMilliseconds, o FreeLook é
 // desligado e o Camera_Normal1 do jogo assume a partir do eye atual: sem salto,
 // girando para trás de Link com a suavização nativa. Desligar a CVar (em vez de
 // só zerar play->manualCamera) impede que drift do analógico religue o modo manual.
-CameraChange UpdateCamera(Mod& mod) {
+// Com um menu aberto o analógico direito escolhe a opção: o FreeLook fica desligado
+// e, ao fechar, o analógico precisa voltar ao centro antes de mover a câmera.
+CameraChange UpdateCamera(Mod& mod, bool menuOpen) {
     constexpr int CAMERA_DEADZONE = 12;
     constexpr int MOVE_DEADZONE = 20;
     const int x = mod.movement->get_right_stick_x(0);
     const int y = mod.movement->get_right_stick_y(0);
     const auto now = std::chrono::steady_clock::now();
-    if ((x * x) + (y * y) >= CAMERA_DEADZONE * CAMERA_DEADZONE) {
+    const bool stickActive = (x * x) + (y * y) >= CAMERA_DEADZONE * CAMERA_DEADZONE;
+    if (menuOpen) {
+        mod.cameraWaitCenter = true;
+        if (mod.cameraFreeLookActive && mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
+            mod.cameraFreeLookActive = false;
+        }
+        return CameraChange::None;
+    }
+    if (mod.cameraWaitCenter) {
+        if (stickActive) return CameraChange::None;
+        mod.cameraWaitCenter = false;
+        mod.lastCameraInput = now;
+    }
+    if (stickActive) {
         mod.lastCameraInput = now;
         if (!mod.cameraFreeLookActive && mod.movement->set_setting_int(FREE_LOOK_SETTING, 1) == SHIP_NATIVE_OK) {
             mod.cameraFreeLookActive = true;
@@ -160,7 +222,7 @@ ShipNativeStatus Write(ShipNativeWriteFn write, void* writer, const char* text) 
     return write(writer, text, static_cast<uint32_t>(std::strlen(text)));
 }
 
-// ZR segura o botão C selecionado: o jogo o trata como o C nativo, inclusive
+// ZR segura o botão C equipado: o jogo o trata como o C nativo, inclusive
 // mirar arco e gancho enquanto o gatilho continua pressionado.
 ShipNativeStatus BindItemTrigger(Mod& mod, uint8_t itemButton) {
     for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
@@ -170,12 +232,36 @@ ShipNativeStatus BindItemTrigger(Mod& mod, uint8_t itemButton) {
     return mod.movement->bind_gamepad_axis(0, ITEM_BUTTONS[itemButton], SDL_AXIS_ZR, 1);
 }
 
+bool HostSupports(const Mod& mod, int32_t feature) {
+    return (mod.movement->get_setting_int(TRANSIENT_SETTINGS_PROBE, 0) & feature) != 0;
+}
+
+// Só o botão C equipado no ZR aparece no HUD. O host oculta os outros só em memória: nada vai
+// para a config, e um host sem o recurso mantém os três botões visíveis.
+void ApplyItemHud(Mod& mod) {
+    if (!HostSupports(mod, TRANSIENT_HIDE_ITEM_BUTTONS)) return;
+    for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
+        mod.movement->set_setting_int(HIDDEN_ITEM_BUTTON_SETTINGS[button], button == mod.selectedItemButton ? 0 : 1);
+    }
+    mod.itemHudApplied = true;
+}
+
+void RestoreItemHud(Mod& mod) {
+    if (!mod.itemHudApplied) return;
+    for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
+        mod.movement->set_setting_int(HIDDEN_ITEM_BUTTON_SETTINGS[button], 0);
+    }
+    mod.itemHudApplied = false;
+}
+
 ShipNativeStatus ApplyNintendoBindings(Mod& mod) {
     // A físico vira a ação contextual N64 A. Y e B alimentam N64 B: ataque e
     // cancelar/guardar continuam sendo decididos pelo estado normal do jogo.
-    // D-pad direita alimenta o C-Up nativo (Navi e primeira pessoa), L físico o
-    // escudo (R do N64) e "−" o L do N64. R3, R e o resto do D-pad (ocarina, traje e
-    // botas) são lidos fisicamente, sem botão virtual.
+    // D-pad direita alimenta o C-Up nativo (Navi e primeira pessoa). O ZL segue como o
+    // Z (mira) do mapeamento padrão e também ergue o escudo (R do N64); com Y ou B
+    // pressionado, o host baixa o escudo para a espada sair. "−" é o L do N64 e o L físico
+    // fica livre. R3, R e o resto do D-pad (ocarina, traje e botas) são lidos
+    // fisicamente, sem botão virtual.
     const uint16_t remappedButtons[] = { BTN_A, BTN_B, BTN_CUP, BTN_DRIGHT, BTN_R, BTN_L,
                                          BTN_DUP, BTN_DDOWN, BTN_DLEFT };
     for (const uint16_t button : remappedButtons) {
@@ -188,43 +274,83 @@ ShipNativeStatus ApplyNintendoBindings(Mod& mod) {
         mod.movement->bind_gamepad_button(0, BTN_B, SDL_BUTTON_Y_NINTENDO) != SHIP_NATIVE_OK ||
         mod.movement->bind_gamepad_button(0, BTN_B, SDL_BUTTON_B_NINTENDO) != SHIP_NATIVE_OK ||
         mod.movement->bind_gamepad_button(0, BTN_CUP, SDL_BUTTON_DPAD_RIGHT) != SHIP_NATIVE_OK ||
-        mod.movement->bind_gamepad_button(0, BTN_R, SDL_BUTTON_L) != SHIP_NATIVE_OK ||
+        mod.movement->bind_gamepad_axis(0, BTN_R, SDL_AXIS_ZL, 1) != SHIP_NATIVE_OK ||
         mod.movement->bind_gamepad_button(0, BTN_L, SDL_BUTTON_MINUS) != SHIP_NATIVE_OK ||
         BindItemTrigger(mod, mod.selectedItemButton) != SHIP_NATIVE_OK) {
         mod.movement->reload_gamepad_mappings(0);
         return SHIP_NATIVE_FAILURE;
     }
     mod.faceBindingsApplied = true;
+    ApplyItemHud(mod);
+    if (!mod.swordOverShieldApplied && HostSupports(mod, TRANSIENT_SWORD_OVER_SHIELD) &&
+        mod.movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 1) == SHIP_NATIVE_OK) {
+        mod.swordOverShieldApplied = true;
+    }
     return SHIP_NATIVE_OK;
 }
 
-// Próximo botão C com item, na ordem C-Left, C-Down, C-Right.
-uint8_t NextItemButton(uint8_t current, const SaveContext& save) {
-    for (uint8_t step = 1; step <= 3; ++step) {
-        const uint8_t candidate = static_cast<uint8_t>((current - 1 + step) % 3 + 1);
-        if (save.equips.buttonItems[candidate] != ITEM_NONE) return candidate;
+bool HasItem(const SaveContext& save, uint8_t button) {
+    return save.equips.buttonItems[button] != ITEM_NONE;
+}
+
+uint8_t FirstItemButton(const SaveContext& save) {
+    for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
+        if (HasItem(save, button)) return button;
+    }
+    return 0;
+}
+
+// Próximo botão C com item na direção pedida, sem dar a volta.
+uint8_t StepItemButton(uint8_t current, int direction, const SaveContext& save) {
+    for (int candidate = current + direction;
+         candidate >= LINKSPAN_OOT_ITEM_BUTTON_C_LEFT && candidate <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT;
+         candidate += direction) {
+        if (HasItem(save, static_cast<uint8_t>(candidate))) return static_cast<uint8_t>(candidate);
     }
     return current;
 }
 
-// R troca o botão C usado pelo ZR. Com o ZR pressionado não troca: soltaria o item em uso.
+// Segurar R abre o menu no botão C equipado; o analógico direito anda para os lados e
+// soltar o R equipa o destacado no ZR. Com o ZR pressionado a troca é recusada: soltaria
+// o item em uso.
 const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
     const bool down = (physical & PhysicalButton(SDL_BUTTON_R)) != 0;
     const bool pressed = down && !mod.selectWasDown;
+    const bool released = !down && mod.selectWasDown;
     mod.selectWasDown = down;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (!pressed || !save || mod.movement->get_gamepad_axis(0, SDL_AXIS_ZR) > ZR_HELD) return nullptr;
-    const uint8_t next = NextItemButton(mod.selectedItemButton, *save);
-    if (next == mod.selectedItemButton) return nullptr;
-    if (BindItemTrigger(mod, next) != SHIP_NATIVE_OK) {
+    if (!save) {
+        mod.itemMenu = {};
+        return nullptr;
+    }
+    if (pressed) {
+        const uint8_t start =
+            HasItem(*save, mod.selectedItemButton) ? mod.selectedItemButton : FirstItemButton(*save);
+        if (!start) return "item-menu-empty";
+        mod.itemMenu = ItemMenu{ true, start, 0 };
+        return "item-menu";
+    }
+    if (!mod.itemMenu.open) return nullptr;
+    if (down) {
+        if (const int step = ReadMenuStep(mod, mod.itemMenu.stickLatch)) {
+            mod.itemMenu.highlight = StepItemButton(mod.itemMenu.highlight, step, *save);
+        }
+        return nullptr;
+    }
+    mod.itemMenu.open = false;
+    const uint8_t target = mod.itemMenu.highlight;
+    if (!released || target == mod.selectedItemButton) return nullptr;
+    if (mod.movement->get_gamepad_axis(0, SDL_AXIS_ZR) > ZR_HELD) return "item-zr-held";
+    if (BindItemTrigger(mod, target) != SHIP_NATIVE_OK) {
         mod.movement->reload_gamepad_mappings(0);
         mod.faceBindingsApplied = false;
         return "mapping-error";
     }
-    mod.selectedItemButton = next;
-    return next == LINKSPAN_OOT_ITEM_BUTTON_C_LEFT   ? "item-c-left"
-           : next == LINKSPAN_OOT_ITEM_BUTTON_C_DOWN ? "item-c-down"
-                                                     : "item-c-right";
+    mod.selectedItemButton = target;
+    ApplyItemHud(mod);
+    return target == LINKSPAN_OOT_ITEM_BUTTON_C_LEFT   ? "item-c-left"
+           : target == LINKSPAN_OOT_ITEM_BUTTON_C_DOWN ? "item-c-down"
+                                                       : "item-c-right";
 }
 
 // D-pad esquerda tira a ocarina do inventário sem ocupar botão C.
@@ -259,6 +385,14 @@ uint8_t NextEquip(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t
     return from;
 }
 
+// Próximo equipamento disponível na direção pedida, na ordem dos ícones (1..3), sem dar a volta.
+uint8_t StepEquip(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t from, int direction) {
+    for (int candidate = from + direction; candidate >= 1 && candidate <= 3; candidate += direction) {
+        if (EquipAvailable(mod, save, type, static_cast<uint8_t>(candidate))) return static_cast<uint8_t>(candidate);
+    }
+    return from;
+}
+
 // Toque: o traje volta ao último usado e as botas alternam com as Kokiri. Sem histórico,
 // vai do Kokiri para o primeiro especial disponível.
 uint8_t TapTarget(const Mod& mod, const SaveContext& save, uint8_t type, const EquipGesture& gesture) {
@@ -268,8 +402,8 @@ uint8_t TapTarget(const Mod& mod, const SaveContext& save, uint8_t type, const E
     return current != 1 ? 1 : NextEquip(mod, save, type, 1);
 }
 
-// D-pad cima (traje) e baixo (botas): toque troca; segurar percorre as opções com o HUD e
-// veste a destacada ao soltar.
+// D-pad cima (traje) e baixo (botas): toque troca; segurar abre o menu no equipado, o
+// analógico direito escolhe para os lados e soltar veste o destacado.
 const char* UpdateEquipGesture(Mod& mod, EquipGesture& gesture, uint32_t physical, uint8_t button, uint8_t type) {
     const bool down = (physical & PhysicalButton(button)) != 0;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
@@ -289,18 +423,17 @@ const char* UpdateEquipGesture(Mod& mod, EquipGesture& gesture, uint32_t physica
     if (down && !gesture.quickSwap &&
         std::chrono::duration_cast<std::chrono::milliseconds>(now - gesture.pressedAt).count() >=
             QUICK_SWAP_HOLD_MILLISECONDS) {
-        const uint8_t next = NextEquip(mod, *save, type, current);
-        if (next != current) {
+        // O menu só abre com outra opção disponível além da atual.
+        if (NextEquip(mod, *save, type, current) != current) {
             gesture.quickSwap = true;
-            gesture.highlight = next;
-            gesture.lastStep = now;
+            gesture.highlight = current;
+            gesture.stickLatch = 0;
             result = tunic ? "tunic-quick-swap" : "boots-quick-swap";
         }
-    } else if (down && gesture.quickSwap &&
-               std::chrono::duration_cast<std::chrono::milliseconds>(now - gesture.lastStep).count() >=
-                   QUICK_SWAP_STEP_MILLISECONDS) {
-        gesture.highlight = NextEquip(mod, *save, type, gesture.highlight);
-        gesture.lastStep = now;
+    } else if (down && gesture.quickSwap) {
+        if (const int step = ReadMenuStep(mod, gesture.stickLatch)) {
+            gesture.highlight = StepEquip(mod, *save, type, gesture.highlight, step);
+        }
     }
     if (!down && gesture.wasDown) {
         const uint8_t target = gesture.quickSwap ? gesture.highlight : TapTarget(mod, *save, type, gesture);
@@ -324,13 +457,15 @@ ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t lengt
                                         ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
-    char result[640];
+    char result[768];
     const int size = std::snprintf(result, sizeof(result),
         "perfil=nintendo; X=pulo %.2f; A=contexto/rolar/sprint; Y=espada; B=cancelar; "
-        "ZR=item do C selecionado; R=troca o C; L=escudo; -=L do N64; "
-        "R3=lente (toque)/máscara (segurar); D-pad direita=C-Up; D-pad esquerda=ocarina; "
-        "D-pad cima=traje (toque: último; segurar: escolher); D-pad baixo=botas (toque: Kokiri; segurar: escolher); "
-        "câmera=stick direito, volta a seguir ao andar após %.2fs; gamepad=%s",
+        "ZR=item do C equipado; R (segurar)=menu de itens com o analógico direito; "
+        "ZL=mirar + escudo (Y ataca mesmo defendendo); "
+        "-=L do N64; R3=lente (toque)/máscara (segurar); D-pad direita=C-Up; D-pad esquerda=ocarina; "
+        "D-pad cima=traje (toque: último; segurar: menu); D-pad baixo=botas (toque: Kokiri; segurar: menu); "
+        "HUD=só o C equipado; câmera=stick direito com vertical normal, volta a seguir ao andar após %.2fs; "
+        "gamepad=%s",
         double(JUMP_VELOCITY), double(mod.cameraFollowDelayMilliseconds) / 1000.0,
         mod.movement->has_gamepad(0) ? "conectado" : "ausente");
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
@@ -366,6 +501,14 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
         mod.freeLookApplied = true;
         mod.cameraFreeLookActive = true;
         mod.lastCameraInput = std::chrono::steady_clock::now();
+    }
+    // Analógico direito para cima olha para cima: o padrão do SoH sem a chave é invertido.
+    if (!mod.invertYApplied) {
+        mod.previousInvertY = mod.movement->get_setting_int(FREE_LOOK_INVERT_Y_SETTING, 1);
+        if (mod.movement->set_setting_int(FREE_LOOK_INVERT_Y_SETTING, 0) != SHIP_NATIVE_OK) {
+            return SHIP_NATIVE_FAILURE;
+        }
+        mod.invertYApplied = true;
     }
     // A máscara colocada pelo R3 fica fora dos botões C; sem PersistentMasks o
     // jogo a tiraria (Player_ProcessItemButtons) e o host recusa o uso.
@@ -647,7 +790,7 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, 
     return Write(write, writer, report);
 }
 
-// Posição do botão C selecionado para o anel do HUD Lua: "x,y,lado,alpha" ou "none".
+// Posição do botão C equipado para o anel do HUD Lua: "x,y,lado,alpha" ou "none".
 ShipNativeStatus SHIP_NATIVE_CALL HudSelection(void* user, const char*, uint32_t length,
                                               ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -666,7 +809,7 @@ ShipNativeStatus SHIP_NATIVE_CALL HudSelection(void* user, const char*, uint32_t
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
-// Troca rápida aberta para o HUD Lua: "tunic;<destaque>;<opções>", "boots;..." ou "none".
+// Menu de traje/botas aberto para o HUD Lua: "tunic;<destaque>;<opções>", "boots;..." ou "none".
 ShipNativeStatus SHIP_NATIVE_CALL HudQuickSwap(void* user, const char*, uint32_t length,
                                               ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -687,6 +830,26 @@ ShipNativeStatus SHIP_NATIVE_CALL HudQuickSwap(void* user, const char*, uint32_t
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
+// Menu do R aberto para o HUD Lua: "<destaque>;<botão>:<item>,..." com os C que têm item, ou "none".
+ShipNativeStatus SHIP_NATIVE_CALL HudItemMenu(void* user, const char*, uint32_t length,
+                                             ShipNativeWriteFn write, void* writer) {
+    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!save || !mod.itemMenu.open) return Write(write, writer, "none");
+    char result[48];
+    int size = std::snprintf(result, sizeof(result), "%u;", unsigned(mod.itemMenu.highlight));
+    bool first = true;
+    for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT;
+         button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT && size > 0 && size < int(sizeof(result)) - 9; ++button) {
+        if (!HasItem(*save, button)) continue;
+        size += std::snprintf(result + size, sizeof(result) - size, first ? "%u:%u" : ",%u:%u", unsigned(button),
+                              unsigned(save->equips.buttonItems[button]));
+        first = false;
+    }
+    return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length,
                                         ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -699,32 +862,30 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         mod.shortcutWasDown = false;
         mod.shortcutHoldFired = false;
         mod.selectWasDown = false;
+        mod.itemMenu = {};
         mod.ocarinaWasDown = false;
         mod.tunic.wasDown = mod.tunic.quickSwap = false;
         mod.boots.wasDown = mod.boots.quickSwap = false;
         return Write(write, writer, "unavailable");
     }
-    const CameraChange cameraChange = UpdateCamera(mod);
 
     const bool hasGamepad = mod.movement->has_gamepad(0) != 0;
     if (hasGamepad && !mod.faceBindingsApplied && ApplyNintendoBindings(mod) != SHIP_NATIVE_OK) {
         return Write(write, writer, "mapping-error");
     }
     const uint32_t physical = hasGamepad ? mod.movement->get_gamepad_buttons(0) : 0;
-    if (const char* selection = UpdateItemSelection(mod, physical)) {
-        return Write(write, writer, selection);
-    }
-    if (const char* shortcut = UpdateShortcut(mod, *player, physical)) {
-        return Write(write, writer, shortcut);
-    }
-    if (const char* ocarina = UpdateOcarina(mod, physical)) {
-        return Write(write, writer, ocarina);
-    }
-    if (const char* tunic = UpdateEquipGesture(mod, mod.tunic, physical, SDL_BUTTON_DPAD_UP, EQUIP_TYPE_TUNIC)) {
-        return Write(write, writer, tunic);
-    }
-    if (const char* boots = UpdateEquipGesture(mod, mod.boots, physical, SDL_BUTTON_DPAD_DOWN, EQUIP_TYPE_BOOTS)) {
-        return Write(write, writer, boots);
+    // Todos os gestos avançam a cada frame; o primeiro evento do frame vai para o log.
+    const char* const events[] = {
+        UpdateItemSelection(mod, physical),
+        UpdateShortcut(mod, *player, physical),
+        UpdateOcarina(mod, physical),
+        UpdateEquipGesture(mod, mod.tunic, physical, SDL_BUTTON_DPAD_UP, EQUIP_TYPE_TUNIC),
+        UpdateEquipGesture(mod, mod.boots, physical, SDL_BUTTON_DPAD_DOWN, EQUIP_TYPE_BOOTS),
+    };
+    const bool menuOpen = mod.itemMenu.open || mod.tunic.quickSwap || mod.boots.quickSwap;
+    const CameraChange cameraChange = UpdateCamera(mod, menuOpen);
+    for (const char* event : events) {
+        if (event) return Write(write, writer, event);
     }
     const uint16_t current = mod.movement->get_input_current(0);
     const bool jumpDown = hasGamepad
@@ -857,6 +1018,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "registry_probe", RegistryProbe, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_selection", HudSelection, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_quick_swap", HudQuickSwap, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "hud_item_menu", HudItemMenu, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
         registry->destroy_space(mod->registrySpace);
         delete mod;
@@ -878,6 +1040,10 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* mod = static_cast<Mod*>(instance);
     if (mod && mod->faceBindingsApplied) mod->movement->reload_gamepad_mappings(0);
     if (mod && mod->freeLookApplied) mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
+    if (mod && mod->invertYApplied)
+        mod->movement->set_setting_int(FREE_LOOK_INVERT_Y_SETTING, mod->previousInvertY);
+    if (mod) RestoreItemHud(*mod);
+    if (mod && mod->swordOverShieldApplied) mod->movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 0);
     if (mod && mod->persistentMasksApplied)
         mod->movement->set_setting_int(PERSISTENT_MASKS_SETTING, mod->previousPersistentMasks);
     // Lente fora dos botões só seguia ligada pelo atalho: desligá-la deixa o

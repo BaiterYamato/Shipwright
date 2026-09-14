@@ -265,31 +265,55 @@ O mod lê as posições físicas do Switch Pro: B=`SDL A`, A=`SDL B`, Y=`SDL X` 
 X=`SDL Y`. Os bindings são aplicados somente em memória e o mapeamento do usuário
 é restaurado quando o mod descarrega.
 
-O mod habilita `FreeLook` e `PersistentMasks` enquanto está carregado e restaura
-as opções anteriores no unload. O analógico direito controla a câmera livre:
-parada, ela mantém o ângulo; quando Link volta a andar com o analógico direito
-parado há 500 ms (`configure "0,500"`, aceita 0 a 60000), o `FreeLook` é desligado
-e a câmera automática assume a partir da posição atual, sem salto. O acesso a
-settings inteiros é uma primitiva genérica do SDK, não uma regra fixa deste mod.
+O mod habilita `FreeLook` e `PersistentMasks` e fixa `FreeLook.InvertYAxis` em 0
+enquanto está carregado; no unload, restaura as opções anteriores. O analógico
+direito controla a câmera livre com o eixo vertical normal (sem a chave na config,
+o SoH inverte o eixo): parada, ela mantém o ângulo; quando Link volta a andar com
+o analógico direito parado há 500 ms (`configure "0,500"`, aceita 0 a 60000), o
+`FreeLook` é desligado e a câmera automática assume a partir da posição atual,
+sem salto. O acesso a settings inteiros é uma primitiva genérica do SDK, não uma
+regra fixa deste mod.
 
-Na versão 0.2.8:
+Alguns nomes não viram CVar: o host os intercepta e guarda só em memória, então
+nada vai para a config, e a troca da ponte de settings, quando os mods
+descarregam, zera tudo. `linkspan.transient_settings` devolve a soma dos recursos
+que o host suporta:
+
+- `1`: `linkspan.hud.hide_item_button.c_left`, `.c_down` e `.c_right` com 1
+  ocultam o botão C no HUD (botão, seta de vazio, ícone e munição);
+- `2`: `linkspan.input.sword_over_shield` com 1 tira o R do input do Player
+  enquanto B está pressionado. Se B foi apertado com o escudo erguido, o aperto
+  chega no frame seguinte, depois de o escudo baixar; sem isso o OoT não ataca
+  defendendo.
+
+As CVars de cosméticos do SoH não servem para ocultar botões: qualquer opção
+mudada no menu salva a config com o valor do mod.
+
+Na versão 0.2.9:
 
 1. X executa o pulo dedicado;
 2. A permanece como ação contextual e produz o rolamento normal quando Link se
    move; manter A até o fim do rolamento entra em sprint e soltar A encerra;
 3. Y aciona a função normal de espada e B a de cancelar/guardar;
-4. ZR usa o item do botão C selecionado e mira enquanto segurado;
-5. R troca o C do ZR na ordem C-Left, C-Down, C-Right, pula C vazio e não troca
-   com ZR pressionado; um anel branco marca o C selecionado no HUD;
-6. L físico é o escudo (R do N64) e `-` é o L do N64;
+4. ZR usa o item do botão C equipado e mira enquanto segurado. O HUD mostra só
+   esse botão C, com um anel branco; o host oculta os outros só em memória,
+   sem tocar na config;
+5. segurar R abre o menu de itens com os botões C que têm item, a partir do
+   equipado. O analógico direito anda para a esquerda e para a direita, e soltar o
+   R equipa o destacado no ZR; com o ZR pressionado a troca é recusada;
+6. ZL mira (Z do N64) e ergue o escudo (R do N64). Y ou B pressionado baixa o
+   escudo, e a espada sai mesmo defendendo. `-` é o L do N64 e o L físico fica livre;
 7. toque no R3 liga ou desliga a Lente da Verdade sem ocupar um C; segurar R3 por
    400 ms coloca ou tira a máscara do slot infantil;
 8. D-pad direita é o C-Up nativo: Navi e primeira pessoa;
 9. D-pad esquerda tira a ocarina do inventário sem ocupar um C;
 10. D-pad cima veste o traje: o toque volta ao último usado;
 11. D-pad baixo alterna as botas com as Kokiri;
-12. segurar D-pad cima ou baixo por 400 ms abre a troca rápida com os ícones no
-    HUD; o destaque avança a cada 450 ms e o destacado é vestido ao soltar.
+12. segurar D-pad cima ou baixo por 400 ms abre o menu com os ícones no HUD, a
+    partir do equipado. O analógico direito escolhe para os lados, sem ciclo
+    automático, e o destacado é vestido ao soltar;
+13. com um menu aberto o analógico direito não gira a câmera; depois de fechar, a
+    câmera só volta a responder quando o analógico passa pelo centro.
 
 Hotbars permanecem nas próximas fatias.
 
