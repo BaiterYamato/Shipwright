@@ -123,6 +123,19 @@ bool swordPending = false;
 // do D-pad saem; o provider desenha os seus na posição que get_item_button_rect devolve para 4..7.
 constexpr const char* DPAD_HUD_SETTING = "linkspan.hud.dpad";
 bool dpadHudOwned = false;
+// Fundo do D-pad tomado: o Interface_Draw só o captura, e o hook do HUD Lua do frame seguinte o desenha
+// antes dos callbacks.
+struct CapturedDpadBackground {
+    int16_t x = 0;
+    int16_t y = 0;
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    uint8_t alpha = 0;
+    uint32_t frame = 0;
+    bool valid = false;
+};
+CapturedDpadBackground dpadBackground{};
 int HiddenItemButtonIndex(const char* name) {
     for (int button = 1; button <= 3; ++button) {
         if (std::strcmp(name, HIDDEN_ITEM_BUTTON_SETTINGS[button]) == 0) return button;
@@ -516,6 +529,7 @@ void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
     hiddenItemButtons = {};
     swordOverShield = shieldDelivered = swordPending = false;
     dpadHudOwned = false;
+    dpadBackground = {};
 }
 
 void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
@@ -526,6 +540,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
     lensKeptWithoutButton = false;
     itemButtons = {};
+    dpadBackground = {};
     ocarinaActive.store(0);
     ocarinaSongFlags.store(0);
     pendingOcarinaSong.store(-1);
@@ -590,6 +605,29 @@ extern "C" s32 LinkSpan_ItemButtonHidden(s32 button) {
 // Chamada por Interface_Draw (z_parameter.c) antes de desenhar o D-pad do HUD.
 extern "C" s32 LinkSpan_DpadHudOwned(void) {
     return ShipLuaHost::dpadHudOwned ? 1 : 0;
+}
+
+// Chamada por Interface_Draw (z_parameter.c) no lugar do desenho do fundo do D-pad tomado.
+extern "C" void LinkSpan_CaptureDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u16 alpha) {
+    if (!play) return;
+    ShipLuaHost::dpadBackground = { x, y, r, g, b, static_cast<uint8_t>(std::min<u16>(alpha, 255)),
+                                    play->state.frames, true };
+}
+
+// Para o hook do HUD Lua (ShipLuaBootstrap.cpp), que roda antes do Interface_Draw: vale a captura do frame
+// anterior, e só enquanto um provider mantém o D-pad tomado.
+extern "C" s32 LinkSpan_OwnedDpadBackground(PlayState* play, s16* x, s16* y, u8* r, u8* g, u8* b, u8* alpha) {
+    const auto& captured = ShipLuaHost::dpadBackground;
+    if (!play || !x || !y || !r || !g || !b || !alpha || !ShipLuaHost::dpadHudOwned || !captured.valid ||
+        play->state.frames - captured.frame > 1)
+        return 0;
+    *x = captured.x;
+    *y = captured.y;
+    *r = captured.r;
+    *g = captured.g;
+    *b = captured.b;
+    *alpha = captured.alpha;
+    return 1;
 }
 
 // Chamada por Player_Update (z_player.c) com a cópia do input do Player. O OoT não ataca com o

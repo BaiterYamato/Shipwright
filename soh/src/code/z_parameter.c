@@ -34,6 +34,7 @@ s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
 void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha);
 s32 LinkSpan_ItemButtonHidden(s32 button);
 s32 LinkSpan_DpadHudOwned(void);
+void LinkSpan_CaptureDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u16 alpha);
 
 #define DO_ACTION_TEX_WIDTH() 48
 #define DO_ACTION_TEX_HEIGHT() 16
@@ -4702,6 +4703,19 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
+// Link-Span (OOT-MOVE-006): fundo do D-pad para o hook do HUD Lua, com o mesmo desenho do Interface_Draw.
+void LinkSpan_DrawDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u8 alpha) {
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, r, g, b, alpha);
+    gDPLoadTextureBlock(OVERLAY_DISP++, gDPadTex, G_IM_FMT_IA, G_IM_SIZ_16b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+    gSPWideTextureRectangle(OVERLAY_DISP++, x << 2, y << 2, (x + 32) << 2, (y + 32) << 2, G_TX_RENDERTILE, 0, 0,
+                            (1 << 10), (1 << 10));
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
 const char* _gAmmoDigit0Tex[] = { gAmmoDigit0Tex, gAmmoDigit1Tex, gAmmoDigit2Tex,         gAmmoDigit3Tex,
                                   gAmmoDigit4Tex, gAmmoDigit5Tex, gAmmoDigit6Tex,         gAmmoDigit7Tex,
                                   gAmmoDigit8Tex, gAmmoDigit9Tex, gUnusedAmmoDigitHalfTex };
@@ -5664,7 +5678,14 @@ void Interface_Draw(PlayState* play) {
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
 
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, dPadColor.r, dPadColor.g, dPadColor.b, dpadAlpha);
-            if (fullUi) {
+            // Link-Span (OOT-MOVE-006): o HUD Lua é emitido antes deste Interface_Draw. Com o D-pad tomado, o
+            // fundo só é capturado aqui e sai no hook do HUD, antes dos ícones do provider, para não cobri-los.
+            s32 linkSpanDpad = LinkSpan_DpadHudOwned();
+            if (fullUi && linkSpanDpad) {
+                LinkSpan_CaptureDpadBackground(play, DpadPosX, DpadPosY, dPadColor.r, dPadColor.g, dPadColor.b,
+                                               dpadAlpha);
+            }
+            if (fullUi && !linkSpanDpad) {
                 gDPLoadTextureBlock(OVERLAY_DISP++, gDPadTex, G_IM_FMT_IA, G_IM_SIZ_16b, 32, 32, 0,
                                     G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
                                     G_TX_NOLOD, G_TX_NOLOD);
@@ -5674,7 +5695,6 @@ void Interface_Draw(PlayState* play) {
 
             // Link-Span (OOT-MOVE-006): com o D-pad tomado, os ícones dos itens do D-pad dão lugar aos do
             // provider, que só precisa da posição de cada direção.
-            s32 linkSpanDpad = LinkSpan_DpadHudOwned();
             if (linkSpanDpad) {
                 for (s16 dpadButton = 4; dpadButton < 8; dpadButton++) {
                     Interface_DrawItemIconTexture(play, NULL, dpadButton);

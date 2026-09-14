@@ -285,10 +285,11 @@ que o host suporta:
   enquanto B está pressionado. Se B foi apertado com o escudo erguido, o aperto
   chega no frame seguinte, depois de o escudo baixar; sem isso o OoT não ataca
   defendendo;
-- `4`: `linkspan.hud.dpad` com 1 desenha o fundo do D-pad do HUD mesmo sem
-  `DpadEquips` e tira os ícones dos itens do D-pad. O provider desenha os seus
-  nas posições que `get_item_button_rect` devolve para 4 a 7 (cima, baixo,
-  esquerda e direita).
+- `4`: `linkspan.hud.dpad` com 1 mostra o D-pad do HUD mesmo sem `DpadEquips` e
+  tira os ícones dos itens do D-pad. O fundo passa a sair no começo do
+  `hook.oot.hud.draw`, que roda antes do `Interface_Draw`, para os ícones do
+  provider ficarem por cima; o provider os desenha nas posições que
+  `get_item_button_rect` devolve para 4 a 7 (cima, baixo, esquerda e direita).
 
 As CVars de cosméticos do SoH não servem para ocultar botões: qualquer opção
 mudada no menu salva a config com o valor do mod.

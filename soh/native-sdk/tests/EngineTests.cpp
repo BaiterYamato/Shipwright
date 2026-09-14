@@ -188,6 +188,8 @@ extern "C" void Actor_Kill(Actor* actor) { killed = actor; }
 extern "C" s32 LinkSpan_ItemButtonHidden(s32 button);
 extern "C" void LinkSpan_FilterPlayerInput(Input* input);
 extern "C" s32 LinkSpan_DpadHudOwned(void);
+extern "C" void LinkSpan_CaptureDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u16 alpha);
+extern "C" s32 LinkSpan_OwnedDpadBackground(PlayState* play, s16* x, s16* y, u8* r, u8* g, u8* b, u8* alpha);
 extern "C" void Player_Action_Roll(Player*, PlayState*) {}
 extern "C" void Player_SetupRoll(Player* target, PlayState*) {
     target->actionFunc = Player_Action_Roll;
@@ -848,6 +850,18 @@ int main(int argc, char** argv) {
                   movementV2->get_item_button_rect(8, &rectX, &rectY, &rectSide, &rectAlpha) ==
                       SHIP_NATIVE_INVALID_ARGUMENT,
               "hud_dpad deve devolver as quatro direções do D-pad com traje, botas e ocarina");
+        LinkSpan_CaptureDpadBackground(&play, 271, 55, 255, 200, 100, 180);
+        s16 backgroundX = 0;
+        s16 backgroundY = 0;
+        u8 backgroundR = 0;
+        u8 backgroundG = 0;
+        u8 backgroundB = 0;
+        u8 backgroundAlpha = 0;
+        Check(LinkSpan_OwnedDpadBackground(&play, &backgroundX, &backgroundY, &backgroundR, &backgroundG, &backgroundB,
+                                           &backgroundAlpha) == 1 &&
+                  backgroundX == 271 && backgroundY == 55 && backgroundR == 255 && backgroundG == 200 &&
+                  backgroundB == 100 && backgroundAlpha == 180,
+              "fundo do D-pad tomado deve ficar para o hook do HUD Lua desenhar antes dos ícones");
         play.state.frames = 95;
         response.fill(0);
         hud = (*loaded.value)->Call("hud_selection", "", 0, response.data(), uint32_t(response.size()));
@@ -937,6 +951,10 @@ int main(int argc, char** argv) {
         LinkSpan_FilterPlayerInput(&unloadedInput);
         Check(unloadedInput.cur.button == (BTN_R | BTN_B), "unload deve devolver o escudo ao R");
         Check(LinkSpan_DpadHudOwned() == 0, "unload deve devolver o D-pad do HUD");
+        LinkSpan_CaptureDpadBackground(&play, 271, 55, 255, 200, 100, 180);
+        Check(LinkSpan_OwnedDpadBackground(&play, &backgroundX, &backgroundY, &backgroundR, &backgroundG, &backgroundB,
+                                           &backgroundAlpha) == 0,
+              "sem D-pad tomado o fundo fica com o Interface_Draw");
 
         ShipOotEngineV1 incompatible = *engine;
         incompatible.layout_id = "incompatible";

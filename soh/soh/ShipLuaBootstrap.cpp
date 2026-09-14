@@ -191,7 +191,9 @@ ShipNativeStatus NativeMountResourceArchive(const char* archivePath, uint64_t* h
                   !std::filesystem::is_directory(absolute, error))) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    const auto mounted = archives->AddArchive(absolute.string());
+    // Barras normais: o FolderArchive casa o caminho base com a listagem em generic_string, e com barra
+    // invertida a pasta montava sem nenhum arquivo.
+    const auto mounted = archives->AddArchive(absolute.generic_string());
     if (!mounted) return SHIP_NATIVE_FAILURE;
     for (const auto& [hash, path] : *mounted->ListFiles()) {
         (void)hash;
@@ -5252,10 +5254,11 @@ int LuaAttachModel(lua_State* state) {
 // host só oferece "desenhe um retângulo colorido" e "escreva um texto"; o que
 // isso significa é decisão inteira do mod.
 //
-// Ancorado no evento hook.oot.hud.draw, disparado de OnPlayDrawEnd. Emitir em
-// OVERLAY_DISP é o que garante a ordem correta: os buckets de display list
-// (POLY_OPA/POLY_XLU/OVERLAY) são concatenados numa ordem fixa no fim do frame,
-// então o overlay sai por cima do HUD nativo mesmo sendo emitido antes dele.
+// Ancorado no evento hook.oot.hud.draw, disparado de OnPlayDrawEnd, antes de
+// Play_DrawOverlayElements (pausa, Interface_Draw e textbox). O overlay e o HUD
+// nativo vão para o mesmo OVERLAY_DISP na ordem em que são emitidos, então onde
+// os dois se cruzam o HUD nativo sai por cima. Por isso o fundo do D-pad tomado
+// por provider é desenhado aqui, antes dos callbacks.
 //
 // gMagicMeterFillTex é a textura de preenchimento sólido que o próprio medidor
 // de magia usa (z_parameter.c, Interface_DrawMagicBar) — reaproveitá-la evita
@@ -5579,6 +5582,11 @@ int LuaHudDrawText(lua_State* state) {
     return 1;
 }
 
+// D-pad do HUD tomado por provider nativo (OOT-MOVE-006): capturado em OotNativeEngine.cpp e desenhado por
+// z_parameter.c.
+extern "C" s32 LinkSpan_OwnedDpadBackground(PlayState* play, s16* x, s16* y, u8* r, u8* g, u8* b, u8* alpha);
+extern "C" void LinkSpan_DrawDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u8 alpha);
+
 extern "C" void DrawHudOverlay(PlayState* play) {
     if (gModHost == nullptr) {
         return;
@@ -5594,6 +5602,18 @@ extern "C" void DrawHudOverlay(PlayState* play) {
     gHudRectsThisFrame = 0;
     gHudTileDirty = true;
     HudBeginOverlay(play);
+    // O Interface_Draw vem depois deste hook. Com o D-pad tomado por provider, o fundo sai aqui, antes dos
+    // callbacks, para os ícones do mod ficarem por cima dele.
+    s16 dpadX = 0;
+    s16 dpadY = 0;
+    u8 dpadR = 0;
+    u8 dpadG = 0;
+    u8 dpadB = 0;
+    u8 dpadAlpha = 0;
+    if (LinkSpan_OwnedDpadBackground(play, &dpadX, &dpadY, &dpadR, &dpadG, &dpadB, &dpadAlpha) && dpadAlpha) {
+        LinkSpan_DrawDpadBackground(play, dpadX, dpadY, dpadR, dpadG, dpadB, dpadAlpha);
+        HudBeginOverlay(play);
+    }
     gHudDrawActive = true;
     DispatchHookEvent("hook.oot.hud.draw", ShipLua::EventPayload{});
     gHudDrawActive = false;
