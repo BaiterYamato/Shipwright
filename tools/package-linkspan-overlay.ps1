@@ -124,7 +124,8 @@ if ($HostBase) {
     $hostBaseDisplay = $HostBase
 }
 
-$resolvedOutput = [System.IO.Path]::GetFullPath($OutputPath)
+# Relativo ao local do PowerShell, como o Resolve-Path das entradas; GetFullPath usaria o diretório do processo.
+$resolvedOutput = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
 if ([System.IO.Path]::GetExtension($resolvedOutput) -ne '.zip') {
     throw 'OutputPath deve terminar em .zip.'
 }

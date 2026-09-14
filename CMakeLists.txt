@@ -233,6 +233,35 @@ if(NOT spdlog_FOUND)
     FetchContent_MakeAvailable(spdlog)
 endif()
 
+# torch declares tinyxml2 10.0.0 with OVERRIDE_FIND_PACKAGE, so libultraship's
+# find_package(tinyxml2 REQUIRED) links that copy too. vcpkg installs tinyxml2 as well, and its
+# include directory comes before the fetched one in torch, libultraship and soh: every target
+# compiled against the vcpkg header (11.0.0) and linked 10.0.0. 11.0 widened DynArray's counters
+# from int to size_t, so XMLPrinter and XMLDocument changed layout under the library, and
+# XMLPrinter::CStr() handed back the text itself as the pointer (crash on the first scene load
+# with gDeveloperTools.ResourceLogging on). Declaring it here first reuses the installed package,
+# so the header and the library come from the same copy.
+find_package(tinyxml2 CONFIG QUIET)
+if(tinyxml2_FOUND)
+    FetchContent_Declare(
+        tinyxml2
+        GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
+        GIT_TAG 10.0.0
+        FIND_PACKAGE_ARGS CONFIG
+    )
+    FetchContent_MakeAvailable(tinyxml2)
+    # torch links the plain target name that tinyxml2's own CMakeLists creates.
+    if(NOT TARGET tinyxml2)
+        add_library(tinyxml2 INTERFACE)
+        target_link_libraries(tinyxml2 INTERFACE tinyxml2::tinyxml2)
+    endif()
+    message(STATUS "tinyxml2 ${tinyxml2_VERSION}: ${tinyxml2_DIR}")
+elseif(DEFINED _VCPKG_INSTALLED_DIR
+       AND EXISTS "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include/tinyxml2.h")
+    message(FATAL_ERROR "vcpkg has tinyxml2.h but no tinyxml2 CMake package: torch would fetch "
+                        "another tinyxml2 and link it under that header.")
+endif()
+
 set(USE_STANDALONE          OFF CACHE BOOL "" FORCE)  # static lib, no CLI
 set(PORT_VERSION_ENDIANNESS ON  CACHE BOOL "" FORCE)  # 7-byte portVersion
 set(ROM_CRC_BSWAP           OFF CACHE BOOL "" FORCE)

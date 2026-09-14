@@ -71,6 +71,17 @@ gera `build/x64/ship-lua/shiplua_miniz_prefix.h` e o injeta com `/FI`. O Torch d
 de link. Sem o prefixo, o `soh.exe` ligava o ship-lua a essa cópia; o host abria
 normalmente, mas carregava 0 mods em ZIP, sem nenhuma linha de rejeição.
 
+O mesmo arquivo declara o tinyxml2 antes do Torch. O Torch baixa o tinyxml2
+10.0.0 com `OVERRIDE_FIND_PACKAGE`, e a libultraship liga essa cópia. O vcpkg
+também instala o tinyxml2 (11.0.0), e o include dele vem antes do baixado no
+Torch, na libultraship e no soh: todos compilavam com o header 11 e ligavam a
+lib 10. Entre as duas versões, o `DynArray` trocou `int` por `size_t`, e o
+layout de `XMLPrinter` e `XMLDocument` mudou. Com
+`gDeveloperTools.ResourceLogging` ligado, `XMLPrinter::CStr()` devolvia o
+próprio texto como ponteiro, e o host caía no primeiro carregamento de cena. A
+declaração reaproveita o pacote do vcpkg, e o configure falha se o vcpkg tiver
+o header sem o pacote CMake.
+
 ```powershell
 git submodule update --init --recursive
 cmake -S . -B build/x64   # mais as opções de docs/BUILDING.md
@@ -116,8 +127,11 @@ nativo gera: `manifest.toml` na raiz e entradas com `/`.
 2. extrai o overlay por cima;
 3. confere o `checksums.sha256` e a preservação, byte a byte, dos arquivos do
    usuário;
-4. roda o jogo numa sessão da skill `soh-runtime-playtest`;
-5. falha se o log não mostrar a quantidade esperada de mods carregados.
+4. com `-ResourceLogging`, liga `gDeveloperTools.ResourceLogging` na cópia;
+5. roda o jogo numa sessão da skill `soh-runtime-playtest`;
+6. falha se o log não mostrar a quantidade esperada de mods carregados, se
+   registrar exceção do `CrashHandler` ou se, com `-ResourceLogging`, não tiver
+   comandos de cena em XML.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-linkspan-overlay.ps1 `
@@ -126,8 +140,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-linkspan-over
   -Smoke <pasta nova para a prova> `
   -Evidence <pasta de evidências> `
   -PlaytestScripts <scripts da skill soh-runtime-playtest> `
-  -ExpectedMods 1 -NoCapture
+  -ExpectedMods 1 -ResourceLogging -NoCapture
 ```
 
 A contagem de mods é o que pega regressão de link: com o miniz errado, o host
-abre e passa nos testes ROM-free, mas carrega 0 mods.
+abre e passa nos testes ROM-free, mas carrega 0 mods. O `-ResourceLogging` pega
+a mistura de tinyxml2: o host carrega os mods e cai no primeiro carregamento de
+cena.

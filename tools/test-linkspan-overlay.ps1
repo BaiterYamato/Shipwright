@@ -27,6 +27,11 @@ param(
     # nos testes ROM-free, mas carrega 0 mods sem nenhuma linha de rejeição.
     [int]$ExpectedMods = -1,
 
+    # Liga gDeveloperTools.ResourceLogging na cópia e exige comandos de cena em XML no log. As factories
+    # de cena imprimem com tinyxml2::XMLPrinter; com o header do tinyxml2 diferente da lib ligada, o host
+    # caía no primeiro carregamento de cena.
+    [switch]$ResourceLogging,
+
     # Sem capturas: com alguém usando o PC, a janela do jogo fica atrás e a captura pega outro aplicativo.
     [switch]$NoCapture
 )
@@ -104,6 +109,33 @@ foreach ($key in $before.Keys) {
 }
 "preservados byte a byte: $preserved | substituídos pelo overlay: $($replaced -join ', ')"
 
+if ($ResourceLogging) {
+    # Edição textual: o ConvertTo-Json do PowerShell 5.1 regravaria 1.0 como 1 e mudaria o tipo das CVars float.
+    $configPath = Join-Path $Smoke 'shipofharkinian.json'
+    $json = '{}'
+    if (Test-Path -LiteralPath $configPath) { $json = [System.IO.File]::ReadAllText($configPath) }
+    $insertMember = {
+        param([string]$Text, [string]$Opening, [string]$Member)
+        $re = New-Object System.Text.RegularExpressions.Regex ('(' + $Opening + '\s*\{)(\s*)(\}?)')
+        if (-not $re.IsMatch($Text)) { return $null }
+        $re.Replace($Text, [System.Text.RegularExpressions.MatchEvaluator] {
+                param($m)
+                if ($m.Groups[3].Value) { $m.Groups[1].Value + $Member + '}' }
+                else { $m.Groups[1].Value + $Member + ',' + $m.Groups[2].Value }
+            }, 1)
+    }
+    if ($json -match '"ResourceLogging"\s*:\s*\d+') { $json = $json -replace '("ResourceLogging"\s*:\s*)\d+', '${1}1' }
+    else {
+        $updated = & $insertMember $json '"gDeveloperTools"\s*:' '"ResourceLogging": 1'
+        if ($null -eq $updated) { $updated = & $insertMember $json '"CVars"\s*:' '"gDeveloperTools": {"ResourceLogging": 1}' }
+        if ($null -eq $updated) { $updated = & $insertMember $json '^\s*' '"CVars": {"gDeveloperTools": {"ResourceLogging": 1}}' }
+        $json = $updated
+    }
+    if (($json | ConvertFrom-Json).CVars.gDeveloperTools.ResourceLogging -ne 1) { throw 'Não consegui ligar ResourceLogging na cópia.' }
+    [System.IO.File]::WriteAllText($configPath, $json, (New-Object System.Text.UTF8Encoding $false))
+    'gDeveloperTools.ResourceLogging ligado na cópia'
+}
+
 $exe = Join-Path $Smoke 'soh.exe'
 $activeLog = Join-Path $Smoke 'logs\Ship of Harkinian.log'
 $sessionId = 'linkspan-overlay-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
@@ -165,6 +197,12 @@ if (Test-Path -LiteralPath $activeLog) {
     "mods carregados: $loadedCount"
     if ($ExpectedMods -ge 0 -and $loadedCount -ne $ExpectedMods) { $failures.Add("carregou $loadedCount mod(s); esperado $ExpectedMods") }
     if (Select-String -LiteralPath $activeLog -Encoding UTF8 -Pattern 'rejeitou o mod' -Quiet) { $failures.Add('o log registra mod rejeitado') }
+    if (Select-String -LiteralPath $activeLog -Encoding UTF8 -Pattern '\[critical\] Exception:' -Quiet) { $failures.Add('o log registra exceção do CrashHandler') }
+    if ($ResourceLogging) {
+        $xmlLines = @(Select-String -LiteralPath $activeLog -Encoding UTF8 -Pattern '\[info\] \S+: <Set[A-Za-z]+')
+        "comandos de cena em XML no log: $($xmlLines.Count)"
+        if (-not $xmlLines.Count) { $failures.Add('ResourceLogging ligado, mas o log não tem comandos de cena em XML') }
+    }
 }
 else { $failures.Add('log ativo ausente') }
 
