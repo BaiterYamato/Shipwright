@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <new>
 #include <thread>
 
@@ -19,14 +20,12 @@
 
 namespace {
 
-constexpr int kSampleRate = 48000;
-constexpr int kWindowSize = 2048;
+using MicOcarina::kSampleRate;
+using MicOcarina::kTauMax;
+using MicOcarina::kWindowSize;
+using MicOcarina::PitchEstimate;
 constexpr int kHopSize = 512;
-constexpr int kIntegrationSize = kWindowSize / 2;
 constexpr int kRingSize = 1 << 15;
-constexpr int kTauMin = kSampleRate / 1000;
-constexpr int kTauMax = kSampleRate / 80;
-constexpr float kYinThreshold = 0.15f;
 constexpr int kMedianSize = 5;
 constexpr int kReleaseHops = 5;
 constexpr int kReanchorHops = 90;
@@ -48,21 +47,25 @@ constexpr float kMaxPhraseErrorCents = 120.0f;
 constexpr float kMatchMarginCents = 40.0f;
 constexpr float kPhraseEndMaxErrorCents = 180.0f;
 
+// Rolo de notas do HUD, o mesmo do protótipo MicOcarina: janela de seis segundos
+// com até 24 notas, cada uma na altura relativa à primeira nota aceita da frase.
+constexpr float kHopSeconds = static_cast<float>(kHopSize) / kSampleRate;
+constexpr int kMeterSegmentMax = 24;
+constexpr float kMeterWindowSeconds = 6.0f;
+constexpr float kMeterSemitoneRange = 12.5f;
+
 // SDL usa posições Xbox. No Switch Pro, o botão físico B aparece como SDL A.
 constexpr std::uint8_t kNintendoB = 0;
 constexpr std::uint8_t kControllerStart = 6;
 constexpr std::uint32_t PhysicalButton(std::uint8_t button) { return std::uint32_t{ 1 } << button; }
-
-struct PitchEstimate {
-    float hz = 0.0f;
-    float clarity = 0.0f;
-};
 
 struct NoteTracker {
     float centsHistory[kMedianSize]{};
     int historyCount = 0;
     float phraseCents[MicOcarina::kMaxPhraseNotes]{};
     int phraseCount = 0;
+    float anchorCents = 0.0f;
+    bool hasAnchor = false;
     float noteCents = 0.0f;
     bool noteActive = false;
     bool noteInPhrase = false;
@@ -78,6 +81,21 @@ struct NoteTracker {
     float noiseFloor = 0.0f;
 };
 
+struct MeterSegment {
+    float startSeconds = 0.0f;
+    float endSeconds = 0.0f;
+    float cents = 0.0f;
+    bool accepted = false;
+};
+
+struct MeterHistory {
+    MeterSegment segments[kMeterSegmentMax]{};
+    int count = 0;
+    float nowSeconds = 0.0f;
+    float anchorCents = 0.0f;
+    bool hasAnchor = false;
+};
+
 struct Capture {
     std::array<float, kRingSize> ring{};
     std::atomic<std::uint32_t> ringWrite{ 0 };
@@ -89,7 +107,18 @@ struct Capture {
     std::atomic<std::uint16_t> availableFlags{ 0 };
     std::atomic<int> matchedSong{ -1 };
     std::atomic<std::uint32_t> matchSequence{ 0 };
+    std::atomic<std::uint32_t> capturedSamples{ 0 };
+    std::atomic<float> telemetryRms{ 0.0f };
+    std::atomic<float> telemetryGate{ kAbsoluteGate };
+    std::atomic<float> telemetryHz{ 0.0f };
+    std::atomic<float> telemetryClarity{ 0.0f };
+    std::atomic<int> telemetryTone{ 0 };
+    std::atomic<int> telemetryPhraseCount{ 0 };
     NoteTracker tracker{};
+    // Escrito pelo worker a cada hop e copiado inteiro pela thread do jogo. O worker é
+    // uma thread comum, não o callback do dispositivo, então um mutex basta.
+    std::mutex meterMutex;
+    MeterHistory meter{};
     SDL_AudioDeviceID device = 0;
     bool audioSubsystemReady = false;
     std::thread worker;
@@ -105,6 +134,7 @@ struct Capture {
             capture.ring[(write + static_cast<std::uint32_t>(i)) & (kRingSize - 1)] = samples[i];
         }
         capture.ringWrite.store(write + static_cast<std::uint32_t>(count), std::memory_order_release);
+        capture.capturedSamples.fetch_add(static_cast<std::uint32_t>(count), std::memory_order_relaxed);
     }
 
     float Rms(const float* window) const {
@@ -116,43 +146,7 @@ struct Capture {
     }
 
     PitchEstimate EstimatePitch(const float* window) {
-        for (int tau = 1; tau <= kTauMax; ++tau) {
-            float sum = 0.0f;
-            for (int i = 0; i < kIntegrationSize; ++i) {
-                const float delta = window[i] - window[i + tau];
-                sum += delta * delta;
-            }
-            difference[tau] = sum;
-        }
-        float running = 0.0f;
-        cmndf[0] = 1.0f;
-        for (int tau = 1; tau <= kTauMax; ++tau) {
-            running += difference[tau];
-            cmndf[tau] = running > 0.0f ? difference[tau] * static_cast<float>(tau) / running : 1.0f;
-        }
-        int best = -1;
-        for (int tau = kTauMin; tau < kTauMax; ++tau) {
-            if (cmndf[tau] >= kYinThreshold) {
-                continue;
-            }
-            while (tau + 1 < kTauMax && cmndf[tau + 1] < cmndf[tau]) {
-                ++tau;
-            }
-            best = tau;
-            break;
-        }
-        if (best < 0) {
-            return {};
-        }
-        const float previous = cmndf[best - 1];
-        const float current = cmndf[best];
-        const float next = cmndf[best + 1];
-        const float denominator = previous - 2.0f * current + next;
-        float period = static_cast<float>(best);
-        if (denominator != 0.0f) {
-            period += 0.5f * (previous - next) / denominator;
-        }
-        return period >= 1.0f ? PitchEstimate{ kSampleRate / period, 1.0f - current } : PitchEstimate{};
+        return MicOcarina::EstimatePitch(window, difference.data(), cmndf.data());
     }
 
     static float Median(const float* values, int count) {
@@ -160,6 +154,53 @@ struct Capture {
         std::copy(values, values + count, sorted);
         std::sort(sorted, sorted + count);
         return sorted[count / 2];
+    }
+
+    void ResetMeter() {
+        std::lock_guard<std::mutex> lock(meterMutex);
+        meter = MeterHistory{};
+    }
+
+    void ClearMeter() {
+        std::lock_guard<std::mutex> lock(meterMutex);
+        meter.count = 0;
+        meter.hasAnchor = false;
+    }
+
+    void BeginMeterSegment(float cents) {
+        std::lock_guard<std::mutex> lock(meterMutex);
+        if (meter.count >= kMeterSegmentMax) {
+            std::copy(meter.segments + 1, meter.segments + kMeterSegmentMax, meter.segments);
+            meter.count = kMeterSegmentMax - 1;
+        }
+        meter.segments[meter.count++] = { meter.nowSeconds, meter.nowSeconds, cents, false };
+    }
+
+    void AcceptMeterSegment(float cents) {
+        std::lock_guard<std::mutex> lock(meterMutex);
+        if (meter.count == 0) {
+            return;
+        }
+        MeterSegment& live = meter.segments[meter.count - 1];
+        live.cents = cents;
+        live.accepted = true;
+        meter.anchorCents = tracker.anchorCents;
+        meter.hasAnchor = tracker.hasAnchor;
+    }
+
+    // Uma vez por hop, silêncio incluído: o rolo continua andando e a barra da nota
+    // sustentada continua crescendo.
+    void AdvanceMeter(bool noteHeld) {
+        std::lock_guard<std::mutex> lock(meterMutex);
+        meter.nowSeconds += kHopSeconds;
+        if (noteHeld && meter.count > 0) {
+            meter.segments[meter.count - 1].endSeconds = meter.nowSeconds;
+        }
+    }
+
+    MeterHistory SnapshotMeter() {
+        std::lock_guard<std::mutex> lock(meterMutex);
+        return meter;
     }
 
     void PublishMatch(float maxError, float margin) {
@@ -173,7 +214,13 @@ struct Capture {
         tracker.phraseCount = 0;
     }
 
+    // O tom da frase é marcado pela primeira nota sustentada o bastante, nunca por
+    // uma candidata ou um ruído.
     void PushPhraseNote(float cents) {
+        if (!tracker.hasAnchor) {
+            tracker.anchorCents = cents;
+            tracker.hasAnchor = true;
+        }
         if (tracker.phraseCount >= MicOcarina::kMaxPhraseNotes) {
             std::memmove(tracker.phraseCents, &tracker.phraseCents[1],
                          (MicOcarina::kMaxPhraseNotes - 1) * sizeof(float));
@@ -183,6 +230,7 @@ struct Capture {
     }
 
     void CommitNote(float cents, float rms) {
+        BeginMeterSegment(cents);
         tracker.noteCents = cents;
         tracker.noteActive = true;
         tracker.noteInPhrase = false;
@@ -214,7 +262,17 @@ struct Capture {
         tracker.pendingHops = 0;
     }
 
+    void PublishTelemetry(float rms, float gate, const PitchEstimate& estimate, bool tone) {
+        telemetryRms.store(rms, std::memory_order_relaxed);
+        telemetryGate.store(gate, std::memory_order_relaxed);
+        telemetryHz.store(estimate.hz, std::memory_order_relaxed);
+        telemetryClarity.store(estimate.clarity, std::memory_order_relaxed);
+        telemetryTone.store(tone ? 1 : 0, std::memory_order_relaxed);
+        telemetryPhraseCount.store(tracker.phraseCount, std::memory_order_release);
+    }
+
     void ProcessWindow(const float* window) {
+        AdvanceMeter(tracker.noteActive);
         const float rms = Rms(window);
         if (rms < tracker.noiseFloor) {
             tracker.noiseFloor += kFloorFallRate * (rms - tracker.noiseFloor);
@@ -232,9 +290,14 @@ struct Capture {
             if (tracker.silentHops == kPhraseEndHops) {
                 PublishMatch(kPhraseEndMaxErrorCents, 0.0f);
             }
+            // Uma pausa longa encerra a frase: a próxima nota marca o tom de novo e o
+            // rolo recomeça vazio.
             if (tracker.silentHops >= kReanchorHops) {
                 tracker.phraseCount = 0;
+                tracker.hasAnchor = false;
+                ClearMeter();
             }
+            PublishTelemetry(rms, gate, estimate, false);
             return;
         }
         tracker.silentHops = 0;
@@ -249,6 +312,7 @@ struct Capture {
         const float smoothed = Median(tracker.centsHistory, tracker.historyCount);
         if (!tracker.noteActive) {
             ProposeNote(smoothed, rms);
+            PublishTelemetry(rms, gate, estimate, true);
             return;
         }
 
@@ -258,12 +322,14 @@ struct Capture {
         }
         if (tracker.sawDip && rms > kRecoverRatio * tracker.notePeakRms) {
             CommitNote(smoothed, rms);
+            PublishTelemetry(rms, gate, estimate, true);
             return;
         }
         if (std::fabs(smoothed - tracker.noteCents) > kJumpCents) {
             if (++tracker.deviationHops >= kJumpHops) {
                 CommitNote(smoothed, rms);
             }
+            PublishTelemetry(rms, gate, estimate, true);
             return;
         }
         tracker.deviationHops = 0;
@@ -275,8 +341,10 @@ struct Capture {
         if (!tracker.noteInPhrase && ++tracker.noteHops >= kMinNoteHops) {
             tracker.noteInPhrase = true;
             PushPhraseNote(tracker.noteCents);
+            AcceptMeterSegment(tracker.noteCents);
             PublishMatch(kMaxPhraseErrorCents, kMatchMarginCents);
         }
+        PublishTelemetry(rms, gate, estimate, true);
     }
 
     void Run() {
@@ -324,7 +392,15 @@ struct Capture {
             return false;
         }
         tracker = {};
+        ResetMeter();
         matchedSong.store(-1, std::memory_order_relaxed);
+        capturedSamples.store(0, std::memory_order_relaxed);
+        telemetryRms.store(0.0f, std::memory_order_relaxed);
+        telemetryGate.store(kAbsoluteGate, std::memory_order_relaxed);
+        telemetryHz.store(0.0f, std::memory_order_relaxed);
+        telemetryClarity.store(0.0f, std::memory_order_relaxed);
+        telemetryTone.store(0, std::memory_order_relaxed);
+        telemetryPhraseCount.store(0, std::memory_order_relaxed);
         ringRead = ringWrite.load(std::memory_order_acquire);
         workerRunning.store(true, std::memory_order_release);
         worker = std::thread([this] { Run(); });
@@ -346,7 +422,15 @@ struct Capture {
         SDL_CloseAudioDevice(device);
         device = 0;
         tracker = {};
+        ResetMeter();
         matchedSong.store(-1, std::memory_order_relaxed);
+        capturedSamples.store(0, std::memory_order_relaxed);
+        telemetryRms.store(0.0f, std::memory_order_relaxed);
+        telemetryGate.store(kAbsoluteGate, std::memory_order_relaxed);
+        telemetryHz.store(0.0f, std::memory_order_relaxed);
+        telemetryClarity.store(0.0f, std::memory_order_relaxed);
+        telemetryTone.store(0, std::memory_order_relaxed);
+        telemetryPhraseCount.store(0, std::memory_order_relaxed);
     }
 
     // O SDL estático pertence à DLL: encerrar o subsistema antes do unload remove as
@@ -372,6 +456,33 @@ struct Mod {
 
 ShipNativeStatus Write(ShipNativeWriteFn write, void* writer, const char* text) {
     return write(writer, text, static_cast<std::uint32_t>(std::strlen(text)));
+}
+
+// Rolo para o Lua: novo:antigo:semitons:flags por nota. Tempos em ms desde o fim e o
+// começo da nota, semitons x10 relativos ao tom da frase, flags 1 = aceita na frase e
+// 2 = nota sustentada agora.
+void FormatNoteRoll(const MeterHistory& meter, char* out, std::size_t capacity) {
+    out[0] = '\0';
+    int used = 0;
+    for (int i = 0; i < meter.count; ++i) {
+        if (used < 0 || used >= static_cast<int>(capacity) - 24) {
+            break;
+        }
+        const MeterSegment& segment = meter.segments[i];
+        const float newest = meter.nowSeconds - segment.endSeconds;
+        if (newest >= kMeterWindowSeconds) {
+            continue;
+        }
+        const float oldest = std::min(kMeterWindowSeconds, meter.nowSeconds - segment.startSeconds);
+        const float semis = meter.hasAnchor ? std::clamp((segment.cents - meter.anchorCents) / 100.0f,
+                                                         -kMeterSemitoneRange, kMeterSemitoneRange)
+                                            : 0.0f;
+        const bool live = i == meter.count - 1 && segment.endSeconds >= meter.nowSeconds;
+        used += std::snprintf(out + used, capacity - static_cast<std::size_t>(used), "%s%d:%d:%ld:%d",
+                              used > 0 ? "," : "", static_cast<int>(newest * 1000.0f),
+                              static_cast<int>(oldest * 1000.0f), std::lround(semis * 10.0f),
+                              (segment.accepted ? 1 : 0) | (live ? 2 : 0));
+    }
 }
 
 bool LoadPatterns(Mod& mod) {
@@ -455,7 +566,21 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, std::uint32_t 
             return Write(write, writer, response);
         }
     }
-    return Write(write, writer, "audio-input-on");
+    const MeterHistory meter = mod.capture.SnapshotMeter();
+    char roll[512];
+    FormatNoteRoll(meter, roll, sizeof(roll));
+    char response[1024];
+    std::snprintf(response, sizeof(response),
+                  "audio-input-on;rms=%.6f;gate=%.6f;hz=%.2f;clarity=%.3f;tone=%d;phrase=%d;samples=%u;anchor=%d;"
+                  "roll=%s",
+                  mod.capture.telemetryRms.load(std::memory_order_relaxed),
+                  mod.capture.telemetryGate.load(std::memory_order_relaxed),
+                  mod.capture.telemetryHz.load(std::memory_order_relaxed),
+                  mod.capture.telemetryClarity.load(std::memory_order_relaxed),
+                  mod.capture.telemetryTone.load(std::memory_order_relaxed),
+                  mod.capture.telemetryPhraseCount.load(std::memory_order_acquire),
+                  mod.capture.capturedSamples.load(std::memory_order_relaxed), meter.hasAnchor ? 1 : 0, roll);
+    return Write(write, writer, response);
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
