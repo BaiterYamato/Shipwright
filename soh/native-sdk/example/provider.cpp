@@ -9,6 +9,7 @@
 #include "oot_resources.h"
 #include "oot_layout_id.h"
 #include "z64.h"
+#include "package_assets.h"
 
 namespace {
 // SDL usa posições Xbox. No Switch Pro: B->SDL A, A->SDL B, Y->SDL X, X->SDL Y.
@@ -43,8 +44,13 @@ constexpr const char* PERSISTENT_MASKS_SETTING = "gEnhancements.PersistentMasks"
 constexpr const char* TRANSIENT_SETTINGS_PROBE = "linkspan.transient_settings";
 constexpr int32_t TRANSIENT_HIDE_ITEM_BUTTONS = 1;
 constexpr int32_t TRANSIENT_SWORD_OVER_SHIELD = 2;
+constexpr int32_t TRANSIENT_DPAD_HUD = 4;
 // Com B pressionado, o host não entrega o R ao Player: o escudo do ZL baixa para a espada.
 constexpr const char* SWORD_OVER_SHIELD_SETTING = "linkspan.input.sword_over_shield";
+// D-pad do HUD nativo com as funções do mod: o host desenha o fundo e informa a posição das
+// direções, na ordem cima, baixo, esquerda e direita (índices 4..7 de get_item_button_rect).
+constexpr const char* DPAD_HUD_SETTING = "linkspan.hud.dpad";
+constexpr uint8_t DPAD_HUD_SLOTS[] = { 4, 5, 6, 7 };
 constexpr const char* HIDDEN_ITEM_BUTTON_SETTINGS[] = { nullptr, "linkspan.hud.hide_item_button.c_left",
                                                         "linkspan.hud.hide_item_button.c_down",
                                                         "linkspan.hud.hide_item_button.c_right" };
@@ -105,6 +111,8 @@ struct Mod {
     int32_t previousPersistentMasks = 0;
     bool itemHudApplied = false;
     bool swordOverShieldApplied = false;
+    bool dpadHudApplied = false;
+    uint64_t iconArchive = 0;
     bool shortcutWasDown = false;
     bool shortcutHoldFired = false;
     std::chrono::steady_clock::time_point shortcutPressedAt{};
@@ -286,6 +294,10 @@ ShipNativeStatus ApplyNintendoBindings(Mod& mod) {
         mod.movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 1) == SHIP_NATIVE_OK) {
         mod.swordOverShieldApplied = true;
     }
+    if (!mod.dpadHudApplied && HostSupports(mod, TRANSIENT_DPAD_HUD) &&
+        mod.movement->set_setting_int(DPAD_HUD_SETTING, 1) == SHIP_NATIVE_OK) {
+        mod.dpadHudApplied = true;
+    }
     return SHIP_NATIVE_OK;
 }
 
@@ -464,7 +476,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t lengt
         "ZL=mirar + escudo (Y ataca mesmo defendendo); "
         "-=L do N64; R3=lente (toque)/máscara (segurar); D-pad direita=C-Up; D-pad esquerda=ocarina; "
         "D-pad cima=traje (toque: último; segurar: menu); D-pad baixo=botas (toque: Kokiri; segurar: menu); "
-        "HUD=só o C equipado; câmera=stick direito com vertical normal, volta a seguir ao andar após %.2fs; "
+        "HUD=só o C equipado e o D-pad com traje, botas, ocarina e Navi; "
+        "câmera=stick direito com vertical normal, volta a seguir ao andar após %.2fs; "
         "gamepad=%s",
         double(JUMP_VELOCITY), double(mod.cameraFollowDelayMilliseconds) / 1000.0,
         mod.movement->has_gamepad(0) ? "conectado" : "ausente");
@@ -518,6 +531,11 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
             return SHIP_NATIVE_FAILURE;
         }
         mod.persistentMasksApplied = true;
+    }
+    // Ícones do mod (a Navi do D-pad): pasta assets/ do pacote, montada uma vez.
+    if (!mod.iconArchive) {
+        const std::string assets = ProviderAssetsDirectory();
+        if (!assets.empty()) mod.resources->mount_archive(assets.c_str(), &mod.iconArchive);
     }
     return Write(write, writer, "configured");
 }
@@ -830,6 +848,33 @@ ShipNativeStatus SHIP_NATIVE_CALL HudQuickSwap(void* user, const char*, uint32_t
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
+// D-pad do HUD para o Lua: "x,y,lado,alpha;" de cima, baixo, esquerda e direita, seguido de
+// "traje,botas,ocarina" (valores de equipamento 1..3 e o item do slot da ocarina), ou "none".
+ShipNativeStatus SHIP_NATIVE_CALL HudDpad(void* user, const char*, uint32_t length,
+                                         ShipNativeWriteFn write, void* writer) {
+    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!mod.dpadHudApplied || !save || !mod.movement->has_gamepad(0)) return Write(write, writer, "none");
+    char result[128];
+    int size = 0;
+    for (const uint8_t slot : DPAD_HUD_SLOTS) {
+        int16_t x = 0;
+        int16_t y = 0;
+        int16_t side = 0;
+        uint8_t alpha = 0;
+        if (mod.movement->get_item_button_rect(slot, &x, &y, &side, &alpha) != SHIP_NATIVE_OK) {
+            return Write(write, writer, "none");
+        }
+        size += std::snprintf(result + size, sizeof(result) - size, "%d,%d,%d,%u;", x, y, side, unsigned(alpha));
+    }
+    size += std::snprintf(result + size, sizeof(result) - size, "%u,%u,%u",
+                          unsigned(CurrentEquip(*save, EQUIP_TYPE_TUNIC)),
+                          unsigned(CurrentEquip(*save, EQUIP_TYPE_BOOTS)),
+                          unsigned(save->inventory.items[SLOT_OCARINA]));
+    return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
+}
+
 // Menu do R aberto para o HUD Lua: "<destaque>;<botão>:<item>,..." com os C que têm item, ou "none".
 ShipNativeStatus SHIP_NATIVE_CALL HudItemMenu(void* user, const char*, uint32_t length,
                                              ShipNativeWriteFn write, void* writer) {
@@ -1019,6 +1064,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "hud_selection", HudSelection, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_quick_swap", HudQuickSwap, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_item_menu", HudItemMenu, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "hud_dpad", HudDpad, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
         registry->destroy_space(mod->registrySpace);
         delete mod;
@@ -1044,6 +1090,8 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
         mod->movement->set_setting_int(FREE_LOOK_INVERT_Y_SETTING, mod->previousInvertY);
     if (mod) RestoreItemHud(*mod);
     if (mod && mod->swordOverShieldApplied) mod->movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 0);
+    if (mod && mod->dpadHudApplied) mod->movement->set_setting_int(DPAD_HUD_SETTING, 0);
+    if (mod && mod->iconArchive) mod->resources->unmount_archive(mod->iconArchive);
     if (mod && mod->persistentMasksApplied)
         mod->movement->set_setting_int(PERSISTENT_MASKS_SETTING, mod->previousPersistentMasks);
     // Lente fora dos botões só seguia ligada pelo atalho: desligá-la deixa o

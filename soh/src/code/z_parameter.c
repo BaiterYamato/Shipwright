@@ -33,6 +33,7 @@ extern MessageTableEntry* sJpnMessageEntryTablePtr;
 s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
 void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha);
 s32 LinkSpan_ItemButtonHidden(s32 button);
+s32 LinkSpan_DpadHudOwned(void);
 
 #define DO_ACTION_TEX_WIDTH() 48
 #define DO_ACTION_TEX_HEIGHT() 16
@@ -4680,13 +4681,23 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
         ItemIconPos[3][1] = ItemIconPos_ori[3][1];
     }
 
-    gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
-                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+    // Link-Span (OOT-MOVE-006): posição final dos ícones do D-pad para providers nativos. Sem
+    // textura, o provider desenha o ícone e aqui só a posição é capturada.
+    if (button >= 4) {
+        LinkSpan_CaptureItemButton(play, button, ItemIconPos[button][0], ItemIconPos[button][1],
+                                   gItemIconWidth[button], ItemsSlotsAlpha[button]);
+    }
+    // CLOSE_DISPS fecha a chave aberta por OPEN_DISPS: sem retorno antecipado.
+    if (texture != NULL) {
+        gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                            G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                            G_TX_NOLOD, G_TX_NOLOD);
 
-    gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
-                            (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
-                            (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0,
-                            gItemIconDD[button] << 1, gItemIconDD[button] << 1);
+        gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
+                                (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
+                                (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0,
+                                gItemIconDD[button] << 1, gItemIconDD[button] << 1);
+    }
 
     CLOSE_DISPS(play->state.gfxCtx);
 }
@@ -5605,7 +5616,8 @@ void Interface_Draw(PlayState* play) {
             Interface_DrawAmmoCount(play, 3, interfaceCtx->cRightAlpha);
         }
 
-        if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) {
+        // Link-Span (OOT-MOVE-006): um provider nativo pode tomar o D-pad do HUD mesmo sem DpadEquips.
+        if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0 || LinkSpan_DpadHudOwned()) {
             // DPad is only greyed-out when all 4 DPad directions are too
             uint16_t dpadAlpha =
                 MAX(MAX(MAX(interfaceCtx->dpadUpAlpha, interfaceCtx->dpadDownAlpha), interfaceCtx->dpadLeftAlpha),
@@ -5660,8 +5672,17 @@ void Interface_Draw(PlayState* play) {
                                         (DpadPosY + 32) << 2, G_TX_RENDERTILE, 0, 0, (1 << 10), (1 << 10));
             }
 
+            // Link-Span (OOT-MOVE-006): com o D-pad tomado, os ícones dos itens do D-pad dão lugar aos do
+            // provider, que só precisa da posição de cada direção.
+            s32 linkSpanDpad = LinkSpan_DpadHudOwned();
+            if (linkSpanDpad) {
+                for (s16 dpadButton = 4; dpadButton < 8; dpadButton++) {
+                    Interface_DrawItemIconTexture(play, NULL, dpadButton);
+                }
+            }
+
             // DPad-Up Button Icon & Ammo Count
-            if (gSaveContext.equips.buttonItems[4] < 0xF0) {
+            if (gSaveContext.equips.buttonItems[4] < 0xF0 && !linkSpanDpad) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadUpAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
                 Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[4]], 4);
@@ -5672,7 +5693,7 @@ void Interface_Draw(PlayState* play) {
             }
 
             // DPad-Down Button Icon & Ammo Count
-            if (gSaveContext.equips.buttonItems[5] < 0xF0) {
+            if (gSaveContext.equips.buttonItems[5] < 0xF0 && !linkSpanDpad) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadDownAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
                 Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[5]], 5);
@@ -5683,7 +5704,7 @@ void Interface_Draw(PlayState* play) {
             }
 
             // DPad-Left Button Icon & Ammo Count
-            if (gSaveContext.equips.buttonItems[6] < 0xF0) {
+            if (gSaveContext.equips.buttonItems[6] < 0xF0 && !linkSpanDpad) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadLeftAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
                 Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[6]], 6);
@@ -5694,7 +5715,7 @@ void Interface_Draw(PlayState* play) {
             }
 
             // DPad-Right Button Icon & Ammo Count
-            if (gSaveContext.equips.buttonItems[7] < 0xF0) {
+            if (gSaveContext.equips.buttonItems[7] < 0xF0 && !linkSpanDpad) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadRightAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
                 Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[7]], 7);

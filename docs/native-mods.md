@@ -284,7 +284,11 @@ que o host suporta:
 - `2`: `linkspan.input.sword_over_shield` com 1 tira o R do input do Player
   enquanto B está pressionado. Se B foi apertado com o escudo erguido, o aperto
   chega no frame seguinte, depois de o escudo baixar; sem isso o OoT não ataca
-  defendendo.
+  defendendo;
+- `4`: `linkspan.hud.dpad` com 1 desenha o fundo do D-pad do HUD mesmo sem
+  `DpadEquips` e tira os ícones dos itens do D-pad. O provider desenha os seus
+  nas posições que `get_item_button_rect` devolve para 4 a 7 (cima, baixo,
+  esquerda e direita).
 
 As CVars de cosméticos do SoH não servem para ocultar botões: qualquer opção
 mudada no menu salva a config com o valor do mod.
@@ -313,7 +317,11 @@ Na versão 0.2.9:
     partir do equipado. O analógico direito escolhe para os lados, sem ciclo
     automático, e o destacado é vestido ao soltar;
 13. com um menu aberto o analógico direito não gira a câmera; depois de fechar, a
-    câmera só volta a responder quando o analógico passa pelo centro.
+    câmera só volta a responder quando o analógico passa pelo centro;
+14. o D-pad do HUD mostra as funções do mod: traje em cima, botas embaixo, ocarina
+    na esquerda e Navi na direita. O ícone da Navi é um PNG convertido por
+    `tools/convert-png-to-hud-icon.ps1` para `assets/`, pasta que o provider monta
+    no configure; o PNG fica fora do git, que ignora `*.png` em `soh/`.
 
 Hotbars permanecem nas próximas fatias.
 

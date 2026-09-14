@@ -5,6 +5,7 @@
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cmath>
 #include <chrono>
 #include <cstdlib>
@@ -186,6 +187,7 @@ extern "C" Actor* Actor_Spawn(ActorContext*, PlayState*, s16 id, f32 x, f32 y, f
 extern "C" void Actor_Kill(Actor* actor) { killed = actor; }
 extern "C" s32 LinkSpan_ItemButtonHidden(s32 button);
 extern "C" void LinkSpan_FilterPlayerInput(Input* input);
+extern "C" s32 LinkSpan_DpadHudOwned(void);
 extern "C" void Player_Action_Roll(Player*, PlayState*) {}
 extern "C" void Player_SetupRoll(Player* target, PlayState*) {
     target->actionFunc = Player_Action_Roll;
@@ -600,7 +602,7 @@ int main(int argc, char** argv) {
               OotNative_TakePendingOcarinaSong() == -1,
           "fechar a ocarina deve descartar a música pendente");
     OotNative_PublishOcarinaState(1, uint16_t(1u << OCARINA_SONG_SARIAS));
-    Check(movementV2->get_setting_int("linkspan.transient_settings", 0) == 3 &&
+    Check(movementV2->get_setting_int("linkspan.transient_settings", 0) == 7 &&
               movementV2->set_setting_int("linkspan.hud.hide_item_button.c_down", 1) == SHIP_NATIVE_OK &&
               movementV2->get_setting_int("linkspan.hud.hide_item_button.c_down", 0) == 1 &&
               LinkSpan_ItemButtonHidden(2) == 1 && LinkSpan_ItemButtonHidden(1) == 0 &&
@@ -639,6 +641,11 @@ int main(int argc, char** argv) {
                   filter(shieldAndSword, 0) == Buttons{ shieldAndSword, 0 },
               "desligar a espada acima do escudo deve devolver o R ao Player");
     }
+    Check(movementV2->set_setting_int("linkspan.hud.dpad", 1) == SHIP_NATIVE_OK &&
+              movementV2->get_setting_int("linkspan.hud.dpad", 0) == 1 && LinkSpan_DpadHudOwned() == 1 &&
+              otherSettings.find("linkspan.hud.dpad") == otherSettings.end() &&
+              movementV2->set_setting_int("linkspan.hud.dpad", 0) == SHIP_NATIVE_OK && LinkSpan_DpadHudOwned() == 0,
+          "D-pad do HUD tomado por provider deve ficar só em memória no host");
     std::thread worker([&] {
         Check(!engine->get_player() && !engine->get_save_context() && !movement->get_input_current(0),
               "thread externa deve ser recusada");
@@ -667,6 +674,7 @@ int main(int argc, char** argv) {
               "ocarina V1 deve recusar thread externa");
         Check(movementV2->set_setting_int("linkspan.hud.hide_item_button.c_left", 1) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->set_setting_int("linkspan.input.sword_over_shield", 1) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->set_setting_int("linkspan.hud.dpad", 1) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->get_setting_int("linkspan.transient_settings", 7) == 7,
               "settings transitórios devem recusar thread externa");
     });
@@ -780,6 +788,7 @@ int main(int argc, char** argv) {
         swordInput.cur.button = BTN_R | BTN_B;
         LinkSpan_FilterPlayerInput(&swordInput);
         Check(swordInput.cur.button == BTN_B, "perfil com escudo no ZL deve dar prioridade à espada");
+        Check(LinkSpan_DpadHudOwned() == 1, "perfil Nintendo deve tomar o D-pad do HUD");
         const auto itemMenuState = [&] {
             response.fill(0);
             const auto result = (*loaded.value)->Call("hud_item_menu", "", 0, response.data(), uint32_t(response.size()));
@@ -820,6 +829,25 @@ int main(int argc, char** argv) {
         auto hud = (*loaded.value)->Call("hud_selection", "", 0, response.data(), uint32_t(response.size()));
         Check(hud.code == ShipLua::ErrorCode::Ok && std::string(response.data(), hud.size) == "250,20,27,200",
               "hud_selection deve devolver a posição do C selecionado");
+        const int16_t dpadSlots[4][2] = { { 290, 40 }, { 290, 72 }, { 274, 56 }, { 306, 56 } };
+        for (int slot = 0; slot < 4; ++slot) {
+            LinkSpan_CaptureItemButton(&play, 4 + slot, dpadSlots[slot][0], dpadSlots[slot][1], 16, 180);
+        }
+        response.fill(0);
+        const auto dpad = (*loaded.value)->Call("hud_dpad", "", 0, response.data(), uint32_t(response.size()));
+        char expectedDpad[96];
+        std::snprintf(expectedDpad, sizeof(expectedDpad),
+                      "290,40,16,180;290,72,16,180;274,56,16,180;306,56,16,180;%d,%d,%u",
+                      CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC), CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS),
+                      unsigned(gSaveContext.inventory.items[SLOT_OCARINA]));
+        int16_t rectX = 0;
+        int16_t rectY = 0;
+        int16_t rectSide = 0;
+        uint8_t rectAlpha = 0;
+        Check(dpad.code == ShipLua::ErrorCode::Ok && std::string(response.data(), dpad.size) == expectedDpad &&
+                  movementV2->get_item_button_rect(8, &rectX, &rectY, &rectSide, &rectAlpha) ==
+                      SHIP_NATIVE_INVALID_ARGUMENT,
+              "hud_dpad deve devolver as quatro direções do D-pad com traje, botas e ocarina");
         play.state.frames = 95;
         response.fill(0);
         hud = (*loaded.value)->Call("hud_selection", "", 0, response.data(), uint32_t(response.size()));
@@ -908,6 +936,7 @@ int main(int argc, char** argv) {
         unloadedInput.cur.button = BTN_R | BTN_B;
         LinkSpan_FilterPlayerInput(&unloadedInput);
         Check(unloadedInput.cur.button == (BTN_R | BTN_B), "unload deve devolver o escudo ao R");
+        Check(LinkSpan_DpadHudOwned() == 0, "unload deve devolver o D-pad do HUD");
 
         ShipOotEngineV1 incompatible = *engine;
         incompatible.layout_id = "incompatible";

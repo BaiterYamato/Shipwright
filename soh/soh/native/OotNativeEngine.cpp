@@ -108,6 +108,7 @@ ShipNativeStatus SHIP_NATIVE_CALL ReloadGamepadMappings(uint8_t port) {
 constexpr const char* TRANSIENT_SETTINGS_PROBE = "linkspan.transient_settings";
 constexpr int32_t TRANSIENT_HIDE_ITEM_BUTTONS = 1;
 constexpr int32_t TRANSIENT_SWORD_OVER_SHIELD = 2;
+constexpr int32_t TRANSIENT_DPAD_HUD = 4;
 // Botões C do HUD, índices 1..3.
 constexpr const char* HIDDEN_ITEM_BUTTON_SETTINGS[] = { nullptr, "linkspan.hud.hide_item_button.c_left",
                                                         "linkspan.hud.hide_item_button.c_down",
@@ -118,6 +119,10 @@ constexpr const char* SWORD_OVER_SHIELD_SETTING = "linkspan.input.sword_over_shi
 bool swordOverShield = false;
 bool shieldDelivered = false;
 bool swordPending = false;
+// D-pad do HUD tomado por provider: o fundo é desenhado mesmo sem DpadEquips e os ícones dos itens
+// do D-pad saem; o provider desenha os seus na posição que get_item_button_rect devolve para 4..7.
+constexpr const char* DPAD_HUD_SETTING = "linkspan.hud.dpad";
+bool dpadHudOwned = false;
 int HiddenItemButtonIndex(const char* name) {
     for (int button = 1; button <= 3; ++button) {
         if (std::strcmp(name, HIDDEN_ITEM_BUTTON_SETTINGS[button]) == 0) return button;
@@ -126,9 +131,11 @@ int HiddenItemButtonIndex(const char* name) {
 }
 int32_t SHIP_NATIVE_CALL GetSettingInt(const char* name, int32_t fallback) {
     if (!OnGameThread() || !name || !*name) return fallback;
-    if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0) return TRANSIENT_HIDE_ITEM_BUTTONS | TRANSIENT_SWORD_OVER_SHIELD;
+    if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0)
+        return TRANSIENT_HIDE_ITEM_BUTTONS | TRANSIENT_SWORD_OVER_SHIELD | TRANSIENT_DPAD_HUD;
     if (const int button = HiddenItemButtonIndex(name)) return hiddenItemButtons[button];
     if (std::strcmp(name, SWORD_OVER_SHIELD_SETTING) == 0) return swordOverShield ? 1 : 0;
+    if (std::strcmp(name, DPAD_HUD_SETTING) == 0) return dpadHudOwned ? 1 : 0;
     return gamepadBridge.getSettingInt ? gamepadBridge.getSettingInt(name, fallback) : fallback;
 }
 ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value) {
@@ -141,6 +148,10 @@ ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value)
     if (std::strcmp(name, SWORD_OVER_SHIELD_SETTING) == 0) {
         swordOverShield = value != 0;
         shieldDelivered = swordPending = false;
+        return SHIP_NATIVE_OK;
+    }
+    if (std::strcmp(name, DPAD_HUD_SETTING) == 0) {
+        dpadHudOwned = value != 0;
         return SHIP_NATIVE_OK;
     }
     return gamepadBridge.setSettingInt ? gamepadBridge.setSettingInt(name, value) : SHIP_NATIVE_UNSUPPORTED;
@@ -348,11 +359,13 @@ struct CapturedItemButton {
     uint32_t frame = 0;
     bool valid = false;
 };
-std::array<CapturedItemButton, 4> itemButtons{};
+// Índices de SaveContext.equips.buttonItems no SoH: 1..3 são os botões C e 4..7 o D-pad (cima,
+// baixo, esquerda e direita), capturado quando o HUD desenha o D-pad.
+constexpr uint8_t LAST_CAPTURED_BUTTON = 7;
+std::array<CapturedItemButton, LAST_CAPTURED_BUTTON + 1> itemButtons{};
 ShipNativeStatus SHIP_NATIVE_CALL ItemButtonRect(uint8_t button, int16_t* x, int16_t* y, int16_t* size,
                                                  uint8_t* alpha) {
-    if (button < LINKSPAN_OOT_ITEM_BUTTON_C_LEFT || button > LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT || !x || !y ||
-        !size || !alpha)
+    if (button < LINKSPAN_OOT_ITEM_BUTTON_C_LEFT || button > LAST_CAPTURED_BUTTON || !x || !y || !size || !alpha)
         return SHIP_NATIVE_INVALID_ARGUMENT;
     if (!OnGameThread() || !gPlayState) return SHIP_NATIVE_UNSUPPORTED;
     const auto& captured = itemButtons[button];
@@ -502,6 +515,7 @@ void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
     // Os settings transitórios pertencem aos mods que usavam a ponte anterior.
     hiddenItemButtons = {};
     swordOverShield = shieldDelivered = swordPending = false;
+    dpadHudOwned = false;
 }
 
 void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
@@ -550,7 +564,7 @@ extern "C" s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton)
 
 extern "C" void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha) {
     if (!play || button < static_cast<s32>(LINKSPAN_OOT_ITEM_BUTTON_C_LEFT) ||
-        button > static_cast<s32>(LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT))
+        button > static_cast<s32>(ShipLuaHost::LAST_CAPTURED_BUTTON))
         return;
     ShipLuaHost::itemButtons[button] = {x, y, size, static_cast<uint8_t>(std::min<u16>(alpha, 255)),
                                         play->state.frames, true};
@@ -571,6 +585,11 @@ extern "C" s32 OotNative_TakePendingOcarinaSong(void) {
 // Chamada por Interface_DrawItemButtons e Interface_Draw (z_parameter.c) para cada botão C.
 extern "C" s32 LinkSpan_ItemButtonHidden(s32 button) {
     return button >= 1 && button <= 3 && ShipLuaHost::hiddenItemButtons[button] ? 1 : 0;
+}
+
+// Chamada por Interface_Draw (z_parameter.c) antes de desenhar o D-pad do HUD.
+extern "C" s32 LinkSpan_DpadHudOwned(void) {
+    return ShipLuaHost::dpadHudOwned ? 1 : 0;
 }
 
 // Chamada por Player_Update (z_player.c) com a cópia do input do Player. O OoT não ataca com o

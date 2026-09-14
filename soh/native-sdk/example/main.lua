@@ -25,7 +25,7 @@ local controls = {
     ocarina = { physical = "dpad_left", sdl_button = 13, gesture = "tap" },
     gear = { physical = "dpad_up", sdl_button = 11, tap = "toggle_last", hold = "menu_right_stick", hold_ms = 400 },
     boots = { physical = "dpad_down", sdl_button = 12, tap = "toggle_kokiri", hold = "menu_right_stick", hold_ms = 400 },
-    hud = { item_slots = "equipped_only" },
+    hud = { item_slots = "equipped_only", dpad = { up = "tunic", down = "boots", left = "ocarina", right = "navi" } },
     menu = { physical = "+" },
 }
 
@@ -138,6 +138,40 @@ local function draw_item_selection()
     ship.hud.draw_ring(tonumber(x) + half, tonumber(y) + half, half + 3, 2, 1.0, 255, 255, 255, tonumber(alpha))
 end
 
+-- Ícone da Navi: PNG convertido por tools/convert-png-to-hud-icon.ps1 (o PNG fica fora do git,
+-- que ignora *.png em soh/). O provider monta a pasta assets/ do pacote no configure.
+local NAVI_ICON = "textures/baiteryamato/dynamic_movement_remake/gNaviIconTex"
+
+-- D-pad do HUD nativo com as funções do mod: traje em cima, botas embaixo, ocarina na
+-- esquerda e Navi na direita. O host desenha o fundo e informa a posição de cada direção.
+local function draw_dpad()
+    local state = ship.native.call("hud_dpad", "")
+    if not state or state == "none" then
+        return
+    end
+    local parts = {}
+    for part in state:gmatch("[^;]+") do
+        parts[#parts + 1] = part
+    end
+    local tunic, boots, ocarina = (parts[5] or ""):match("^(%d+),(%d+),(%d+)$")
+    if #parts ~= 5 or not tunic then
+        return
+    end
+    local icons = {
+        EQUIP_ICONS.tunic[tonumber(tunic)],
+        EQUIP_ICONS.boots[tonumber(boots)],
+        ITEM_ICONS[tonumber(ocarina)],
+        NAVI_ICON,
+    }
+    for index = 1, 4 do
+        local x, y, side, alpha = parts[index]:match("^(%-?%d+),(%-?%d+),(%d+),(%d+)$")
+        if x and icons[index] and tonumber(alpha) > 0 then
+            ship.hud.draw_icon(icons[index], tonumber(x), tonumber(y), tonumber(side), tonumber(side),
+                { alpha = tonumber(alpha) })
+        end
+    end
+end
+
 -- Menu horizontal centralizado na parte de baixo, com anel na opção destacada. O
 -- analógico direito anda para os lados e soltar o botão que abriu o menu aplica.
 local function draw_icon_row(icons, selected)
@@ -218,6 +252,7 @@ ship.events.on("game.ready", function()
     ship.log.info("core-002-registry: " .. (registry_probe or ("falhou: " .. tostring(registry_error))))
     ship.events.on("game.frame", update_movement)
     ship.events.on("hook.oot.hud.draw", function()
+        draw_dpad()
         draw_item_selection()
         draw_quick_swap()
         draw_item_menu()
