@@ -265,9 +265,10 @@ O mod lê as posições físicas do Switch Pro: B=`SDL A`, A=`SDL B`, Y=`SDL X` 
 X=`SDL Y`. Os bindings são aplicados somente em memória e o mapeamento do usuário
 é restaurado quando o mod descarrega.
 
-O mod habilita `FreeLook`, `PersistentMasks` e `Controls.RightStickAim` e fixa
-`FreeLook.InvertYAxis` em 0 enquanto está carregado; no unload, restaura as opções
-anteriores. O analógico
+O mod habilita `FreeLook`, `PersistentMasks`, `Controls.RightStickAim` e
+`MoveInFirstPerson` e fixa `FreeLook.InvertYAxis`, `Controls.InvertAimingYAxis` e
+`Controls.InvertZAimingYAxis` em 0 enquanto está carregado; no unload, restaura as
+opções anteriores. O analógico
 direito controla a câmera livre com o eixo vertical normal (sem a chave na config,
 o SoH inverte o eixo): parada, ela mantém o ângulo; quando Link volta a andar com
 o analógico direito parado há 500 ms (`configure "0,500"`, aceita 0 a 60000), o
@@ -321,9 +322,10 @@ Na versão 0.2.9:
 13. com um menu aberto o analógico direito não gira a câmera; depois de fechar, a
     câmera só volta a responder quando o analógico passa pelo centro;
 14. em primeira pessoa (D-pad direita) e na mira de arco, estilingue e gancho, o
-    analógico direito move a visão, somado ao esquerdo (`Controls.RightStickAim` do
-    SoH). A câmera livre fica parada nesse tempo e só volta depois de o analógico
-    passar pelo centro;
+    analógico direito move a visão com o eixo vertical normal e o esquerdo anda com
+    o Link (`Controls.RightStickAim` e `MoveInFirstPerson` do SoH). Na mira com o
+    ZL, o vertical do analógico direito também é o normal. A câmera livre fica
+    parada nesse tempo e só volta depois de o analógico passar pelo centro;
 15. o D-pad do HUD mostra as funções do mod: traje em cima, botas embaixo, ocarina
     na esquerda e Navi na direita. O ícone da Navi é um PNG convertido por
     `tools/convert-png-to-hud-icon.ps1` para `assets/`, pasta que o provider monta

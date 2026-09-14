@@ -7,7 +7,7 @@ local controls = {
     profile = "nintendo",
     move = { physical = "left_stick" },
     free_camera = { physical = "right_stick", invert_y = false, follow_delay_ms = 500 },
-    first_person = { physical = "right_stick", setting = "gSettings.Controls.RightStickAim", left_stick = true },
+    first_person = { physical = "right_stick", invert_y = false, left_stick = "move" },
     jump = { physical = "X", sdl_button = 3 },
     context = { physical = "A", sdl_button = 1, virtual_mask = 0x8000 },
     roll = { physical = "A", condition = "moving" },

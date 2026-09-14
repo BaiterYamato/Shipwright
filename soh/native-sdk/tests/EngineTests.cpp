@@ -741,9 +741,13 @@ int main(int argc, char** argv) {
         auto configured = (*loaded.value)->Call("configure", "0,5", 3, response.data(), uint32_t(response.size()));
         Check(configured.code == ShipLua::ErrorCode::Ok && settingValue == 1 &&
                   otherSettings["gEnhancements.PersistentMasks"] == 1 &&
-                  otherSettings["gSettings.FreeLook.InvertYAxis"] == 0 &&
-                  otherSettings["gSettings.Controls.RightStickAim"] == 1,
-              "mod deve ativar câmera livre sem inverter o eixo vertical, mira pelo analógico direito e PersistentMasks");
+                  otherSettings["gSettings.FreeLook.InvertYAxis"] == 0,
+              "mod deve ativar câmera livre sem inverter o eixo vertical e PersistentMasks");
+        Check(otherSettings["gSettings.Controls.RightStickAim"] == 1 &&
+                  otherSettings["gSettings.MoveInFirstPerson"] == 1 &&
+                  otherSettings["gSettings.Controls.InvertAimingYAxis"] == 0 &&
+                  otherSettings["gSettings.Controls.InvertZAimingYAxis"] == 0,
+              "primeira pessoa e mira: analógico direito olha com o vertical normal e o esquerdo anda");
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         player.actionFunc = nullptr;
         player.stateFlags1 = 0;
@@ -955,10 +959,14 @@ int main(int argc, char** argv) {
         Check(settingValue == 0, "unload deve restaurar a configuração de câmera livre");
         Check(otherSettings["gEnhancements.PersistentMasks"] == 0 && !play.actorCtx.lensActive,
               "unload deve restaurar PersistentMasks e desligar a lente mantida só pelo atalho");
-        Check(otherSettings["gSettings.FreeLook.InvertYAxis"] == 1 &&
-                  otherSettings["gSettings.Controls.RightStickAim"] == 0 && LinkSpan_ItemButtonHidden(1) == 0 &&
+        Check(otherSettings["gSettings.FreeLook.InvertYAxis"] == 1 && LinkSpan_ItemButtonHidden(1) == 0 &&
                   LinkSpan_ItemButtonHidden(2) == 0 && LinkSpan_ItemButtonHidden(3) == 0,
               "unload deve restaurar o eixo vertical e mostrar de novo todos os botões C");
+        Check(otherSettings["gSettings.Controls.RightStickAim"] == 0 &&
+                  otherSettings["gSettings.MoveInFirstPerson"] == 0 &&
+                  otherSettings["gSettings.Controls.InvertAimingYAxis"] == 1 &&
+                  otherSettings["gSettings.Controls.InvertZAimingYAxis"] == 1,
+              "unload deve devolver a primeira pessoa e a mira às opções anteriores");
         Input unloadedInput{};
         unloadedInput.cur.button = BTN_R | BTN_B;
         LinkSpan_FilterPlayerInput(&unloadedInput);

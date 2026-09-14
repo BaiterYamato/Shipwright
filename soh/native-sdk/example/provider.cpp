@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <new>
 #include "oot_engine.h"
 #include "oot_registry.h"
@@ -38,9 +39,20 @@ constexpr uint32_t PhysicalButton(uint8_t button) { return uint32_t{ 1 } << butt
 constexpr const char* FREE_LOOK_SETTING = "gSettings.FreeLook.Enabled";
 // Sem a chave na config, o SoH usa o eixo vertical invertido (z_camera.c, Camera_FreeLook).
 constexpr const char* FREE_LOOK_INVERT_Y_SETTING = "gSettings.FreeLook.InvertYAxis";
-// Com a chave ligada, o analógico direito também move a visão em primeira pessoa e a mira de
-// arco, estilingue e gancho (func_8084ABD8 em z_player.c), somado ao esquerdo.
-constexpr const char* RIGHT_STICK_AIM_SETTING = "gSettings.Controls.RightStickAim";
+// Primeira pessoa e mira (func_8084ABD8 e func_8083FD78 em z_player.c): o analógico direito move
+// a visão e o esquerdo anda com o Link, porque o MoveInFirstPerson só vale junto do RightStickAim.
+// Sem as chaves de inversão na config, o SoH usa o eixo vertical invertido do N64.
+struct ForcedSetting {
+    const char* name;
+    int32_t fallback;
+    int32_t value;
+};
+constexpr ForcedSetting FIRST_PERSON_SETTINGS[] = {
+    { "gSettings.Controls.RightStickAim", 0, 1 },
+    { "gSettings.MoveInFirstPerson", 0, 1 },
+    { "gSettings.Controls.InvertAimingYAxis", 1, 0 },
+    { "gSettings.Controls.InvertZAimingYAxis", 1, 0 },
+};
 constexpr const char* PERSISTENT_MASKS_SETTING = "gEnhancements.PersistentMasks";
 // Settings transitórios do host: ficam só em memória e nunca vão para a config. A sonda
 // devolve a soma dos recursos que o host suporta.
@@ -106,8 +118,9 @@ struct Mod {
     int32_t previousFreeLook = 0;
     bool invertYApplied = false;
     int32_t previousInvertY = 1;
-    bool rightStickAimApplied = false;
-    int32_t previousRightStickAim = 0;
+    // Quantos FIRST_PERSON_SETTINGS o configure aplicou, na ordem, e o valor anterior de cada um.
+    size_t firstPersonApplied = 0;
+    int32_t previousFirstPerson[std::size(FIRST_PERSON_SETTINGS)] = {};
     uint32_t cameraFollowDelayMilliseconds = 500;
     bool cameraFreeLookActive = false;
     bool cameraWaitCenter = false;
@@ -484,7 +497,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t lengt
         "D-pad cima=traje (toque: último; segurar: menu); D-pad baixo=botas (toque: Kokiri; segurar: menu); "
         "HUD=só o C equipado e o D-pad com traje, botas, ocarina e Navi; "
         "câmera=stick direito com vertical normal, volta a seguir ao andar após %.2fs; "
-        "primeira pessoa e mira=stick direito; "
+        "primeira pessoa e mira=stick direito olha (vertical normal), esquerdo anda; "
         "gamepad=%s",
         double(JUMP_VELOCITY), double(mod.cameraFollowDelayMilliseconds) / 1000.0,
         mod.movement->has_gamepad(0) ? "conectado" : "ausente");
@@ -530,13 +543,14 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
         }
         mod.invertYApplied = true;
     }
-    // Primeira pessoa e mira também pelo analógico direito, sem tirar o esquerdo.
-    if (!mod.rightStickAimApplied) {
-        mod.previousRightStickAim = mod.movement->get_setting_int(RIGHT_STICK_AIM_SETTING, 0);
-        if (mod.movement->set_setting_int(RIGHT_STICK_AIM_SETTING, 1) != SHIP_NATIVE_OK) {
+    // Primeira pessoa e mira: visão pelo analógico direito, com o vertical normal, e o esquerdo andando.
+    for (; mod.firstPersonApplied < std::size(FIRST_PERSON_SETTINGS); ++mod.firstPersonApplied) {
+        const ForcedSetting& setting = FIRST_PERSON_SETTINGS[mod.firstPersonApplied];
+        const int32_t previous = mod.movement->get_setting_int(setting.name, setting.fallback);
+        if (mod.movement->set_setting_int(setting.name, setting.value) != SHIP_NATIVE_OK) {
             return SHIP_NATIVE_FAILURE;
         }
-        mod.rightStickAimApplied = true;
+        mod.previousFirstPerson[mod.firstPersonApplied] = previous;
     }
     // A máscara colocada pelo R3 fica fora dos botões C; sem PersistentMasks o
     // jogo a tiraria (Player_ProcessItemButtons) e o host recusa o uso.
@@ -943,7 +957,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         UpdateEquipGesture(mod, mod.boots, physical, SDL_BUTTON_DPAD_DOWN, EQUIP_TYPE_BOOTS),
     };
     const bool menuOpen = mod.itemMenu.open || mod.tunic.quickSwap || mod.boots.quickSwap;
-    // Em primeira pessoa ou com a mira pronta, o analógico direito mira (RightStickAim).
+    // Em primeira pessoa ou com a mira pronta, o analógico direito mira (FIRST_PERSON_SETTINGS).
     const bool aiming = (player->stateFlags1 & (PLAYER_STATE1_FIRST_PERSON | PLAYER_STATE1_READY_TO_FIRE)) != 0;
     const CameraChange cameraChange = UpdateCamera(mod, menuOpen || aiming);
     for (const char* event : events) {
@@ -1105,8 +1119,8 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     if (mod && mod->freeLookApplied) mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
     if (mod && mod->invertYApplied)
         mod->movement->set_setting_int(FREE_LOOK_INVERT_Y_SETTING, mod->previousInvertY);
-    if (mod && mod->rightStickAimApplied)
-        mod->movement->set_setting_int(RIGHT_STICK_AIM_SETTING, mod->previousRightStickAim);
+    for (size_t index = mod ? mod->firstPersonApplied : 0; index > 0; --index)
+        mod->movement->set_setting_int(FIRST_PERSON_SETTINGS[index - 1].name, mod->previousFirstPerson[index - 1]);
     if (mod) RestoreItemHud(*mod);
     if (mod && mod->swordOverShieldApplied) mod->movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 0);
     if (mod && mod->dpadHudApplied) mod->movement->set_setting_int(DPAD_HUD_SETTING, 0);
