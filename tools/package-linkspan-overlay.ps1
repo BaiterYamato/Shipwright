@@ -20,6 +20,9 @@ param(
     # build/x64/native-sdk/oot_layout_id.h do mesmo build; o id precisa estar dentro do executável.
     [string]$LayoutIdHeader,
 
+    # soh.symbols gerado pelo alvo soh_symbols do mesmo build (escape hatch, ABI 1.3).
+    [string]$HostSymbols,
+
     [string]$HostBase,
 
     [string]$ShipwrightVersion = '9.2.3',
@@ -62,6 +65,15 @@ function Write-Utf8NoBom {
 
 $resolvedExecutable = Resolve-InputFile -Path $HostExecutable -Label 'Executável do host'
 $resolvedResources = Resolve-InputFile -Path $HostResources -Label 'Arquivo soh.o2r do host'
+$resolvedSymbols = $null
+if ($HostSymbols) {
+    $resolvedSymbols = Resolve-InputFile -Path $HostSymbols -Label 'soh.symbols do host'
+    $symbolsHeader = Get-Content -LiteralPath $resolvedSymbols -TotalCount 2
+    $executableHash = (Get-FileHash -LiteralPath $resolvedExecutable -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($symbolsHeader.Count -ne 2 -or $symbolsHeader[0] -ne 'linkspan-symbols 1' -or $symbolsHeader[1] -ne "sha256 $executableHash") {
+        throw "soh.symbols não corresponde ao executável ($executableHash): $resolvedSymbols"
+    }
+}
 
 $resolvedExamples = @()
 foreach ($mod in $ExampleMod) {
@@ -145,6 +157,9 @@ if (-not ([System.IO.Path]::GetFullPath($stage).StartsWith($expectedStagePrefix,
 try {
     Copy-Item -LiteralPath $resolvedExecutable -Destination (Join-Path $stage 'soh.exe')
     Copy-Item -LiteralPath $resolvedResources -Destination (Join-Path $stage 'soh.o2r')
+    if ($resolvedSymbols) {
+        Copy-Item -LiteralPath $resolvedSymbols -Destination (Join-Path $stage 'soh.symbols')
+    }
     if ($resolvedControllerDatabase) {
         Copy-Item -LiteralPath $resolvedControllerDatabase -Destination (Join-Path $stage 'gamecontrollerdb.txt')
     }
@@ -158,6 +173,9 @@ try {
     }
 
     $replaces = @('soh.exe', 'soh.o2r')
+    if ($resolvedSymbols) {
+        $replaces += 'soh.symbols'
+    }
     if ($resolvedControllerDatabase) {
         $replaces += 'gamecontrollerdb.txt'
     }
@@ -178,7 +196,7 @@ try {
         }
         linkSpan = [ordered]@{
             apiVersion = $LinkSpanVersion
-            nativeProviderAbi = '1.1'
+            nativeProviderAbi = '1.3'
             coreExtensions = $true
             ootLayoutId = $layoutId
         }
@@ -192,6 +210,9 @@ try {
     Write-Utf8NoBom -Path (Join-Path $stage 'linkspan-overlay.json') -Content ($metadata | ConvertTo-Json -Depth 5)
 
     $changeLines = @('- soh.exe e soh.o2r formam um par compatível e devem ser substituídos juntos.')
+    if ($resolvedSymbols) {
+        $changeLines += '- soh.symbols pertence a este soh.exe; sem ele, core extensions com escape hatch não resolvem funções.'
+    }
     if ($resolvedExtractorAssets) {
         $changeLines += '- assets recebe os .yml do extrator Torch deste host. Os arquivos antigos da'
         $changeLines += '  release oficial continuam na pasta sem uso; nenhum deles é sobrescrito.'

@@ -310,6 +310,34 @@ Blocos de mods ausentes são preservados no arquivo. As flags das cenas de mod
 `soh/native-sdk/save-demo` conta as cargas de arquivo no namespace
 `linkspan-demo.save`; empacote com `tools/package-save-demo.ps1`.
 
+## Escape hatch (COREEXT-008)
+
+Contrato em `NATIVE-001/rfcs/0023-native-escape-hatch.md`. Uma core extension com
+`abi_version = "1.3"` e `host_fingerprints` contendo o SHA-256 do `soh.exe` pode:
+
+- `resolve_symbol("Interface_Draw")` ou `resolve_symbol("z_player.c!Player_Action_Roll")`;
+- `install_patch(alvo, detour, &original, &patch)`: desvio com MinHook v1.3.4, só
+  dentro do executável; segundo patch no mesmo alvo = `LIMIT`;
+- `remove_patch(patch)`; os patches restantes saem no unload do mod.
+
+O host resolve nomes pelo `soh.symbols` ao lado do executável:
+
+```powershell
+cmake --build build/x64 --config Release --target soh_symbols -- /m:1
+```
+
+O alvo `linkspan_symdump` lê o `soh.pdb` e grava as funções com fonte em
+`soh/src` e `soh/soh` (cerca de 13 mil). Nomes cujo RVA foi fundido com outra
+função por `/OPT:ICF` ficam marcados e são recusados, porque desviar um deles
+desviaria todos. Funções inlined não aparecem. Um `soh.symbols` de outro
+executável é ignorado com aviso no log.
+
+`tools/package-linkspan-overlay.ps1 -HostSymbols x64/Release/soh.symbols` inclui o
+arquivo no overlay e recusa um que não corresponda ao `soh.exe`.
+
+`soh/native-sdk/escape-demo` desvia `Interface_Draw` para o HUD piscar;
+`tools/package-escape-demo.ps1` grava no manifesto o SHA-256 de `x64/Release/soh.exe`.
+
 ## Compilar o host uma vez
 
 Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O
