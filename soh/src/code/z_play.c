@@ -358,6 +358,8 @@ u8 CheckBridgeRewardCount() {
 s32 LinkSpan_EntranceCount(void);
 void LinkSpan_ReportInvalidEntrance(s32 entranceIndex, s32 sceneLayer);
 SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum);
+// SOH [Link-Span] frame de gameplay pelos hooks nativos (soh/soh/native/OotNativeHooksGame.cpp).
+void LinkSpan_PlayUpdate(PlayState* play);
 
 void Play_Init(GameState* thisx) {
     PlayState* play = (PlayState*)thisx;
@@ -1702,7 +1704,7 @@ void Play_Main(GameState* thisx) {
     }
 
     if ((HREG(80) != 10) || (HREG(81) != 0)) {
-        Play_Update(play);
+        LinkSpan_PlayUpdate(play);
     }
 
     PLAY_LOG(4583);

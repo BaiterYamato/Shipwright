@@ -2,6 +2,7 @@
 #include "native/OotNativeEngine.h"
 #include "native/OotNativeRegistry.h"
 #include "native/OotNativeScenes.h"
+#include "native/OotNativeHooks.h"
 #include "OotActorProvider.h"
 #include "OotHotkeyRegistry.h"
 #include "OotWorldAdapter.h"
@@ -7048,6 +7049,7 @@ void Shutdown() {
     gModHost.reset();
     ResetOotNativeRegistry();
     ResetOotNativeScenes();
+    ResetOotHooks();
     ClearNativeResourceArchives();
     SetOotNativeGamepadBridge({});
     SetOotNativeResourceBridge({});

@@ -30,7 +30,8 @@ add_executable(oot_native_engine_tests
     "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/EngineTests.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeEngine.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeRegistry.cpp"
-    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp")
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeHooks.cpp")
 target_include_directories(oot_native_engine_tests PRIVATE
     "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
     "${CMAKE_SOURCE_DIR}/soh/soh/native")

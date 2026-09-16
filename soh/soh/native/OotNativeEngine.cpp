@@ -1,4 +1,5 @@
 #include "OotNativeEngine.h"
+#include "OotNativeHooks.h"
 #include "OotNativeRegistry.h"
 #include "OotNativeScenes.h"
 #include "oot_engine.h"
@@ -567,6 +568,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& scenes = GetOotNativeScenesService();
     policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION,
                                sizeof(scenes), &scenes});
+    policy.hooks = CreateOotHookRegistry();
     return policy;
 }
 }

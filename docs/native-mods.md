@@ -265,6 +265,28 @@ providers nativos contra o SDK do host novo.
 Ainda não: persistência das flags de cenas de mod no save, `titleCardTexture`,
 camadas de entrada diferentes (`layers`) e mapa/minimapa para cenas novas.
 
+## Hooks nativos do OoT (COREEXT-006)
+
+Com provider `abi_version = "1.2"`, um mod entra no fluxo do jogo por
+`register_hook` (contrato em `NATIVE-001/rfcs/0021-native-hooks.md`). O host
+declara em `soh/soh/native/oot_hooks.h`:
+
+| Ponto v1 | Payload | Modos | Onde |
+|---|---|---|---|
+| `oot.play.update` | `ShipOotPlayHookV1` | observe, replace | `Play_Main` → `Play_Update` |
+| `oot.actor.update` | `ShipOotActorHookV1` | observe, replace | `Actor_UpdateAll`, depois do culling e do GameInteractor |
+| `oot.actor.draw` | `ShipOotActorHookV1` | observe, replace | `Actor_Draw`, entre segmentos e sombra |
+
+- Sem hook no ponto, o jogo chama a função original direto; o custo é uma
+  consulta ao registro por ator.
+- `replace` é exclusivo por ponto: quem substitui o update ou o draw filtra por
+  `actor_id` e chama `call->call_original(call)` para os outros atores.
+- Um segundo `replace` recebe `SHIP_NATIVE_LIMIT`, com log do dono atual.
+- Os hooks saem no unload do mod, antes do `shutdown`.
+
+`soh/native-sdk/hooks-demo` conta frames e updates por observe e pisca o Link
+pelo replace do draw. Empacote com `tools/package-hooks-demo.ps1`.
+
 ## Compilar o host uma vez
 
 Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O

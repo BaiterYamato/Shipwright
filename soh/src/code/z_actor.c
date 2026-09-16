@@ -2545,6 +2545,9 @@ void Actor_DisableLens(PlayState* play) {
 
 // SOH [Link-Span] flags salvas por id de cena, incluindo as cenas registradas por mods.
 SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum);
+// SOH [Link-Span] update/draw passando pelos hooks nativos (soh/soh/native/OotNativeHooksGame.cpp).
+void LinkSpan_ActorUpdate(Actor* actor, PlayState* play);
+void LinkSpan_ActorDraw(Actor* actor, PlayState* play);
 
 void Actor_InitContext(PlayState* play, ActorContext* actorCtx, ActorEntry* actorEntry) {
     SavedSceneFlags* savedSceneFlags;
@@ -2703,7 +2706,7 @@ void Actor_UpdateAll(PlayState* play, ActorContext* actorCtx) {
                         actor->colorFilterTimer--;
                     }
                     if (GameInteractor_ShouldActorUpdate(actor)) {
-                        actor->update(actor, play);
+                        LinkSpan_ActorUpdate(actor, play);
                         GameInteractor_ExecuteOnActorUpdate(actor);
                     }
                     func_8003F8EC(play, &play->colCtx.dyna, actor);
@@ -2811,7 +2814,7 @@ void Actor_Draw(PlayState* play, Actor* actor) {
         }
     }
 
-    actor->draw(actor, play);
+    LinkSpan_ActorDraw(actor, play);
 
     if (actor->colorFilterTimer != 0) {
         if (actor->colorFilterParams & 0x2000) {

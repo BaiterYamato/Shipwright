@@ -1,5 +1,6 @@
 #include "OotNativeEngine.h"
 #include "oot_engine.h"
+#include "oot_hooks.h"
 #include "oot_registry.h"
 #include "oot_ocarina.h"
 #include "oot_scenes.h"
@@ -268,6 +269,40 @@ int main(int argc, char** argv) {
           policy.services[7].version == LINKSPAN_OOT_SCENES_VERSION &&
           policy.services[7].size == sizeof(ShipOotScenesV1),
           "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1 e scenes V1");
+    Check(policy.hooks && policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_PLAY_UPDATE, LINKSPAN_OOT_HOOKS_VERSION) &&
+              policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_UPDATE, LINKSPAN_OOT_HOOKS_VERSION) &&
+              policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_DRAW, LINKSPAN_OOT_HOOKS_VERSION) &&
+              policy.hooks->HookCount() == 0,
+          "host deve declarar oot.play.update, oot.actor.update e oot.actor.draw v1 sem hooks");
+    {
+        struct Seen { int calls = 0; int16_t id = 0; } seen;
+        const ShipNativeHookSpec spec{sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ACTOR_UPDATE,
+                                      LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotActorHookV1),
+                                      SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE, 0,
+                                      [](void* user, const ShipNativeHookCall* call) -> ShipNativeStatus {
+                                          auto* data = static_cast<Seen*>(user);
+                                          ++data->calls;
+                                          data->id = static_cast<const ShipOotActorHookV1*>(call->payload)->actor_id;
+                                          return SHIP_NATIVE_OK;
+                                      },
+                                      &seen};
+        uint64_t handle = 0;
+        const auto transform = [&] {
+            auto copy = spec;
+            copy.mode = SHIP_NATIVE_HOOK_TRANSFORM;
+            copy.phase = 0;
+            return copy;
+        }();
+        Check(policy.hooks->Register("test", transform, &handle) == SHIP_NATIVE_UNSUPPORTED,
+              "pontos de ator do OoT recusam transform");
+        Check(policy.hooks->Register("test", spec, &handle) == SHIP_NATIVE_OK, "observe em oot.actor.update");
+        ShipOotActorHookV1 payload{sizeof(ShipOotActorHookV1), nullptr, nullptr, 7, 0};
+        Check(policy.hooks->Dispatch(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_UPDATE, 1), &payload,
+                                     sizeof(payload), nullptr, nullptr) == SHIP_NATIVE_OK &&
+                  seen.calls == 1 && seen.id == 7,
+              "despacho do ponto de ator entrega o payload");
+        Check(policy.hooks->Unregister("test", handle) == SHIP_NATIVE_OK, "remove hook de teste");
+    }
     const auto* ocarina = static_cast<const ShipOotOcarinaV1*>(policy.services[6].table);
     const auto* engine = static_cast<const ShipOotEngineV1*>(policy.services[0].table);
     const auto* movement = static_cast<const ShipOotMovementV1*>(policy.services[1].table);
