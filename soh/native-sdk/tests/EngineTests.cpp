@@ -7,6 +7,9 @@
 #include "oot_registry.h"
 #include "oot_ocarina.h"
 #include "oot_scenes.h"
+#include "oot_items.h"
+#include "oot_actors.h"
+#include "OotNativeItems.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
@@ -251,6 +254,49 @@ extern "C" void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s
 extern "C" void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags);
 extern "C" s32 OotNative_TakePendingOcarinaSong(void);
 
+namespace FakeItems {
+std::array<uint8_t, 4> buttons{0xFF, 0xFF, 0xFF, 0xFF};
+std::map<uint8_t, std::string> icons;
+std::map<std::string, int32_t> actorIds;
+std::vector<std::pair<int16_t, uint8_t>> killedTypes;
+std::string lastDraw;
+uint32_t uses = 0;
+
+void SetItemVisual(uint8_t item, const char* icon, uint8_t) {
+    if (icon) {
+        icons[item] = icon;
+    } else {
+        icons.erase(item);
+    }
+}
+uint8_t GetButton(uint8_t button) {
+    return buttons[button];
+}
+void SetButton(uint8_t button, uint8_t item) {
+    buttons[button] = item;
+}
+int32_t AddActor(const char* name, const ShipOotActorTypeSpecV1&) {
+    const auto found = actorIds.find(name);
+    if (found != actorIds.end()) {
+        return found->second;
+    }
+    const int32_t id = 0x1D7 + static_cast<int32_t>(actorIds.size());
+    actorIds[name] = id;
+    return id;
+}
+void Kill(int16_t id, uint8_t category) {
+    killedTypes.emplace_back(id, category);
+}
+ShipNativeStatus Draw(void*, const char* path, uint8_t) {
+    lastDraw = path;
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Use(void* user, uint8_t, uint8_t) {
+    ++*static_cast<uint32_t*>(user);
+    return SHIP_NATIVE_OK;
+}
+} // namespace FakeItems
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit) gBitFlags[bit] = uint32_t{1} << bit;
     ShipLuaHost::SetOotNativeGamepadBridge(
@@ -260,7 +306,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 9 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 11 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -273,8 +319,147 @@ int main(int argc, char** argv) {
           policy.services[7].size == sizeof(ShipOotScenesV1) &&
           std::string(policy.services[8].name) == LINKSPAN_OOT_SAVE_SERVICE &&
           policy.services[8].version == LINKSPAN_OOT_SAVE_VERSION &&
-          policy.services[8].size == sizeof(ShipOotSaveV1),
-          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1 e save V1");
+          policy.services[8].size == sizeof(ShipOotSaveV1) &&
+          std::string(policy.services[9].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
+          policy.services[9].version == LINKSPAN_OOT_ITEMS_VERSION &&
+          policy.services[9].size == sizeof(ShipOotItemsV1) &&
+          std::string(policy.services[10].name) == LINKSPAN_OOT_ACTORS_SERVICE &&
+          policy.services[10].version == LINKSPAN_OOT_ACTORS_VERSION &&
+          policy.services[10].size == sizeof(ShipOotActorsV1),
+          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1, save V1, "
+          "items V1 e actors V1");
+    {
+        using namespace FakeItems;
+        const auto* items = static_cast<const ShipOotItemsV1*>(policy.services[9].table);
+        const auto* actors = static_cast<const ShipOotActorsV1*>(policy.services[10].table);
+        uint8_t item = 0;
+        ShipOotItemSpecV1 spec{sizeof(spec), "autor.lanterna", "textures/icon_item_static/gItemIconLensOfTruthTex",
+                               LINKSPAN_OOT_ITEM_AGE_ANY, Use, &uses};
+        Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK && item == LINKSPAN_OOT_ITEMS_FIRST_ID,
+              "sem ponte o registro ainda aloca o id");
+        Check(items->set_button_item(1, item) == SHIP_NATIVE_UNSUPPORTED, "sem ponte não há botão");
+        Check(items->unregister_item(item) == SHIP_NATIVE_OK, "remove o item sem ponte");
+
+        ShipLuaHost::OotItemsBridge bridge;
+        bridge.setItemVisual = SetItemVisual;
+        bridge.getButtonItem = GetButton;
+        bridge.setButtonItem = SetButton;
+        bridge.addActorType = AddActor;
+        bridge.killActors = Kill;
+        bridge.drawDisplayList = Draw;
+        ShipLuaHost::SetOotItemsBridge(bridge);
+
+        Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK && item == LINKSPAN_OOT_ITEMS_FIRST_ID &&
+                  icons[item] == "__OTR__textures/icon_item_static/gItemIconLensOfTruthTex",
+              "registro entrega o ícone com __OTR__ ao jogo");
+        uint8_t other = 0;
+        Check(items->register_item(&spec, &other) == SHIP_NATIVE_INVALID_ARGUMENT && other == 0xFF,
+              "nome repetido");
+        ShipOotItemSpecV1 bad = spec;
+        bad.name = "semponto";
+        Check(items->register_item(&bad, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "nome sem namespace");
+        bad = spec;
+        bad.name = "autor.outro";
+        bad.icon_path = "__OTR__textures/x";
+        Check(items->register_item(&bad, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "ícone com __OTR__");
+        bad.icon_path = "../fora";
+        Check(items->register_item(&bad, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "ícone com ..");
+        bad.icon_path = spec.icon_path;
+        bad.age = 3;
+        Check(items->register_item(&bad, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "idade inválida");
+        bad.age = LINKSPAN_OOT_ITEM_AGE_CHILD;
+        Check(items->register_item(&bad, &other) == SHIP_NATIVE_OK && other == LINKSPAN_OOT_ITEMS_FIRST_ID + 1,
+              "segundo item no id seguinte");
+
+        uint8_t found = 0;
+        Check(items->find_item("autor.lanterna", &found) == SHIP_NATIVE_OK && found == item, "find_item");
+        Check(items->find_item("autor.nada", &found) == SHIP_NATIVE_FAILURE && found == 0xFF, "find_item ausente");
+        Check(items->set_button_item(0, item) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  items->set_button_item(4, item) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "só botões C");
+        Check(items->set_button_item(1, 0x05) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  items->set_button_item(1, LINKSPAN_OOT_ITEMS_LAST_ID) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "só itens sintéticos registrados");
+        buttons[2] = 0x05;
+        Check(items->set_button_item(1, item) == SHIP_NATIVE_OK && items->set_button_item(3, other) == SHIP_NATIVE_OK &&
+                  buttons[1] == item && buttons[3] == other,
+              "set_button_item");
+        uint8_t onButton = 0;
+        Check(items->get_button_item(2, &onButton) == SHIP_NATIVE_OK && onButton == 0x05,
+              "get_button_item devolve item vanilla");
+        const auto* record = ShipLuaHost::FindOotItem(item);
+        Check(record && record->use(record->user, item, 1) == SHIP_NATIVE_OK && uses == 1, "callback de uso");
+
+        auto saved = ShipLuaHost::ExportOotItemButtons();
+        Check(saved.size() == 2 && saved[1] == "autor.lanterna" && saved[3] == "autor.outro",
+              "save grava só botões sintéticos, pelo nome");
+        Check(items->unregister_item(other) == SHIP_NATIVE_OK && buttons[3] == 0xFF && !icons.count(other),
+              "unregister esvazia o botão e o ícone");
+        Check(items->unregister_item(other) == SHIP_NATIVE_FAILURE &&
+                  items->unregister_item(0x05) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "unregister repetido ou fora da faixa");
+
+        // Carga: o nome volta a id mesmo que o id mude; nome sem registro esvazia.
+        Check(items->unregister_item(item) == SHIP_NATIVE_OK && buttons[1] == 0xFF, "remove a lanterna");
+        spec.name = "autor.bomba";
+        uint8_t bomb = 0;
+        Check(items->register_item(&spec, &bomb) == SHIP_NATIVE_OK && bomb == LINKSPAN_OOT_ITEMS_FIRST_ID,
+              "id livre reaproveitado");
+        spec.name = "autor.lanterna";
+        Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK && item == LINKSPAN_OOT_ITEMS_FIRST_ID + 1,
+              "lanterna volta com outro id");
+        buttons = {0xFF, LINKSPAN_OOT_ITEMS_FIRST_ID, 0x05, 0xEE};
+        ShipLuaHost::RestoreOotItemButtons(saved);
+        Check(buttons[1] == item && buttons[2] == 0x05 && buttons[3] == 0xFF,
+              "restore mapeia nomes, mantém vanilla e esvazia nome desconhecido");
+        buttons = {0xFF, 0xFF, 0xEE, 0xFF};
+        ShipLuaHost::RestoreOotItemButtons({});
+        Check(buttons[2] == 0xFF, "id sintético sem nome salvo sai do botão");
+
+        int16_t actorId = -1;
+        ShipOotActorTypeSpecV1 actorSpec{sizeof(actorSpec), "autor.orbe", 7, 0, 1, 0x150, nullptr, nullptr,
+                                         nullptr, nullptr, nullptr};
+        Check(actors->register_actor_type(&actorSpec, &actorId) == SHIP_NATIVE_OK && actorId == 0x1D7,
+              "register_actor_type");
+        Check(actors->register_actor_type(&actorSpec, &actorId) == SHIP_NATIVE_INVALID_ARGUMENT && actorId == -1,
+              "tipo ativo repetido");
+        int16_t lookup = 0;
+        Check(actors->find_actor_type("autor.orbe", &lookup) == SHIP_NATIVE_OK && lookup == 0x1D7, "find_actor_type");
+        Check(actors->draw_display_list(&lookup, "objects/gameplay_keep/gHeartPieceInteriorDL", 1) ==
+                  SHIP_NATIVE_UNSUPPORTED,
+              "draw fora do draw do ator");
+        ShipLuaHost::SetOotActorDrawActive(true);
+        Check(actors->draw_display_list(&lookup, "objects/gameplay_keep/gHeartPieceInteriorDL", 1) == SHIP_NATIVE_OK &&
+                  lastDraw == "__OTR__objects/gameplay_keep/gHeartPieceInteriorDL",
+              "draw dentro do draw do ator");
+        Check(actors->draw_display_list(&lookup, "objects/x", 2) == SHIP_NATIVE_INVALID_ARGUMENT, "modo inválido");
+        ShipLuaHost::SetOotActorDrawActive(false);
+        ShipLuaHost::EnterOotActorCallback();
+        ShipOotActorTypeSpecV1 nested = actorSpec;
+        nested.name = "autor.dentro";
+        Check(actors->register_actor_type(&nested, &lookup) == SHIP_NATIVE_UNSUPPORTED,
+              "registro dentro de callback de ator");
+        ShipLuaHost::LeaveOotActorCallback();
+        Check(actors->unregister_actor_type(0x1D7) == SHIP_NATIVE_OK && killedTypes.size() == 1 &&
+                  killedTypes[0].first == 0x1D7 && killedTypes[0].second == 7,
+              "unregister mata as instâncias");
+        const auto* type = ShipLuaHost::FindOotActorType(0x1D7);
+        Check(type && !type->active, "tipo removido fica inativo");
+        Check(actors->find_actor_type("autor.orbe", &lookup) == SHIP_NATIVE_FAILURE, "tipo inativo não é achado");
+        Check(actors->register_actor_type(&actorSpec, &actorId) == SHIP_NATIVE_OK && actorId == 0x1D7,
+              "mesmo nome reaproveita o id");
+
+        std::thread worker([&] {
+            uint8_t id = 0;
+            Check(items->find_item("autor.lanterna", &id) == SHIP_NATIVE_INVALID_ARGUMENT, "outra thread");
+        });
+        worker.join();
+        ShipLuaHost::ResetOotNativeItems();
+        Check(icons.empty() && !ShipLuaHost::FindOotItem(item) &&
+                  actors->find_actor_type("autor.orbe", &lookup) == SHIP_NATIVE_FAILURE,
+              "reset limpa itens e desativa tipos");
+        ShipLuaHost::SetOotItemsBridge({});
+    }
     {
         Check(!policy.escapeHatch, "sem binding do jogo não há escape hatch");
         const std::string sha(64, 'c');

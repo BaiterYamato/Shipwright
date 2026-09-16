@@ -310,6 +310,50 @@ Blocos de mods ausentes são preservados no arquivo. As flags das cenas de mod
 `soh/native-sdk/save-demo` conta as cargas de arquivo no namespace
 `linkspan-demo.save`; empacote com `tools/package-save-demo.ps1`.
 
+## Itens sintéticos e tipos de ator (OOT-CORE-003)
+
+### `linkspan.oot.items` v1
+
+Header: `soh/soh/native/oot_items.h`.
+
+- `register_item({nome, ícone, idade, use, user}, &id)`: o id sai da faixa
+  `0xA0`–`0xEF`. O ícone é uma textura RGBA32 32x32 do resource manager, sem `__OTR__`.
+- `set_button_item(1..3, id)` põe o item num botão C, e `0xFF` esvazia o botão.
+  `get_button_item` lê o item do botão, vanilla ou sintético.
+- Apertar o botão chama `use(user, id, botão)` dentro do update do Player, e a ação
+  vanilla do Player não roda. A idade é conferida pelo host.
+- Botões com item sintético vão para o bloco `linkspan.items` pelo nome e voltam na
+  carga, mesmo que o id mude. Um nome que nenhum mod registrou esvazia o botão, com
+  aviso no log.
+- `unregister_item` esvazia os botões com o item, inclusive os guardados para a
+  outra idade. Registre no init e remova no shutdown.
+
+Esta versão não cobre página de inventário nem get-item com caixa de texto (NEI-002/003).
+
+### `linkspan.oot.actors` v1
+
+Header: `soh/soh/native/oot_actors.h`.
+
+- `register_actor_type({nome, categoria, flags, objeto, tamanho, init, destroy,
+  update, draw, user}, &id)` cria a entrada no `ActorDB`. Use o id com `spawn_actor`
+  do serviço engine.
+- Os callbacks passam por funções do host. `unregister_actor_type` mata as
+  instâncias vivas, e dali em diante o mod não é mais chamado. O mesmo nome
+  registrado de novo volta com o mesmo id.
+- Registrar tipo dentro de um callback de ator retorna `UNSUPPORTED`, porque
+  `Actor_Spawn` guarda um ponteiro para a tabela.
+- `draw_display_list(play, caminho, translúcido)` só vale dentro do draw e usa a
+  matriz do ator.
+
+O `ActorDB` passa a ser criado antes da carga dos mods, então o init já pode registrar tipos.
+
+### Demo
+
+`soh/native-sdk/item-demo` registra o item `linkspan-demo.orb-wand` e o ator
+`linkspan-demo.orb`. Ao carregar um arquivo, o item vai para um botão C vazio, ou para o C-Right. Cada
+uso solta um orbe com o modelo do coração, que sobe girando e some. Empacote com
+`tools/package-item-demo.ps1`.
+
 ## Escape hatch (COREEXT-008)
 
 Contrato em `NATIVE-001/rfcs/0023-native-escape-hatch.md`. Uma core extension com

@@ -119,6 +119,7 @@
 #include "soh/ShipInit.hpp"
 #include "soh/ShipLuaBootstrap.h"
 #include "soh/native/OotNativeSave.h"
+#include "soh/native/OotNativeItems.h"
 #include "soh/OotHotkeyRegistry.h"
 
 #ifdef _MSC_VER
@@ -1559,6 +1560,10 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     CustomMessageManager::Instance = new CustomMessageManager();
     ItemTableManager::Instance = new ItemTableManager();
     GameInteractor::Instance = new GameInteractor();
+    // SOH [Link-Span] itens sintéticos e tipos de ator de mods; antes da carga dos mods.
+    ShipLuaHost::RegisterOotItemGameHooks();
+    // SOH [Link-Span] mods registram tipos de ator no init, durante ShipLuaHost::Initialize.
+    ActorDB::Instance = new ActorDB();
     // SOH [Link-Span] o crash log precisa da seção de mods nativos já durante a carga deles;
     // main.c registra de novo depois de InitOTR.
     CrashHandlerRegisterCallback(CrashHandler_PrintSohData);
@@ -1581,7 +1586,6 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     SohGui::SetupMenuElements();
 
     AudioCollection::Instance = new AudioCollection();
-    ActorDB::Instance = new ActorDB();
 #ifdef __APPLE__
     SpeechSynthesizer::Instance = new DarwinSpeechSynthesizer();
 #elif defined(_WIN32)

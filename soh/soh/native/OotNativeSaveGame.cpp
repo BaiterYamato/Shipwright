@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include "OotNativeHooks.h"
+#include "OotNativeItems.h"
 #include "OotNativeScenes.h"
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -89,6 +90,7 @@ void RegisterOotSaveSection() {
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnLoadFile>([](int32_t fileNum) {
         SetOotSaveSlot(fileNum);
         RestoreSceneFlags();
+        RestoreOotItemButtonsFromSave();
         for (const auto& name : MissingRequiredOotNamespaces()) {
             SPDLOG_WARN("Link-Span save: o arquivo {} depende de '{}', que nenhum mod carregado abriu", fileNum + 1,
                         name);
@@ -107,6 +109,7 @@ void OotBeforeSave(int32_t fileNum, int32_t sectionId) {
     SetOotSaveSlot(fileNum);
     DispatchOotSaveHook(GetOotHookPoints().saveSaving, fileNum, -1);
     StoreSceneFlags();
+    StoreOotItemButtons();
 }
 
 void OotAfterCopy(int32_t from, int32_t to) {

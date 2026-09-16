@@ -1,6 +1,7 @@
 #include "OotNativeEngine.h"
 #include "OotNativeEscape.h"
 #include "OotNativeHooks.h"
+#include "OotNativeItems.h"
 #include "OotNativeRegistry.h"
 #include "OotNativeSave.h"
 #include "OotNativeScenes.h"
@@ -551,6 +552,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeRegistry(gameThread);
     InitializeOotNativeScenes(gameThread);
     InitializeOotNativeSave(gameThread);
+    InitializeOotNativeItems(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
     policy.services.push_back({LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION,
@@ -573,6 +575,10 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
                                sizeof(scenes), &scenes});
     const auto& save = GetOotNativeSaveService();
     policy.services.push_back({LINKSPAN_OOT_SAVE_SERVICE, LINKSPAN_OOT_SAVE_VERSION, sizeof(save), &save});
+    const auto& items = GetOotNativeItemsService();
+    policy.services.push_back({LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION, sizeof(items), &items});
+    const auto& actors = GetOotNativeActorsService();
+    policy.services.push_back({LINKSPAN_OOT_ACTORS_SERVICE, LINKSPAN_OOT_ACTORS_VERSION, sizeof(actors), &actors});
     policy.hooks = CreateOotHookRegistry();
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;
