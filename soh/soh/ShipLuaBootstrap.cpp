@@ -6418,6 +6418,8 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
         return;
     }
 
+    // Mod nativo que derrubar o boot fica em mods/.shiplua-disabled no próximo início.
+    gModHost->EnableBootGuard(modsRoot);
     auto loaded = gModHost->LoadModsFromRoot(modsRoot, cacheRoot);
     if (!loaded.isOk()) {
         SPDLOG_ERROR("ShipLua n\xC3\xA3o conseguiu carregar a pasta de mods '{}': {}", modsRoot.string(),
@@ -6578,6 +6580,14 @@ void Initialize() {
     });
     gImportTickHook =
         GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            // Boot confirmado depois de BOOT_CONFIRM_FRAMES frames de jogo: crashes posteriores
+            // aparecem no log, mas não desativam mods.
+            static constexpr uint32_t BOOT_CONFIRM_FRAMES = 300;
+            static uint32_t bootFrames = 0;
+            if (gModHost && bootFrames < BOOT_CONFIRM_FRAMES && ++bootFrames == BOOT_CONFIRM_FRAMES) {
+                gModHost->ConfirmBoot();
+                SPDLOG_INFO("Link-Span: boot confirmado; proteção de boot encerrada");
+            }
             TickWorldImport();
             if (gPendingSaveLoadedSlot.has_value() && gPlayState != nullptr && GET_PLAYER(gPlayState) != nullptr) {
                 const int32_t fileNum = *gPendingSaveLoadedSlot;

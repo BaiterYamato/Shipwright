@@ -338,6 +338,22 @@ arquivo no overlay e recusa um que não corresponda ao `soh.exe`.
 `soh/native-sdk/escape-demo` desvia `Interface_Draw` para o HUD piscar;
 `tools/package-escape-demo.ps1` grava no manifesto o SHA-256 de `x64/Release/soh.exe`.
 
+## Crash log e proteção de boot (COREEXT-009)
+
+O crash log do SoH ganha uma seção `Link-Span native:` logo depois da build:
+
+- a atividade nativa da thread que caiu (`mod 'x' em hook oot.actor.update`);
+- as bibliotecas de mods presentes na pilha, o que cobre detours do escape hatch;
+- os módulos carregados.
+
+Se o jogo cair enquanto carrega um mod nativo, ou antes de 300 frames de jogo com
+um culpado identificado, o próximo início grava o mod em `mods/.shiplua-disabled`
+e o recusa com o motivo no log. Para reativar, apague a linha do mod. O marcador
+`mods/.shiplua-boot` some quando o boot é confirmado.
+
+`soh/native-sdk/crash-demo`, empacotado com `tools/package-crash-demo.ps1`, é um
+mod de teste cujo init escreve num ponteiro nulo.
+
 ## Compilar o host uma vez
 
 Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O

@@ -6,6 +6,7 @@
 #include <array>
 #include "soh/ActorDB.h"
 #include <fast/interpreter.h>
+#include <shiplua/native/NativeDiagnostics.h>
 
 #define WRITE_VAR_LINE(buff, len, varName, varValue) \
     append_str(buff, len, varName);                  \
@@ -70,6 +71,9 @@ extern "C" void CrashHandler_PrintSohData(char* buffer, size_t* pos) {
     WRITE_VAR_LINE(buffer, pos, "  Git Branch: ", (const char*)gGitBranch);
     WRITE_VAR_LINE(buffer, pos, "  Git Commit: ", (const char*)gGitCommitHash);
     WRITE_VAR_LINE(buffer, pos, "  Build Date: ", (const char*)gBuildDate);
+
+    // SOH [Link-Span] mod nativo ativo, DLLs de mods na pilha e proteção de boot; sem alocar.
+    *pos += ShipLua::WriteNativeCrashReport(buffer + *pos, 4096);
 
     if (gPlayState != nullptr) {
         // SOH [Link-Span] cenas registradas por mods ficam fora da tabela vanilla.

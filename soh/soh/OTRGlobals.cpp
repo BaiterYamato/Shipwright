@@ -15,6 +15,8 @@
 #include <libultraship/bridge/audiobridge.h>
 #include <libultraship/bridge/gfxdebuggerbridge.h>
 #include <libultraship/bridge/windowbridge.h>
+#include <libultraship/bridge/crashhandlerbridge.h>
+#include "soh/CrashHandlerExt.h"
 #include <ship/Context.h>
 #include <ship/resource/File.h>
 #include <ship/window/Window.h>
@@ -1557,6 +1559,9 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     CustomMessageManager::Instance = new CustomMessageManager();
     ItemTableManager::Instance = new ItemTableManager();
     GameInteractor::Instance = new GameInteractor();
+    // SOH [Link-Span] o crash log precisa da seção de mods nativos já durante a carga deles;
+    // main.c registra de novo depois de InitOTR.
+    CrashHandlerRegisterCallback(CrashHandler_PrintSohData);
     ShipLuaHost::Initialize();
     SaveManager::Instance = new SaveManager();
     // SOH [Link-Span] seção "linkspan" do save; o host inicializa antes do SaveManager existir.
