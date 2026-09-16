@@ -1,4 +1,5 @@
 #include "OotNativeEngine.h"
+#include "OotNativeEscape.h"
 #include "OotNativeHooks.h"
 #include "OotNativeRegistry.h"
 #include "OotNativeSave.h"
@@ -573,6 +574,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& save = GetOotNativeSaveService();
     policy.services.push_back({LINKSPAN_OOT_SAVE_SERVICE, LINKSPAN_OOT_SAVE_VERSION, sizeof(save), &save});
     policy.hooks = CreateOotHookRegistry();
+    policy.escapeHatch = CreateOotEscapeHatch();
     return policy;
 }
 }

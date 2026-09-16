@@ -32,7 +32,8 @@ add_executable(oot_native_engine_tests
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeRegistry.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeHooks.cpp"
-    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeSave.cpp")
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeSave.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeEscape.cpp")
 target_include_directories(oot_native_engine_tests PRIVATE
     "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
     "${CMAKE_SOURCE_DIR}/soh/soh/native")
@@ -75,4 +76,37 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         --sdk "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake"
         --example "${CMAKE_SOURCE_DIR}/soh/native-sdk/example"
         --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}")
+endif()
+
+# Escape hatch (COREEXT-008, RFC 0023): MinHook v1.3.4 compilada direto das fontes, sem o
+# CMakeLists dela (que mexe em BUILD_SHARED_LIBS e instala), e soh.symbols gerado do PDB.
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    include(FetchContent)
+    FetchContent_Declare(linkspan_minhook
+        GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+        GIT_TAG c3fcafdc10146beb5919319d0683e44e3c30d537
+        SOURCE_SUBDIR linkspan-sem-cmake)
+    FetchContent_MakeAvailable(linkspan_minhook)
+    add_library(linkspan_minhook STATIC
+        "${linkspan_minhook_SOURCE_DIR}/src/buffer.c"
+        "${linkspan_minhook_SOURCE_DIR}/src/hook.c"
+        "${linkspan_minhook_SOURCE_DIR}/src/trampoline.c"
+        "${linkspan_minhook_SOURCE_DIR}/src/hde/hde64.c")
+    target_include_directories(linkspan_minhook
+        PUBLIC "${linkspan_minhook_SOURCE_DIR}/include"
+        PRIVATE "${linkspan_minhook_SOURCE_DIR}/src" "${linkspan_minhook_SOURCE_DIR}/src/hde")
+    get_target_property(soh_runtime soh MSVC_RUNTIME_LIBRARY)
+    if(soh_runtime)
+        set_property(TARGET linkspan_minhook PROPERTY MSVC_RUNTIME_LIBRARY "${soh_runtime}")
+    endif()
+    target_link_libraries(soh PRIVATE linkspan_minhook psapi)
+
+    add_executable(linkspan_symdump "${CMAKE_SOURCE_DIR}/soh/native-sdk/tools/symdump.cpp")
+    target_compile_features(linkspan_symdump PRIVATE cxx_std_17)
+    target_link_libraries(linkspan_symdump PRIVATE dbghelp bcrypt)
+    # Fora do ALL: rode antes de empacotar ou testar o escape hatch.
+    add_custom_target(soh_symbols
+        COMMAND linkspan_symdump "$<TARGET_FILE:soh>" "$<TARGET_FILE_DIR:soh>/soh.symbols"
+        DEPENDS soh linkspan_symdump
+        VERBATIM)
 endif()

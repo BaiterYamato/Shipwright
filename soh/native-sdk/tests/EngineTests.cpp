@@ -3,6 +3,7 @@
 #include "oot_hooks.h"
 #include "oot_save.h"
 #include "OotNativeSave.h"
+#include "OotNativeEscape.h"
 #include "oot_registry.h"
 #include "oot_ocarina.h"
 #include "oot_scenes.h"
@@ -274,6 +275,32 @@ int main(int argc, char** argv) {
           policy.services[8].version == LINKSPAN_OOT_SAVE_VERSION &&
           policy.services[8].size == sizeof(ShipOotSaveV1),
           "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1 e save V1");
+    {
+        Check(!policy.escapeHatch, "sem binding do jogo não há escape hatch");
+        const std::string sha(64, 'c');
+        const std::string text = "linkspan-symbols 1\nsha256 " + sha + "\n" +
+                                 "10a0\t-\tz_player.c\tPlayer_Action_Roll\n" +
+                                 "20b0\t-\tz_en_a.c\tInit\n" +
+                                 "30c0\t-\tz_en_b.c\tInit\n" +
+                                 "40d0\tfolded\tz_lib.c\tMath_Nop\n" +
+                                 "40d0\tfolded\tz_lib.c\tMath_Nop2\r\n";
+        ShipLuaHost::OotSymbolTable table;
+        std::string error;
+        uint64_t rva = 0;
+        Check(table.Parse(text, error) && table.Fingerprint() == sha && table.Size() == 5, "soh.symbols válido");
+        Check(table.Resolve("Player_Action_Roll", rva) == SHIP_NATIVE_OK && rva == 0x10a0, "nome único");
+        Check(table.Resolve("z_player.c!Player_Action_Roll", rva) == SHIP_NATIVE_OK && rva == 0x10a0,
+              "nome com arquivo");
+        Check(table.Resolve("Init", rva) == SHIP_NATIVE_UNSUPPORTED, "static repetido exige arquivo");
+        Check(table.Resolve("z_en_b.c!Init", rva) == SHIP_NATIVE_OK && rva == 0x30c0, "static por arquivo");
+        Check(table.Resolve("Math_Nop", rva) == SHIP_NATIVE_UNSUPPORTED, "RVA dobrado por ICF é recusado");
+        Check(table.Resolve("Nada", rva) == SHIP_NATIVE_UNSUPPORTED, "nome ausente");
+        Check(table.Resolve("!Init", rva) == SHIP_NATIVE_INVALID_ARGUMENT, "arquivo vazio");
+        Check(!table.Parse("linkspan-symbols 2\n", error), "versão desconhecida");
+        Check(!table.Parse("linkspan-symbols 1\nsha256 " + sha + "\nzz\t-\ta.c\tX\n", error), "RVA inválido");
+        Check(!table.Parse("linkspan-symbols 1\nsha256 " + sha + "\n10\tquente\ta.c\tX\n", error),
+              "flag inválida");
+    }
     {
         for (const char* point : {LINKSPAN_OOT_HOOK_SAVE_LOADED, LINKSPAN_OOT_HOOK_SAVE_SAVING,
                                   LINKSPAN_OOT_HOOK_SAVE_DELETED, LINKSPAN_OOT_HOOK_SAVE_COPIED}) {
