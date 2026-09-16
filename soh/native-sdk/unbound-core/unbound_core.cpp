@@ -10,6 +10,8 @@
 #include "include/linkspan/unbound/json_factory.h"
 #include "json_merge.h"
 #include "oot_resources.h"
+#include "oot_scenes.h"
+#include "scene_registry.h"
 
 namespace {
 
@@ -17,6 +19,7 @@ constexpr uint32_t MAX_LAYERS = 64;
 constexpr uint32_t MAX_TOTAL_INPUT = 4 * 1024 * 1024;
 constexpr uint32_t MAX_HANDLES = 1024;
 constexpr const char* ACTOR_PATCH_SCHEMA = "linkspan.unbound.actor-patch/v1";
+constexpr const char* SCENE_REGISTRY_PATH = "unbound/scenes.json";
 
 struct Schema {
     std::string name;
@@ -35,6 +38,9 @@ struct Result {
 struct State {
     LinkSpanUnboundJsonFactoryV1 service{};
     const ShipOotResourcesV2* resources = nullptr;
+    // Opcional: sem ele a factory JSON continua e load_scene_registry responde unsupported.
+    const ShipOotScenesV1* scenes = nullptr;
+    std::vector<uint64_t> sceneHandles;
     std::thread::id ownerThread;
     std::vector<Schema> schemas;
     std::map<uint64_t, Result> results;
@@ -196,6 +202,115 @@ ShipNativeStatus SHIP_NATIVE_CALL Release(void* context, uint64_t handle) {
     return state->results.erase(handle) == 1 ? SHIP_NATIVE_OK : SHIP_NATIVE_UNSUPPORTED;
 }
 
+void UnregisterScenes(State& state) {
+    if (state.scenes) {
+        for (const uint64_t handle : state.sceneHandles) {
+            state.scenes->unregister_scene(handle);
+        }
+    }
+    state.sceneHandles.clear();
+}
+
+const char* StatusName(ShipNativeStatus status) {
+    switch (status) {
+        case SHIP_NATIVE_INVALID_ARGUMENT:
+            return "invalid";
+        case SHIP_NATIVE_UNSUPPORTED:
+            return "unsupported";
+        case SHIP_NATIVE_LIMIT:
+            return "limit";
+        default:
+            return "failure";
+    }
+}
+
+ShipNativeStatus WriteText(ShipNativeWriteFn write, void* writer, std::string text) {
+    if (text.size() > SHIP_NATIVE_MAX_BYTES) {
+        text.resize(SHIP_NATIVE_MAX_BYTES);
+    }
+    return write(writer, text.data(), static_cast<uint32_t>(text.size()));
+}
+
+// Lê unbound/scenes.json em todas as camadas montadas e registra cenas e entradas no host.
+// Chamar de novo troca o registro anterior pelo das camadas atuais.
+ShipNativeStatus SHIP_NATIVE_CALL LoadSceneRegistry(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                                    void* writer) {
+    auto* state = static_cast<State*>(user);
+    if (!IsOwner(state) || length || !write) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    if (!state->scenes) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    try {
+        LayerCollector collector;
+        const auto read = state->resources->read_file_layers(SCENE_REGISTRY_PATH, CollectLayer, &collector);
+        UnregisterScenes(*state);
+        const std::string layers = "layers=" + std::to_string(collector.layers.size());
+        if (read != SHIP_NATIVE_OK || collector.layers.empty()) {
+            return WriteText(write, writer,
+                             "scenes=0; entrances=0; notes=0; " + layers + "; read=" +
+                                 (read == SHIP_NATIVE_OK ? "ok" : StatusName(read)));
+        }
+        LinkSpanUnbound::MergeResult merged;
+        LinkSpanUnbound::SceneRegistryDocument document;
+        std::string error;
+        if (!LinkSpanUnbound::MergeSchemaFreeDocuments(collector.layers, merged, error) ||
+            !LinkSpanUnbound::ParseSceneRegistry(merged.json, document, error)) {
+            return WriteText(write, writer, "scenes=0; entrances=0; notes=0; " + layers + "; error=" + error);
+        }
+        uint32_t scenesRegistered = 0;
+        uint32_t entrancesRegistered = 0;
+        std::vector<std::string> notes = document.notes;
+        for (const auto& scene : document.scenes) {
+            ShipOotSceneDefinitionV1 definition{};
+            definition.size = sizeof(definition);
+            definition.name = scene.name.c_str();
+            definition.display_name = scene.displayName.c_str();
+            definition.scene_path = scene.path.c_str();
+            definition.requested_id = scene.sceneId;
+            definition.draw_config = scene.drawConfig;
+            uint64_t handle = 0;
+            int32_t sceneId = 0;
+            const auto sceneStatus = state->scenes->register_scene(&definition, &handle, &sceneId);
+            if (sceneStatus != SHIP_NATIVE_OK) {
+                notes.push_back(scene.name + ": recusada pelo host (" + StatusName(sceneStatus) + ")");
+                continue;
+            }
+            state->sceneHandles.push_back(handle);
+            ++scenesRegistered;
+            for (const auto& entrance : scene.entrances) {
+                ShipOotEntranceDefinitionV1 entranceDefinition{};
+                entranceDefinition.size = sizeof(entranceDefinition);
+                entranceDefinition.key = entrance.key.c_str();
+                entranceDefinition.requested_index = entrance.index;
+                entranceDefinition.spawn = entrance.spawn;
+                entranceDefinition.continue_bgm = entrance.continueBgm ? 1 : 0;
+                entranceDefinition.show_title_card = entrance.showTitleCard ? 1 : 0;
+                entranceDefinition.end_transition = entrance.endTransition;
+                entranceDefinition.start_transition = entrance.startTransition;
+                int32_t index = 0;
+                const auto entranceStatus = state->scenes->register_entrance(handle, &entranceDefinition, &index);
+                if (entranceStatus != SHIP_NATIVE_OK) {
+                    notes.push_back(scene.name + "/" + entrance.key + ": recusada pelo host (" +
+                                    StatusName(entranceStatus) + ")");
+                } else {
+                    ++entrancesRegistered;
+                }
+            }
+        }
+        std::string text = "scenes=" + std::to_string(scenesRegistered) + "; entrances=" +
+                           std::to_string(entrancesRegistered) + "; notes=" + std::to_string(notes.size()) + "; " +
+                           layers;
+        for (const auto& note : notes) {
+            text += "; " + note;
+        }
+        return WriteText(write, writer, std::move(text));
+    } catch (...) {
+        return SHIP_NATIVE_FAILURE;
+    }
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
     if (!runtime || runtime->size < sizeof(ShipNativeRuntime) || runtime->abi_minor < 1 || !runtime->get_service ||
         !runtime->register_service || !instance) {
@@ -212,7 +327,15 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         return SHIP_NATIVE_FAILURE;
     }
     state->resources = resources;
+    state->scenes = static_cast<const ShipOotScenesV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION, sizeof(ShipOotScenesV1)));
     state->ownerThread = std::this_thread::get_id();
+    if (!runtime->register_function ||
+        runtime->register_function(runtime->context, "load_scene_registry", LoadSceneRegistry, state) !=
+            SHIP_NATIVE_OK) {
+        delete state;
+        return SHIP_NATIVE_FAILURE;
+    }
     try {
         state->schemas.push_back(
             { ACTOR_PATCH_SCHEMA, "actor_patch",
@@ -231,7 +354,11 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
 }
 
 void SHIP_NATIVE_CALL Shutdown(void* instance) {
-    delete static_cast<State*>(instance);
+    auto* state = static_cast<State*>(instance);
+    if (state && IsOwner(state)) {
+        UnregisterScenes(*state);
+    }
+    delete state;
 }
 
 } // namespace

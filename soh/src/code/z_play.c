@@ -353,6 +353,12 @@ u8 CheckBridgeRewardCount() {
     return bridgeRewardCount;
 }
 
+// SOH [Link-Span] tabela de entradas e flags de cena por id, incluindo as cenas registradas por mods
+// (soh/soh/native/OotNativeScenesGame.cpp).
+s32 LinkSpan_EntranceCount(void);
+void LinkSpan_ReportInvalidEntrance(s32 entranceIndex, s32 sceneLayer);
+SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum);
+
 void Play_Init(GameState* thisx) {
     PlayState* play = (PlayState*)thisx;
     GraphicsContext* gfxCtx = play->state.gfxCtx;
@@ -442,6 +448,12 @@ void Play_Init(GameState* thisx) {
         gSaveContext.nightFlag = 0;
     }
 
+    // SOH [Link-Span] entrada fora da tabela (save de outra pilha de mods): Hyrule Field, sem ler além dela.
+    if (gSaveContext.entranceIndex < 0 || gSaveContext.entranceIndex >= LinkSpan_EntranceCount()) {
+        LinkSpan_ReportInvalidEntrance(gSaveContext.entranceIndex, 0);
+        gSaveContext.entranceIndex = ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN;
+    }
+
     Cutscene_HandleConditionalTriggers(play);
 
     if (gSaveContext.gameMode != GAMEMODE_NORMAL || gSaveContext.cutsceneIndex >= 0xFFF0) {
@@ -472,6 +484,12 @@ void Play_Init(GameState* thisx) {
     } else if ((gEntranceTable[((void)0, gSaveContext.entranceIndex)].scene == SCENE_KOKIRI_FOREST) && LINK_IS_ADULT &&
                !IS_CUTSCENE_LAYER) {
         gSaveContext.sceneLayer = (Flags_GetEventChkInf(EVENTCHKINF_USED_FOREST_TEMPLE_BLUE_WARP)) ? 3 : 2;
+    }
+
+    // SOH [Link-Span] camada fora da tabela: usa a camada base da entrada.
+    if (gSaveContext.entranceIndex + gSaveContext.sceneLayer >= LinkSpan_EntranceCount()) {
+        LinkSpan_ReportInvalidEntrance(gSaveContext.entranceIndex, gSaveContext.sceneLayer);
+        gSaveContext.sceneLayer = 0;
     }
 
     // SOH [Unbound] the game state is not zeroed; BgCheck_Free (Play_Destroy) must only see NULL or heap tables
@@ -2052,7 +2070,7 @@ s16 func_800C09D8(PlayState* play, s16 camId, s16 arg2) {
 }
 
 void Play_SaveSceneFlags(PlayState* play) {
-    SavedSceneFlags* savedSceneFlags = &gSaveContext.sceneFlags[play->sceneNum];
+    SavedSceneFlags* savedSceneFlags = LinkSpan_SceneFlags(play->sceneNum);
 
     savedSceneFlags->chest = play->actorCtx.flags.chest;
     savedSceneFlags->swch = play->actorCtx.flags.swch;

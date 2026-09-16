@@ -129,6 +129,9 @@ void GameInteractor::RawAction::KnockbackPlayer(float strength) {
                                           strength * 5);
 }
 
+// SOH [Link-Span] flags salvas por id de cena, incluindo as cenas registradas por mods.
+extern "C" SavedSceneFlags* LinkSpan_SceneFlags(int32_t sceneNum);
+
 void GameInteractor::RawAction::SetSceneFlag(int16_t sceneNum, int16_t flagType, int16_t flag) {
     switch (flagType) {
         case FlagType::FLAG_SCENE_SWITCH:
@@ -140,18 +143,18 @@ void GameInteractor::RawAction::SetSceneFlag(int16_t sceneNum, int16_t flagType,
                 }
             }
             if (flag < 0x20) {
-                gSaveContext.sceneFlags[sceneNum].swch |= (1 << flag);
+                LinkSpan_SceneFlags(sceneNum)->swch |= (1 << flag);
             }
             break;
         case FlagType::FLAG_SCENE_CLEAR:
             if (sceneNum == gPlayState->sceneNum)
                 gPlayState->actorCtx.flags.clear |= (1 << flag);
-            gSaveContext.sceneFlags[sceneNum].clear |= (1 << flag);
+            LinkSpan_SceneFlags(sceneNum)->clear |= (1 << flag);
             break;
         case FlagType::FLAG_SCENE_TREASURE:
             if (sceneNum == gPlayState->sceneNum)
                 gPlayState->actorCtx.flags.chest |= (1 << flag);
-            gSaveContext.sceneFlags[sceneNum].chest |= (1 << flag);
+            LinkSpan_SceneFlags(sceneNum)->chest |= (1 << flag);
             break;
         case FlagType::FLAG_SCENE_COLLECTIBLE:
             if (sceneNum == gPlayState->sceneNum) {
@@ -164,7 +167,7 @@ void GameInteractor::RawAction::SetSceneFlag(int16_t sceneNum, int16_t flagType,
                 }
             }
             if (flag != 0 && flag < 0x20) {
-                gSaveContext.sceneFlags[sceneNum].collect |= (1 << flag);
+                LinkSpan_SceneFlags(sceneNum)->collect |= (1 << flag);
             }
             break;
     }
@@ -181,18 +184,18 @@ void GameInteractor::RawAction::UnsetSceneFlag(int16_t sceneNum, int16_t flagTyp
                 }
             }
             if (flag < 0x20) {
-                gSaveContext.sceneFlags[sceneNum].swch &= ~(1 << flag);
+                LinkSpan_SceneFlags(sceneNum)->swch &= ~(1 << flag);
             }
             break;
         case FlagType::FLAG_SCENE_CLEAR:
             if (sceneNum == gPlayState->sceneNum)
                 gPlayState->actorCtx.flags.clear &= ~(1 << flag);
-            gSaveContext.sceneFlags[sceneNum].clear &= ~(1 << flag);
+            LinkSpan_SceneFlags(sceneNum)->clear &= ~(1 << flag);
             break;
         case FlagType::FLAG_SCENE_TREASURE:
             if (sceneNum == gPlayState->sceneNum)
                 gPlayState->actorCtx.flags.chest &= ~(1 << flag);
-            gSaveContext.sceneFlags[sceneNum].chest &= ~(1 << flag);
+            LinkSpan_SceneFlags(sceneNum)->chest &= ~(1 << flag);
             break;
         case FlagType::FLAG_SCENE_COLLECTIBLE:
             if (sceneNum == gPlayState->sceneNum) {
@@ -205,7 +208,7 @@ void GameInteractor::RawAction::UnsetSceneFlag(int16_t sceneNum, int16_t flagTyp
                 }
             }
             if (flag != 0 && flag < 0x20) {
-                gSaveContext.sceneFlags[sceneNum].collect &= ~(1 << flag);
+                LinkSpan_SceneFlags(sceneNum)->collect &= ~(1 << flag);
             }
             break;
     }

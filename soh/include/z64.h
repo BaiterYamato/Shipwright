@@ -1661,10 +1661,10 @@ typedef struct {
 } AnimationMinimalInfo; // size = 0xC
 
 typedef struct {
-    /* 0x00 */ s8  scene;
-    /* 0x01 */ s8  spawn;
-    /* 0x02 */ u16 field;
-} EntranceInfo; // size = 0x4
+    /* 0x00 */ s16 scene; // SOH [Link-Span] 16 bits: cenas registradas por mods usam ids a partir de 128
+    /* 0x02 */ s8  spawn;
+    /* 0x04 */ u16 field;
+} EntranceInfo; // size = 0x6
 
 typedef struct {
     /* 0x00 */ void*     loadedRamAddr;

@@ -36,9 +36,12 @@
        (((endTransType) << ENTRANCE_INFO_END_TRANS_TYPE_SHIFT) & ENTRANCE_INFO_END_TRANS_TYPE_MASK) |    \
        (((startTransType) << ENTRANCE_INFO_START_TRANS_TYPE_SHIFT) & ENTRANCE_INFO_START_TRANS_TYPE_MASK)) },
 
-EntranceInfo gEntranceTable[] = {
+// SOH [Link-Span] a tabela vanilla é só a semente. gEntranceTable aponta para ela até um mod
+// registrar entradas e, a partir daí, para a tabela combinada (soh/soh/native/OotNativeScenes.cpp).
+EntranceInfo gEntranceTableVanilla[] = {
 #include "tables/entrance_table.h"
 };
+EntranceInfo* gEntranceTable = gEntranceTableVanilla;
 
 #undef DEFINE_ENTRANCE
 

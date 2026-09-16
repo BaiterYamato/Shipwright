@@ -2543,11 +2543,14 @@ void Actor_DisableLens(PlayState* play) {
     }
 }
 
+// SOH [Link-Span] flags salvas por id de cena, incluindo as cenas registradas por mods.
+SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum);
+
 void Actor_InitContext(PlayState* play, ActorContext* actorCtx, ActorEntry* actorEntry) {
     SavedSceneFlags* savedSceneFlags;
     s32 i;
 
-    savedSceneFlags = &gSaveContext.sceneFlags[play->sceneNum];
+    savedSceneFlags = LinkSpan_SceneFlags(play->sceneNum);
 
     memset(actorCtx, 0, sizeof(*actorCtx));
 

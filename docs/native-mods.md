@@ -229,6 +229,42 @@ cmake --build build/mic-ocarina --config Release
 ctest --test-dir build/mic-ocarina -C Release
 ```
 
+## Serviço `linkspan.oot.scenes` v1 (OOT-UNBOUND-003C)
+
+Header do contrato: `soh/soh/native/oot_scenes.h`; decisão em
+`NATIVE-001/rfcs/0020-oot-scene-registry.md`; layout em
+`docs/architecture/unbound-scene-registry.md`. O host deixa de depender das
+tabelas compiladas para cenas e entradas:
+
+- `register_scene(definição, handle, id)`: nome namespaced (não pode ser um enum
+  `SCENE_*`), caminho do recurso no VFS, draw config e id 128 a 32767 ou
+  automático;
+- `register_entrance(handle da cena, definição, índice)`: grupo de quatro posições
+  da tabela de entradas (criança/adulto, dia/noite), a partir do primeiro grupo
+  livre depois das 1.556 vanilla, com nome final `"<cena>/<entrada>"`;
+- `unregister_scene(handle)`: remove a cena e as entradas; a tabela não encolhe;
+- `find_scene` e `find_entrance`: nomes vanilla (`SCENE_HYRULE_FIELD`,
+  `ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN`) e nomes dos mods;
+- `travel_to_entrance(índice)`: transição com fade, só com o jogador em cena e sem
+  outra transição.
+
+Por dentro, `EntranceInfo.scene` passou a `s16` e `gEntranceTable` virou ponteiro:
+aponta para a tabela vanilla até um mod registrar entradas e depois para a tabela
+combinada. `OTRPlay_SpawnScene` resolve ids a partir de 128 pelo registro, e as
+flags salvas dessas cenas ficam fora do array fixo de 124 (`LinkSpan_SceneFlags`),
+guardadas pelo nome da cena durante a sessão. Um save com entrada fora da tabela
+cai no Hyrule Field com uma linha de log.
+
+O framework `linkspan.unbound.framework` 0.2.0 usa o serviço para ler
+`unbound/scenes.json` de todas as camadas no `game.ready` (§7 do SPEC do
+Unbound). `soh/native-sdk/unbound-core/scene-demo` registra uma cópia do Hyrule
+Field e viaja até ela; `tools/package-unbound-scene-demo.ps1` empacota os dois.
+As mudanças em `soh/include` e o header novo mudam o layout id: recompile os
+providers nativos contra o SDK do host novo.
+
+Ainda não: persistência das flags de cenas de mod no save, `titleCardTexture`,
+camadas de entrada diferentes (`layers`) e mapa/minimapa para cenas novas.
+
 ## Compilar o host uma vez
 
 Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O

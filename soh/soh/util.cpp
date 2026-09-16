@@ -690,8 +690,16 @@ std::array<std::string, RA_MAX> rcareaPrefixes = {
     "Ganon's Castle",
 };
 
+namespace ShipLuaHost {
+const std::string* OotCustomSceneDisplayName(int32_t sceneId);
+}
+
 const std::string& SohUtils::GetSceneName(int32_t scene) {
     if (scene < 0 || static_cast<size_t>(scene) >= sceneNames.size()) {
+        // SOH [Link-Span] cenas registradas por mods usam o nome do registro.
+        if (const std::string* custom = ShipLuaHost::OotCustomSceneDisplayName(scene)) {
+            return *custom;
+        }
         SPDLOG_WARN("Passed invalid scene id to SohUtils::GetSceneName: ({})", scene);
         assert(false);
         return invalidString;

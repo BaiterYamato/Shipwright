@@ -1,0 +1,9 @@
+{
+  "linkspan_demo/field_copy": {
+    "name": "Link-Span demo: Hyrule Field copy",
+    "scene": "scenes/shared/spot00_scene/spot00_scene",
+    "entrances": {
+      "main": { "spawn": 0, "showTitleCard": false }
+    }
+  }
+}

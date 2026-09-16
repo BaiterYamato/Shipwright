@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 
 #include "ResourceManagerHelpers.h"
+#include "native/OotNativeScenes.h"
 #include "soh/resource/type/Scene.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 
@@ -24,7 +25,20 @@ Ship::IResource* OTRPlay_LoadFile(PlayState* play, const char* fileName) {
 }
 
 extern "C" void OTRPlay_SpawnScene(PlayState* play, s32 sceneId, s32 spawn) {
-    SceneTableEntry* scene = &gSceneTable[sceneId];
+    // SOH [Link-Span] ids a partir de 128 são cenas registradas por mods (linkspan.oot.scenes).
+    static SceneTableEntry customSceneEntry{};
+    ShipLuaHost::OotCustomScene custom;
+    const bool isCustom = sceneId >= SCENE_ID_MAX && ShipLuaHost::FindOotCustomScene(sceneId, custom);
+    if (sceneId < 0 || (sceneId >= SCENE_ID_MAX && !isCustom)) {
+        SPDLOG_ERROR("Scene id {:#x} is not registered... Defaulting to Doodong's Cavern!", sceneId);
+        OTRPlay_SpawnScene(play, SCENE_DODONGOS_CAVERN, 0);
+        return;
+    }
+    if (isCustom) {
+        customSceneEntry = {};
+        customSceneEntry.config = custom.drawConfig;
+    }
+    SceneTableEntry* scene = isCustom ? &customSceneEntry : &gSceneTable[sceneId];
 
     scene->unk_13 = 0;
     play->loadedScene = scene;
@@ -41,8 +55,9 @@ extern "C" void OTRPlay_SpawnScene(PlayState* play, s32 sceneId, s32 spawn) {
     if (inNonSharedScene) {
         sceneVersion = ResourceMgr_IsGameMasterQuest() ? "mq" : "nonmq";
     }
-    std::string scenePath = StringHelper::Sprintf("scenes/%s/%s/%s", sceneVersion.c_str(), scene->sceneFile.fileName,
-                                                  scene->sceneFile.fileName);
+    std::string scenePath = isCustom ? custom.path
+                                     : StringHelper::Sprintf("scenes/%s/%s/%s", sceneVersion.c_str(),
+                                                             scene->sceneFile.fileName, scene->sceneFile.fileName);
 
     play->sceneSegment = OTRPlay_LoadFile(play, scenePath.c_str());
 

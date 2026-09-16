@@ -387,7 +387,8 @@ s8 Grotto_CurrentGrotto() {
         return grottoId;
     } else {
         s16 entrance = gSaveContext.respawn[RESPAWN_MODE_RETURN].entranceIndex;
-        s8 scene = gEntranceTable[entrance].scene;
+        // SOH [Link-Span] EntranceInfo.scene tem 16 bits; entradas de grotto são sempre vanilla.
+        s8 scene = (s8)gEntranceTable[entrance].scene;
         s8 data = gSaveContext.respawn[RESPAWN_MODE_RETURN].data;
         return Grotto_GetRenamedGrottoIndexFromOriginal(data, scene) & 0xFF;
     }

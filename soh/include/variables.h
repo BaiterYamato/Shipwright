@@ -111,7 +111,8 @@ extern "C"
 	extern s16 gLinkObjectIds[2];
 	extern u32 gObjectTableSize;
 	extern RomFile gObjectTable[OBJECT_ID_MAX];
-	extern EntranceInfo gEntranceTable[ENTR_MAX];
+	// SOH [Link-Span] ponteiro: vanilla até um mod registrar entradas (soh/soh/native/OotNativeScenes.cpp).
+	extern EntranceInfo* gEntranceTable;
 	extern SceneTableEntry gSceneTable[SCENE_ID_MAX];
 	extern u16 gSramSlotOffsets[];
 	// 4 16-colors palettes

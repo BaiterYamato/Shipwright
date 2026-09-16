@@ -1,6 +1,7 @@
 #include "ShipLuaBootstrap.h"
 #include "native/OotNativeEngine.h"
 #include "native/OotNativeRegistry.h"
+#include "native/OotNativeScenes.h"
 #include "OotActorProvider.h"
 #include "OotHotkeyRegistry.h"
 #include "OotWorldAdapter.h"
@@ -7046,6 +7047,7 @@ void Shutdown() {
     }
     gModHost.reset();
     ResetOotNativeRegistry();
+    ResetOotNativeScenes();
     ClearNativeResourceArchives();
     SetOotNativeGamepadBridge({});
     SetOotNativeResourceBridge({});

@@ -40,4 +40,8 @@ static_assert(std::numeric_limits<RuntimeMeshCount>::max() > 255, "Runtime mesh 
 static_assert(std::numeric_limits<ResourceMeshCount>::max() > 255,
               "Resource mesh counts do not mirror the runtime layout");
 
+using EntranceScene = decltype(((EntranceInfo*)nullptr)->scene);
+static_assert(std::numeric_limits<EntranceScene>::max() >= 32767,
+              "EntranceInfo::scene cannot hold the scene ids registered by mods (128-32767)");
+
 } // namespace

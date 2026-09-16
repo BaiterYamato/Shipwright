@@ -32,6 +32,8 @@ extern PlayState* gPlayState;
 extern "C" MessageTableEntry* sGerMessageEntryTablePtr;
 extern "C" MessageTableEntry* sFraMessageEntryTablePtr;
 extern "C" MessageTableEntry* sJpnMessageEntryTablePtr;
+// SOH [Link-Span] flags salvas por id de cena, incluindo as cenas registradas por mods.
+extern "C" SavedSceneFlags* LinkSpan_SceneFlags(int32_t sceneNum);
 
 // Maps entries in the GS flag array to the area name it represents
 std::vector<const char*> gsMapping = {
@@ -1669,18 +1671,18 @@ void DrawFlagsTab() {
         if (Button(
                 "Reload Flags",
                 ButtonOptions().Size(ImVec2(0, 0)).Color(THEME_COLOR).Tooltip("Load flags from saved scene flags"))) {
-            act->flags.swch = gSaveContext.sceneFlags[gPlayState->sceneNum].swch;
-            act->flags.clear = gSaveContext.sceneFlags[gPlayState->sceneNum].clear;
-            act->flags.collect = gSaveContext.sceneFlags[gPlayState->sceneNum].collect;
-            act->flags.chest = gSaveContext.sceneFlags[gPlayState->sceneNum].chest;
+            act->flags.swch = LinkSpan_SceneFlags(gPlayState->sceneNum)->swch;
+            act->flags.clear = LinkSpan_SceneFlags(gPlayState->sceneNum)->clear;
+            act->flags.collect = LinkSpan_SceneFlags(gPlayState->sceneNum)->collect;
+            act->flags.chest = LinkSpan_SceneFlags(gPlayState->sceneNum)->chest;
         }
 
         if (Button("Save Flags",
                    ButtonOptions().Size(ImVec2(0, 0)).Color(THEME_COLOR).Tooltip("Save current scene flags"))) {
-            gSaveContext.sceneFlags[gPlayState->sceneNum].swch = act->flags.swch;
-            gSaveContext.sceneFlags[gPlayState->sceneNum].clear = act->flags.clear;
-            gSaveContext.sceneFlags[gPlayState->sceneNum].collect = act->flags.collect;
-            gSaveContext.sceneFlags[gPlayState->sceneNum].chest = act->flags.chest;
+            LinkSpan_SceneFlags(gPlayState->sceneNum)->swch = act->flags.swch;
+            LinkSpan_SceneFlags(gPlayState->sceneNum)->clear = act->flags.clear;
+            LinkSpan_SceneFlags(gPlayState->sceneNum)->collect = act->flags.collect;
+            LinkSpan_SceneFlags(gPlayState->sceneNum)->chest = act->flags.chest;
         }
 
         if (Button("Clear Flags",

@@ -29,7 +29,8 @@ set(OOT_NATIVE_COMPILE_DEFINITIONS [==[$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS
 add_executable(oot_native_engine_tests
     "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/EngineTests.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeEngine.cpp"
-    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeRegistry.cpp")
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeRegistry.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp")
 target_include_directories(oot_native_engine_tests PRIVATE
     "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
     "${CMAKE_SOURCE_DIR}/soh/soh/native")
@@ -52,6 +53,19 @@ if(MSVC)
     set_property(TARGET oot_native_registry_tests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 add_test(NAME oot_native_registry_tests COMMAND oot_native_registry_tests)
+
+add_executable(oot_native_scenes_tests
+    "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/SceneRegistryTests.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp")
+target_include_directories(oot_native_scenes_tests PRIVATE
+    "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native")
+target_compile_definitions(oot_native_scenes_tests PRIVATE "$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS>")
+target_link_libraries(oot_native_scenes_tests PRIVATE shiplua)
+if(MSVC)
+    set_property(TARGET oot_native_scenes_tests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+add_test(NAME oot_native_scenes_tests COMMAND oot_native_scenes_tests)
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     add_test(NAME oot_native_independent_mod COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/test_independent.py"

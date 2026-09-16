@@ -21,4 +21,8 @@ struct MergeResult {
 bool MergeDocuments(const std::string& schema, const std::vector<LayerDocument>& layers, MergeResult& output,
                     std::string& error);
 
+// Documento sem $schema obrigatório, como unbound/scenes.json: objetos mesclam por chave, a camada
+// de cima vence, null remove a chave e comentários são aceitos.
+bool MergeSchemaFreeDocuments(const std::vector<LayerDocument>& layers, MergeResult& output, std::string& error);
+
 } // namespace LinkSpanUnbound

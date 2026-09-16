@@ -72,7 +72,11 @@ extern "C" void CrashHandler_PrintSohData(char* buffer, size_t* pos) {
     WRITE_VAR_LINE(buffer, pos, "  Build Date: ", (const char*)gBuildDate);
 
     if (gPlayState != nullptr) {
-        WRITE_VAR_LINE(buffer, pos, "Scene: ", sSceneIdToStrArray[gPlayState->sceneNum]);
+        // SOH [Link-Span] cenas registradas por mods ficam fora da tabela vanilla.
+        WRITE_VAR_LINE(buffer, pos, "Scene: ",
+                       gPlayState->sceneNum >= 0 && gPlayState->sceneNum < SCENE_ID_MAX
+                           ? sSceneIdToStrArray[gPlayState->sceneNum]
+                           : "mod scene");
 
         snprintf(intCharBuffer, sizeof(intCharBuffer), "%i", gPlayState->roomCtx.curRoom.num);
         WRITE_VAR_LINE(buffer, pos, "Room: ", intCharBuffer);

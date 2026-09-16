@@ -2,6 +2,7 @@
 #include "oot_engine.h"
 #include "oot_registry.h"
 #include "oot_ocarina.h"
+#include "oot_scenes.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
@@ -255,15 +256,18 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 7 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 8 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
           policy.services[4].version == LINKSPAN_OOT_RESOURCES_VERSION_2 &&
           policy.services[5].version == LINKSPAN_OOT_REGISTRY_VERSION &&
           std::string(policy.services[6].name) == LINKSPAN_OOT_OCARINA_SERVICE &&
-          policy.services[6].version == LINKSPAN_OOT_OCARINA_VERSION,
-          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1 e ocarina V1");
+          policy.services[6].version == LINKSPAN_OOT_OCARINA_VERSION &&
+          std::string(policy.services[7].name) == LINKSPAN_OOT_SCENES_SERVICE &&
+          policy.services[7].version == LINKSPAN_OOT_SCENES_VERSION &&
+          policy.services[7].size == sizeof(ShipOotScenesV1),
+          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1 e scenes V1");
     const auto* ocarina = static_cast<const ShipOotOcarinaV1*>(policy.services[6].table);
     const auto* engine = static_cast<const ShipOotEngineV1*>(policy.services[0].table);
     const auto* movement = static_cast<const ShipOotMovementV1*>(policy.services[1].table);

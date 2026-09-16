@@ -25,6 +25,28 @@ void MergeValue(Json& base, const Json& patch) {
     }
 }
 
+void MergeValueRemovingNulls(Json& base, const Json& patch) {
+    for (const auto& [key, value] : patch.items()) {
+        if (key == "$schema") {
+            continue;
+        }
+        if (value.is_null()) {
+            base.erase(key);
+            continue;
+        }
+        if (!value.is_object()) {
+            base[key] = value;
+            continue;
+        }
+        auto current = base.find(key);
+        if (current == base.end() || !current->is_object()) {
+            base[key] = Json::object();
+            current = base.find(key);
+        }
+        MergeValueRemovingNulls(*current, value);
+    }
+}
+
 uint64_t Hash(const std::string& bytes) {
     uint64_t hash = 14695981039346656037ULL;
     for (const unsigned char byte : bytes) {
@@ -66,6 +88,34 @@ bool MergeDocuments(const std::string& schema, const std::vector<LayerDocument>&
             }
         }
         merged["$schema"] = schema;
+        output.json = merged.dump();
+        output.hash = Hash(output.json);
+        output.layerCount = static_cast<uint32_t>(layers.size());
+        return true;
+    } catch (const nlohmann::json::exception& exception) {
+        error = exception.what();
+        return false;
+    }
+}
+
+bool MergeSchemaFreeDocuments(const std::vector<LayerDocument>& layers, MergeResult& output, std::string& error) {
+    output = {};
+    error.clear();
+    if (layers.empty()) {
+        error = "at least one layer is required";
+        return false;
+    }
+    try {
+        // Começa vazio: um null da primeira camada também não sobra no resultado.
+        Json merged = Json::object();
+        for (const auto& layer : layers) {
+            const Json parsed = Json::parse(layer.json, nullptr, true, true);
+            if (!parsed.is_object()) {
+                error = "layer root must be an object: " + layer.archive;
+                return false;
+            }
+            MergeValueRemovingNulls(merged, parsed);
+        }
         output.json = merged.dump();
         output.hash = Hash(output.json);
         output.layerCount = static_cast<uint32_t>(layers.size());
