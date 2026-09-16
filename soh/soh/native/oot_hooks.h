@@ -20,7 +20,12 @@
  * oot.save.loaded v1: depois de carregar um arquivo; `slot` é o arquivo.
  * oot.save.saving v1: antes do jogo gravar; última chance de escrever blocos.
  * oot.save.deleted v1: arquivo `slot` apagado.
- * oot.save.copied v1: arquivo `other_slot` copiado para `slot`. */
+ * oot.save.copied v1: arquivo `other_slot` copiado para `slot`.
+ *
+ * oot.player.limb_draw v1: só OBSERVE, payload ShipOotPlayerLimbHookV1. Um limb do
+ *   Link (ou do Dark Link, que usa o mesmo desenho) acabou de ser desenhado; a
+ *   matriz corrente é a do limb. É escopo de draw de linkspan.oot.render, e o host
+ *   restaura a matriz depois dos hooks. `limb` segue PLAYER_LIMB_* de z64player.h. */
 #define LINKSPAN_OOT_HOOK_PLAY_UPDATE "oot.play.update"
 #define LINKSPAN_OOT_HOOK_ACTOR_UPDATE "oot.actor.update"
 #define LINKSPAN_OOT_HOOK_ACTOR_DRAW "oot.actor.draw"
@@ -28,6 +33,7 @@
 #define LINKSPAN_OOT_HOOK_SAVE_SAVING "oot.save.saving"
 #define LINKSPAN_OOT_HOOK_SAVE_DELETED "oot.save.deleted"
 #define LINKSPAN_OOT_HOOK_SAVE_COPIED "oot.save.copied"
+#define LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW "oot.player.limb_draw"
 #define LINKSPAN_OOT_HOOKS_VERSION 1u
 
 typedef struct ShipOotPlayHookV1 {
@@ -48,5 +54,12 @@ typedef struct ShipOotSaveHookV1 {
     int32_t slot;
     int32_t other_slot;
 } ShipOotSaveHookV1;
+
+typedef struct ShipOotPlayerLimbHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* actor;
+    int32_t limb;
+} ShipOotPlayerLimbHookV1;
 
 #endif

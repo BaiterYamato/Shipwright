@@ -1791,8 +1791,13 @@ Vec3f sLeftRightFootLimbModelFootPos[] = {
     { 200.0f, 200.0f, 0.0f },
 };
 
+// SOH [Link-Span] hook oot.player.limb_draw (OotNativeViewGame.cpp).
+void LinkSpan_PlayerLimbDraw(PlayState* play, s32 limbIndex, Actor* actor);
+
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* thisx) {
     Player* this = (Player*)thisx;
+
+    LinkSpan_PlayerLimbDraw(play, limbIndex, &this->actor);
 
     if (*dList != NULL) {
         Matrix_MultVec3f(&sZeroVec, D_80160000);

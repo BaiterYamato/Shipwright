@@ -354,6 +354,46 @@ O `ActorDB` passa a ser criado antes da carga dos mods, então o init já pode r
 uso solta um orbe com o modelo do coração, que sobe girando e some. Empacote com
 `tools/package-item-demo.ps1`.
 
+## Câmera, render e limb do Player (OOT-CORE-005)
+
+### `linkspan.oot.camera` v1
+
+Header: `soh/soh/native/oot_camera.h`.
+
+- `acquire(dono, &token)` cria uma subcâmera do jogo a partir da vista atual e a ativa.
+  - Só vale em gameplay com a câmera principal ativa.
+  - Em cutscene ou com outro dono, retorna `LIMIT`.
+- `set_view(token, {eye, at, fov})` vale até a próxima chamada e é reaplicada a cada
+  frame, antes do update das câmeras.
+- A posse cai sozinha na troca de cena ou quando o jogo ativa outra câmera. `is_owned`
+  diz se o token ainda vale, e `release` de um token perdido devolve `OK`.
+- `get_view` lê a câmera ativa, de qualquer dono.
+- Libere no shutdown do mod.
+
+### `linkspan.oot.render` v1
+
+Header: `soh/soh/native/oot_render.h`.
+
+- `draw_display_list(play, caminho, camada)`, com camada opaca ou translúcida.
+- `matrix_push`/`matrix_pop`, `matrix_translate`, `matrix_scale` e `matrix_rotate_zyx`
+  aplicam sobre a matriz corrente.
+- Só valem em escopo de draw: draw de tipo de ator de mod, hook `oot.actor.draw` e hook
+  `oot.player.limb_draw`. Fora deles, retornam `UNSUPPORTED`.
+- No fim do escopo, o host desfaz os push sem pop (até 16 níveis).
+
+### Hook `oot.player.limb_draw` v1
+
+- Só observe, com payload `ShipOotPlayerLimbHookV1{play_state, actor, limb}`.
+- Dispara no início de `Player_PostLimbDrawGameplay`, com a matriz do limb, e o host
+  restaura a matriz depois.
+- O Dark Link usa o mesmo desenho: filtre por `actor->id`.
+
+### Demo
+
+`soh/native-sdk/view-demo` desenha o coração na mão direita do Link e alterna 4 s de
+câmera orbitando o Link com 4 s da câmera do jogo. Empacote com
+`tools/package-view-demo.ps1`.
+
 ## Escape hatch (COREEXT-008)
 
 Contrato em `NATIVE-001/rfcs/0023-native-escape-hatch.md`. Uma core extension com

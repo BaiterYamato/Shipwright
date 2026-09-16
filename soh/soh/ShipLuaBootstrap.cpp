@@ -4,6 +4,7 @@
 #include "native/OotNativeScenes.h"
 #include "native/OotNativeHooks.h"
 #include "native/OotNativeItems.h"
+#include "native/OotNativeView.h"
 #include "native/OotNativeSave.h"
 #include "OotActorProvider.h"
 #include "OotHotkeyRegistry.h"
@@ -7064,6 +7065,7 @@ void Shutdown() {
     ResetOotHooks();
     ResetOotNativeSave();
     ResetOotNativeItems();
+    ResetOotNativeView();
     ClearNativeResourceArchives();
     SetOotNativeGamepadBridge({});
     SetOotNativeResourceBridge({});

@@ -15,6 +15,7 @@ struct OotHookPoints {
     uint64_t saveSaving = 0;
     uint64_t saveDeleted = 0;
     uint64_t saveCopied = 0;
+    uint64_t playerLimbDraw = 0;
 };
 void SetOotHookLogger(void (*logger)(const std::string& message));
 // Cria um registro novo com os pontos do host declarados. Chamar na thread do jogo.

@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 
 #include "OotNativeSave.h"
+#include "OotNativeView.h"
 #include "soh/ActorDB.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ResourceManagerHelpers.h"
@@ -116,7 +117,9 @@ void LinkSpanActorDraw(Actor* actor, PlayState* play) {
     const auto spec = type->spec;
     CallbackScope scope;
     ShipLuaHost::SetOotActorDrawActive(true);
+    ShipLuaHost::EnterOotRenderScope();
     spec.draw(spec.user, actor, play);
+    ShipLuaHost::LeaveOotRenderScope();
     ShipLuaHost::SetOotActorDrawActive(false);
 }
 

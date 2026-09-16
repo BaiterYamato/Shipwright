@@ -1,5 +1,6 @@
 // Liga os pontos de hook do host (OotNativeHooks.cpp) às chamadas do jogo.
 #include "OotNativeHooks.h"
+#include "OotNativeView.h"
 
 #include <spdlog/spdlog.h>
 
@@ -75,5 +76,8 @@ extern "C" void LinkSpan_ActorDraw(Actor* actor, PlayState* play) {
         actor->draw(actor, play);
         return;
     }
+    // Replace e observe desenham com linkspan.oot.render sobre a matriz do ator.
+    ShipLuaHost::EnterOotRenderScope();
     DispatchActor(point, actor, play, ActorDrawOriginal);
+    ShipLuaHost::LeaveOotRenderScope();
 }

@@ -10,6 +10,9 @@
 #include "oot_items.h"
 #include "oot_actors.h"
 #include "OotNativeItems.h"
+#include "oot_camera.h"
+#include "oot_render.h"
+#include "OotNativeView.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
@@ -297,6 +300,64 @@ ShipNativeStatus SHIP_NATIVE_CALL Use(void* user, uint8_t, uint8_t) {
 }
 } // namespace FakeItems
 
+namespace FakeView {
+bool gameplay = true;
+bool active = false;
+int16_t nextCamera = 2;
+int created = 0;
+int destroyed = 0;
+int applied = 0;
+ShipOotCameraViewV1 lastApplied{};
+int depth = 0;
+std::vector<std::string> ops;
+int playTag = 0;
+
+ShipNativeStatus Create(int16_t* camera, void** play) {
+    if (!gameplay) {
+        return SHIP_NATIVE_LIMIT;
+    }
+    ++created;
+    active = true;
+    *camera = nextCamera;
+    *play = &playTag;
+    return SHIP_NATIVE_OK;
+}
+bool Valid(int16_t camera, void* play) {
+    return active && camera == nextCamera && play == &playTag;
+}
+void Destroy(int16_t, void*) {
+    ++destroyed;
+    active = false;
+}
+void Apply(int16_t, void*, const ShipOotCameraViewV1& view) {
+    ++applied;
+    lastApplied = view;
+}
+ShipNativeStatus Read(ShipOotCameraViewV1* view) {
+    view->fov = 60.0f;
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus Draw(void*, const char* path, uint8_t layer) {
+    ops.push_back(std::string("draw:") + path + ":" + std::to_string(layer));
+    return SHIP_NATIVE_OK;
+}
+void Push() {
+    ++depth;
+}
+void Pop() {
+    --depth;
+}
+void Translate(float, float, float) {
+    ops.push_back("translate");
+}
+void Scale(float, float, float) {
+    ops.push_back("scale");
+}
+void Rotate(int16_t, int16_t, int16_t) {
+    ops.push_back("rotate");
+}
+} // namespace FakeView
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit) gBitFlags[bit] = uint32_t{1} << bit;
     ShipLuaHost::SetOotNativeGamepadBridge(
@@ -306,7 +367,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 11 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 13 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -325,9 +386,112 @@ int main(int argc, char** argv) {
           policy.services[9].size == sizeof(ShipOotItemsV1) &&
           std::string(policy.services[10].name) == LINKSPAN_OOT_ACTORS_SERVICE &&
           policy.services[10].version == LINKSPAN_OOT_ACTORS_VERSION &&
-          policy.services[10].size == sizeof(ShipOotActorsV1),
+          policy.services[10].size == sizeof(ShipOotActorsV1) &&
+          std::string(policy.services[11].name) == LINKSPAN_OOT_CAMERA_SERVICE &&
+          policy.services[11].version == LINKSPAN_OOT_CAMERA_VERSION &&
+          policy.services[11].size == sizeof(ShipOotCameraV1) &&
+          std::string(policy.services[12].name) == LINKSPAN_OOT_RENDER_SERVICE &&
+          policy.services[12].version == LINKSPAN_OOT_RENDER_VERSION &&
+          policy.services[12].size == sizeof(ShipOotRenderV1),
           "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1, save V1, "
-          "items V1 e actors V1");
+          "items V1, actors V1, camera V1 e render V1");
+    {
+        using namespace FakeView;
+        Check(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW, LINKSPAN_OOT_HOOKS_VERSION) != 0,
+              "ponto oot.player.limb_draw");
+        const auto* camera = static_cast<const ShipOotCameraV1*>(policy.services[11].table);
+        const auto* render = static_cast<const ShipOotRenderV1*>(policy.services[12].table);
+        uint64_t token = 0;
+        Check(camera->acquire("autor.mod", &token) == SHIP_NATIVE_UNSUPPORTED && token == 0, "sem ponte não há câmera");
+
+        ShipLuaHost::OotViewBridge bridge;
+        bridge.cameraCreate = Create;
+        bridge.cameraValid = Valid;
+        bridge.cameraDestroy = Destroy;
+        bridge.cameraApply = Apply;
+        bridge.cameraRead = Read;
+        bridge.drawDisplayList = Draw;
+        bridge.matrixPush = Push;
+        bridge.matrixPop = Pop;
+        bridge.matrixTranslate = Translate;
+        bridge.matrixScale = Scale;
+        bridge.matrixRotateZYX = Rotate;
+        ShipLuaHost::SetOotViewBridge(bridge);
+
+        gameplay = false;
+        Check(camera->acquire("autor.mod", &token) == SHIP_NATIVE_LIMIT, "fora de gameplay");
+        gameplay = true;
+        Check(camera->acquire("", &token) == SHIP_NATIVE_INVALID_ARGUMENT, "dono vazio");
+        Check(camera->acquire("autor.mod", &token) == SHIP_NATIVE_OK && token && created == 1 &&
+                  camera->is_owned(token) == 1,
+              "acquire");
+        uint64_t second = 0;
+        Check(camera->acquire("outro.mod", &second) == SHIP_NATIVE_LIMIT && second == 0, "câmera exclusiva");
+        ShipOotCameraViewV1 view{sizeof(view), {0.0f, 100.0f, -200.0f}, {0.0f, 40.0f, 0.0f}, 60.0f};
+        Check(camera->set_view(second, &view) == SHIP_NATIVE_UNSUPPORTED, "set_view sem posse");
+        ShipOotCameraViewV1 bad = view;
+        bad.fov = 0.0f;
+        Check(camera->set_view(token, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "fov inválido");
+        bad = view;
+        bad.at[0] = bad.eye[0];
+        bad.at[1] = bad.eye[1];
+        bad.at[2] = bad.eye[2];
+        Check(camera->set_view(token, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "eye igual a at");
+        Check(camera->set_view(token, &view) == SHIP_NATIVE_OK && applied == 1 && lastApplied.eye[2] == -200.0f,
+              "set_view aplica na hora");
+        ShipLuaHost::UpdateOotCamera();
+        Check(applied == 2, "vista reaplicada a cada frame");
+        ShipOotCameraViewV1 read{sizeof(read)};
+        Check(camera->get_view(&read) == SHIP_NATIVE_OK && read.fov == 60.0f, "get_view");
+
+        // Cutscene ou troca de cena: a câmera deixa de ser a ativa e a posse cai.
+        active = false;
+        ShipLuaHost::UpdateOotCamera();
+        Check(applied == 2 && camera->is_owned(token) == 0 && destroyed == 1, "posse perdida limpa a subcâmera");
+        Check(camera->release(token) == SHIP_NATIVE_OK && destroyed == 1, "release de token perdido");
+        Check(camera->release(token + 100) == SHIP_NATIVE_INVALID_ARGUMENT, "release de token inexistente");
+        Check(camera->acquire("outro.mod", &second) == SHIP_NATIVE_OK && second != token, "novo dono");
+        Check(camera->release(second) == SHIP_NATIVE_OK && destroyed == 2 && camera->is_owned(second) == 0,
+              "release devolve a câmera");
+
+        int play = 0;
+        Check(render->draw_display_list(&play, "objects/gameplay_keep/gHeartPieceInteriorDL", 0) ==
+                  SHIP_NATIVE_UNSUPPORTED &&
+                  render->matrix_push() == SHIP_NATIVE_UNSUPPORTED &&
+                  render->matrix_translate(1.0f, 0.0f, 0.0f) == SHIP_NATIVE_UNSUPPORTED,
+              "render fora de escopo de draw");
+        ShipLuaHost::EnterOotRenderScope();
+        Check(render->matrix_pop() == SHIP_NATIVE_INVALID_ARGUMENT, "pop além do escopo");
+        Check(render->matrix_push() == SHIP_NATIVE_OK && render->matrix_translate(1.0f, 2.0f, 3.0f) == SHIP_NATIVE_OK &&
+                  render->matrix_scale(0.5f, 0.5f, 0.5f) == SHIP_NATIVE_OK &&
+                  render->matrix_rotate_zyx(0, 0x4000, 0) == SHIP_NATIVE_OK && depth == 1,
+              "operações de matriz no escopo");
+        Check(render->matrix_translate(std::nan(""), 0.0f, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT, "NaN recusado");
+        Check(render->draw_display_list(&play, "objects/gameplay_keep/gHeartPieceInteriorDL", 1) == SHIP_NATIVE_OK &&
+                  ops.back() == "draw:__OTR__objects/gameplay_keep/gHeartPieceInteriorDL:1",
+              "draw no escopo");
+        Check(render->draw_display_list(&play, "__OTR__x", 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  render->draw_display_list(&play, "a/../b", 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  render->draw_display_list(&play, "a", 2) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "caminho ou camada inválidos");
+        ShipLuaHost::EnterOotRenderScope();
+        Check(render->matrix_push() == SHIP_NATIVE_OK && render->matrix_push() == SHIP_NATIVE_OK && depth == 3,
+              "escopo aninhado");
+        ShipLuaHost::LeaveOotRenderScope();
+        Check(depth == 1, "leave desfaz só os push do escopo interno");
+        uint32_t pushes = 0;
+        while (render->matrix_push() == SHIP_NATIVE_OK) {
+            ++pushes;
+        }
+        Check(pushes == LINKSPAN_OOT_RENDER_MAX_DEPTH - 1, "limite de profundidade");
+        ShipLuaHost::LeaveOotRenderScope();
+        Check(depth == 0 && render->matrix_push() == SHIP_NATIVE_UNSUPPORTED, "leave devolve a pilha do host");
+
+        Check(camera->acquire("autor.mod", &token) == SHIP_NATIVE_OK, "acquire antes do reset");
+        ShipLuaHost::ResetOotNativeView();
+        Check(camera->is_owned(token) == 0 && destroyed == 3, "reset libera a câmera");
+        ShipLuaHost::SetOotViewBridge({});
+    }
     {
         using namespace FakeItems;
         const auto* items = static_cast<const ShipOotItemsV1*>(policy.services[9].table);

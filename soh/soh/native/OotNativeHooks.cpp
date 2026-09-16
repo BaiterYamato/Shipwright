@@ -32,6 +32,8 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
     points.saveSaving = Declare(LINKSPAN_OOT_HOOK_SAVE_SAVING, sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.saveDeleted = Declare(LINKSPAN_OOT_HOOK_SAVE_DELETED, sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.saveCopied = Declare(LINKSPAN_OOT_HOOK_SAVE_COPIED, sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.playerLimbDraw =
+        Declare(LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW, sizeof(ShipOotPlayerLimbHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     return registry;
 }
 
