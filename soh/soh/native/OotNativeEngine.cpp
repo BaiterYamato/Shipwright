@@ -6,6 +6,7 @@
 #include "OotNativeSave.h"
 #include "OotNativeScenes.h"
 #include "OotNativeView.h"
+#include "OotNativeWorld.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
 #include "oot_ocarina.h"
@@ -555,6 +556,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeSave(gameThread);
     InitializeOotNativeItems(gameThread);
     InitializeOotNativeView(gameThread);
+    InitializeOotNativeWorld(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
     policy.services.push_back({LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION,
@@ -585,6 +587,11 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     policy.services.push_back({LINKSPAN_OOT_CAMERA_SERVICE, LINKSPAN_OOT_CAMERA_VERSION, sizeof(camera), &camera});
     const auto& render = GetOotNativeRenderService();
     policy.services.push_back({LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION, sizeof(render), &render});
+    const auto& world = GetOotNativeWorldService();
+    policy.services.push_back({LINKSPAN_OOT_WORLD_SERVICE, LINKSPAN_OOT_WORLD_VERSION, sizeof(world), &world});
+    const auto& colliders = GetOotNativeCollidersService();
+    policy.services.push_back(
+        {LINKSPAN_OOT_COLLIDERS_SERVICE, LINKSPAN_OOT_COLLIDERS_VERSION, sizeof(colliders), &colliders});
     policy.hooks = CreateOotHookRegistry();
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;

@@ -394,6 +394,41 @@ Header: `soh/soh/native/oot_render.h`.
 câmera orbitando o Link com 4 s da câmera do jogo. Empacote com
 `tools/package-view-demo.ps1`.
 
+## Mundo e colliders (OOT-CORE-004)
+
+### `linkspan.oot.world` v1
+
+Header: `soh/soh/native/oot_world.h`. Só em gameplay e sem alterar o jogo:
+
+- `raycast_floor(x, y, z, &hit)`: primeiro chão abaixo do ponto, com posição, normal,
+  `bg_id` e tipo de chão;
+- `line_test(from, to, superfícies, &hit)`: parede, chão e/ou teto entre dois pontos;
+- `wall_check(from, to, raio, altura, &hit)`: esfera em movimento, com a posição
+  corrigida pela parede;
+- `water_surface(x, z, &y)`: altura da água, ou `FAILURE` fora dela.
+
+### `linkspan.oot.colliders` v1
+
+Header: `soh/soh/native/oot_colliders.h`.
+
+- `create_cylinder(spec, &handle)`: cilindro com as flags AT/AC/OC do jogo, preso a um
+  ator do mod. O host guarda a memória.
+- `submit(handle)`: chamado do update do ator a cada frame, segue o ator e inscreve o
+  cilindro nas checagens habilitadas.
+- `read_hits(handle, &hits)`: devolve e limpa os acertos do frame anterior, com o ator
+  do outro lado e os `dmgFlags` de quem acertou.
+- `destroy(handle)`: libera no fim do frame seguinte, porque a checagem do frame atual
+  ainda pode usar o cilindro. Colliders que sobram saem no fim da cena (`OnPlayDestroy`)
+  e no reset do host.
+- `knockback_player(fonte, velocidade, direção, vel. vertical, dano, grande)`: empurra
+  o Link.
+
+### Demo
+
+`soh/native-sdk/world-demo` cria à frente do Link um alvo apoiado no chão por
+`raycast_floor`. Golpes de espada fazem o alvo girar, encostar empurra o Link, e o log
+mostra chão, água, linha e parede. Empacote com `tools/package-world-demo.ps1`.
+
 ## Escape hatch (COREEXT-008)
 
 Contrato em `NATIVE-001/rfcs/0023-native-escape-hatch.md`. Uma core extension com

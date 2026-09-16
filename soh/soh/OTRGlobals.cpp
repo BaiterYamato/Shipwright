@@ -121,6 +121,7 @@
 #include "soh/native/OotNativeSave.h"
 #include "soh/native/OotNativeItems.h"
 #include "soh/native/OotNativeView.h"
+#include "soh/native/OotNativeWorld.h"
 #include "soh/OotHotkeyRegistry.h"
 
 #ifdef _MSC_VER
@@ -1564,6 +1565,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     // SOH [Link-Span] itens sintéticos e tipos de ator de mods; antes da carga dos mods.
     ShipLuaHost::RegisterOotItemGameHooks();
     ShipLuaHost::RegisterOotViewGameHooks();
+    ShipLuaHost::RegisterOotWorldGameHooks();
     // SOH [Link-Span] mods registram tipos de ator no init, durante ShipLuaHost::Initialize.
     ActorDB::Instance = new ActorDB();
     // SOH [Link-Span] o crash log precisa da seção de mods nativos já durante a carga deles;

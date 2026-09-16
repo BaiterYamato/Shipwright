@@ -13,6 +13,9 @@
 #include "oot_camera.h"
 #include "oot_render.h"
 #include "OotNativeView.h"
+#include "oot_world.h"
+#include "oot_colliders.h"
+#include "OotNativeWorld.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
@@ -358,6 +361,70 @@ void Rotate(int16_t, int16_t, int16_t) {
 }
 } // namespace FakeView
 
+namespace FakeWorld {
+int playTag = 0;
+bool inGameplay = true;
+int created = 0;
+std::vector<std::pair<int, bool>> freed; // (id, com play)
+int submitted = 0;
+int reads = 0;
+int knockbacks = 0;
+uint8_t lastLarge = 0;
+std::vector<int*> storage;
+
+void* Gameplay() {
+    return inGameplay ? &playTag : nullptr;
+}
+ShipNativeStatus Floor(void*, float x, float, float z, ShipOotWorldHitV1* hit) {
+    hit->hit = 1;
+    hit->pos[0] = x;
+    hit->pos[1] = -5.0f;
+    hit->pos[2] = z;
+    hit->normal[1] = 1.0f;
+    hit->bg_id = 50;
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus Line(void*, const float*, const float* to, uint32_t surfaces, ShipOotWorldHitV1* hit) {
+    if (surfaces & LINKSPAN_OOT_WORLD_LINE_WALL) {
+        hit->hit = 1;
+        hit->pos[0] = to[0] / 2.0f;
+    }
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus Wall(void*, const float*, const float* to, float, float, ShipOotWorldHitV1* hit) {
+    hit->pos[0] = to[0];
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus Water(void*, float x, float, float* y) {
+    if (x < 0.0f) {
+        return SHIP_NATIVE_FAILURE;
+    }
+    *y = 12.0f;
+    return SHIP_NATIVE_OK;
+}
+void* Create(void*, const ShipOotCylinderSpecV1&) {
+    storage.push_back(new int(++created));
+    return storage.back();
+}
+void Free(void* play, void* collider) {
+    auto* id = static_cast<int*>(collider);
+    freed.emplace_back(*id, play != nullptr);
+    delete id;
+}
+void Submit(void*, void*) {
+    ++submitted;
+}
+void Read(void* collider, ShipOotColliderHitsV1* hits) {
+    ++reads;
+    hits->ac_hit = *static_cast<int*>(collider) == 1 ? 1 : 0;
+    hits->ac_dmg_flags = 0x100;
+}
+void Knockback(void*, void*, float, int16_t, float, uint32_t, uint8_t large) {
+    ++knockbacks;
+    lastLarge = large;
+}
+} // namespace FakeWorld
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit) gBitFlags[bit] = uint32_t{1} << bit;
     ShipLuaHost::SetOotNativeGamepadBridge(
@@ -367,7 +434,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 13 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 15 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -392,9 +459,116 @@ int main(int argc, char** argv) {
           policy.services[11].size == sizeof(ShipOotCameraV1) &&
           std::string(policy.services[12].name) == LINKSPAN_OOT_RENDER_SERVICE &&
           policy.services[12].version == LINKSPAN_OOT_RENDER_VERSION &&
-          policy.services[12].size == sizeof(ShipOotRenderV1),
+          policy.services[12].size == sizeof(ShipOotRenderV1) &&
+          std::string(policy.services[13].name) == LINKSPAN_OOT_WORLD_SERVICE &&
+          policy.services[13].version == LINKSPAN_OOT_WORLD_VERSION &&
+          policy.services[13].size == sizeof(ShipOotWorldV1) &&
+          std::string(policy.services[14].name) == LINKSPAN_OOT_COLLIDERS_SERVICE &&
+          policy.services[14].version == LINKSPAN_OOT_COLLIDERS_VERSION &&
+          policy.services[14].size == sizeof(ShipOotCollidersV1),
           "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1, save V1, "
-          "items V1, actors V1, camera V1 e render V1");
+          "items V1, actors V1, camera V1, render V1, world V1 e colliders V1");
+    {
+        using namespace FakeWorld;
+        const auto* world = static_cast<const ShipOotWorldV1*>(policy.services[13].table);
+        const auto* colliders = static_cast<const ShipOotCollidersV1*>(policy.services[14].table);
+        ShipOotWorldHitV1 hit{sizeof(hit)};
+        Check(world->raycast_floor(0.0f, 10.0f, 0.0f, &hit) == SHIP_NATIVE_UNSUPPORTED && hit.hit == 0,
+              "sem ponte não há consulta");
+
+        ShipLuaHost::OotWorldBridge bridge;
+        bridge.gameplay = Gameplay;
+        bridge.raycastFloor = Floor;
+        bridge.lineTest = Line;
+        bridge.wallCheck = Wall;
+        bridge.waterSurface = Water;
+        bridge.colliderCreate = Create;
+        bridge.colliderFree = Free;
+        bridge.colliderSubmit = Submit;
+        bridge.colliderRead = Read;
+        bridge.knockback = Knockback;
+        ShipLuaHost::SetOotWorldBridge(bridge);
+
+        Check(world->raycast_floor(1.0f, 10.0f, 2.0f, &hit) == SHIP_NATIVE_OK && hit.hit == 1 && hit.pos[1] == -5.0f &&
+                  hit.size == sizeof(hit),
+              "raycast_floor");
+        Check(world->raycast_floor(std::nan(""), 0.0f, 0.0f, &hit) == SHIP_NATIVE_INVALID_ARGUMENT, "NaN recusado");
+        ShipOotWorldHitV1 small{sizeof(uint32_t)};
+        Check(world->raycast_floor(0.0f, 0.0f, 0.0f, &small) == SHIP_NATIVE_INVALID_ARGUMENT, "hit sem tamanho");
+        const float from[3]{0.0f, 0.0f, 0.0f};
+        const float to[3]{100.0f, 0.0f, 0.0f};
+        Check(world->line_test(from, to, 0, &hit) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  world->line_test(from, to, 8, &hit) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "superfícies inválidas");
+        Check(world->line_test(from, to, LINKSPAN_OOT_WORLD_LINE_WALL, &hit) == SHIP_NATIVE_OK && hit.hit == 1 &&
+                  hit.pos[0] == 50.0f,
+              "line_test com parede");
+        Check(world->line_test(from, to, LINKSPAN_OOT_WORLD_LINE_FLOOR, &hit) == SHIP_NATIVE_OK && hit.hit == 0 &&
+                  hit.pos[0] == 0.0f,
+              "line_test limpa o resultado anterior");
+        Check(world->wall_check(from, to, 0.0f, 20.0f, &hit) == SHIP_NATIVE_INVALID_ARGUMENT, "raio inválido");
+        Check(world->wall_check(from, to, 15.0f, 20.0f, &hit) == SHIP_NATIVE_OK && hit.hit == 0 && hit.pos[0] == 100.0f,
+              "wall_check sem parede");
+        float water = 0.0f;
+        Check(world->water_surface(5.0f, 5.0f, &water) == SHIP_NATIVE_OK && water == 12.0f, "water_surface");
+        Check(world->water_surface(-5.0f, 5.0f, &water) == SHIP_NATIVE_FAILURE, "fora da água");
+
+        int actor = 0;
+        ShipOotCylinderSpecV1 spec{};
+        spec.size = sizeof(spec);
+        spec.actor = &actor;
+        spec.radius = 20;
+        spec.height = 40;
+        uint64_t handle = 0;
+        ShipOotCylinderSpecV1 bad = spec;
+        bad.actor = nullptr;
+        Check(colliders->create_cylinder(&bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "collider sem ator");
+        bad = spec;
+        bad.radius = 0;
+        Check(colliders->create_cylinder(&bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "raio zero");
+        inGameplay = false;
+        Check(colliders->create_cylinder(&spec, &handle) == SHIP_NATIVE_UNSUPPORTED && handle == 0,
+              "collider fora de gameplay");
+        inGameplay = true;
+        Check(colliders->create_cylinder(&spec, &handle) == SHIP_NATIVE_OK && handle && created == 1, "create");
+        uint64_t second = 0;
+        Check(colliders->create_cylinder(&spec, &second) == SHIP_NATIVE_OK && second != handle, "segundo collider");
+        Check(colliders->submit(handle) == SHIP_NATIVE_OK && submitted == 1, "submit");
+        ShipOotColliderHitsV1 hits{sizeof(hits)};
+        Check(colliders->read_hits(handle, &hits) == SHIP_NATIVE_OK && hits.ac_hit == 1 && hits.ac_dmg_flags == 0x100,
+              "read_hits");
+        Check(colliders->submit(999) == SHIP_NATIVE_UNSUPPORTED, "handle desconhecido");
+
+        // destroy vale na hora para o mod, mas a memória só sai no fim do frame seguinte.
+        Check(colliders->destroy(handle) == SHIP_NATIVE_OK && colliders->destroy(handle) == SHIP_NATIVE_FAILURE,
+              "destroy e destroy repetido");
+        Check(colliders->submit(handle) == SHIP_NATIVE_UNSUPPORTED &&
+                  colliders->read_hits(handle, &hits) == SHIP_NATIVE_UNSUPPORTED,
+              "collider destruído não submete nem lê");
+        ShipLuaHost::FlushOotColliders();
+        Check(freed.empty() && ShipLuaHost::OotColliderCount() == 2, "sem liberar no fim do mesmo frame");
+        ShipLuaHost::FlushOotColliders();
+        Check(freed.size() == 1 && freed[0].first == 1 && freed[0].second && ShipLuaHost::OotColliderCount() == 1,
+              "libera no fim do frame seguinte");
+
+        Check(colliders->knockback_player(nullptr, 5.0f, 0, 3.0f, 0, 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  colliders->knockback_player(&actor, 5.0f, 0, 3.0f, 256, 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  colliders->knockback_player(&actor, 5.0f, 0, 3.0f, 0, 2) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "knockback inválido");
+        Check(colliders->knockback_player(&actor, 5.0f, 0x4000, 3.0f, 4, 1) == SHIP_NATIVE_OK && knockbacks == 1 &&
+                  lastLarge == 1,
+              "knockback");
+
+        ShipLuaHost::ReleaseOotSceneColliders();
+        Check(freed.size() == 2 && freed[1].first == 2 && ShipLuaHost::OotColliderCount() == 0,
+              "fim da cena libera o restante");
+        std::thread worker([&] {
+            float y = 0.0f;
+            Check(world->water_surface(1.0f, 1.0f, &y) == SHIP_NATIVE_INVALID_ARGUMENT, "outra thread");
+        });
+        worker.join();
+        ShipLuaHost::SetOotWorldBridge({});
+    }
     {
         using namespace FakeView;
         Check(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW, LINKSPAN_OOT_HOOKS_VERSION) != 0,
