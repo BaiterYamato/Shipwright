@@ -328,7 +328,25 @@ Header: `soh/soh/native/oot_items.h`.
 - `unregister_item` esvazia os botões com o item, inclusive os guardados para a
   outra idade. Registre no init e remova no shutdown.
 
-Esta versão não cobre página de inventário nem get-item com caixa de texto (NEI-002/003).
+A v1 não cobre página de inventário (NEI-003).
+
+### `linkspan.oot.items` v2 (OOT-CORE-003B)
+
+Prefixo binário compatível com a v1, com duas funções a mais:
+
+- `set_get_item(id, {modelo, camada, escala, mensagem, receive, user})`:
+  - `modelo` é um display list mostrado acima do Link;
+  - `escala` multiplica o 0.2 do get-item;
+  - `mensagem` é ASCII de até 200 bytes, com os códigos do `CustomMessage` (`&`, `%r`, `%w`…).
+- `give_item(id)`: o Link levanta o item como se viesse de um NPC, com fanfarra e caixa de texto.
+  - Retorna `LIMIT` fora do gameplay normal (inclusive na cena de abertura do título), em cutscene ou com o
+    Player ocupado.
+  - Quando a caixa abre, o host chama `receive(user, id)`, e o mod decide o destino do item (botão C, contador no
+    save…).
+
+O host usa um `GetItemEntry` com `modIndex` próprio. O `z_player.c` só desvia esse
+`modIndex` para o `receive`, sem passar pelas tabelas vanilla. O texto sai por
+`OnOpenText` no id `0x7F00`.
 
 ### `linkspan.oot.actors` v1
 
@@ -349,8 +367,9 @@ O `ActorDB` passa a ser criado antes da carga dos mods, então o init já pode r
 
 ### Demo
 
-`soh/native-sdk/item-demo` registra o item `linkspan-demo.orb-wand` e o ator
-`linkspan-demo.orb`. Ao carregar um arquivo, o item vai para um botão C vazio, ou para o C-Right. Cada
+`soh/native-sdk/item-demo` (0.2.0) registra o item `linkspan-demo.orb-wand` e o ator
+`linkspan-demo.orb`. Em gameplay, se nenhum botão C tem o item, o Link o recebe por
+`give_item`, e o `receive` o equipa num botão C vazio, ou no C-Right. Cada
 uso solta um orbe com o modelo do coração, que sobe girando e some. Empacote com
 `tools/package-item-demo.ps1`.
 

@@ -52,7 +52,7 @@ if (Test-Path -LiteralPath (Join-Path $packageRoot 'staging')) {
 Write-Utf8NoBom (Join-Path $stage 'manifest.toml') @'
 id = "linkspan.item-demo"
 name = "Link-Span Item Demo"
-version = "0.1.0"
+version = "0.2.0"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -65,7 +65,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'main.lua') -Destination (Join-Pat
 Copy-Item -LiteralPath $demoDll -Destination (Join-Path $stage 'provider\linkspan_item_demo.dll')
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = Join-Path $packageRoot "LinkSpan-Item-Demo-0.1.0-layout-$layout.zip"
+$zip = Join-Path $packageRoot "LinkSpan-Item-Demo-0.2.0-layout-$layout.zip"
 New-DeterministicZip $stage $zip
 
 & $validatorExe $zip

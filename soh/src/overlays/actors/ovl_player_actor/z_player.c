@@ -7302,6 +7302,10 @@ void func_8083E4C4(PlayState* play, Player* this, GetItemEntry* giEntry) {
                                                                                   : NA_SE_SY_GET_ITEM);
 }
 
+// SOH [Link-Span] get-item de itens sintéticos (OotNativeItemsGame.cpp).
+s32 LinkSpan_IsSyntheticGetItem(u16 modIndex);
+void LinkSpan_ReceiveSyntheticItem(PlayState* play, u16 item);
+
 s32 Player_ActionHandler_2(Player* this, PlayState* play) {
     Actor* interactedActor;
 
@@ -7344,8 +7348,10 @@ s32 Player_ActionHandler_2(Player* this, PlayState* play) {
                 // getting bombchus need to show the cutscene) and whenever the player doesn't have the item yet. In
                 // rando, we're overruling this because we need to keep showing the cutscene because those items can be
                 // randomized and thus it's important to keep showing the cutscene.
+                // SOH [Link-Span] item sintético sempre mostra a cena e não passa pelas tabelas vanilla.
                 uint8_t showItemCutscene = play->sceneNum == SCENE_BOMBCHU_BOWLING_ALLEY || IS_RANDO ||
                                            giEntry.modIndex == MOD_RANDOMIZER ||
+                                           LinkSpan_IsSyntheticGetItem(giEntry.modIndex) ||
                                            Item_CheckObtainability(giEntry.itemId) == ITEM_NONE;
 
                 // Only skip cutscenes for drops when they're items/consumables from bushes/rocks/enemies.
@@ -14072,6 +14078,8 @@ s32 func_8084DFF4(PlayState* play, Player* this) {
                 // Prevent OOB Items from crashing game.
                 if (giEntry.itemId != ITEM_NONE)
                     Item_Give(play, giEntry.itemId);
+            } else if (LinkSpan_IsSyntheticGetItem(giEntry.modIndex)) {
+                LinkSpan_ReceiveSyntheticItem(play, giEntry.itemId);
             } else {
                 Randomizer_Item_Give(play, giEntry);
             }

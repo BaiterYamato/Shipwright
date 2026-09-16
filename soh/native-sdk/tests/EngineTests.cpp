@@ -425,6 +425,24 @@ void Knockback(void*, void*, float, int16_t, float, uint32_t, uint8_t large) {
 }
 } // namespace FakeWorld
 
+namespace FakeGetItem {
+std::vector<uint8_t> given;
+bool playerBusy = false;
+uint32_t received = 0;
+
+ShipNativeStatus Give(uint8_t item) {
+    if (playerBusy) {
+        return SHIP_NATIVE_LIMIT;
+    }
+    given.push_back(item);
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Receive(void* user, uint8_t) {
+    ++*static_cast<uint32_t*>(user);
+    return SHIP_NATIVE_OK;
+}
+} // namespace FakeGetItem
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit) gBitFlags[bit] = uint32_t{1} << bit;
     ShipLuaHost::SetOotNativeGamepadBridge(
@@ -434,7 +452,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 15 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 16 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -465,9 +483,62 @@ int main(int argc, char** argv) {
           policy.services[13].size == sizeof(ShipOotWorldV1) &&
           std::string(policy.services[14].name) == LINKSPAN_OOT_COLLIDERS_SERVICE &&
           policy.services[14].version == LINKSPAN_OOT_COLLIDERS_VERSION &&
-          policy.services[14].size == sizeof(ShipOotCollidersV1),
+          policy.services[14].size == sizeof(ShipOotCollidersV1) &&
+          std::string(policy.services[15].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
+          policy.services[15].version == LINKSPAN_OOT_ITEMS_VERSION_2 &&
+          policy.services[15].size == sizeof(ShipOotItemsV2),
           "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1, save V1, "
-          "items V1, actors V1, camera V1, render V1, world V1 e colliders V1");
+          "items V1, actors V1, camera V1, render V1, world V1, colliders V1 e items V2");
+    {
+        using namespace FakeGetItem;
+        const auto* items = static_cast<const ShipOotItemsV2*>(policy.services[15].table);
+        Check(offsetof(ShipOotItemsV2, set_button_item) == offsetof(ShipOotItemsV1, set_button_item),
+              "items V2 é prefixo da V1");
+        ShipLuaHost::OotItemsBridge bridge;
+        bridge.giveItem = Give;
+        ShipLuaHost::SetOotItemsBridge(bridge);
+        uint8_t item = 0;
+        const ShipOotItemSpecV1 spec{sizeof(spec), "autor.gancho", "textures/icon_item_static/gItemIconHookshotTex",
+                                     LINKSPAN_OOT_ITEM_AGE_ANY, nullptr, nullptr};
+        Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK, "registro para get-item");
+        Check(items->give_item(item) == SHIP_NATIVE_INVALID_ARGUMENT, "give sem set_get_item");
+        ShipOotGetItemSpecV1 get{sizeof(get), "objects/gameplay_keep/gHeartPieceInteriorDL",
+                                 LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT, 2.5f, "Voce ganhou o %rGancho%w!",
+                                 Receive, &received};
+        ShipOotGetItemSpecV1 bad = get;
+        bad.model_scale = 0.0f;
+        Check(items->set_get_item(item, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "escala inválida");
+        bad = get;
+        bad.model_layer = 2;
+        Check(items->set_get_item(item, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "camada inválida");
+        bad = get;
+        bad.message = "";
+        Check(items->set_get_item(item, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "mensagem vazia");
+        bad.message = "Voc\xC3\xAA";
+        Check(items->set_get_item(item, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "mensagem fora do ASCII");
+        const std::string longText(LINKSPAN_OOT_ITEMS_MAX_MESSAGE + 1, 'a');
+        bad.message = longText.c_str();
+        Check(items->set_get_item(item, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "mensagem longa");
+        Check(items->set_get_item(0x05, &get) == SHIP_NATIVE_INVALID_ARGUMENT, "set_get_item de item não registrado");
+        Check(items->set_get_item(item, &get) == SHIP_NATIVE_OK, "set_get_item");
+        const auto* record = ShipLuaHost::FindOotItem(item);
+        Check(record && record->hasGetItem && record->message == "Voce ganhou o %rGancho%w!" &&
+                  std::string(record->modelPath) == "__OTR__objects/gameplay_keep/gHeartPieceInteriorDL" &&
+                  record->modelScale == 2.5f && record->receive(record->receiveUser, item) == SHIP_NATIVE_OK &&
+                  received == 1,
+              "registro guarda modelo, mensagem e receive");
+        Check(items->give_item(item) == SHIP_NATIVE_OK && given.size() == 1 && given[0] == item, "give_item");
+        playerBusy = true;
+        Check(items->give_item(item) == SHIP_NATIVE_LIMIT, "Player ocupado");
+        Check(items->unregister_item(item) == SHIP_NATIVE_OK && items->give_item(item) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "give após unregister");
+        uint8_t again = 0;
+        Check(items->register_item(&spec, &again) == SHIP_NATIVE_OK && again == item &&
+                  !ShipLuaHost::FindOotItem(again)->hasGetItem,
+              "id reaproveitado sem get-item antigo");
+        Check(items->unregister_item(again) == SHIP_NATIVE_OK, "limpeza");
+        ShipLuaHost::SetOotItemsBridge({});
+    }
     {
         using namespace FakeWorld;
         const auto* world = static_cast<const ShipOotWorldV1*>(policy.services[13].table);

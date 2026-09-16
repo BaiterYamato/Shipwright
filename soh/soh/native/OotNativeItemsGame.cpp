@@ -8,7 +8,9 @@
 #include "OotNativeSave.h"
 #include "OotNativeView.h"
 #include "soh/ActorDB.h"
+#include "soh/Enhancements/custom-message/CustomMessageManager.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/Enhancements/item-tables/ItemTableTypes.h"
 #include "soh/ResourceManagerHelpers.h"
 
 #include "z64.h"
@@ -25,6 +27,10 @@ namespace {
 constexpr const char* kButtonsBlock = "linkspan.items";
 constexpr uint32_t kButtonsVersion = 1;
 constexpr size_t kOtrPrefixLength = 7; // "__OTR__"
+// modIndex dos GetItemEntry de itens sintéticos ("LS"); MOD_NONE e MOD_RANDOMIZER são 0 e 1.
+constexpr uint16_t kGetItemModIndex = 0x4C53;
+// Texto da caixa de get-item, montado pelo OnOpenText; fora das tabelas vanilla (até 0x70FF).
+constexpr uint16_t kGetItemTextId = 0x7F00;
 
 void ClearEquips(ItemEquips& equips, uint8_t item, bool registeredOnly) {
     for (size_t button = 1; button < ARRAY_COUNT(equips.buttonItems); ++button) {
@@ -178,6 +184,48 @@ ShipNativeStatus ItemsDrawDisplayList(void* play, const char* path, uint8_t tran
     return SHIP_NATIVE_OK;
 }
 
+// CustomDrawFunc do GetItemEntry: a matriz já está acima do Link, com escala 0.2 e giro.
+void DrawGetItemModel(PlayState* play, GetItemEntry* entry) {
+    const auto* record = ShipLuaHost::FindOotItem(static_cast<uint8_t>(entry->itemId));
+    if (!record || !record->hasGetItem || !ResourceMgr_FileExists(record->modelPath + kOtrPrefixLength)) {
+        return;
+    }
+    Matrix_Scale(record->modelScale, record->modelScale, record->modelScale, MTXMODE_APPLY);
+    auto* dlist = reinterpret_cast<Gfx*>(const_cast<char*>(record->modelPath));
+    if (record->modelLayer == LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT) {
+        Gfx_DrawDListXlu(play, dlist);
+    } else {
+        Gfx_DrawDListOpa(play, dlist);
+    }
+}
+
+ShipNativeStatus ItemsGiveItem(uint8_t item) {
+    // A cena de abertura do título também é uma PlayState com Player; lá o item nunca chegaria.
+    if (!gPlayState || !GET_PLAYER(gPlayState) || gSaveContext.gameMode != GAMEMODE_NORMAL ||
+        gPlayState->csCtx.state != CS_STATE_IDLE) {
+        return SHIP_NATIVE_LIMIT;
+    }
+    GetItemEntry entry = GET_ITEM(item, OBJECT_GI_HEART, 0, kGetItemTextId, 0x80, CHEST_ANIM_LONG,
+                                  ITEM_CATEGORY_MAJOR, kGetItemModIndex, GI_HEART_PIECE);
+    entry.drawFunc = DrawGetItemModel;
+    return GiveItemEntryWithoutActor(gPlayState, entry) ? SHIP_NATIVE_OK : SHIP_NATIVE_LIMIT;
+}
+
+void BuildGetItemMessage(uint16_t*, bool* loadFromMessageTable) {
+    Player* player = gPlayState ? GET_PLAYER(gPlayState) : nullptr;
+    if (!player || player->getItemEntry.modIndex != kGetItemModIndex) {
+        return;
+    }
+    const auto* record = ShipLuaHost::FindOotItem(static_cast<uint8_t>(player->getItemEntry.itemId));
+    if (!record || !record->hasGetItem) {
+        return;
+    }
+    CustomMessage message(record->message, record->message, record->message);
+    message.AutoFormat();
+    message.LoadIntoFont();
+    *loadFromMessageTable = false;
+}
+
 s32 VaItem(va_list original) {
     va_list args;
     va_copy(args, original);
@@ -204,8 +252,11 @@ void RegisterOotItemGameHooks() {
     bridge.addActorType = AddActorType;
     bridge.killActors = KillActors;
     bridge.drawDisplayList = ItemsDrawDisplayList;
+    bridge.giveItem = ItemsGiveItem;
     SetOotItemsBridge(bridge);
 
+    GameInteractor::Instance->RegisterGameHookForID<GameInteractor::OnOpenText>(kGetItemTextId,
+                                                                                BuildGetItemMessage);
     GameInteractor::Instance->RegisterGameHookForID<GameInteractor::OnVanillaBehavior>(
         VB_ITEM_ACTION_BE_NONE, [](GIVanillaBehavior, bool* should, va_list original) {
             if (IsOotSyntheticItemId(VaItem(original))) {
@@ -277,3 +328,19 @@ void RestoreOotItemButtonsFromSave() {
 }
 
 } // namespace ShipLuaHost
+
+// Chamadas por z_player.c, na thread do jogo.
+extern "C" s32 LinkSpan_IsSyntheticGetItem(u16 modIndex) {
+    return modIndex == kGetItemModIndex ? 1 : 0;
+}
+
+// Caixa de texto do get-item aberta: entrega ao mod.
+extern "C" void LinkSpan_ReceiveSyntheticItem(PlayState*, u16 item) {
+    const auto* record = ShipLuaHost::FindOotItem(static_cast<uint8_t>(item));
+    if (!record || !record->receive) {
+        return;
+    }
+    const auto receive = record->receive;
+    const auto user = record->receiveUser;
+    receive(user, static_cast<uint8_t>(item));
+}

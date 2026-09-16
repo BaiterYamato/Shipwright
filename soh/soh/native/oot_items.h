@@ -56,4 +56,48 @@ typedef struct ShipOotItemsV1 {
     ShipNativeStatus(SHIP_NATIVE_CALL* set_button_item)(uint8_t button, uint8_t item);
 } ShipOotItemsV1;
 
+#define LINKSPAN_OOT_ITEMS_VERSION_2 2u
+#define LINKSPAN_OOT_ITEMS_MAX_MESSAGE 200u
+#define LINKSPAN_OOT_ITEMS_LAYER_OPAQUE 0u
+#define LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT 1u
+
+/* Item recebido: o Link terminou de levantar o item e a caixa de texto abriu. O
+ * host não guarda o item em inventário nenhum; o callback decide (botão C, contador
+ * no save do mod etc.). Na thread do jogo, dentro do update do Player. */
+typedef ShipNativeStatus(SHIP_NATIVE_CALL* ShipOotItemReceiveFn)(void* user, uint8_t item);
+
+typedef struct ShipOotGetItemSpecV1 {
+    uint32_t size;
+    /* Display list mostrado acima do Link (resource manager, sem __OTR__). */
+    const char* model_path;
+    uint8_t model_layer;
+    /* Multiplica a escala do get-item do jogo (0.2); 1.0 serve para modelos GI vanilla. */
+    float model_scale;
+    /* Texto da caixa em ASCII, até LINKSPAN_OOT_ITEMS_MAX_MESSAGE bytes. Aceita os
+     * códigos do CustomMessage do SoH (& quebra linha, %r/%g/%b/%w cores). */
+    const char* message;
+    ShipOotItemReceiveFn receive;
+    void* user;
+} ShipOotGetItemSpecV1;
+
+/* Prefixo binário compatível com ShipOotItemsV1.
+ *
+ * set_get_item: modelo, mensagem e callback de recebimento do item (o host copia
+ *   os textos). Chamar de novo substitui.
+ * give_item: o Link levanta o item agora, como um item vindo de NPC. Exige
+ *   gameplay normal (não vale na cena de abertura do título), item registrado com
+ *   set_get_item e o Player livre (sem cutscene, escalada, queda, primeira pessoa
+ *   ou ator carregado); senão LIMIT. O receive
+ *   chega alguns frames depois, quando a caixa de texto abre. */
+typedef struct ShipOotItemsV2 {
+    uint32_t size;
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_item)(const ShipOotItemSpecV1* spec, uint8_t* item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* unregister_item)(uint8_t item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_item)(const char* name, uint8_t* item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* get_button_item)(uint8_t button, uint8_t* item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_button_item)(uint8_t button, uint8_t item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_get_item)(uint8_t item, const ShipOotGetItemSpecV1* spec);
+    ShipNativeStatus(SHIP_NATIVE_CALL* give_item)(uint8_t item);
+} ShipOotItemsV2;
+
 #endif

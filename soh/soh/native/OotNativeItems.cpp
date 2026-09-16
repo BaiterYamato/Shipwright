@@ -1,6 +1,7 @@
 #include "OotNativeItems.h"
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <set>
 #include <string_view>
@@ -258,8 +259,51 @@ ShipNativeStatus SHIP_NATIVE_CALL DrawDisplayList(void* play, const char* path, 
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
+ShipNativeStatus SHIP_NATIVE_CALL SetGetItem(uint8_t item, const ShipOotGetItemSpecV1* spec) {
+    if (!OnOwnerThread() || !spec || spec->size < sizeof(ShipOotGetItemSpecV1) || !FindOotItem(item) ||
+        !ValidPath(spec->model_path, LINKSPAN_OOT_ITEMS_MAX_PATH) || spec->model_layer > LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT ||
+        !std::isfinite(spec->model_scale) || spec->model_scale <= 0.0f || spec->model_scale > 100.0f || !spec->message) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const std::string_view message(spec->message, strnlen(spec->message, LINKSPAN_OOT_ITEMS_MAX_MESSAGE + 1));
+    if (message.empty() || message.size() > LINKSPAN_OOT_ITEMS_MAX_MESSAGE) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    for (const char c : message) {
+        if (static_cast<unsigned char>(c) >= 0x80) {
+            return SHIP_NATIVE_INVALID_ARGUMENT; // a fonte do jogo não tem esses glifos
+        }
+    }
+    try {
+        auto& record = State().items[item];
+        std::string copy(message);
+        record.modelPath = InternPath(spec->model_path);
+        record.message = std::move(copy);
+        record.modelLayer = spec->model_layer;
+        record.modelScale = spec->model_scale;
+        record.receive = spec->receive;
+        record.receiveUser = spec->user;
+        record.hasGetItem = true;
+        return SHIP_NATIVE_OK;
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL GiveItem(uint8_t item) {
+    if (!OnOwnerThread()) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const auto* record = FindOotItem(item);
+    if (!record || !record->hasGetItem) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const auto& bridge = State().bridge;
+    return bridge.giveItem ? bridge.giveItem(item) : SHIP_NATIVE_UNSUPPORTED;
+}
+
 const ShipOotItemsV1 itemsV1{ sizeof(ShipOotItemsV1), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
                               SetButtonItem };
+const ShipOotItemsV2 itemsV2{ sizeof(ShipOotItemsV2), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
+                              SetButtonItem, SetGetItem, GiveItem };
 const ShipOotActorsV1 actorsV1{ sizeof(ShipOotActorsV1), RegisterActorType, UnregisterActorType, FindActorType,
                                 DrawDisplayList };
 
@@ -293,6 +337,10 @@ void ResetOotNativeItems() {
 
 const ShipOotItemsV1& GetOotNativeItemsService() {
     return itemsV1;
+}
+
+const ShipOotItemsV2& GetOotNativeItemsServiceV2() {
+    return itemsV2;
 }
 
 const ShipOotActorsV1& GetOotNativeActorsService() {

@@ -592,6 +592,9 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& colliders = GetOotNativeCollidersService();
     policy.services.push_back(
         {LINKSPAN_OOT_COLLIDERS_SERVICE, LINKSPAN_OOT_COLLIDERS_VERSION, sizeof(colliders), &colliders});
+    // Versões novas no fim: a posição dos serviços anteriores não muda.
+    const auto& itemsV2 = GetOotNativeItemsServiceV2();
+    policy.services.push_back({LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_2, sizeof(itemsV2), &itemsV2});
     policy.hooks = CreateOotHookRegistry();
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;

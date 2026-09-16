@@ -22,6 +22,8 @@ struct OotItemsBridge {
     void (*killActors)(int16_t actorId, uint8_t category) = nullptr;
     // path já com "__OTR__" e válido até o fim do processo.
     ShipNativeStatus (*drawDisplayList)(void* play, const char* path, uint8_t translucent) = nullptr;
+    // Põe o Link para levantar o item; LIMIT se o Player não pode receber agora.
+    ShipNativeStatus (*giveItem)(uint8_t item) = nullptr;
 };
 
 struct OotItemRecord {
@@ -29,6 +31,14 @@ struct OotItemRecord {
     ShipOotItemUseFn use = nullptr;
     void* user = nullptr;
     uint8_t age = LINKSPAN_OOT_ITEM_AGE_ANY;
+    // set_get_item (items v2); modelPath já com "__OTR__", válido até o fim do processo.
+    bool hasGetItem = false;
+    const char* modelPath = nullptr;
+    uint8_t modelLayer = LINKSPAN_OOT_ITEMS_LAYER_OPAQUE;
+    float modelScale = 1.0f;
+    std::string message;
+    ShipOotItemReceiveFn receive = nullptr;
+    void* receiveUser = nullptr;
 };
 
 struct OotActorTypeRecord {
@@ -42,6 +52,7 @@ void InitializeOotNativeItems(std::thread::id ownerThread = std::this_thread::ge
 // Remove registros (sem tocar no jogo); tipos de ator ficam inativos e mantêm o id.
 void ResetOotNativeItems();
 const ShipOotItemsV1& GetOotNativeItemsService();
+const ShipOotItemsV2& GetOotNativeItemsServiceV2();
 const ShipOotActorsV1& GetOotNativeActorsService();
 
 // Consultas do jogo, na thread do jogo.

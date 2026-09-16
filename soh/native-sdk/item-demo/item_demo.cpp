@@ -1,8 +1,8 @@
-// Demo de linkspan.oot.items/actors (OOT-CORE-003): registra o item "linkspan-demo.orb-wand" e o tipo
-// de ator "linkspan-demo.orb". Ao carregar um arquivo, o item vai para um botão C vazio (C-Left
-// primeiro) se nenhum botão o tiver; sem botão vazio, toma o C-Right (o item vanilla continua no
-// inventário). Apertar o botão solta um orbe à frente do Link, que sobe girando com o modelo do
-// coração e some em menos de 1 segundo.
+// Demo de linkspan.oot.items v2 e actors (OOT-CORE-003/003B): registra o item "linkspan-demo.orb-wand"
+// e o tipo de ator "linkspan-demo.orb". Em gameplay, se nenhum botão C tem o item, o Link o recebe por
+// give_item (levanta o item com a caixa de texto); o receive o equipa num botão C vazio (C-Left
+// primeiro) ou no C-Right (o item vanilla continua no inventário). O host grava o botão pelo nome.
+// Apertar o botão solta um orbe à frente do Link, que sobe girando com o modelo do coração.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -23,6 +23,9 @@ constexpr const char* ICON = "textures/icon_item_static/gItemIconBottleFairyTex"
 constexpr const char* MODEL = "objects/gameplay_keep/gHeartPieceInteriorDL";
 constexpr int16_t LIFETIME = 40;
 constexpr uint8_t NO_ITEM = 0xFF;
+constexpr const char* MESSAGE = "You got the %rOrb Wand%w!&Press it on a C button to release&a floating heart orb.";
+// Espera depois da cena carregar, para os A que abrem o arquivo não fecharem a caixa.
+constexpr uint32_t GIVE_DELAY_FRAMES = 240;
 
 struct Orb {
     Actor actor;
@@ -31,7 +34,7 @@ struct Orb {
 
 struct Demo {
     const ShipOotEngineV1* engine = nullptr;
-    const ShipOotItemsV1* items = nullptr;
+    const ShipOotItemsV2* items = nullptr;
     const ShipOotActorsV1* actors = nullptr;
     uint8_t item = NO_ITEM;
     int16_t actorId = -1;
@@ -42,6 +45,11 @@ struct Demo {
     uint32_t drawFailures = 0;
     uint32_t destroyed = 0;
     char placement[64] = "nenhum";
+    uint32_t gives = 0;
+    uint32_t giveRefused = 0;
+    uint32_t received = 0;
+    uint32_t lastPlayFrames = 0;
+    bool offered = false;
 };
 
 void SHIP_NATIVE_CALL OrbInit(void* user, void* actor, void*) {
@@ -91,25 +99,54 @@ ShipNativeStatus SHIP_NATIVE_CALL UseWand(void* user, uint8_t, uint8_t) {
                                                                                      : SHIP_NATIVE_FAILURE;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void* user, const ShipNativeHookCall*) {
-    auto& demo = *static_cast<Demo*>(user);
-    uint8_t empty = 0;
+uint8_t ButtonWith(const Demo& demo, uint8_t item) {
     for (uint8_t button = LINKSPAN_OOT_ITEMS_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEMS_BUTTON_C_RIGHT; ++button) {
         uint8_t current = NO_ITEM;
         demo.items->get_button_item(button, &current);
-        if (current == demo.item) {
-            std::snprintf(demo.placement, sizeof(demo.placement), "restaurado no C%u", button);
-            return SHIP_NATIVE_OK;
-        }
-        if (current == NO_ITEM && !empty) {
-            empty = button;
+        if (current == item) {
+            return button;
         }
     }
-    if (!empty) {
-        empty = LINKSPAN_OOT_ITEMS_BUTTON_C_RIGHT;
+    return 0;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL OnReceive(void* user, uint8_t item) {
+    auto& demo = *static_cast<Demo*>(user);
+    ++demo.received;
+    uint8_t button = ButtonWith(demo, NO_ITEM);
+    if (!button) {
+        button = LINKSPAN_OOT_ITEMS_BUTTON_C_RIGHT;
     }
-    const ShipNativeStatus status = demo.items->set_button_item(empty, demo.item);
-    std::snprintf(demo.placement, sizeof(demo.placement), "colocado no C%u status=%u", empty, status);
+    const ShipNativeStatus status = demo.items->set_button_item(button, item);
+    std::snprintf(demo.placement, sizeof(demo.placement), "recebido no C%u status=%u", button, status);
+    return SHIP_NATIVE_OK;
+}
+
+// Em gameplay: oferece o item uma vez por cena se nenhum botão C o tem.
+ShipNativeStatus SHIP_NATIVE_CALL OnFrame(void* user, const ShipNativeHookCall* call) {
+    auto& demo = *static_cast<Demo*>(user);
+    const auto* play = static_cast<PlayState*>(static_cast<const ShipOotPlayHookV1*>(call->payload)->play_state);
+    if (!demo.engine->get_player()) {
+        return SHIP_NATIVE_OK;
+    }
+    if (play->state.frames < demo.lastPlayFrames) {
+        demo.offered = false;
+    }
+    demo.lastPlayFrames = play->state.frames;
+    if (demo.offered || play->state.frames < GIVE_DELAY_FRAMES || play->state.frames % 20 != 0) {
+        return SHIP_NATIVE_OK;
+    }
+    if (const uint8_t button = ButtonWith(demo, demo.item)) {
+        std::snprintf(demo.placement, sizeof(demo.placement), "restaurado no C%u", button);
+        demo.offered = true;
+        return SHIP_NATIVE_OK;
+    }
+    if (demo.items->give_item(demo.item) == SHIP_NATIVE_OK) {
+        ++demo.gives;
+        demo.offered = true;
+    } else {
+        ++demo.giveRefused;
+    }
     return SHIP_NATIVE_OK;
 }
 
@@ -121,10 +158,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void* user, const char*, uint32_t length
     const auto& demo = *static_cast<Demo*>(user);
     char text[256];
     const int count = std::snprintf(
-        text, sizeof(text), "item=0x%02X actor=0x%X placement=%s uses=%u spawned=%u updates=%u draws=%u drawfail=%u "
-                            "destroyed=%u",
-        demo.item, static_cast<unsigned>(demo.actorId), demo.placement, demo.uses, demo.spawned, demo.updates,
-        demo.draws, demo.drawFailures, demo.destroyed);
+        text, sizeof(text), "item=0x%02X actor=0x%X placement=%s gives=%u recusas=%u recebidos=%u uses=%u spawned=%u "
+                            "draws=%u drawfail=%u destroyed=%u",
+        demo.item, static_cast<unsigned>(demo.actorId), demo.placement, demo.gives, demo.giveRefused, demo.received,
+        demo.uses, demo.spawned, demo.draws, demo.drawFailures, demo.destroyed);
     if (count < 0 || static_cast<size_t>(count) >= sizeof(text)) {
         return SHIP_NATIVE_FAILURE;
     }
@@ -160,8 +197,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         return SHIP_NATIVE_FAILURE;
     }
     demo->engine = engine;
-    demo->items = static_cast<const ShipOotItemsV1*>(
-        Service(runtime, LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION, sizeof(ShipOotItemsV1)));
+    demo->items = static_cast<const ShipOotItemsV2*>(
+        Service(runtime, LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_2, sizeof(ShipOotItemsV2)));
     demo->actors = static_cast<const ShipOotActorsV1*>(
         Service(runtime, LINKSPAN_OOT_ACTORS_SERVICE, LINKSPAN_OOT_ACTORS_VERSION, sizeof(ShipOotActorsV1)));
     if (!demo->items || !demo->actors) {
@@ -187,9 +224,14 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         status = demo->items->register_item(&itemSpec, &demo->item);
     }
     if (status == SHIP_NATIVE_OK) {
-        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_SAVE_LOADED,
-                                       LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotSaveHookV1),
-                                       SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_AFTER, 0, OnLoaded, demo };
+        const ShipOotGetItemSpecV1 getSpec{ sizeof(ShipOotGetItemSpecV1), MODEL, LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT,
+                                            0.025f, MESSAGE, OnReceive, demo };
+        status = demo->items->set_get_item(demo->item, &getSpec);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_PLAY_UPDATE,
+                                       LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotPlayHookV1),
+                                       SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_AFTER, 0, OnFrame, demo };
         uint64_t handle = 0;
         status = runtime->register_hook(runtime->context, &spec, &handle);
     }
