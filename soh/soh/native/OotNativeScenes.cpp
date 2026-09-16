@@ -432,4 +432,12 @@ SavedSceneFlags* OotCustomSceneFlags(int32_t sceneId) {
     return &state.scratch;
 }
 
+std::map<std::string, SavedSceneFlags, std::less<>> ExportOotCustomSceneFlags() {
+    return State().flags;
+}
+
+void ReplaceOotCustomSceneFlags(std::map<std::string, SavedSceneFlags, std::less<>> flags) {
+    State().flags = std::move(flags);
+}
+
 } // namespace ShipLuaHost

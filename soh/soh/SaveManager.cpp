@@ -10,6 +10,7 @@
 #include "soh/Enhancements/randomizer/settings.h"
 #include "ResourceManagerHelpers.h"
 #include "soh/SohGui/SohGui.hpp"
+#include "soh/native/OotNativeSave.h"
 
 extern "C" {
 #include "z64.h"
@@ -1339,6 +1340,8 @@ void SaveManager::SaveSection(int fileNum, int sectionID, bool threaded) {
         SPDLOG_ERROR("SaveSection: Section ID not registered.");
         return;
     }
+    // SOH [Link-Span] hooks oot.save.saving e flags de cenas de mod, na thread do jogo.
+    ShipLuaHost::OotBeforeSave(fileNum, sectionID);
     auto saveContext = new SaveContext;
     memcpy(saveContext, &gSaveContext, sizeof(gSaveContext));
     if (threaded) {
@@ -2515,6 +2518,7 @@ void SaveManager::CopyZeldaFile(int from, int to) {
     std::filesystem::copy_file(GetFileName(from), GetFileName(to));
 #endif
     fileMetaInfo[to] = fileMetaInfo[from];
+    ShipLuaHost::OotAfterCopy(from, to);
 }
 
 void SaveManager::DeleteZeldaFile(int fileNum) {

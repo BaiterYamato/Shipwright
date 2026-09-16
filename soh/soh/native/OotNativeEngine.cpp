@@ -1,6 +1,7 @@
 #include "OotNativeEngine.h"
 #include "OotNativeHooks.h"
 #include "OotNativeRegistry.h"
+#include "OotNativeSave.h"
 #include "OotNativeScenes.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
@@ -548,6 +549,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     pendingOcarinaSong.store(-1);
     InitializeOotNativeRegistry(gameThread);
     InitializeOotNativeScenes(gameThread);
+    InitializeOotNativeSave(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
     policy.services.push_back({LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION,
@@ -568,6 +570,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& scenes = GetOotNativeScenesService();
     policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION,
                                sizeof(scenes), &scenes});
+    const auto& save = GetOotNativeSaveService();
+    policy.services.push_back({LINKSPAN_OOT_SAVE_SERVICE, LINKSPAN_OOT_SAVE_VERSION, sizeof(save), &save});
     policy.hooks = CreateOotHookRegistry();
     return policy;
 }

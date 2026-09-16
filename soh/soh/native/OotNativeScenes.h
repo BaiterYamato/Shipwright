@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <thread>
 
@@ -46,5 +47,8 @@ const std::string* OotCustomSceneDisplayName(int32_t sceneId);
 // Flags de uma cena registrada, guardadas pelo nome da cena durante a sessão.
 // Id sem registro recebe um armazenamento zerado a cada chamada.
 SavedSceneFlags* OotCustomSceneFlags(int32_t sceneId);
+// Flags das cenas de mod por nome, para gravar e restaurar com o save.
+std::map<std::string, SavedSceneFlags, std::less<>> ExportOotCustomSceneFlags();
+void ReplaceOotCustomSceneFlags(std::map<std::string, SavedSceneFlags, std::less<>> flags);
 
 } // namespace ShipLuaHost

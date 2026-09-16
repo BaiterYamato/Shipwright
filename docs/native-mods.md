@@ -262,7 +262,7 @@ Field e viaja até ela; `tools/package-unbound-scene-demo.ps1` empacota os dois.
 As mudanças em `soh/include` e o header novo mudam o layout id: recompile os
 providers nativos contra o SDK do host novo.
 
-Ainda não: persistência das flags de cenas de mod no save, `titleCardTexture`,
+Ainda não: `titleCardTexture`,
 camadas de entrada diferentes (`layers`) e mapa/minimapa para cenas novas.
 
 ## Hooks nativos do OoT (COREEXT-006)
@@ -286,6 +286,29 @@ declara em `soh/soh/native/oot_hooks.h`:
 
 `soh/native-sdk/hooks-demo` conta frames e updates por observe e pisca o Link
 pelo replace do draw. Empacote com `tools/package-hooks-demo.ps1`.
+
+## Serviço `linkspan.oot.save` v1 (OOT-CORE-006)
+
+Header: `soh/soh/native/oot_save.h`; decisão em
+`NATIVE-001/rfcs/0022-oot-save-namespaces.md`. Cada mod guarda um bloco JSON por
+namespace na seção `linkspan` do arquivo de save:
+
+- `open_namespace("autor.mod", versão, handle)`: o prefixo `linkspan.` é do host;
+- `read`/`write`/`erase`: JSON de até 1 MiB; a escrita chega ao disco no próximo
+  save do jogo;
+- `get_stored_version`: versão com que o bloco foi escrito, para migrar;
+- `begin`/`commit`/`rollback`: transação; o save grava o estado de antes do begin;
+- `set_required`: o arquivo registra a dependência, e carregar sem o mod gera aviso;
+- `get_slot`: arquivo carregado ou -1.
+
+Eventos são hooks observe (ABI 1.2): `oot.save.loaded`, `oot.save.saving`,
+`oot.save.deleted` e `oot.save.copied`, com `ShipOotSaveHookV1`.
+
+Blocos de mods ausentes são preservados no arquivo. As flags das cenas de mod
+(RFC 0020) passam a ser gravadas no bloco `linkspan.scenes`, pelo nome da cena.
+
+`soh/native-sdk/save-demo` conta as cargas de arquivo no namespace
+`linkspan-demo.save`; empacote com `tools/package-save-demo.ps1`.
 
 ## Compilar o host uma vez
 

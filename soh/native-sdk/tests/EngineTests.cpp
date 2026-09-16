@@ -1,6 +1,8 @@
 #include "OotNativeEngine.h"
 #include "oot_engine.h"
 #include "oot_hooks.h"
+#include "oot_save.h"
+#include "OotNativeSave.h"
 #include "oot_registry.h"
 #include "oot_ocarina.h"
 #include "oot_scenes.h"
@@ -257,7 +259,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 8 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 9 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -267,8 +269,83 @@ int main(int argc, char** argv) {
           policy.services[6].version == LINKSPAN_OOT_OCARINA_VERSION &&
           std::string(policy.services[7].name) == LINKSPAN_OOT_SCENES_SERVICE &&
           policy.services[7].version == LINKSPAN_OOT_SCENES_VERSION &&
-          policy.services[7].size == sizeof(ShipOotScenesV1),
-          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1 e scenes V1");
+          policy.services[7].size == sizeof(ShipOotScenesV1) &&
+          std::string(policy.services[8].name) == LINKSPAN_OOT_SAVE_SERVICE &&
+          policy.services[8].version == LINKSPAN_OOT_SAVE_VERSION &&
+          policy.services[8].size == sizeof(ShipOotSaveV1),
+          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1 e save V1");
+    {
+        for (const char* point : {LINKSPAN_OOT_HOOK_SAVE_LOADED, LINKSPAN_OOT_HOOK_SAVE_SAVING,
+                                  LINKSPAN_OOT_HOOK_SAVE_DELETED, LINKSPAN_OOT_HOOK_SAVE_COPIED}) {
+            Check(policy.hooks->FindPoint(point, LINKSPAN_OOT_HOOKS_VERSION) != 0, point);
+        }
+        const auto* save = static_cast<const ShipOotSaveV1*>(policy.services[8].table);
+        ShipLuaHost::ClearOotSaveData();
+        uint64_t mod = 0, again = 0, bad = 0;
+        Check(save->open_namespace("autor.mod", 2, &mod) == SHIP_NATIVE_OK && mod, "abre namespace");
+        Check(save->open_namespace("autor.mod", 2, &again) == SHIP_NATIVE_OK && again == mod,
+              "mesmo namespace e versão devolvem o mesmo handle");
+        Check(save->open_namespace("autor.mod", 3, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "versão divergente");
+        for (const char* name : {"semponto", "linkspan.host", ".a.b", "a.b.", "a b.c", ""}) {
+            Check(save->open_namespace(name, 1, &bad) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  name);
+        }
+        uint32_t size = 7;
+        Check(save->read(mod, nullptr, 0, &size) == SHIP_NATIVE_UNSUPPORTED && size == 0, "sem bloco");
+        const std::string first = R"({"coins": 3, "items": [1, 2]})";
+        Check(save->write(mod, first.data(), static_cast<uint32_t>(first.size())) == SHIP_NATIVE_OK, "write");
+        Check(save->write(mod, "{oops", 5) == SHIP_NATIVE_INVALID_ARGUMENT, "JSON inválido recusado");
+        Check(save->read(mod, nullptr, 0, &size) == SHIP_NATIVE_OK && size > 0, "tamanho do bloco");
+        std::string text(size, ' ');
+        Check(save->read(mod, text.data(), 3, &size) == SHIP_NATIVE_LIMIT, "capacidade curta");
+        Check(save->read(mod, text.data(), size, &size) == SHIP_NATIVE_OK &&
+                  nlohmann::json::parse(text) == nlohmann::json::parse(first),
+              "read devolve o JSON escrito");
+        uint32_t stored = 0;
+        Check(save->get_stored_version(mod, &stored) == SHIP_NATIVE_OK && stored == 2, "versão gravada");
+
+        Check(save->begin(mod) == SHIP_NATIVE_OK && save->begin(mod) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "uma transação por namespace");
+        Check(save->write(mod, "42", 2) == SHIP_NATIVE_OK, "write em transação");
+        auto during = ShipLuaHost::ExportOotSaveSection();
+        Check(during["namespaces"]["autor.mod"]["data"] == nlohmann::json::parse(first),
+              "save durante transação grava o estado anterior");
+        Check(save->rollback(mod) == SHIP_NATIVE_OK && save->read(mod, text.data(), size, &size) == SHIP_NATIVE_OK &&
+                  nlohmann::json::parse(text.substr(0, size)) == nlohmann::json::parse(first),
+              "rollback restaura");
+        Check(save->begin(mod) == SHIP_NATIVE_OK && save->write(mod, "[5]", 3) == SHIP_NATIVE_OK &&
+                  save->commit(mod) == SHIP_NATIVE_OK && save->commit(mod) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "commit mantém");
+        Check(save->set_required(mod, 1) == SHIP_NATIVE_OK, "required");
+        ShipLuaHost::SetOotHostSaveBlock("linkspan.scenes", 1, nlohmann::json{{"x.y", {1, 2, 3, 4, 5, 6, 7}}});
+
+        auto exported = ShipLuaHost::ExportOotSaveSection();
+        exported["namespaces"]["outro.mod"] = {{"version", 4}, {"required", true}, {"data", {{"k", "v"}}}};
+        exported["namespaces"]["lixo"] = 12;
+        ShipLuaHost::ClearOotSaveData();
+        Check(save->read(mod, nullptr, 0, &size) == SHIP_NATIVE_UNSUPPORTED, "arquivo novo começa vazio");
+        ShipLuaHost::ImportOotSaveSection(exported);
+        Check(save->read(mod, text.data(), static_cast<uint32_t>(text.size()), &size) == SHIP_NATIVE_OK &&
+                  text.substr(0, size) == "[5]",
+              "import restaura o bloco do mod");
+        nlohmann::json host;
+        uint32_t hostVersion = 0;
+        Check(ShipLuaHost::GetOotHostSaveBlock("linkspan.scenes", host, hostVersion) && hostVersion == 1 &&
+                  host["x.y"][6] == 7,
+              "bloco do host sobrevive ao arquivo");
+        const auto missing = ShipLuaHost::MissingRequiredOotNamespaces();
+        Check(missing.size() == 1 && missing[0] == "outro.mod", "obrigatório sem mod é detectado");
+        const auto roundTrip = ShipLuaHost::ExportOotSaveSection();
+        Check(roundTrip["namespaces"]["outro.mod"]["data"]["k"] == "v" && !roundTrip["namespaces"].contains("lixo"),
+              "bloco desconhecido preservado e entrada malformada descartada");
+        Check(save->erase(mod) == SHIP_NATIVE_OK && save->get_stored_version(mod, &stored) == SHIP_NATIVE_OK &&
+                  stored == 0,
+              "erase");
+        std::thread([&] {
+            Check(save->open_namespace("autor.outro", 1, &bad) == SHIP_NATIVE_FAILURE, "save só na thread do jogo");
+        }).join();
+        ShipLuaHost::ClearOotSaveData();
+    }
     Check(policy.hooks && policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_PLAY_UPDATE, LINKSPAN_OOT_HOOKS_VERSION) &&
               policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_UPDATE, LINKSPAN_OOT_HOOKS_VERSION) &&
               policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_DRAW, LINKSPAN_OOT_HOOKS_VERSION) &&

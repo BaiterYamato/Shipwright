@@ -116,6 +116,7 @@
 #include "soh/config/ConfigUpdaters.h"
 #include "soh/ShipInit.hpp"
 #include "soh/ShipLuaBootstrap.h"
+#include "soh/native/OotNativeSave.h"
 #include "soh/OotHotkeyRegistry.h"
 
 #ifdef _MSC_VER
@@ -1558,6 +1559,8 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     GameInteractor::Instance = new GameInteractor();
     ShipLuaHost::Initialize();
     SaveManager::Instance = new SaveManager();
+    // SOH [Link-Span] seção "linkspan" do save; o host inicializa antes do SaveManager existir.
+    ShipLuaHost::RegisterOotSaveSection();
 
     std::shared_ptr<Ship::Config> conf = OTRGlobals::Instance->context->GetConfig();
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion1Updater>());

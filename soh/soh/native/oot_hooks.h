@@ -14,10 +14,20 @@
  *   sombra. OBSERVE ou REPLACE; o original chama actor->draw.
  *
  * REPLACE é exclusivo por ponto e vale para todos os atores: filtre por id e
- * chame call_original para os demais. */
+ * chame call_original para os demais.
+ *
+ * Pontos de save, só OBSERVE, payload ShipOotSaveHookV1 (ver oot_save.h):
+ * oot.save.loaded v1: depois de carregar um arquivo; `slot` é o arquivo.
+ * oot.save.saving v1: antes do jogo gravar; última chance de escrever blocos.
+ * oot.save.deleted v1: arquivo `slot` apagado.
+ * oot.save.copied v1: arquivo `other_slot` copiado para `slot`. */
 #define LINKSPAN_OOT_HOOK_PLAY_UPDATE "oot.play.update"
 #define LINKSPAN_OOT_HOOK_ACTOR_UPDATE "oot.actor.update"
 #define LINKSPAN_OOT_HOOK_ACTOR_DRAW "oot.actor.draw"
+#define LINKSPAN_OOT_HOOK_SAVE_LOADED "oot.save.loaded"
+#define LINKSPAN_OOT_HOOK_SAVE_SAVING "oot.save.saving"
+#define LINKSPAN_OOT_HOOK_SAVE_DELETED "oot.save.deleted"
+#define LINKSPAN_OOT_HOOK_SAVE_COPIED "oot.save.copied"
 #define LINKSPAN_OOT_HOOKS_VERSION 1u
 
 typedef struct ShipOotPlayHookV1 {
@@ -32,5 +42,11 @@ typedef struct ShipOotActorHookV1 {
     int16_t actor_id;
     int16_t params;
 } ShipOotActorHookV1;
+
+typedef struct ShipOotSaveHookV1 {
+    uint32_t size;
+    int32_t slot;
+    int32_t other_slot;
+} ShipOotSaveHookV1;
 
 #endif
