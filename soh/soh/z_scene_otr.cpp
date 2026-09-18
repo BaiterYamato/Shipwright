@@ -40,7 +40,11 @@ extern "C" {
 #include "vt.h"
 }
 
+extern "C" void LinkSpan_RoomActors(PlayState* play, s32 layer);
+
 namespace {
+// Camada (cabeçalho alternativo) cujos comandos estão executando, para oot.room.actors.
+s32 sLinkSpanSceneLayer = 0;
 
 template <typename Target>
 Target ClampSceneCount(uint32_t count, const char* label) {
@@ -79,6 +83,8 @@ bool Scene_CommandActorList(PlayState* play, SOH::ISceneCommand* cmd) {
 
     play->numSetupActors = ClampSceneCount<decltype(play->numSetupActors)>(cmdActor->numActors, "actor list");
     play->setupActorList = (ActorEntry*)cmdActor->GetRawPointer();
+    // Link-Span: mods (oot.room.actors) podem editar a lista antes do spawn.
+    LinkSpan_RoomActors(play, sLinkSpanSceneLayer);
 
     return false;
 }
@@ -374,6 +380,7 @@ bool Scene_CommandAlternateHeaderList(PlayState* play, SOH::ISceneCommand* cmd) 
             std::static_pointer_cast<SOH::Scene>(cmdHeaders->headers[gSaveContext.sceneLayer - 1]).get();
 
         if (desiredHeader != nullptr) {
+            sLinkSpanSceneLayer = gSaveContext.sceneLayer;
             OTRScene_ExecuteCommands(play, desiredHeader);
             return true;
         } else {
@@ -388,6 +395,7 @@ bool Scene_CommandAlternateHeaderList(PlayState* play, SOH::ISceneCommand* cmd) 
                 osSyncPrintf("\nそこで、大人の昼データを使用するでええっす！！");
 
                 if (desiredHeader != nullptr) {
+                    sLinkSpanSceneLayer = gSaveContext.sceneLayer - 1;
                     OTRScene_ExecuteCommands(play, desiredHeader);
                     return true;
                 }
@@ -500,6 +508,7 @@ extern "C" s32 OTRfunc_800973FC(PlayState* play, RoomContext* roomCtx) {
             roomCtx->curRoom.segment = roomCtx->unk_34;
             gSegments[3] = VIRTUAL_TO_PHYSICAL(roomCtx->unk_34);
 
+            sLinkSpanSceneLayer = 0;
             OTRScene_ExecuteCommands(play, (SOH::Scene*)roomCtx->roomToLoad);
 
             Player_SetBootData(play, GET_PLAYER(play));

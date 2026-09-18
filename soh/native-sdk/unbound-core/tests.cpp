@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "json_merge.h"
+#include "room_actors.h"
 #include "scene_registry.h"
 
 namespace {
@@ -73,6 +74,65 @@ int main() {
     Check(registry.notes.size() == 3, "sceneId fora do intervalo, cena sem caminho e layers devem virar notas");
     Check(!LinkSpanUnbound::ParseSceneRegistry("[]", registry, error) && !error.empty(),
           "raiz que não é objeto deve ser recusada");
+
+    using LinkSpanUnbound::RoomActor;
+    Check(LinkSpanUnbound::RoomDocumentPath("scenes/shared/spot00_scene/spot00_room_0", 0) ==
+                  "scenes/spot00/rooms/0.json" &&
+              LinkSpanUnbound::RoomDocumentPath("scenes/mq/ydan_scene/ydan_room_3", 3) ==
+                  "scenes/ydan_mq/rooms/3.json" &&
+              LinkSpanUnbound::RoomDocumentPath("scenes/nonmq/ydan_scene/ydan_room_1", 1) ==
+                  "scenes/ydan/rooms/1.json" &&
+              LinkSpanUnbound::RoomDocumentPath("rooms/qualquer", 0).empty() &&
+              LinkSpanUnbound::RoomDocumentPath("scenes/shared/spot00_scene/x", -1).empty(),
+          "caminho do documento da sala");
+    const std::vector<RoomActor> vanilla{
+        { 0x0015, { 10, 20, 30 }, { 0, 0x4000, 0 }, 3 },
+        { 0x0095, { -5, 0, 5 }, { 0, 0, 0 }, 0x0100 },
+        { 0x0125, { 1, 1, 1 }, { 0, 0, 0 }, 7 },
+    };
+    LinkSpanUnbound::RoomActorsResult room;
+    Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 0, {}, room, error) && room.actors.size() == 3 &&
+              room.actors[1].id == 0x0095 && room.actors[1].pos[0] == -5 && room.actors[1].params == 0x0100 &&
+              room.actors[0].rot[1] == 0x4000,
+          "sem camadas a lista vanilla volta igual");
+    const std::vector<LinkSpanUnbound::LayerDocument> roomLayers{
+        { "mod-a.zip",
+          "{ // comentário aceito\n \"setups\": { \"0\": { \"actors\": {"
+          " \"1\": { \"pos\": [100.9, \"0x10\", -3], \"params\": \"0x0200\" },"
+          " \"2\": null,"
+          " \"novo\": { \"id\": 21, \"pos\": [7, 8, 9], \"rot\": [0, true, 0], \"params\": 3 },"
+          " \"10\": { \"id\": 22, \"pos\": [1, 2] } } } } }",
+          1 },
+        { "mod-b.zip", "{\"setups\":{\"0\":{\"actors\":{\"$order\":[\"novo\",\"zz\",\"novo\"]}}}}", 2 },
+        { "quebrado.zip", "  {\"setups\":{}}", 3 },
+    };
+    Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 0, roomLayers, room, error), "camadas de sala mescladas");
+    Check(room.layersUsed == 2 && room.notes.size() == 1 && room.notes[0].starts_with("quebrado.zip"),
+          "camada inválida é pulada com nota e as outras seguem");
+    Check(room.actors.size() == 4, "null remove, chave nova acrescenta");
+    Check(room.actors[0].id == 21 && room.actors[0].pos[2] == 9 && room.actors[0].rot[1] == 1,
+          "$order põe a chave listada primeiro; booleano vira inteiro");
+    Check(room.actors[1].id == 0x0015 && room.actors[1].params == 3, "depois vem a ordem numérica das chaves");
+    Check(room.actors[2].id == 0x0095 && room.actors[2].pos[0] == 100 && room.actors[2].pos[1] == 16 &&
+              room.actors[2].pos[2] == -3 && room.actors[2].params == 0x0200 && room.actors[2].rot[1] == 0,
+          "patch parcial mantém campos vanilla; fração truncada, string hex aceita");
+    Check(room.actors[3].id == 22 && room.actors[3].pos[0] == 0 && room.actors[3].pos[1] == 0,
+          "vetor com menos de 3 elementos vira [0,0,0]");
+    const std::vector<LinkSpanUnbound::LayerDocument> replaceLayers{
+        { "troca.zip",
+          R"({"setups":{"0":{"actors":{"$replace":true,"a":{"id":70000,"pos":[40000,0,0],"params":-1}}}}})", 1 },
+    };
+    Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 0, replaceLayers, room, error) && room.actors.size() == 1 &&
+              room.actors[0].id == static_cast<int16_t>(70000 & 0xFFFF) &&
+              room.actors[0].pos[0] == static_cast<int16_t>(40000 - 65536) && room.actors[0].params == -1,
+          "$replace descarta a lista de baixo; valores fora da largura fazem wrap");
+    Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 2, replaceLayers, room, error) && room.actors.size() == 3,
+          "patch de outra camada de cena não mexe na lista atual");
+    const std::vector<LinkSpanUnbound::LayerDocument> wrongSchema{
+        { "v2.zip", R"({"$schema":"unbound/room/2","setups":{}})", 1 },
+    };
+    Check(!LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 0, wrongSchema, room, error) && !error.empty(),
+          "$schema de outra versão é rejeitado");
 
     std::cout << "unbound json merge: ok\n";
     return 0;

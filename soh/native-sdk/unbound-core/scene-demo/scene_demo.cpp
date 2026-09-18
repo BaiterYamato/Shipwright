@@ -25,6 +25,7 @@ struct Demo {
     uint32_t readyFrames = 0;
     bool travelled = false;
     bool arrived = false;
+    int32_t fromScene = -1;
 };
 
 ShipNativeStatus Write(ShipNativeWriteFn write, void* writer, const char* text) {
@@ -70,7 +71,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         demo.readyFrames = 0;
         return Write(write, writer, "idle");
     }
-    char text[96];
+    char text[160];
     if (!demo.travelled) {
         int32_t index = 0;
         if (demo.target.empty() || demo.scenes->find_entrance(demo.target.c_str(), &index) != SHIP_NATIVE_OK ||
@@ -78,13 +79,18 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
             return Write(write, writer, "idle");
         }
         demo.travelled = true;
-        std::snprintf(text, sizeof(text), "travel entrance=%d", index);
+        demo.fromScene = play->sceneNum;
+        std::snprintf(text, sizeof(text), "travel entrance=%d from scene=%d", index, play->sceneNum);
         return Write(write, writer, text);
     }
-    if (!demo.arrived && play->sceneNum >= LINKSPAN_OOT_SCENES_FIRST_CUSTOM_ID) {
+    // Chegada: a cena mudou desde a viagem (cena de mod ou vanilla).
+    if (!demo.arrived && play->sceneNum != demo.fromScene) {
         demo.arrived = true;
-        std::snprintf(text, sizeof(text), "arrived scene=%d room=%d", play->sceneNum,
-                      static_cast<int>(play->roomCtx.curRoom.num));
+        const auto* player = static_cast<const Player*>(demo.engine->get_player());
+        std::snprintf(text, sizeof(text), "arrived scene=%d room=%d pos=%.0f,%.0f,%.0f yaw=0x%04X", play->sceneNum,
+                      static_cast<int>(play->roomCtx.curRoom.num), player->actor.world.pos.x,
+                      player->actor.world.pos.y, player->actor.world.pos.z,
+                      static_cast<unsigned>(static_cast<uint16_t>(player->actor.shape.rot.y)));
         return Write(write, writer, text);
     }
     return Write(write, writer, "idle");

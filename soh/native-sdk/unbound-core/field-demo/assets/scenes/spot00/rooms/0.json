@@ -1,0 +1,26 @@
+{
+  // Patch Unbound (unbound/room/1) sobre a sala 0 do Hyrule Field, perto do spawn da ponte
+  // de Kokiri (ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN, Link em 160,0,1415 olhando para o castelo).
+  // As chaves "N" são o índice vanilla da lista de atores.
+  "$schema": "unbound/room/1",
+  "setups": {
+    "0": {
+      "actors": {
+        "$order": ["linkspan_heart"],
+        "39": { "pos": [60, 0, 1740] },
+        "29": null,
+        "linkspan_heart": { "id": 21, "pos": [160, 0, 1560], "rot": [0, 0, 0], "params": 3 },
+        "linkspan_bush": { "id": 119, "pos": [300, 0, 1640], "rot": [0, 0, 0], "params": "0x000B" }
+      }
+    },
+    "2": {
+      "actors": {
+        "$order": ["linkspan_heart"],
+        "39": { "pos": [60, 0, 1740] },
+        "29": null,
+        "linkspan_heart": { "id": 21, "pos": [160, 0, 1560], "rot": [0, 0, 0], "params": 3 },
+        "linkspan_bush": { "id": 119, "pos": [300, 0, 1640], "rot": [0, 0, 0], "params": "0x000B" }
+      }
+    }
+  }
+}

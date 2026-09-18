@@ -34,6 +34,8 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
     points.saveCopied = Declare(LINKSPAN_OOT_HOOK_SAVE_COPIED, sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.playerLimbDraw =
         Declare(LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW, sizeof(ShipOotPlayerLimbHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.roomActors = Declare(LINKSPAN_OOT_HOOK_ROOM_ACTORS, sizeof(ShipOotRoomActorsHookV1),
+                                SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM);
     return registry;
 }
 
@@ -51,6 +53,23 @@ void DispatchOotSaveHook(uint64_t point, int32_t slot, int32_t otherSlot) {
     }
     ShipOotSaveHookV1 payload{sizeof(ShipOotSaveHookV1), slot, otherSlot};
     registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
+}
+
+uint32_t DispatchOotRoomActors(void* play, int32_t sceneId, int32_t room, int32_t layer, const char* roomPath,
+                               ShipOotActorEntryV1* entries, uint32_t count, uint32_t capacity) {
+    if (!registry || !registry->HasHooks(points.roomActors) || !entries || count > capacity) {
+        return count;
+    }
+    ShipOotRoomActorsHookV1 payload{sizeof(ShipOotRoomActorsHookV1), play, sceneId, room, layer, roomPath, entries,
+                                    count, capacity};
+    registry->Dispatch(points.roomActors, &payload, sizeof(payload), nullptr, nullptr);
+    if (payload.entries != entries || payload.capacity != capacity || payload.count > capacity) {
+        if (hookLogger) {
+            hookLogger("oot.room.actors: payload inválido depois dos hooks; lista original mantida");
+        }
+        return count;
+    }
+    return payload.count;
 }
 
 void ResetOotHooks() {

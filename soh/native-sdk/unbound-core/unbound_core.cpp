@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <new>
@@ -9,8 +10,10 @@
 
 #include "include/linkspan/unbound/json_factory.h"
 #include "json_merge.h"
+#include "oot_hooks.h"
 #include "oot_resources.h"
 #include "oot_scenes.h"
+#include "room_actors.h"
 #include "scene_registry.h"
 
 namespace {
@@ -41,6 +44,13 @@ struct State {
     // Opcional: sem ele a factory JSON continua e load_scene_registry responde unsupported.
     const ShipOotScenesV1* scenes = nullptr;
     std::vector<uint64_t> sceneHandles;
+    // oot.room.actors (host com o ponto): salas vanilla ou de mod alteradas por
+    // scenes/<cena>/rooms/<n>.json. Relatórios para o Lua registrar.
+    bool roomHook = false;
+    uint32_t roomsSeen = 0;
+    uint32_t roomsPatched = 0;
+    std::string lastRoom;
+    std::string lastPatch;
     std::thread::id ownerThread;
     std::vector<Schema> schemas;
     std::map<uint64_t, Result> results;
@@ -311,6 +321,113 @@ ShipNativeStatus SHIP_NATIVE_CALL LoadSceneRegistry(void* user, const char*, uin
     }
 }
 
+std::string DescribeActors(const std::vector<LinkSpanUnbound::RoomActor>& actors, size_t limit) {
+    std::string text;
+    for (size_t i = 0; i < actors.size() && i < limit; ++i) {
+        const auto& actor = actors[i];
+        char entry[96];
+        std::snprintf(entry, sizeof(entry), "%s%zu:0x%04X@%d,%d,%d/0x%04X", text.empty() ? "" : " ", i,
+                      static_cast<unsigned>(static_cast<uint16_t>(actor.id)), actor.pos[0], actor.pos[1],
+                      actor.pos[2], static_cast<unsigned>(static_cast<uint16_t>(actor.params)));
+        text += entry;
+    }
+    if (actors.size() > limit) {
+        text += " ...";
+    }
+    return text;
+}
+
+// TRANSFORM de oot.room.actors: aplica scenes/<cena>/rooms/<n>.json (unbound/room/1) de todas as
+// camadas sobre a lista vanilla. Sem documento, UNSUPPORTED deixa a sala como está.
+ShipNativeStatus SHIP_NATIVE_CALL OnRoomActors(void* user, const ShipNativeHookCall* call) {
+    auto* state = static_cast<State*>(user);
+    if (!IsOwner(state) || !call || call->payload_size < sizeof(ShipOotRoomActorsHookV1)) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    auto* payload = static_cast<ShipOotRoomActorsHookV1*>(call->payload);
+    if (!payload->entries || payload->count > payload->capacity) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    try {
+        std::vector<LinkSpanUnbound::RoomActor> vanilla(payload->count);
+        for (uint32_t i = 0; i < payload->count; ++i) {
+            const auto& entry = payload->entries[i];
+            auto& actor = vanilla[i];
+            actor.id = entry.id;
+            std::copy(entry.pos, entry.pos + 3, actor.pos);
+            std::copy(entry.rot, entry.rot + 3, actor.rot);
+            actor.params = entry.params;
+        }
+        const std::string roomPath = payload->room_path ? payload->room_path : "";
+        const std::string document = LinkSpanUnbound::RoomDocumentPath(roomPath, payload->room);
+        ++state->roomsSeen;
+        state->lastRoom = "scene=" + std::to_string(payload->scene_id) + " room=" + std::to_string(payload->room) +
+                          " layer=" + std::to_string(payload->layer) + " doc=" +
+                          (document.empty() ? std::string("-") : document) + " atores=" +
+                          std::to_string(vanilla.size()) + " | " + DescribeActors(vanilla, 64);
+        if (document.empty()) {
+            return SHIP_NATIVE_UNSUPPORTED;
+        }
+        LayerCollector collector;
+        if (state->resources->read_file_layers(document.c_str(), CollectLayer, &collector) != SHIP_NATIVE_OK ||
+            collector.layers.empty()) {
+            return SHIP_NATIVE_UNSUPPORTED;
+        }
+        LinkSpanUnbound::RoomActorsResult result;
+        std::string error;
+        std::string notes;
+        const bool applied = LinkSpanUnbound::ApplyRoomActorLayers(vanilla, payload->layer, collector.layers, result,
+                                                                    error);
+        for (const auto& note : result.notes) {
+            notes += "; " + note;
+        }
+        if (!applied || !result.layersUsed) {
+            state->lastPatch = document + ": recusado (" + (applied ? std::string("nenhuma camada válida") : error) +
+                               ")" + notes;
+            return SHIP_NATIVE_UNSUPPORTED;
+        }
+        if (result.actors.size() > payload->capacity) {
+            state->lastPatch = document + ": " + std::to_string(result.actors.size()) + " atores excedem a capacidade " +
+                               std::to_string(payload->capacity) + notes;
+            return SHIP_NATIVE_UNSUPPORTED;
+        }
+        for (size_t i = 0; i < result.actors.size(); ++i) {
+            const auto& actor = result.actors[i];
+            auto& entry = payload->entries[i];
+            entry.id = actor.id;
+            std::copy(actor.pos, actor.pos + 3, entry.pos);
+            std::copy(actor.rot, actor.rot + 3, entry.rot);
+            entry.params = actor.params;
+        }
+        payload->count = static_cast<uint32_t>(result.actors.size());
+        ++state->roomsPatched;
+        state->lastPatch = document + ": camadas=" + std::to_string(result.layersUsed) + " atores " +
+                           std::to_string(vanilla.size()) + "->" + std::to_string(result.actors.size()) + notes +
+                           " | " + DescribeActors(result.actors, 64);
+        return SHIP_NATIVE_OK;
+    } catch (...) {
+        return SHIP_NATIVE_FAILURE;
+    }
+}
+
+// Relatório das salas vistas pelo hook, para o main.lua registrar quando muda.
+ShipNativeStatus SHIP_NATIVE_CALL RoomReport(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                             void* writer) {
+    auto* state = static_cast<State*>(user);
+    if (!IsOwner(state) || length || !write) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    try {
+        return WriteText(write, writer,
+                         "hook=" + std::string(state->roomHook ? "on" : "off") +
+                             " salas=" + std::to_string(state->roomsSeen) +
+                             " alteradas=" + std::to_string(state->roomsPatched) + "\nultima: " + state->lastRoom +
+                             "\npatch: " + (state->lastPatch.empty() ? std::string("-") : state->lastPatch));
+    } catch (...) {
+        return SHIP_NATIVE_FAILURE;
+    }
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
     if (!runtime || runtime->size < sizeof(ShipNativeRuntime) || runtime->abi_minor < 1 || !runtime->get_service ||
         !runtime->register_service || !instance) {
@@ -332,9 +449,18 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     state->ownerThread = std::this_thread::get_id();
     if (!runtime->register_function ||
         runtime->register_function(runtime->context, "load_scene_registry", LoadSceneRegistry, state) !=
-            SHIP_NATIVE_OK) {
+            SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "room_report", RoomReport, state) != SHIP_NATIVE_OK) {
         delete state;
         return SHIP_NATIVE_FAILURE;
+    }
+    // Host sem oot.room.actors (ou ABI < 1.2) segue sem alterar salas.
+    if (runtime->abi_minor >= 2 && runtime->register_hook) {
+        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ROOM_ACTORS,
+                                       LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotRoomActorsHookV1),
+                                       SHIP_NATIVE_HOOK_TRANSFORM, 0, 0, OnRoomActors, state };
+        uint64_t handle = 0;
+        state->roomHook = runtime->register_hook(runtime->context, &spec, &handle) == SHIP_NATIVE_OK;
     }
     try {
         state->schemas.push_back(
@@ -365,7 +491,7 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
 
 extern "C" SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query() {
     static const ShipNativeDescriptor descriptor{
-        sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, 1u, Init, Shutdown,
+        sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, 2u, Init, Shutdown,
     };
     return &descriptor;
 }

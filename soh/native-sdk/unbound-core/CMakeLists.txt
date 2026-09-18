@@ -9,14 +9,18 @@ if(NOT EXISTS "${OOT_NATIVE_SDK}")
 endif()
 include("${OOT_NATIVE_SDK}")
 
-add_library(linkspan_unbound_core SHARED unbound_core.cpp json_merge.cpp scene_registry.cpp)
+add_library(linkspan_unbound_core SHARED unbound_core.cpp json_merge.cpp scene_registry.cpp room_actors.cpp)
 add_library(linkspan_unbound_consumer SHARED unbound_consumer.cpp)
-add_executable(linkspan_unbound_json_tests tests.cpp json_merge.cpp scene_registry.cpp)
+add_executable(linkspan_unbound_json_tests tests.cpp json_merge.cpp scene_registry.cpp room_actors.cpp)
 # Demo do registro de cenas; reaproveita a busca de assets/ do exemplo Dynamic Movement.
 add_library(linkspan_unbound_scene_demo SHARED scene-demo/scene_demo.cpp ../example/package_assets.cpp)
 target_include_directories(linkspan_unbound_scene_demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../example")
+# Demo do patch de atores de sala (slice D1): mesmo código da demo de cenas, com outro destino e assets.
+add_library(linkspan_unbound_field_demo SHARED scene-demo/scene_demo.cpp ../example/package_assets.cpp)
+target_include_directories(linkspan_unbound_field_demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../example")
 
-foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_json_tests linkspan_unbound_scene_demo)
+foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_json_tests linkspan_unbound_scene_demo
+               linkspan_unbound_field_demo)
     target_include_directories(${target} PRIVATE ${OOT_NATIVE_INCLUDE_DIRS} "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(${target} PRIVATE ${OOT_NATIVE_COMPILE_DEFINITIONS})
     if(MSVC)
@@ -25,7 +29,7 @@ foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_
 endforeach()
 
 set(provider_dir "${CMAKE_BINARY_DIR}/mod/provider")
-foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_scene_demo)
+foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_scene_demo linkspan_unbound_field_demo)
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${provider_dir}")
     foreach(config Debug Release RelWithDebInfo MinSizeRel)
         string(TOUPPER "${config}" upper)

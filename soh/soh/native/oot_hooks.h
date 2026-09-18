@@ -25,7 +25,14 @@
  * oot.player.limb_draw v1: só OBSERVE, payload ShipOotPlayerLimbHookV1. Um limb do
  *   Link (ou do Dark Link, que usa o mesmo desenho) acabou de ser desenhado; a
  *   matriz corrente é a do limb. É escopo de draw de linkspan.oot.render, e o host
- *   restaura a matriz depois dos hooks. `limb` segue PLAYER_LIMB_* de z64player.h. */
+ *   restaura a matriz depois dos hooks. `limb` segue PLAYER_LIMB_* de z64player.h.
+ *
+ * oot.room.actors v1: TRANSFORM ou OBSERVE, payload ShipOotRoomActorsHookV1. A lista
+ *   de atores de uma sala acabou de ser lida (comando de cena da sala, antes do
+ *   spawn). `entries` é uma cópia do host com `capacity` posições; o TRANSFORM pode
+ *   editar, reordenar, remover ou acrescentar entradas e ajustar `count` (até
+ *   `capacity`). Os atores nascem na ordem final. Um TRANSFORM que falha precisa
+ *   deixar `entries` intacto: o host só restaura os campos do payload. */
 #define LINKSPAN_OOT_HOOK_PLAY_UPDATE "oot.play.update"
 #define LINKSPAN_OOT_HOOK_ACTOR_UPDATE "oot.actor.update"
 #define LINKSPAN_OOT_HOOK_ACTOR_DRAW "oot.actor.draw"
@@ -34,6 +41,9 @@
 #define LINKSPAN_OOT_HOOK_SAVE_DELETED "oot.save.deleted"
 #define LINKSPAN_OOT_HOOK_SAVE_COPIED "oot.save.copied"
 #define LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW "oot.player.limb_draw"
+#define LINKSPAN_OOT_HOOK_ROOM_ACTORS "oot.room.actors"
+/* Máximo de entradas por sala depois do TRANSFORM (teto de atores vivos). */
+#define LINKSPAN_OOT_ROOM_ACTORS_MAX 8192u
 #define LINKSPAN_OOT_HOOKS_VERSION 1u
 
 typedef struct ShipOotPlayHookV1 {
@@ -61,5 +71,28 @@ typedef struct ShipOotPlayerLimbHookV1 {
     void* actor;
     int32_t limb;
 } ShipOotPlayerLimbHookV1;
+
+/* Igual ao ActorEntry do jogo: `rot` em unidade binária de ângulo e `params` no
+ * formato do tipo de ator. */
+typedef struct ShipOotActorEntryV1 {
+    int16_t id;
+    int16_t pos[3];
+    int16_t rot[3];
+    int16_t params;
+} ShipOotActorEntryV1;
+
+typedef struct ShipOotRoomActorsHookV1 {
+    uint32_t size;
+    void* play_state;
+    int32_t scene_id;
+    int32_t room;
+    /* Camada da cena (gSaveContext.sceneLayer): 0 criança dia, 1 criança noite... */
+    int32_t layer;
+    /* Recurso da sala, sem __OTR__ ("scenes/shared/spot00_scene/spot00_room_0"). */
+    const char* room_path;
+    ShipOotActorEntryV1* entries;
+    uint32_t count;
+    uint32_t capacity;
+} ShipOotRoomActorsHookV1;
 
 #endif

@@ -4,6 +4,11 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <cstring>
+#include <vector>
+
 #include "oot_hooks.h"
 
 #include "z64.h"
@@ -80,4 +85,41 @@ extern "C" void LinkSpan_ActorDraw(Actor* actor, PlayState* play) {
     ShipLuaHost::EnterOotRenderScope();
     DispatchActor(point, actor, play, ActorDrawOriginal);
     ShipLuaHost::LeaveOotRenderScope();
+}
+
+static_assert(sizeof(ShipOotActorEntryV1) == sizeof(ActorEntry) &&
+                  offsetof(ShipOotActorEntryV1, pos) == offsetof(ActorEntry, pos) &&
+                  offsetof(ShipOotActorEntryV1, rot) == offsetof(ActorEntry, rot) &&
+                  offsetof(ShipOotActorEntryV1, params) == offsetof(ActorEntry, params),
+              "ShipOotActorEntryV1 precisa espelhar ActorEntry");
+
+// Comando de lista de atores de uma sala: copia a lista para o buffer do host, deixa os
+// mods editarem (oot.room.actors) e aponta a sala para o resultado. O buffer vale até a
+// próxima sala; a lista é consumida pelo spawn no Actor_UpdateAll seguinte.
+extern "C" void LinkSpan_RoomActors(PlayState* play, s32 layer) {
+    const auto* registry = ShipLuaHost::GetOotHookRegistry();
+    if (!registry || !registry->HasHooks(ShipLuaHost::GetOotHookPoints().roomActors)) {
+        return;
+    }
+    static std::vector<ShipOotActorEntryV1> buffer;
+    const uint32_t count = play->numSetupActors;
+    const uint32_t capacity = std::min<uint32_t>(LINKSPAN_OOT_ROOM_ACTORS_MAX, std::max<uint32_t>(count * 2, count + 256));
+    buffer.assign(capacity, ShipOotActorEntryV1{});
+    if (count) {
+        std::memcpy(buffer.data(), play->setupActorList, count * sizeof(ActorEntry));
+    }
+    const s32 room = play->roomCtx.curRoom.num;
+    const char* path = (room >= 0 && room < play->numRooms) ? play->roomList[room].fileName : nullptr;
+    static const char kOtr[] = "__OTR__";
+    if (path && std::strncmp(path, kOtr, sizeof(kOtr) - 1) == 0) {
+        path += sizeof(kOtr) - 1;
+    }
+    const uint32_t result = ShipLuaHost::DispatchOotRoomActors(play, play->sceneNum, room, layer, path ? path : "",
+                                                               buffer.data(), count, capacity);
+    if (result != count || (count && std::memcmp(buffer.data(), play->setupActorList, count * sizeof(ActorEntry)) != 0)) {
+        SPDLOG_INFO("Link-Span: oot.room.actors cena {} sala {} camada {}: {} -> {} atores", play->sceneNum, room,
+                    layer, count, result);
+    }
+    play->setupActorList = reinterpret_cast<ActorEntry*>(buffer.data());
+    play->numSetupActors = static_cast<u16>(result);
 }
