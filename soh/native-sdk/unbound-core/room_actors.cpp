@@ -88,6 +88,51 @@ int16_t ReadField(const Json& entry, const char* key) {
     return found != entry.end() && ReadInteger(*found, value) ? Wrap16(value) : 0;
 }
 
+// Número do §2: JSON numérico (fração mantida), string decimal/exponencial ou 0x inteira. Booleano não é número.
+bool ReadNumber(const Json& value, double& output) {
+    if (value.is_number()) {
+        output = value.get<double>();
+        return std::isfinite(output);
+    }
+    if (!value.is_string()) {
+        return false;
+    }
+    const auto& text = value.get_ref<const std::string&>();
+    if (text.empty() || text.find_first_of(" \t\r\n") != std::string::npos) {
+        return false;
+    }
+    int64_t integer = 0;
+    const size_t start = (text[0] == '-' || text[0] == '+') ? 1 : 0;
+    if (text.size() > start + 2 && text[start] == '0' && (text[start + 1] == 'x' || text[start + 1] == 'X')) {
+        if (!ReadInteger(value, integer)) {
+            return false;
+        }
+        output = static_cast<double>(integer);
+        return true;
+    }
+    char* end = nullptr;
+    output = std::strtod(text.c_str(), &end);
+    return end == text.c_str() + text.size() && std::isfinite(output);
+}
+
+// Posição do §2 (números, fração permitida): 3 elementos; menos que 3 vira [0,0,0].
+void ReadPosition(const Json& entry, const char* key, float (&output)[3]) {
+    output[0] = output[1] = output[2] = 0.0f;
+    const auto found = entry.find(key);
+    if (found == entry.end() || !found->is_array() || found->size() < 3) {
+        return;
+    }
+    float values[3]{};
+    for (size_t i = 0; i < 3; ++i) {
+        double value = 0.0;
+        if (!ReadNumber((*found)[i], value)) {
+            return;
+        }
+        values[i] = static_cast<float>(value);
+    }
+    std::copy(values, values + 3, output);
+}
+
 // Vetor do §2: 3 elementos (os extras são ignorados); menos que 3 vira [0,0,0].
 void ReadVector(const Json& entry, const char* key, int16_t (&output)[3]) {
     output[0] = output[1] = output[2] = 0;
@@ -237,7 +282,7 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
             }
             RoomActor actor;
             actor.id = ReadField(entry, "id");
-            ReadVector(entry, "pos", actor.pos);
+            ReadPosition(entry, "pos", actor.pos);
             ReadVector(entry, "rot", actor.rot);
             actor.params = ReadField(entry, "params");
             output.actors.push_back(actor);

@@ -87,11 +87,11 @@ extern "C" void LinkSpan_ActorDraw(Actor* actor, PlayState* play) {
     ShipLuaHost::LeaveOotRenderScope();
 }
 
-static_assert(sizeof(ShipOotActorEntryV1) == sizeof(ActorEntry) &&
-                  offsetof(ShipOotActorEntryV1, pos) == offsetof(ActorEntry, pos) &&
-                  offsetof(ShipOotActorEntryV1, rot) == offsetof(ActorEntry, rot) &&
-                  offsetof(ShipOotActorEntryV1, params) == offsetof(ActorEntry, params),
-              "ShipOotActorEntryV1 precisa espelhar ActorEntry");
+static_assert(sizeof(ShipOotActorEntryV2) == sizeof(ActorEntry) &&
+                  offsetof(ShipOotActorEntryV2, pos) == offsetof(ActorEntry, pos) &&
+                  offsetof(ShipOotActorEntryV2, rot) == offsetof(ActorEntry, rot) &&
+                  offsetof(ShipOotActorEntryV2, params) == offsetof(ActorEntry, params),
+              "ShipOotActorEntryV2 precisa espelhar ActorEntry");
 
 // Comando de lista de atores de uma sala: copia a lista para o buffer do host, deixa os
 // mods editarem (oot.room.actors) e aponta a sala para o resultado. O buffer vale até a
@@ -101,10 +101,10 @@ extern "C" void LinkSpan_RoomActors(PlayState* play, s32 layer) {
     if (!registry || !registry->HasHooks(ShipLuaHost::GetOotHookPoints().roomActors)) {
         return;
     }
-    static std::vector<ShipOotActorEntryV1> buffer;
+    static std::vector<ShipOotActorEntryV2> buffer;
     const uint32_t count = play->numSetupActors;
     const uint32_t capacity = std::min<uint32_t>(LINKSPAN_OOT_ROOM_ACTORS_MAX, std::max<uint32_t>(count * 2, count + 256));
-    buffer.assign(capacity, ShipOotActorEntryV1{});
+    buffer.assign(capacity, ShipOotActorEntryV2{});
     if (count) {
         std::memcpy(buffer.data(), play->setupActorList, count * sizeof(ActorEntry));
     }

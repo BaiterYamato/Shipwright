@@ -1732,4 +1732,6 @@ void Scene_Draw(PlayState* play) {
     } else {
         sSceneDrawHandlers[play->sceneConfig](play);
     }
+    // SOH [Unbound] a scene document's `materialAnims` bind after the draw config, so they win the segment
+    Scene_DrawMaterialAnims(play);
 }

@@ -1968,9 +1968,9 @@ bool gCustomBodyPunchQueued = false;
 // O collider pertence ao Player e é reutilizado pelo engine; por isso não pode
 // ficar com raio/dano de bola depois de qualquer saída de roll ou troca de cena.
 bool gCustomBodyRollColliderArmed = false;
-s16 gCustomBodyRollColliderRadius = 0;
-s16 gCustomBodyRollColliderHeight = 0;
-s16 gCustomBodyRollColliderYShift = 0;
+f32 gCustomBodyRollColliderRadius = 0;
+f32 gCustomBodyRollColliderHeight = 0;
+f32 gCustomBodyRollColliderYShift = 0;
 bool gCustomBodyShieldActive = false;
 // Retorno de `LinkAnimation_Update` do frame ANTERIOR. A maquina portada precisa
 // do fim de one-shot para o curl virar bola e o desenrolar virar idle, mas ela
@@ -3188,7 +3188,7 @@ void CustomBodyUpdateRollHitbox(Player* player, PlayState* play, bool rolling) {
     player->cylinder.info.toucher.damage = groundPoundImpact ? 4 : 1;
     // 25 é o raio canônico de Player_SetCylinderForAttack durante a esfera
     // normal e durante os espinhos. O impacto usa 60, como DMG_GORON_POUND.
-    player->cylinder.dim.radius = groundPoundImpact ? 60 : 25;
+    player->cylinder.dim.radius = groundPoundImpact ? 60.0f : 25.0f;
     player->cylinder.dim.height = 34;
     player->cylinder.dim.yShift = 0;
     Collider_UpdateCylinder(&player->actor, &player->cylinder);

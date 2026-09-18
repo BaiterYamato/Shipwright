@@ -31,7 +31,7 @@ typedef struct {
     bool isSaveLoaded;
     bool isGameComplete;
     s16 sceneNum;
-    s8 curRoomNum;
+    s16 curRoomNum;
     s32 entranceIndex;
 
     // Only available in PLAYER_UPDATE packets

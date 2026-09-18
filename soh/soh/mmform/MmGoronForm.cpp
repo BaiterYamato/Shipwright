@@ -67,7 +67,7 @@ struct FormState {
     // collider pertence ao Player e e reusado pelo engine: sair do rolamento
     // sem restaurar deixa raio e dano de bola grudados em tudo depois.
     bool rollAttackArmed = false;
-    std::int16_t savedCylinderRadius = 0;
+    f32 savedCylinderRadius = 0;
     // Campos da bola, com o nome do campo original do Player de MM ao lado —
     // e por eles que a referencia se le (mm_player_form.cpp:984-999).
     float rollBallSpeed = 0.0f;  // unk_B08: velocidade real da esfera (max 18)

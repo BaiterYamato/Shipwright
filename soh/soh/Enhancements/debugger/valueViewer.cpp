@@ -33,7 +33,7 @@ std::array<ValueTableElement, VVE_MAX> valueTable = {{
     { "Health",             "gSaveContext.health",            "HP:",     TYPE_S16,   false, []() -> void* { return &gSaveContext.health; }},
     { "Navi Timer",         "gSaveContext.naviTimer",         "NAVI:",   TYPE_U16,   false, []() -> void* { return &gSaveContext.naviTimer; }},
     { "Scene ID",           "play->sceneNum",                 "SCENE:",  TYPE_S16,   true,  []() -> void* { return &gPlayState->sceneNum; }},
-    { "Room ID",            "play->roomCtx.curRoom.num",      "ROOM:",   TYPE_S8,    true,  []() -> void* { return &gPlayState->roomCtx.curRoom.num; }},
+    { "Room ID",            "play->roomCtx.curRoom.num",      "ROOM:",   TYPE_S16,   true,  []() -> void* { return &gPlayState->roomCtx.curRoom.num; }},
     { "Entrance ID",        "gSaveContext.entranceIndex",     "ENTR:",   TYPE_S32,   false, []() -> void* { return &gSaveContext.entranceIndex; }},
     { "Cutscene ID",        "gSaveContext.cutsceneIndex",     "CUTS:",   TYPE_S32,   false, []() -> void* { return &gSaveContext.cutsceneIndex; }},
     { "Link X",             "Player->actor.world.pos.x",      "X:",      TYPE_FLOAT, true,  []() -> void* { return &GET_PLAYER(gPlayState)->actor.world.pos.x; }},

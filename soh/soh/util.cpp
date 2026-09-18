@@ -705,7 +705,8 @@ const std::string& SohUtils::GetSceneName(int32_t scene) {
         return invalidString;
     }
 
-    return sceneNames[scene];
+    SPDLOG_WARN("Passed invalid scene id to SohUtils::GetSceneName: ({})", scene);
+    return invalidString;
 }
 
 const std::string& SohUtils::GetItemName(int32_t item) {

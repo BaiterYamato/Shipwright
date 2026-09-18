@@ -420,6 +420,33 @@ const std::string* OotCustomSceneDisplayName(int32_t sceneId) {
     return record ? &record->displayName : nullptr;
 }
 
+bool OotSceneStableName(int32_t sceneId, std::string& name) {
+    const auto& data = Vanilla().data;
+    if (sceneId >= 0 && sceneId < data.sceneCount && data.sceneNames && data.sceneNames[sceneId]) {
+        name = data.sceneNames[sceneId];
+        return true;
+    }
+    if (const SceneRecord* record = FindRecordById(sceneId)) {
+        name = record->name;
+        return true;
+    }
+    return false;
+}
+
+bool OotSceneIdFromStableName(const std::string& name, int32_t& sceneId) {
+    const auto& vanilla = Vanilla().sceneIds;
+    if (const auto found = vanilla.find(name); found != vanilla.end()) {
+        sceneId = found->second;
+        return true;
+    }
+    const auto& state = State();
+    if (const auto found = state.handlesByName.find(name); found != state.handlesByName.end()) {
+        sceneId = state.scenes.at(found->second).id;
+        return true;
+    }
+    return false;
+}
+
 SavedSceneFlags* OotCustomSceneFlags(int32_t sceneId) {
     auto& state = State();
     if (const SceneRecord* record = FindRecordById(sceneId)) {

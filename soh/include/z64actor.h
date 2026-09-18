@@ -223,7 +223,8 @@ typedef struct {
 typedef struct Actor {
     /* 0x000 */ s16 id; // Actor ID
     /* 0x002 */ u8 category; // Actor category. Refer to the corresponding enum for values
-    /* 0x003 */ s8 room; // Room number the actor is in. -1 denotes that the actor won't despawn on a room change
+    /*       */ s16 room; // Room number the actor is in. -1 denotes that the actor won't despawn on a room change
+                          // SOH [Unbound] s8 -> s16
     /* 0x004 */ u32 flags; // Flags used for various purposes
     /* 0x008 */ PosRot home; // Initial position/rotation when spawned. Can be used for other purposes
     /* 0x01C */ s16 params; // Configurable variable set by the actor's spawn data; original name: "args_data"
@@ -241,8 +242,8 @@ typedef struct Actor {
     /* 0x070 */ f32 minVelocityY; // Sets the lower bounds cap on velocity along the Y axis
     /* 0x074 */ CollisionPoly* wallPoly; // Wall polygon the actor is touching
     /* 0x078 */ CollisionPoly* floorPoly; // Floor polygon directly below the actor
-    /* 0x07C */ u8 wallBgId; // Bg ID of the wall polygon the actor is touching
-    /* 0x07D */ u8 floorBgId; // Bg ID of the floor polygon directly below the actor
+    /*       */ s32 wallBgId; // Bg ID of the wall polygon the actor is touching. SOH [Unbound] u8 -> s32
+    /*       */ s32 floorBgId; // Bg ID of the floor polygon directly below the actor. SOH [Unbound] u8 -> s32
     /* 0x07E */ s16 wallYaw; // Y rotation of the wall polygon the actor is touching
     /* 0x080 */ f32 floorHeight; // Y position of the floor polygon directly below the actor
     /* 0x084 */ f32 yDistToWater; // Distance to the surface of active waterbox. Negative value means above water
@@ -278,7 +279,15 @@ typedef struct Actor {
     /* 0x134 */ ActorFunc draw; // Draw Routine. Called by `Actor_Draw`
     /* 0x138 */ ActorResetFunc reset;
     /* 0x13C */ char dbgPad[0x10]; // Padding that only exists in the debug rom
+    // SOH [Unbound] Index into transiActorCtx.list for transition actors (-1 otherwise). Replaces the
+    // 6-bit index packed into params, so a scene may have more than 64 transition actors.
+    s16 transitionIndex;
 } Actor; // size = 0x14C
+
+// SOH [Unbound] Transition-actor list index; falls back to the vanilla params packing for actors spawned
+// outside Actor_SpawnTransitionActors (debugger, enhancements).
+#define TRANSITION_ACTOR_INDEX(actor) \
+    (((actor)->transitionIndex >= 0) ? (s32)(actor)->transitionIndex : (s32)((u16)(actor)->params >> 0xA))
 
 typedef enum {
     /* 0 */ FOOT_LEFT,
@@ -519,6 +528,7 @@ typedef struct {
 #define PARAMS_MAKE_MASK(s, n) PARAMS_GET_NOSHIFT(~0, s, n)
 
 #define TRANSITION_ACTOR_PARAMS_INDEX_SHIFT 10
-#define GET_TRANSITION_ACTOR_INDEX(actor) PARAMS_GET_NOMASK((u16)(actor)->params, 10)
+// SOH [Unbound] o índice vem de Actor.transitionIndex (TRANSITION_ACTOR_INDEX), não mais de 6 bits de params
+#define GET_TRANSITION_ACTOR_INDEX(actor) TRANSITION_ACTOR_INDEX(actor)
 
 #endif

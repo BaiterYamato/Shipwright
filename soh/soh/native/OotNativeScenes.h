@@ -44,6 +44,9 @@ struct OotCustomScene {
 int32_t OotEntranceCount();
 bool FindOotCustomScene(int32_t sceneId, OotCustomScene& scene);
 const std::string* OotCustomSceneDisplayName(int32_t sceneId);
+// Nome estável da cena: enum SCENE_* para vanilla, nome do registro para cenas de mod.
+bool OotSceneStableName(int32_t sceneId, std::string& name);
+bool OotSceneIdFromStableName(const std::string& name, int32_t& sceneId);
 // Flags de uma cena registrada, guardadas pelo nome da cena durante a sessão.
 // Id sem registro recebe um armazenamento zerado a cada chamada.
 SavedSceneFlags* OotCustomSceneFlags(int32_t sceneId);

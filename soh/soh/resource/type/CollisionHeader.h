@@ -21,22 +21,21 @@ typedef struct {
     Vec3s normal; // Unit normal vector
                   // Value ranges from -0x7FFF to 0x7FFF, representing -1.0 to 1.0; 0x8000 is invalid
 
-    s16 dist; // Plane distance from origin along the normal
+    s32 dist; // Plane distance from origin along the normal. // SOH [Unbound] s16 -> s32 (world extent)
 } CollisionPoly;
 
+// SOH [Unbound] Must mirror WaterBox in soh/include/z64bgcheck.h (s32 extents, unpacked properties)
 typedef struct {
-    /* 0x00 */ s16 xMin;
-    /* 0x02 */ s16 ySurface;
-    /* 0x04 */ s16 zMin;
-    /* 0x06 */ s16 xLength;
-    /* 0x08 */ s16 zLength;
-    /* 0x0C */ u32 properties;
-
-    // 0x0008_0000 = ?
-    // 0x0007_E000 = Room Index, 0x3F = all rooms
-    // 0x0000_1F00 = Lighting Settings Index
-    // 0x0000_00FF = CamData index
-} WaterBox; // size = 0x10
+    s32 xMin;
+    s32 ySurface;
+    s32 zMin;
+    s32 xLength;
+    s32 zLength;
+    s32 camera;
+    s32 lightSetting;
+    s32 room;
+    u8 notSwimmable;
+} WaterBox;
 
 typedef struct {
     /* 0x00 */ u16 cameraSType;
@@ -44,24 +43,43 @@ typedef struct {
     /* 0x04 */ Vec3s* camPosData;
 } CamData;
 
+// SOH [Unbound] Must mirror SurfaceType in soh/include/z64bgcheck.h (unpacked fields)
 typedef struct {
-    u32 data[2];
-
-    // Type 1
-    // 0x0800_0000 = wall damage
+    s32 camera;
+    s32 exit;
+    s32 lightSetting;
+    u8 floorType;
+    u8 wallFlags;
+    u8 wallType;
+    u8 floorProperty;
+    u8 isSoft;
+    u8 isHorseBlocked;
+    u8 material;
+    u8 floorEffect;
+    u8 echo;
+    u8 canHookshot;
+    u8 conveyorSpeed;
+    u8 conveyorDirection;
+    u8 isWallDamage;
 } SurfaceType;
 
+// SOH [Unbound] Legacy archives carry the packed vanilla words; defined in CollisionHeaderFactory.cpp, which
+// can see the game header (this mirror header deliberately does not include it).
+SurfaceType UnpackSurfaceType(uint32_t data0, uint32_t data1);
+void UnpackWaterBoxProperties(WaterBox& waterBox, uint32_t properties);
+
+// SOH [Unbound] Must mirror CollisionHeader in soh/include/z64bgcheck.h (s32 bounds/vertices, u32 counts)
 typedef struct {
-    /* 0x00 */ Vec3s minBounds; // minimum coordinates of poly bounding box
-    /* 0x06 */ Vec3s maxBounds; // maximum coordinates of poly bounding box
-    /* 0x0C */ u32 numVertices; // SOH [Unbound] widened from u16
-    /* 0x10 */ Vec3s* vtxList;
-    /* 0x14 */ u32 numPolygons; // SOH [Unbound] widened from u16
-    /* 0x18 */ CollisionPoly* polyList;
-    /* 0x1C */ SurfaceType* surfaceTypeList;
-    /* 0x20 */ CamData* cameraDataList;
-    /* 0x24 */ u16 numWaterBoxes;
-    /* 0x28 */ WaterBox* waterBoxes;
+    Vec3i minBounds; // minimum coordinates of poly bounding box
+    Vec3i maxBounds; // maximum coordinates of poly bounding box
+    u32 numVertices;
+    Vec3i* vtxList;
+    u32 numPolygons;
+    CollisionPoly* polyList;
+    SurfaceType* surfaceTypeList;
+    CamData* cameraDataList;
+    u16 numWaterBoxes;
+    WaterBox* waterBoxes;
     size_t cameraDataListLen; // OTRTODO: Added to allow for bounds checking the cameraDataList.
 } CollisionHeaderData;        // original name: BGDataInfo
 
@@ -77,7 +95,7 @@ class CollisionHeader : public Ship::Resource<CollisionHeaderData> {
 
     CollisionHeaderData collisionHeaderData;
 
-    std::vector<Vec3s> vertices;
+    std::vector<Vec3i> vertices;
 
     std::vector<CollisionPoly> polygons;
 

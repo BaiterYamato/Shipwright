@@ -32,5 +32,5 @@ void DispatchOotSaveHook(uint64_t point, int32_t slot, int32_t otherSlot);
 // contagem final. Payload inválido depois dos hooks (contagem acima da capacidade,
 // buffer ou capacidade trocados) mantém `count` e registra no log.
 uint32_t DispatchOotRoomActors(void* play, int32_t sceneId, int32_t room, int32_t layer, const char* roomPath,
-                               ShipOotActorEntryV1* entries, uint32_t count, uint32_t capacity);
+                               ShipOotActorEntryV2* entries, uint32_t count, uint32_t capacity);
 } // namespace ShipLuaHost

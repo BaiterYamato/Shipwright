@@ -19,11 +19,22 @@ struct DynaPolyActor;
 
 #define DYNAPOLY_INVALIDATE_LOOKUP (1 << 0)
 
+// BGACTOR_NEG_ONE is the "no dyna actor" value an actor stores in its own bgId / floorBgId / wallBgId.
 #define BGACTOR_NEG_ONE -1
-#define BG_ACTOR_MAX 50
-#define BGCHECK_SCENE BG_ACTOR_MAX
-#define BGCHECK_Y_MIN -32000.0f
-#define BGCHECK_XYZ_ABSMAX 32760.0f
+// SOH [Unbound] The dyna actor table is heap-allocated and grows on demand (DynaCollisionContext.bgActorMax), so
+// the sentinels are fixed constants instead of the table size. BGCHECK_SCENE is the bgId of the scene's static
+// collision. BGACTOR_INVALID is the "could not allocate" value the overlay `== BGACTOR_INVALID` tests compare
+// against; vanilla returned BG_ACTOR_MAX there, the same number. DynaPoly_SetBgActor now grows the table instead.
+#define BGCHECK_SCENE 0x7FFF
+#define BGACTOR_INVALID BGCHECK_SCENE
+#define BGACTOR_INITIAL_MAX 64
+// Superseded dyna poly/vtx buffers parked per scene (see DynaCollisionContext.retiredBuffers). Growth doubles
+// from 16 384, so a list retires one buffer per doubling; 32 covers both lists past 2^31 entries.
+#define DYNA_RETIRED_BUFFERS_MAX 32
+// SOH [Unbound] World extent: positions are f32 end to end; 2^20 keeps ~0.06-unit precision at the edge.
+// BGCHECK_Y_MIN is the "no floor" sentinel (exactly representable in f32).
+#define BGCHECK_Y_MIN -2147483648.0f
+#define BGCHECK_XYZ_ABSMAX 1048576.0f
 #define BGCHECK_SUBDIV_OVERLAP 50
 #define BGCHECK_SUBDIV_MIN 150.0f
 
@@ -32,7 +43,6 @@ struct DynaPolyActor;
 #define FUNC_80041EA4_STOP 8
 #define FUNC_80041EA4_VOID_OUT 12
 
-#define WATERBOX_ROOM(p) ((p >> 13) & 0x3F)
 
 typedef struct {
     Vec3f scale;
@@ -40,7 +50,7 @@ typedef struct {
     Vec3f pos;
 } ScaleRotPos;
 
-// SOH [Unbound] Widened from the N64 0x10-byte layout to 0x18; see docs/architecture/unbound-collision-layout.md
+// SOH [Unbound] Widened from the N64 0x10-byte layout; see unbound-docs/collision.md
 typedef struct {
     u16 type;
     union {
@@ -54,7 +64,9 @@ typedef struct {
     Vec3s normal; // Unit normal vector
                   // Value ranges from -0x7FFF to 0x7FFF, representing -1.0 to 1.0; 0x8000 is invalid
 
-    s16 dist; // Plane distance from origin along the normal
+    s32 dist; // Plane distance from origin along the normal. // SOH [Unbound] s16 -> s32 (world extent).
+              // Derived from a unit normal, so it is fractional even when every vertex is integral. The archive
+              // writer (SPEC.md §4.4) rounds it; the dyna bake in DynaPoly_ExpandSRT truncates it as vanilla did.
 } CollisionPoly;
 
 typedef struct {
@@ -62,20 +74,6 @@ typedef struct {
     /* 0x02 */ s16 numCameras;
     /* 0x04 */ Vec3s* camPosData;
 } CamData;
-
-typedef struct {
-    /* 0x00 */ s16 xMin;
-    /* 0x02 */ s16 ySurface;
-    /* 0x04 */ s16 zMin;
-    /* 0x06 */ s16 xLength;
-    /* 0x08 */ s16 zLength;
-    /* 0x0C */ u32 properties;
-
-    // 0x0008_0000 = ?
-    // 0x0007_E000 = Room Index, 0x3F = all rooms
-    // 0x0000_1F00 = Lighting Settings Index
-    // 0x0000_00FF = CamData index
-} WaterBox; // size = 0x10
 
 typedef enum FloorType {
     /*  0 */ FLOOR_TYPE_0,
@@ -136,24 +134,63 @@ typedef enum FloorEffect {
     /*  2 */ FLOOR_EFFECT_2 // Transition
 } FloorEffect;
 
+// SOH [Unbound] Widened from the N64 0x10-byte layout: extents are s32 (world extent) and the packed
+// `properties` word is unpacked into fields (WaterBox_UnpackProperties for legacy data).
 typedef struct {
-    u32 data[2];
+    s32 xMin;
+    s32 ySurface;
+    s32 zMin;
+    s32 xLength;
+    s32 zLength;
+    s32 camera;       // CamData index (was 8 bits)
+    s32 lightSetting; // lighting settings index (was 5 bits)
+    s32 room;         // -1 = all rooms (was 6 bits, 0x3F)
+    u8 notSwimmable;        // vanilla bit 19: box is only found by func_800425B0, not WaterBox_GetSurface*
+} WaterBox;
 
-    // Type 1
-    // 0x0800_0000 = wall damage
+// SOH [Unbound] The two packed vanilla words are unpacked into named fields (SurfaceType_Unpack for legacy
+// data), so `camera`, `exit` and `lightSetting` are no longer capped at 8 / 5 / 5 bits.
+typedef struct {
+    s32 camera;        // CamData index
+    s32 exit;          // scene exit index, 0 = none
+    s32 lightSetting;  // lighting settings index
+    u8 floorType;      // 0-31
+    u8 wallFlags;      // 0-7 (vanilla "unk18")
+    u8 wallType;       // 0-31, index into D_80119D90
+    u8 floorProperty;  // 0-15
+    u8 isSoft;         // "floor minus 1"
+    u8 isHorseBlocked;
+    u8 material;       // 0-15, walk sfx index
+    u8 floorEffect;    // 0-3, slope
+    u8 echo;           // 0-63
+    u8 canHookshot;
+    u8 conveyorSpeed;     // 0-7
+    u8 conveyorDirection; // 0-63, 360 / 64 degrees
+    u8 isWallDamage;
 } SurfaceType;
 
+// SOH [Unbound] Legacy (packed) collision data is unpacked at the loader boundary with these.
+#ifdef __cplusplus
+extern "C" {
+#endif
+SurfaceType SurfaceType_Unpack(u32 data0, u32 data1);
+void WaterBox_UnpackProperties(WaterBox* waterBox, u32 properties);
+#ifdef __cplusplus
+}
+#endif
+
+// SOH [Unbound] Widened from the N64 layout: bounds and vertices are s32 (world extent), counts are u32
 typedef struct {
-    /* 0x00 */ Vec3s minBounds; // minimum coordinates of poly bounding box
-    /* 0x06 */ Vec3s maxBounds; // maximum coordinates of poly bounding box
-    /* 0x0C */ u32 numVertices; // SOH [Unbound] widened from u16
-    /* 0x10 */ Vec3s* vtxList;
-    /* 0x14 */ u32 numPolygons; // SOH [Unbound] widened from u16
-    /* 0x18 */ CollisionPoly* polyList;
-    /* 0x1C */ SurfaceType* surfaceTypeList;
-    /* 0x20 */ CamData* cameraDataList;
-    /* 0x24 */ u16 numWaterBoxes;
-    /* 0x28 */ WaterBox* waterBoxes;
+    Vec3i minBounds; // minimum coordinates of poly bounding box
+    Vec3i maxBounds; // maximum coordinates of poly bounding box
+    u32 numVertices;
+    Vec3i* vtxList;
+    u32 numPolygons;
+    CollisionPoly* polyList;
+    SurfaceType* surfaceTypeList;
+    CamData* cameraDataList;
+    u16 numWaterBoxes;
+    WaterBox* waterBoxes;
     size_t cameraDataListLen; // OTRTODO: Added to allow for bounds checking the cameraDataList.
 } CollisionHeader; // original name: BGDataInfo
 
@@ -168,11 +205,11 @@ typedef struct {
 } SSList;
 
 typedef struct {
-    /* 0x00 */ u32 max;          // original name: short_slist_node_size
-    /* 0x02 */ u32 count;        // original name: short_slist_node_last_index
-    /* 0x04 */ SSNode* tbl;      // original name: short_slist_node_tbl
-    /* 0x08 */ u8* polyCheckTbl; // points to an array of bytes, one per static poly. Zero initialized when starting a
-                                 // bg check, and set to 1 if that poly has already been tested.
+    u32 max;          // original name: short_slist_node_size
+    u32 count;        // original name: short_slist_node_last_index
+    SSNode* tbl;      // original name: short_slist_node_tbl
+    u8* polyCheckTbl; // points to an array of bytes, one per static poly. Zero initialized when starting a
+                      // bg check, and set to 1 if that poly has already been tested.
 } SSNodeList;
 
 typedef struct {
@@ -195,41 +232,47 @@ typedef struct {
 } DynaLookup;
 
 typedef struct {
-    /* 0x00 */ struct Actor* actor;
-    /* 0x04 */ CollisionHeader* colHeader;
-    /* 0x08 */ DynaLookup dynaLookup;
-    /* 0x10 */ u32 vtxStartIndex; // SOH [Unbound] widened from u16
-    /* 0x14 */ ScaleRotPos prevTransform;
-    /* 0x34 */ ScaleRotPos curTransform;
-    /* 0x54 */ Sphere16 boundingSphere;
-    /* 0x5C */ f32 minY;
-    /* 0x60 */ f32 maxY;
-} BgActor; // size = 0x64
+    struct Actor* actor;
+    CollisionHeader* colHeader;
+    DynaLookup dynaLookup;
+    u32 vtxStartIndex; // SOH [Unbound] widened from u16
+    ScaleRotPos prevTransform;
+    ScaleRotPos curTransform;
+    Sphere16 boundingSphere;
+    f32 minY;
+    f32 maxY;
+} BgActor;
 
+// SOH [Unbound] Every table here is heap-allocated, grows on demand and is released by BgCheck_Free
 typedef struct {
-    /* 0x0000 */ u8 bitFlag;
-    /* 0x0004 */ BgActor bgActors[BG_ACTOR_MAX];
-    /* 0x138C */ u16 bgActorFlags[BG_ACTOR_MAX]; // & 0x0008 = no dyna ceiling
-    /* 0x13F0 */ CollisionPoly* polyList;
-    /* 0x13F4 */ Vec3s* vtxList;
-    /* 0x13F8 */ DynaSSNodeList polyNodes;
-    /* 0x1404 */ s32 polyNodesMax;
-    /* 0x1408 */ s32 polyListMax;
-    /* 0x140C */ s32 vtxListMax;
-} DynaCollisionContext; // size = 0x1410
+    u8 bitFlag;
+    BgActor* bgActors;  // bgActorMax slots; grown by DynaPoly_SetBgActor
+    u16* bgActorFlags; // & 0x0008 = no dyna ceiling
+    s32 bgActorMax;
+    // polyList/vtxList grow in DynaPoly_Setup; superseded buffers are parked here until BgCheck_Free because
+    // actors keep CollisionPoly* into them (already stale each frame, but they must stay readable).
+    void* retiredBuffers[DYNA_RETIRED_BUFFERS_MAX];
+    s32 retiredCount;
+    CollisionPoly* polyList;
+    Vec3i* vtxList; // s16 -> s32 (world extent). Baked world-space, so these quantise to whole units
+                    // each frame as they did in vanilla.
+    DynaSSNodeList polyNodes;
+    s32 polyNodesMax;
+    s32 polyListMax;
+    s32 vtxListMax;
+} DynaCollisionContext;
 
 typedef struct CollisionContext {
-    /* 0x00 */ CollisionHeader* colHeader; // scene's static collision
-    /* 0x04 */ Vec3f minBounds;            // minimum coordinates of collision bounding box
-    /* 0x10 */ Vec3f maxBounds;            // maximum coordinates of collision bounding box
-    /* 0x1C */ Vec3i subdivAmount;         // x, y, z subdivisions of the scene's static collision
-    /* 0x28 */ Vec3f subdivLength;         // x, y, z subdivision worldspace lengths
-    /* 0x34 */ Vec3f subdivLengthInv;      // inverse of subdivision length
-    /* 0x40 */ StaticLookup* lookupTbl;    // 3d array of length subdivAmount
-    /* 0x44 */ SSNodeList polyNodes;
-    /* 0x50 */ DynaCollisionContext dyna;
-    /* 0x1460 */ u32 memSize; // Size of all allocated memory plus CollisionContext
-} CollisionContext; // size = 0x1464
+    CollisionHeader* colHeader; // scene's static collision
+    Vec3f minBounds;            // minimum coordinates of collision bounding box
+    Vec3f maxBounds;            // maximum coordinates of collision bounding box
+    Vec3i subdivAmount;         // x, y, z subdivisions of the scene's static collision
+    Vec3f subdivLength;         // x, y, z subdivision worldspace lengths
+    Vec3f subdivLengthInv;      // inverse of subdivision length
+    StaticLookup* lookupTbl;    // 3d array of length subdivAmount
+    SSNodeList polyNodes;
+    DynaCollisionContext dyna;
+} CollisionContext; // SOH [Unbound] memSize (the N64 byte budget) is gone; see BgCheck_Allocate
 
 typedef struct {
     /* 0x00 */ struct PlayState* play;

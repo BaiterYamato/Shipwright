@@ -1,4 +1,5 @@
 #include "global.h"
+#include "soh/unbound/SceneFlagsExt.h"
 #include "vt.h"
 
 #include "overlays/actors/ovl_Arms_Hook/z_arms_hook.h"
@@ -89,6 +90,9 @@ extern void ShipLua_TransformGivenItem(GetItemEntry* entry);
 
 static CollisionPoly* sCurCeilingPoly;
 static s32 sCurCeilingBgId;
+// SOH [Unbound] Transition-actor list index for the Actor_Spawn in flight. It has to be a side channel: the
+// actor's Init runs inside Actor_Spawn and door actors read their list index there, before Actor_Spawn returns.
+static s32 sSpawnTransitionIndex = -1;
 
 // Used for animating the ice trap on the "Get Item" model.
 f32 iceTrapScale;
@@ -762,6 +766,10 @@ void Flags_SetTreasure(PlayState* play, s32 flag) {
  * Tests if current scene clear flag is set.
  */
 s32 Flags_GetClear(PlayState* play, s32 flag) {
+    // SOH [Unbound] Clear flags are keyed by room; rooms >= 32 live in the registry's growable store.
+    if (flag >= 32) {
+        return SceneFlagsExt_Get(play->sceneNum, SCENE_FLAGS_EXT_CLEAR, flag);
+    }
     return play->actorCtx.flags.clear & (1 << flag);
 }
 
@@ -770,7 +778,11 @@ s32 Flags_GetClear(PlayState* play, s32 flag) {
  */
 void Flags_SetClear(PlayState* play, s32 flag) {
     u8 previouslyOff = !Flags_GetClear(play, flag);
-    play->actorCtx.flags.clear |= (1 << flag);
+    if (flag >= 32) { // SOH [Unbound]
+        SceneFlagsExt_Set(play->sceneNum, SCENE_FLAGS_EXT_CLEAR, flag);
+    } else {
+        play->actorCtx.flags.clear |= (1 << flag);
+    }
     if (previouslyOff) {
         LUSLOG_INFO("Clear Flag Set - %#x", flag);
         GameInteractor_ExecuteOnSceneFlagSet(play->sceneNum, FLAG_SCENE_CLEAR, flag);
@@ -782,7 +794,11 @@ void Flags_SetClear(PlayState* play, s32 flag) {
  */
 void Flags_UnsetClear(PlayState* play, s32 flag) {
     u8 previouslyOn = Flags_GetClear(play, flag);
-    play->actorCtx.flags.clear &= ~(1 << flag);
+    if (flag >= 32) { // SOH [Unbound]
+        SceneFlagsExt_Unset(play->sceneNum, SCENE_FLAGS_EXT_CLEAR, flag);
+    } else {
+        play->actorCtx.flags.clear &= ~(1 << flag);
+    }
     if (previouslyOn) {
         LUSLOG_INFO("Clear Flag Unset - %#x", flag);
         GameInteractor_ExecuteOnSceneFlagUnset(play->sceneNum, FLAG_SCENE_CLEAR, flag);
@@ -793,6 +809,9 @@ void Flags_UnsetClear(PlayState* play, s32 flag) {
  * Tests if current scene temp clear flag is set.
  */
 s32 Flags_GetTempClear(PlayState* play, s32 flag) {
+    if (flag >= 32) { // SOH [Unbound]
+        return SceneFlagsExt_Get(play->sceneNum, SCENE_FLAGS_EXT_TEMP_CLEAR, flag);
+    }
     return play->actorCtx.flags.tempClear & (1 << flag);
 }
 
@@ -800,6 +819,10 @@ s32 Flags_GetTempClear(PlayState* play, s32 flag) {
  * Sets current scene temp clear flag.
  */
 void Flags_SetTempClear(PlayState* play, s32 flag) {
+    if (flag >= 32) { // SOH [Unbound]
+        SceneFlagsExt_Set(play->sceneNum, SCENE_FLAGS_EXT_TEMP_CLEAR, flag);
+        return;
+    }
     play->actorCtx.flags.tempClear |= (1 << flag);
 }
 
@@ -807,6 +830,10 @@ void Flags_SetTempClear(PlayState* play, s32 flag) {
  * Unsets current scene temp clear flag.
  */
 void Flags_UnsetTempClear(PlayState* play, s32 flag) {
+    if (flag >= 32) { // SOH [Unbound]
+        SceneFlagsExt_Unset(play->sceneNum, SCENE_FLAGS_EXT_TEMP_CLEAR, flag);
+        return;
+    }
     play->actorCtx.flags.tempClear &= ~(1 << flag);
 }
 
@@ -881,8 +908,6 @@ void TitleCard_InitBossName(PlayState* play, TitleCardContext* titleCtx, void* t
 
 void TitleCard_InitPlaceName(PlayState* play, TitleCardContext* titleCtx, void* texture, s32 x, s32 y, s32 width,
                              s32 height, s32 delay) {
-    SceneTableEntry* loadedScene = play->loadedScene;
-    //  size_t size = loadedScene->titleFile.vromEnd - loadedScene->titleFile.vromStart;
     switch (play->sceneNum) {
         case SCENE_DEKU_TREE:
             texture = gDekuTreeTitleCardENGTex;
@@ -2554,6 +2579,7 @@ void Actor_InitContext(PlayState* play, ActorContext* actorCtx, ActorEntry* acto
     s32 i;
 
     savedSceneFlags = LinkSpan_SceneFlags(play->sceneNum);
+    SceneFlagsExt_LoadClear(play->sceneNum); // SOH [Unbound] clear/temp flags for rooms >= 32
 
     memset(actorCtx, 0, sizeof(*actorCtx));
 
@@ -3000,8 +3026,15 @@ s32 Ship_CalcShouldDrawAndUpdate(PlayState* play, Actor* actor, Vec3f* projected
         return false;
     }
 
-    s32 multiplier = CVarGetInteger(CVAR_ENHANCEMENT("DisableDrawDistance"), 1);
+    f32 multiplier = CVarGetInteger(CVAR_ENHANCEMENT("DisableDrawDistance"), 1);
     multiplier = MAX(multiplier, 1);
+
+    // SOH [Unbound] Scenes that raise their draw distance past the vanilla 12800 get actor culling scaled to match,
+    // otherwise a far horizon shows empty terrain (vanilla uncull zones were tuned to the 12800 far plane).
+    // Stopgap: a per-scene cull scale in the lighting entry would be the honest format field.
+    if (play->lightCtx.worldFog && play->lightCtx.zFar > 12800.0f) {
+        multiplier *= play->lightCtx.zFar / 12800.0f;
+    }
 
     // Some actors have a really short forward value, so we need to add to it before the multiplier to increase the
     // final strength of the forward culling
@@ -3414,6 +3447,8 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     actor->update = dbEntry->update;
     actor->draw = dbEntry->draw;
     actor->room = play->roomCtx.curRoom.num;
+    actor->transitionIndex = sSpawnTransitionIndex; // SOH [Unbound] -1 unless spawned from the transition list
+    sSpawnTransitionIndex = -1;
     actor->home.pos.x = posX;
     actor->home.pos.y = posY;
     actor->home.pos.z = posZ;
@@ -3477,9 +3512,14 @@ void Actor_SpawnTransitionActors(PlayState* play, ActorContext* actorCtx) {
                 ((transitionActor->sides[1].room >= 0) &&
                  ((transitionActor->sides[1].room == play->roomCtx.curRoom.num) ||
                   (transitionActor->sides[1].room == play->roomCtx.prevRoom.num)))) {
+                // SOH [Unbound] The list index travels on Actor.transitionIndex (see TRANSITION_ACTOR_INDEX);
+                // the 6-bit packing into params is kept for the first 64 so untouched readers still work.
+                // Scene data leaves bits 10-15 clear, so masking them is equivalent to vanilla's add.
+                sSpawnTransitionIndex = i;
                 Actor_Spawn(actorCtx, play, (s16)(transitionActor->id & 0x1FFF), transitionActor->pos.x,
                             transitionActor->pos.y, transitionActor->pos.z, 0, transitionActor->rotY, 0,
-                            (i << 0xA) + transitionActor->params);
+                            ((i & 0x3F) << 0xA) | (transitionActor->params & 0x3FF));
+                sSpawnTransitionIndex = -1;
 
                 transitionActor->id = -transitionActor->id;
                 numActors = play->transiActorCtx.numActors;

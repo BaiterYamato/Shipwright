@@ -12,6 +12,8 @@
 #include "soh/resource/type/CollisionHeader.h"
 #include "soh/resource/type/Cutscene.h"
 #include "soh/resource/type/scenecommand/SetCameraSettings.h"
+#include "soh/resource/type/scenecommand/SetAnimatedMaterialList.h"
+#include "soh/unbound/UnboundAudio.h"
 #include "soh/resource/type/scenecommand/SetCutscenes.h"
 #include "soh/resource/type/scenecommand/SetStartPositionList.h"
 #include "soh/resource/type/scenecommand/SetActorList.h"
@@ -23,6 +25,7 @@
 #include "soh/resource/type/scenecommand/SetMesh.h"
 #include "soh/resource/type/scenecommand/SetObjectList.h"
 #include "soh/resource/type/scenecommand/SetLightList.h"
+#include "soh/resource/type/scenecommand/SetLightingSettings.h"
 #include "soh/resource/type/scenecommand/SetPathways.h"
 #include "soh/resource/type/scenecommand/SetTransitionActorList.h"
 #include "soh/resource/type/scenecommand/SetSkyboxSettings.h"
@@ -223,7 +226,7 @@ bool Scene_CommandLightList(PlayState* play, SOH::ISceneCommand* cmd) {
 bool Scene_CommandPathList(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetPathways* cmdPath = static_pointer_cast<SOH::SetPathways>(cmd);
     SOH::SetPathways* cmdPath = (SOH::SetPathways*)cmd;
-    play->setupPathList = (Path*)(cmdPath->GetPointer()[0]);
+    play->setupPathList = (Path*)cmdPath->GetPathList(); // SOH [Unbound] every listed path document, concatenated
 
     return false;
 }
@@ -251,6 +254,9 @@ bool Scene_CommandTransitionActorList(PlayState* play, SOH::ISceneCommand* cmd) 
 //}
 
 bool Scene_CommandLightSettingsList(PlayState* play, SOH::ISceneCommand* cmd) {
+    // SOH [Unbound] Mirror z_scene.c: the count bounds the light-setting index (func_80074CE8).
+    SOH::SetLightingSettings* cmdLight = (SOH::SetLightingSettings*)cmd;
+    play->envCtx.numLightSettings = (u8)cmdLight->settings.size();
     play->envCtx.lightSettingsList = (EnvLightSettings*)cmd->GetRawPointer();
 
     return false;
@@ -347,6 +353,7 @@ bool Scene_CommandSoundSettings(PlayState* play, SOH::ISceneCommand* cmd) {
 
     play->sequenceCtx.seqId = cmdSnd->settings.seqId;
     play->sequenceCtx.natureAmbienceId = cmdSnd->settings.natureAmbienceId;
+    Unbound_BindSceneSong(play, cmdSnd->unboundSongSeqId); // SOH [Unbound]
 
     if (gSaveContext.seqId == 0xFF) {
         Audio_QueueSeqCmd(cmdSnd->settings.reverb | 0xF0000000);
@@ -375,9 +382,15 @@ bool Scene_CommandAlternateHeaderList(PlayState* play, SOH::ISceneCommand* cmd) 
     // osSyncPrintf("\n[ZU]sceneset time   =[%X]", gSaveContext.cutsceneIndex);
     // osSyncPrintf("\n[ZU]sceneset counter=[%X]", gSaveContext.sceneLayer);
 
+    // SOH [Unbound] A setup index past the last defined header behaves like an empty one (falls back below).
+    auto headerAt = [&](size_t index) -> SOH::Scene* {
+        return index < cmdHeaders->headers.size()
+                   ? std::static_pointer_cast<SOH::Scene>(cmdHeaders->headers[index]).get()
+                   : nullptr;
+    };
+
     if (gSaveContext.sceneLayer != 0) {
-        SOH::Scene* desiredHeader =
-            std::static_pointer_cast<SOH::Scene>(cmdHeaders->headers[gSaveContext.sceneLayer - 1]).get();
+        SOH::Scene* desiredHeader = headerAt(gSaveContext.sceneLayer - 1);
 
         if (desiredHeader != nullptr) {
             sLinkSpanSceneLayer = gSaveContext.sceneLayer;
@@ -388,8 +401,7 @@ bool Scene_CommandAlternateHeaderList(PlayState* play, SOH::ISceneCommand* cmd) 
             osSyncPrintf("\nげぼはっ！ 指定されたデータがないでええっす！");
 
             if (gSaveContext.sceneLayer == 3) {
-                SOH::Scene* desiredHeader =
-                    std::static_pointer_cast<SOH::Scene>(cmdHeaders->headers[gSaveContext.sceneLayer - 2]).get();
+                SOH::Scene* desiredHeader = headerAt(gSaveContext.sceneLayer - 2);
 
                 // "Using adult day data there!"
                 osSyncPrintf("\nそこで、大人の昼データを使用するでええっす！！");
@@ -416,6 +428,14 @@ bool Scene_CommandCutsceneData(PlayState* play, SOH::ISceneCommand* cmd) {
 }
 
 // Camera & World Map Area
+// SOH [Unbound] `materialAnims` (SPEC.md §4.2): the list lives in the command resource for as long as the scene does.
+bool Scene_CommandAnimatedMaterials(PlayState* play, SOH::ISceneCommand* cmd) {
+    SOH::SetAnimatedMaterialList* list = (SOH::SetAnimatedMaterialList*)cmd;
+    play->sceneMaterialAnims = list->GetPointer();
+    play->sceneMaterialAnimCount = (u32)list->entries.size();
+    return false;
+}
+
 bool Scene_CommandMiscSettings(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetCameraSettings* cmdCam = std::static_pointer_cast<SOH::SetCameraSettings>(cmd);
     SOH::SetCameraSettings* cmdCam = (SOH::SetCameraSettings*)cmd;
@@ -467,6 +487,7 @@ bool (*sceneCommands[])(PlayState*, SOH::ISceneCommand*) = {
     Scene_CommandCutsceneData,        // SCENE_CMD_ID_CUTSCENE_DATA
     Scene_CommandAlternateHeaderList, // SCENE_CMD_ID_ALTERNATE_HEADER_LIST
     Scene_CommandMiscSettings,        // SCENE_CMD_ID_MISC_SETTINGS
+    Scene_CommandAnimatedMaterials,   // SOH [Unbound] SceneCommandID::SetAnimatedMaterialList (0x1A)
 };
 
 s32 OTRScene_ExecuteCommands(PlayState* play, SOH::Scene* scene) {
@@ -486,7 +507,8 @@ s32 OTRScene_ExecuteCommands(PlayState* play, SOH::Scene* scene) {
             break;
         }
 
-        if ((int)cmdCode <= 0x19) {
+        // SOH [Unbound] the table grew past the vanilla 0x19 (materialAnims); bound it by its size
+        if ((size_t)cmdCode < sizeof(sceneCommands) / sizeof(sceneCommands[0])) {
             if (sceneCommands[(int)cmdCode](play, sceneCmd.get()))
                 break;
         } else {
@@ -509,7 +531,12 @@ extern "C" s32 OTRfunc_800973FC(PlayState* play, RoomContext* roomCtx) {
             gSegments[3] = VIRTUAL_TO_PHYSICAL(roomCtx->unk_34);
 
             sLinkSpanSceneLayer = 0;
-            OTRScene_ExecuteCommands(play, (SOH::Scene*)roomCtx->roomToLoad);
+            if (roomCtx->roomToLoad == nullptr) { // SOH [Unbound] a room that failed to load must not crash the scene
+                SPDLOG_ERROR("Room {} of scene {:#x} did not load; skipping its commands", roomCtx->curRoom.num,
+                             play->sceneNum);
+            } else {
+                OTRScene_ExecuteCommands(play, (SOH::Scene*)roomCtx->roomToLoad);
+            }
 
             Player_SetBootData(play, GET_PLAYER(play));
             Actor_SpawnTransitionActors(play, &play->actorCtx);

@@ -1,12 +1,15 @@
 #include "global.h"
 #include "vt.h"
 #include "soh/ActorDB.h"
+#include "soh/unbound/UnboundAudio.h" // SOH [Unbound]
 #include <assert.h>
 
 RomFile sNaviMsgFiles[];
 
 s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId) {
     size_t size;
+    // SOH [Unbound] objects are resolved by asset name on PC; ids past the vanilla table have no ROM file
+    s32 hasRomFile = (objectId >= 0) && ((u32)objectId < gObjectTableSize);
 
     if (objectCtx->num >= OBJECT_EXCHANGE_BANK_MAX) {
         osSyncPrintf("[Unbound] object bank full (%d slots); object %d was not loaded\n", OBJECT_EXCHANGE_BANK_MAX,
@@ -15,7 +18,7 @@ s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId) {
     }
 
     objectCtx->status[objectCtx->num].id = objectId;
-    size = gObjectTable[objectId].vromEnd - gObjectTable[objectId].vromStart;
+    size = hasRomFile ? gObjectTable[objectId].vromEnd - gObjectTable[objectId].vromStart : 0;
 
     osSyncPrintf("OBJECT[%d] SIZE %fK SEG=%x\n", objectId, size / 1024.0f, objectCtx->status[objectCtx->num].segment);
 
@@ -25,8 +28,10 @@ s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId) {
     assert(((objectCtx->num < OBJECT_EXCHANGE_BANK_MAX) &&
             (((uintptr_t)objectCtx->status[objectCtx->num].segment + size) < (uintptr_t)objectCtx->spaceEnd)));
 
-    DmaMgr_SendRequest1(objectCtx->status[objectCtx->num].segment, gObjectTable[objectId].vromStart, size, __FILE__,
-                        __LINE__);
+    if (hasRomFile) {
+        DmaMgr_SendRequest1(objectCtx->status[objectCtx->num].segment, gObjectTable[objectId].vromStart, size, __FILE__,
+                            __LINE__);
+    }
 
     if (objectCtx->num < OBJECT_EXCHANGE_BANK_MAX - 1) {
         objectCtx->status[objectCtx->num + 1].segment =
@@ -153,12 +158,14 @@ void func_800981B8(ObjectContext* objectCtx) {
 
     for (i = 0; i < objectCtx->num; i++) {
         id = objectCtx->status[i].id;
-        size = gObjectTable[id].vromEnd - gObjectTable[id].vromStart;
+        size = id < gObjectTableSize ? gObjectTable[id].vromEnd - gObjectTable[id].vromStart : 0; // SOH [Unbound]
         osSyncPrintf("OBJECT[%d] SIZE %fK SEG=%x\n", objectCtx->status[i].id, size / 1024.0f,
                      objectCtx->status[i].segment);
         osSyncPrintf("num=%d adrs=%x end=%x\n", objectCtx->num, (uintptr_t)objectCtx->status[i].segment + size,
                      objectCtx->spaceEnd);
-        DmaMgr_SendRequest1(objectCtx->status[i].segment, gObjectTable[id].vromStart, size, __FILE__, __LINE__);
+        if (id < gObjectTableSize) { // SOH [Unbound]
+            DmaMgr_SendRequest1(objectCtx->status[i].segment, gObjectTable[id].vromStart, size, __FILE__, __LINE__);
+        }
     }
 }
 
@@ -418,6 +425,7 @@ void Scene_CommandUndefined9(PlayState* play, SceneCmd* cmd) {
 void Scene_CommandSoundSettings(PlayState* play, SceneCmd* cmd) {
     play->sequenceCtx.seqId = cmd->soundSettings.seqId;
     play->sequenceCtx.natureAmbienceId = cmd->soundSettings.natureAmbienceId;
+    Unbound_BindSceneSong(play, 0); // SOH [Unbound] a binary scene binds no song
 
     if (gSaveContext.seqId == (u8)NA_BGM_DISABLED) {
         Audio_QueueSeqCmd(cmd->soundSettings.specId | 0xF0000000);

@@ -113,9 +113,9 @@ int main() {
     Check(room.actors[0].id == 21 && room.actors[0].pos[2] == 9 && room.actors[0].rot[1] == 1,
           "$order põe a chave listada primeiro; booleano vira inteiro");
     Check(room.actors[1].id == 0x0015 && room.actors[1].params == 3, "depois vem a ordem numérica das chaves");
-    Check(room.actors[2].id == 0x0095 && room.actors[2].pos[0] == 100 && room.actors[2].pos[1] == 16 &&
+    Check(room.actors[2].id == 0x0095 && room.actors[2].pos[0] == 100.9f && room.actors[2].pos[1] == 16 &&
               room.actors[2].pos[2] == -3 && room.actors[2].params == 0x0200 && room.actors[2].rot[1] == 0,
-          "patch parcial mantém campos vanilla; fração truncada, string hex aceita");
+          "patch parcial mantém campos vanilla; posição fracionária, string hex aceita");
     Check(room.actors[3].id == 22 && room.actors[3].pos[0] == 0 && room.actors[3].pos[1] == 0,
           "vetor com menos de 3 elementos vira [0,0,0]");
     const std::vector<LinkSpanUnbound::LayerDocument> replaceLayers{
@@ -124,8 +124,8 @@ int main() {
     };
     Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 0, replaceLayers, room, error) && room.actors.size() == 1 &&
               room.actors[0].id == static_cast<int16_t>(70000 & 0xFFFF) &&
-              room.actors[0].pos[0] == static_cast<int16_t>(40000 - 65536) && room.actors[0].params == -1,
-          "$replace descarta a lista de baixo; valores fora da largura fazem wrap");
+              room.actors[0].pos[0] == 40000.0f && room.actors[0].params == -1,
+          "$replace descarta a lista de baixo; inteiros fora da largura fazem wrap, posição é f32");
     Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 2, replaceLayers, room, error) && room.actors.size() == 3,
           "patch de outra camada de cena não mexe na lista atual");
     const std::vector<LinkSpanUnbound::LayerDocument> wrongSchema{

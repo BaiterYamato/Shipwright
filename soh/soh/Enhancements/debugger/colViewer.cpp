@@ -420,16 +420,18 @@ void DrawDynapoly(std::vector<Gfx>& dl, CollisionHeader* col, int32_t bgId) {
         lastColorG = color.g;
         lastColorB = color.b;
 
-        Vec3s* va = &col->vtxList[COLPOLY_VTX_INDEX(poly->flags_vIA)];
-        Vec3s* vb = &col->vtxList[COLPOLY_VTX_INDEX(poly->flags_vIB)];
-        Vec3s* vc = &col->vtxList[COLPOLY_VTX_INDEX(poly->vIC)];
-        vtxDl.push_back(gdSPDefVtxN(va->x, va->y, va->z, 0, 0, (signed char)(poly->normal.x / 0x100),
+        // SOH [Unbound] collision vertices are s32, and so is Vtx.ob (GBI_S32_VTX), so the overlay can draw a
+        // scene of any size. Casting to s16 here would wrap on exactly the large scenes this fork exists for.
+        Vec3i* va = &col->vtxList[COLPOLY_VTX_INDEX(poly->flags_vIA)];
+        Vec3i* vb = &col->vtxList[COLPOLY_VTX_INDEX(poly->flags_vIB)];
+        Vec3i* vc = &col->vtxList[COLPOLY_VTX_INDEX(poly->vIC)];
+        vtxDl.push_back(gdSPDefVtxN((s32)va->x, (s32)va->y, (s32)va->z, 0, 0, (signed char)(poly->normal.x / 0x100),
                                     (signed char)(poly->normal.y / 0x100), (signed char)(poly->normal.z / 0x100),
                                     0xFF));
-        vtxDl.push_back(gdSPDefVtxN(vb->x, vb->y, vb->z, 0, 0, (signed char)(poly->normal.x / 0x100),
+        vtxDl.push_back(gdSPDefVtxN((s32)vb->x, (s32)vb->y, (s32)vb->z, 0, 0, (signed char)(poly->normal.x / 0x100),
                                     (signed char)(poly->normal.y / 0x100), (signed char)(poly->normal.z / 0x100),
                                     0xFF));
-        vtxDl.push_back(gdSPDefVtxN(vc->x, vc->y, vc->z, 0, 0, (signed char)(poly->normal.x / 0x100),
+        vtxDl.push_back(gdSPDefVtxN((s32)vc->x, (s32)vc->y, (s32)vc->z, 0, 0, (signed char)(poly->normal.x / 0x100),
                                     (signed char)(poly->normal.y / 0x100), (signed char)(poly->normal.z / 0x100),
                                     0xFF));
 
@@ -478,7 +480,7 @@ void DrawBgActorCollision() {
     InitGfx(dl, showBgActorSetting);
     dl.push_back(gsSPMatrix(&gMtxClear, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH));
 
-    for (int32_t bgIndex = 0; bgIndex < BG_ACTOR_MAX; bgIndex++) {
+    for (int32_t bgIndex = 0; bgIndex < gPlayState->colCtx.dyna.bgActorMax; bgIndex++) {
         if (gPlayState->colCtx.dyna.bgActorFlags[bgIndex] & 1) {
             BgActor& bg = gPlayState->colCtx.dyna.bgActors[bgIndex];
             Mtx m;
@@ -588,7 +590,7 @@ void DrawColCheckList(std::vector<Gfx>& dl, Collider** objects, int32_t count) {
                     SkinMatrix_SetTranslate(&mf, sph->dim.worldSphere.center.x, sph->dim.worldSphere.center.y,
                                             sph->dim.worldSphere.center.z);
                     MtxF ms;
-                    int32_t radius = sph->dim.worldSphere.radius == 0 ? 1 : sph->dim.worldSphere.radius;
+                    f32 radius = sph->dim.worldSphere.radius == 0 ? 1.0f : sph->dim.worldSphere.radius;
                     SkinMatrix_SetScale(&ms, radius / 128.0f, radius / 128.0f, radius / 128.0f);
                     MtxF dest;
                     SkinMatrix_MtxFMtxFMult(&mf, &ms, &dest);
@@ -609,7 +611,7 @@ void DrawColCheckList(std::vector<Gfx>& dl, Collider** objects, int32_t count) {
                                         static_cast<f32>(cyl->dim.pos.y + cyl->dim.yShift),
                                         static_cast<f32>(cyl->dim.pos.z));
                 MtxF ms;
-                int32_t radius = cyl->dim.radius == 0 ? 1 : cyl->dim.radius;
+                f32 radius = cyl->dim.radius == 0 ? 1.0f : cyl->dim.radius;
                 SkinMatrix_SetScale(&ms, radius / 128.0f, cyl->dim.height / 128.0f, radius / 128.0f);
                 MtxF dest;
                 SkinMatrix_MtxFMtxFMult(&mt, &ms, &dest);
@@ -679,8 +681,8 @@ void DrawColCheckCollision() {
 // Draws a waterbox
 void DrawWaterbox(std::vector<Gfx>& dl, WaterBox* water, float water_max_depth = -4000.0f) {
     // Skip waterboxes that would be disabled in current room
-    int32_t room = ((water->properties >> 13) & 0x3F);
-    if ((room != gPlayState->roomCtx.curRoom.num) && (room != 0x3F)) {
+    int32_t room = water->room; // SOH [Unbound]
+    if ((room != gPlayState->roomCtx.curRoom.num) && (room != -1)) {
         return;
     }
 

@@ -326,7 +326,7 @@ std::string DescribeActors(const std::vector<LinkSpanUnbound::RoomActor>& actors
     for (size_t i = 0; i < actors.size() && i < limit; ++i) {
         const auto& actor = actors[i];
         char entry[96];
-        std::snprintf(entry, sizeof(entry), "%s%zu:0x%04X@%d,%d,%d/0x%04X", text.empty() ? "" : " ", i,
+        std::snprintf(entry, sizeof(entry), "%s%zu:0x%04X@%.0f,%.0f,%.0f/0x%04X", text.empty() ? "" : " ", i,
                       static_cast<unsigned>(static_cast<uint16_t>(actor.id)), actor.pos[0], actor.pos[1],
                       actor.pos[2], static_cast<unsigned>(static_cast<uint16_t>(actor.params)));
         text += entry;
@@ -341,10 +341,10 @@ std::string DescribeActors(const std::vector<LinkSpanUnbound::RoomActor>& actors
 // camadas sobre a lista vanilla. Sem documento, UNSUPPORTED deixa a sala como está.
 ShipNativeStatus SHIP_NATIVE_CALL OnRoomActors(void* user, const ShipNativeHookCall* call) {
     auto* state = static_cast<State*>(user);
-    if (!IsOwner(state) || !call || call->payload_size < sizeof(ShipOotRoomActorsHookV1)) {
+    if (!IsOwner(state) || !call || call->payload_size < sizeof(ShipOotRoomActorsHookV2)) {
         return SHIP_NATIVE_UNSUPPORTED;
     }
-    auto* payload = static_cast<ShipOotRoomActorsHookV1*>(call->payload);
+    auto* payload = static_cast<ShipOotRoomActorsHookV2*>(call->payload);
     if (!payload->entries || payload->count > payload->capacity) {
         return SHIP_NATIVE_UNSUPPORTED;
     }
@@ -457,7 +457,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     // Host sem oot.room.actors (ou ABI < 1.2) segue sem alterar salas.
     if (runtime->abi_minor >= 2 && runtime->register_hook) {
         const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ROOM_ACTORS,
-                                       LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotRoomActorsHookV1),
+                                       LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION, sizeof(ShipOotRoomActorsHookV2),
                                        SHIP_NATIVE_HOOK_TRANSFORM, 0, 0, OnRoomActors, state };
         uint64_t handle = 0;
         state->roomHook = runtime->register_hook(runtime->context, &spec, &handle) == SHIP_NATIVE_OK;

@@ -37,7 +37,7 @@ void Anchor::HandlePacket_TeleportTo(nlohmann::json payload) {
     }
 
     s32 entranceIndex = payload.at("entranceIndex").get<s32>();
-    s8 roomIndex = payload.at("roomIndex").get<s8>();
+    s16 roomIndex = payload.at("roomIndex").get<s16>(); // SOH [Unbound]
 
     if (entranceIndex < 0 || roomIndex < 0) {
         SPDLOG_ERROR("[Anchor] TELEPORT_TO: invalid entranceIndex {} or roomIndex {}", entranceIndex, (int)roomIndex);

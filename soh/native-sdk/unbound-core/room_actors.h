@@ -8,10 +8,10 @@
 
 namespace LinkSpanUnbound {
 
-// Mesma ordem de campos do ActorEntry do jogo.
+// Mesma ordem de campos do ActorEntry do jogo (posição em unidades do mundo, f32).
 struct RoomActor {
     int16_t id = 0;
-    int16_t pos[3]{};
+    float pos[3]{};
     int16_t rot[3]{};
     int16_t params = 0;
 };

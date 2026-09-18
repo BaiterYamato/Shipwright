@@ -57,7 +57,8 @@ static_assert(MacrosMatchVertexWordHelpers(), "COLPOLY_* macros diverge from the
 
 #define UNBOUND_SAME_OFFSET(Runtime, Resource, field) (offsetof(Runtime, field) == offsetof(Resource, field))
 
-static_assert(sizeof(CollisionPoly) == 0x18 && sizeof(SOH::CollisionPoly) == sizeof(CollisionPoly),
+static_assert(sizeof(CollisionPoly) == 0x1C && // dist s32 (OOT-CORE-007)
+                   sizeof(SOH::CollisionPoly) == sizeof(CollisionPoly),
               "CollisionPoly layout changed or the resource mirror diverged");
 static_assert(UNBOUND_SAME_OFFSET(CollisionPoly, SOH::CollisionPoly, type) &&
                   UNBOUND_SAME_OFFSET(CollisionPoly, SOH::CollisionPoly, flags_vIA) &&

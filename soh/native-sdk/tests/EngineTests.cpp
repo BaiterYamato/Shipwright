@@ -1086,9 +1086,9 @@ int main(int argc, char** argv) {
               policy.hooks->HookCount() == 0,
           "host deve declarar oot.play.update, oot.actor.update e oot.actor.draw v1 sem hooks");
     {
-        Check(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ROOM_ACTORS, LINKSPAN_OOT_HOOKS_VERSION) != 0,
+        Check(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ROOM_ACTORS, LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION) != 0,
               "ponto oot.room.actors");
-        std::array<ShipOotActorEntryV1, 8> entries{};
+        std::array<ShipOotActorEntryV2, 8> entries{};
         entries[0] = { 0x15, { 1, 2, 3 }, { 0, 0, 0 }, 3 };
         entries[1] = { 0x16, { 4, 5, 6 }, { 0, 0x4000, 0 }, 7 };
         Check(ShipLuaHost::DispatchOotRoomActors(nullptr, 81, 0, 0, "scenes/x", entries.data(), 2, 8) == 2,
@@ -1098,11 +1098,11 @@ int main(int argc, char** argv) {
             int32_t scene = 0;
         } seen;
         ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ROOM_ACTORS,
-                                 LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotRoomActorsHookV1),
+                                 LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION, sizeof(ShipOotRoomActorsHookV2),
                                  SHIP_NATIVE_HOOK_TRANSFORM, 0, 0,
                                  [](void* user, const ShipNativeHookCall* call) -> ShipNativeStatus {
                                      auto* data = static_cast<Seen*>(user);
-                                     auto* payload = static_cast<ShipOotRoomActorsHookV1*>(call->payload);
+                                     auto* payload = static_cast<ShipOotRoomActorsHookV2*>(call->payload);
                                      data->path = payload->room_path;
                                      data->scene = payload->scene_id;
                                      payload->entries[0].params = 0x42;
@@ -1120,7 +1120,7 @@ int main(int argc, char** argv) {
               "contagem acima da capacidade mantém a lista");
         Check(policy.hooks->Unregister("test", handle) == SHIP_NATIVE_OK, "remove transform");
         spec.callback = [](void*, const ShipNativeHookCall* call) -> ShipNativeStatus {
-            static_cast<ShipOotRoomActorsHookV1*>(call->payload)->count = 0;
+            static_cast<ShipOotRoomActorsHookV2*>(call->payload)->count = 0;
             return SHIP_NATIVE_FAILURE;
         };
         Check(policy.hooks->Register("test", spec, &handle) == SHIP_NATIVE_OK &&
