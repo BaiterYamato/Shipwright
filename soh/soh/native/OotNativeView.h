@@ -43,6 +43,8 @@ void UpdateOotCamera();
 // sem pop feitos dentro dele.
 void EnterOotRenderScope();
 void LeaveOotRenderScope();
+// Há um escopo de draw aberto (linkspan.oot.skeletons desenha só dentro dele).
+bool InOotRenderScope();
 
 // Integração com o jogo (OotNativeViewGame.cpp, só no jogo).
 void RegisterOotViewGameHooks();

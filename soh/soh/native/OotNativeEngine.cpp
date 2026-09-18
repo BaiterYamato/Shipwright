@@ -7,6 +7,7 @@
 #include "OotNativeScenes.h"
 #include "OotNativeView.h"
 #include "OotNativeWorld.h"
+#include "OotNativeSkeletons.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
 #include "oot_ocarina.h"
@@ -557,6 +558,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeItems(gameThread);
     InitializeOotNativeView(gameThread);
     InitializeOotNativeWorld(gameThread);
+    InitializeOotNativeSkeletons(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
     policy.services.push_back({LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION,
@@ -595,6 +597,9 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     // Versões novas no fim: a posição dos serviços anteriores não muda.
     const auto& itemsV2 = GetOotNativeItemsServiceV2();
     policy.services.push_back({LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_2, sizeof(itemsV2), &itemsV2});
+    const auto& skeletons = GetOotNativeSkeletonsService();
+    policy.services.push_back(
+        {LINKSPAN_OOT_SKELETONS_SERVICE, LINKSPAN_OOT_SKELETONS_VERSION, sizeof(skeletons), &skeletons});
     policy.hooks = CreateOotHookRegistry();
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;

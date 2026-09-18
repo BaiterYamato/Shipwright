@@ -448,6 +448,88 @@ Header: `soh/soh/native/oot_colliders.h`.
 `raycast_floor`. Golpes de espada fazem o alvo girar, encostar empurra o Link, e o log
 mostra chão, água, linha e parede. Empacote com `tools/package-world-demo.ps1`.
 
+## Atores de sala por JSON (OOT-UNBOUND-004A, slice D1)
+
+### Hook `oot.room.actors` v1
+
+Header: `soh/soh/native/oot_hooks.h`. Aceita TRANSFORM e OBSERVE. Dispara quando o
+comando de lista de atores de uma sala roda, antes do spawn.
+
+O payload `ShipOotRoomActorsHookV1` traz:
+- cena, sala e camada de cena (o cabeçalho alternativo que está executando);
+- o caminho do recurso da sala;
+- uma cópia da lista em `ShipOotActorEntryV1`, que espelha o `ActorEntry`;
+- `count` e `capacity`.
+
+O TRANSFORM pode editar, reordenar, remover ou acrescentar entradas até a
+capacidade. Os atores nascem na ordem final. Um TRANSFORM que falha precisa deixar
+`entries` intacto, porque o host só restaura os campos do payload. Se o payload
+voltar inválido, o host mantém a lista original e registra no log.
+
+### Framework Unbound 0.3.0
+
+O coremod `linkspan.unbound.framework` liga um TRANSFORM nesse hook. Para cada
+sala, ele:
+1. lê `scenes/<cena>/rooms/<n>.json` (SPEC §4.1) em todas as camadas montadas;
+2. mescla sobre a lista vanilla, que entra como camada mais baixa com as chaves
+   `"0"`..`"n-1"`;
+3. devolve `setups.<camada>.actors` na ordem do motor.
+
+A pasta `<cena>` vem da pasta `*_scene` do caminho da sala, e Master Quest ganha
+`_mq`. A mescla segue o SPEC §3:
+- objetos mesclam por chave;
+- `null` apaga;
+- arrays substituem;
+- `$replace` descarta as camadas de baixo;
+- `$order` dá a ordem, e as demais chaves seguem a ordem de chave;
+- o `$schema` final precisa ser `unbound/room/1`.
+
+A leitura segue o §2: inteiros aceitam fração (truncada), string decimal ou `0x` e
+booleano, e valores fora da largura do campo fazem wrap. Uma camada com JSON
+inválido é pulada, e as outras seguem.
+
+A função `room_report` devolve a última sala vista e o último patch. O `main.lua` do
+framework registra o relatório quando ele muda.
+
+### Demo
+
+`soh/native-sdk/unbound-core/field-demo` monta `assets/scenes/spot00/rooms/0.json` e,
+com um save aberto, viaja uma vez para `ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN`. O build
+reaproveita `scene-demo/scene_demo.cpp`. `tools/package-unbound-scene-demo.ps1`
+empacota o framework 0.3.0, a demo de cenas 0.1.1 e a demo do campo 0.1.0.
+
+## Esqueletos animados (OOT-CORE-005B, slice D4)
+
+### `linkspan.oot.skeletons` v1
+
+Header: `soh/soh/native/oot_skeletons.h`. Só na thread do jogo.
+
+- `create(esqueleto, animação, &handle)`: `SkelAnime` normal ou flex, com a animação
+  em loop. Esqueleto de curva ou recurso ausente dá `FAILURE`. As tabelas de juntas
+  ficam no heap do host, fora da arena da cena.
+- `play_animation(handle, animação, velocidade, modo, morph)`: `LINKSPAN_OOT_ANIM_LOOP`
+  ou `LINKSPAN_OOT_ANIM_ONCE`. Com `morph` > 0, transiciona a partir da pose atual.
+- `update(handle, &terminou)`: avança um frame. Chame uma vez por update do ator.
+- `get_frame(handle, &frame, &último)`.
+- `draw(play, handle)`: desenha opaco com a matriz corrente. Só funciona em escopo
+  de draw de `linkspan.oot.render`.
+- `destroy(handle)`.
+
+Os caminhos são do resource manager, sem `__OTR__`. O host não confere se a
+animação combina com as juntas do esqueleto. O reset do host libera os esqueletos
+que sobrarem.
+
+### Demo
+
+`soh/native-sdk/familiar-demo` registra o item `linkspan-demo.keese-whistle` e dá o
+item por `give_item`. O `receive` equipa o item num botão C vazio ou num botão com
+item vanilla.
+
+Usar o item solta um Keese (`object_firefly`) animado, com um cilindro AT de espada
+Kokiri, que voa à frente do Link. Ao acertar, ele bate as asas uma vez em ONCE e
+some. Empacote com `tools/package-familiar-demo.ps1`; `-Extension shipmod` gera o
+contêiner `.shipmod`.
+
 ## Escape hatch (COREEXT-008)
 
 Contrato em `NATIVE-001/rfcs/0023-native-escape-hatch.md`. Uma core extension com

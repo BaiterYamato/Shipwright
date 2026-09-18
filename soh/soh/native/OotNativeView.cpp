@@ -295,6 +295,10 @@ void UpdateOotCamera() {
     }
 }
 
+bool InOotRenderScope() {
+    return InScope();
+}
+
 void EnterOotRenderScope() {
     State().scopes.push_back(0);
 }

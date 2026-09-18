@@ -16,6 +16,9 @@
 #include "oot_world.h"
 #include "oot_colliders.h"
 #include "OotNativeWorld.h"
+#include "oot_skeletons.h"
+#include "OotNativeSkeletons.h"
+#include "OotNativeHooks.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
@@ -443,6 +446,48 @@ ShipNativeStatus SHIP_NATIVE_CALL Receive(void* user, uint8_t) {
 }
 } // namespace FakeGetItem
 
+namespace FakeSkeletons {
+struct Instance {
+    std::string skeleton;
+    std::string animation;
+    float speed = 1.0f;
+    uint8_t mode = 0;
+    int updates = 0;
+    int draws = 0;
+};
+int destroyed = 0;
+
+ShipNativeStatus Create(const char* skeleton, const char* animation, void** out) {
+    if (std::string(skeleton).find("curva") != std::string::npos) {
+        return SHIP_NATIVE_FAILURE;
+    }
+    *out = new Instance{ skeleton, animation };
+    return SHIP_NATIVE_OK;
+}
+void Destroy(void* instance) {
+    ++destroyed;
+    delete static_cast<Instance*>(instance);
+}
+ShipNativeStatus Play(void* instance, const char* animation, float speed, uint8_t mode, float) {
+    auto* skeleton = static_cast<Instance*>(instance);
+    skeleton->animation = animation;
+    skeleton->speed = speed;
+    skeleton->mode = mode;
+    return SHIP_NATIVE_OK;
+}
+uint8_t Update(void* instance) {
+    auto* skeleton = static_cast<Instance*>(instance);
+    return ++skeleton->updates >= 3 && skeleton->mode == LINKSPAN_OOT_ANIM_ONCE ? 1 : 0;
+}
+void Frame(void* instance, float* frame, float* last) {
+    *frame = static_cast<float>(static_cast<Instance*>(instance)->updates);
+    *last = 9.0f;
+}
+void Draw(void*, void* instance) {
+    ++static_cast<Instance*>(instance)->draws;
+}
+} // namespace FakeSkeletons
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit) gBitFlags[bit] = uint32_t{1} << bit;
     ShipLuaHost::SetOotNativeGamepadBridge(
@@ -452,7 +497,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 16 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 17 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -486,9 +531,77 @@ int main(int argc, char** argv) {
           policy.services[14].size == sizeof(ShipOotCollidersV1) &&
           std::string(policy.services[15].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
           policy.services[15].version == LINKSPAN_OOT_ITEMS_VERSION_2 &&
-          policy.services[15].size == sizeof(ShipOotItemsV2),
+          policy.services[15].size == sizeof(ShipOotItemsV2) &&
+          std::string(policy.services[16].name) == LINKSPAN_OOT_SKELETONS_SERVICE &&
+          policy.services[16].version == LINKSPAN_OOT_SKELETONS_VERSION &&
+          policy.services[16].size == sizeof(ShipOotSkeletonsV1),
           "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1, save V1, "
-          "items V1, actors V1, camera V1, render V1, world V1, colliders V1 e items V2");
+          "items V1, actors V1, camera V1, render V1, world V1, colliders V1, items V2 e skeletons V1");
+    {
+        using namespace FakeSkeletons;
+        const auto* skeletons = static_cast<const ShipOotSkeletonsV1*>(policy.services[16].table);
+        uint64_t skel = 0;
+        Check(skeletons->create("objects/object_firefly/gKeeseSkeleton", "objects/object_firefly/gKeeseFlyAnim",
+                                &skel) == SHIP_NATIVE_UNSUPPORTED && skel == 0,
+              "sem ponte não há esqueleto");
+        ShipLuaHost::OotSkeletonsBridge bridge;
+        bridge.create = Create;
+        bridge.destroy = Destroy;
+        bridge.play = Play;
+        bridge.update = Update;
+        bridge.frame = Frame;
+        bridge.draw = Draw;
+        ShipLuaHost::SetOotSkeletonsBridge(bridge);
+        Check(skeletons->create("", "a", &skel) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  skeletons->create("__OTR__objects/x", "a", &skel) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  skeletons->create("objects/x", nullptr, &skel) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  skeletons->create("objects/x", "a", nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "caminhos inválidos");
+        const std::string longPath(LINKSPAN_OOT_SKELETONS_MAX_PATH, 'a');
+        Check(skeletons->create(longPath.c_str(), "a", &skel) == SHIP_NATIVE_INVALID_ARGUMENT, "caminho longo");
+        Check(skeletons->create("objects/curva", "objects/anim", &skel) == SHIP_NATIVE_FAILURE && skel == 0,
+              "falha da ponte");
+        Check(skeletons->create("objects/object_firefly/gKeeseSkeleton", "objects/object_firefly/gKeeseFlyAnim",
+                                &skel) == SHIP_NATIVE_OK && skel != 0 && ShipLuaHost::OotSkeletonCount() == 1,
+              "create");
+        Check(skeletons->play_animation(skel, "objects/outra", 2.0f, 7, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  skeletons->play_animation(skel, "objects/outra", NAN, 0, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  skeletons->play_animation(skel, "objects/outra", 1.0f, 0, -1.0f) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  skeletons->play_animation(skel + 99, "objects/outra", 1.0f, 0, 0.0f) ==
+                      SHIP_NATIVE_INVALID_ARGUMENT,
+              "play_animation inválido");
+        Check(skeletons->play_animation(skel, "objects/outra", 2.0f, LINKSPAN_OOT_ANIM_ONCE, 3.0f) ==
+                  SHIP_NATIVE_OK,
+              "play_animation");
+        uint8_t finished = 9;
+        Check(skeletons->update(skel, &finished) == SHIP_NATIVE_OK && finished == 0 &&
+                  skeletons->update(skel, nullptr) == SHIP_NATIVE_OK &&
+                  skeletons->update(skel, &finished) == SHIP_NATIVE_OK && finished == 1,
+              "update informa o fim da animação ONCE");
+        float frame = 0.0f, last = 0.0f;
+        Check(skeletons->get_frame(skel, &frame, &last) == SHIP_NATIVE_OK && frame == 3.0f && last == 9.0f &&
+                  skeletons->get_frame(skel, nullptr, &last) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "get_frame");
+        int play = 0;
+        Check(skeletons->draw(&play, skel) == SHIP_NATIVE_UNSUPPORTED, "draw fora de escopo");
+        ShipLuaHost::EnterOotRenderScope();
+        Check(skeletons->draw(&play, skel) == SHIP_NATIVE_OK &&
+                  skeletons->draw(nullptr, skel) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "draw no escopo");
+        ShipLuaHost::LeaveOotRenderScope();
+        std::thread([&] {
+            Check(skeletons->update(skel, &finished) == SHIP_NATIVE_INVALID_ARGUMENT, "só na thread do jogo");
+        }).join();
+        uint64_t second = 0;
+        Check(skeletons->create("objects/b", "objects/c", &second) == SHIP_NATIVE_OK && second != skel, "segundo");
+        Check(skeletons->destroy(skel) == SHIP_NATIVE_OK && destroyed == 1 &&
+                  skeletons->destroy(skel) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  skeletons->update(skel, &finished) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "destroy invalida o handle");
+        ShipLuaHost::ResetOotNativeSkeletons();
+        Check(destroyed == 2 && ShipLuaHost::OotSkeletonCount() == 0, "reset libera o que sobrou");
+        ShipLuaHost::SetOotSkeletonsBridge({});
+    }
     {
         using namespace FakeGetItem;
         const auto* items = static_cast<const ShipOotItemsV2*>(policy.services[15].table);
@@ -972,6 +1085,52 @@ int main(int argc, char** argv) {
               policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_DRAW, LINKSPAN_OOT_HOOKS_VERSION) &&
               policy.hooks->HookCount() == 0,
           "host deve declarar oot.play.update, oot.actor.update e oot.actor.draw v1 sem hooks");
+    {
+        Check(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ROOM_ACTORS, LINKSPAN_OOT_HOOKS_VERSION) != 0,
+              "ponto oot.room.actors");
+        std::array<ShipOotActorEntryV1, 8> entries{};
+        entries[0] = { 0x15, { 1, 2, 3 }, { 0, 0, 0 }, 3 };
+        entries[1] = { 0x16, { 4, 5, 6 }, { 0, 0x4000, 0 }, 7 };
+        Check(ShipLuaHost::DispatchOotRoomActors(nullptr, 81, 0, 0, "scenes/x", entries.data(), 2, 8) == 2,
+              "sem hooks a lista não muda");
+        struct Seen {
+            std::string path;
+            int32_t scene = 0;
+        } seen;
+        ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ROOM_ACTORS,
+                                 LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotRoomActorsHookV1),
+                                 SHIP_NATIVE_HOOK_TRANSFORM, 0, 0,
+                                 [](void* user, const ShipNativeHookCall* call) -> ShipNativeStatus {
+                                     auto* data = static_cast<Seen*>(user);
+                                     auto* payload = static_cast<ShipOotRoomActorsHookV1*>(call->payload);
+                                     data->path = payload->room_path;
+                                     data->scene = payload->scene_id;
+                                     payload->entries[0].params = 0x42;
+                                     payload->entries[payload->count] = { 0x77, { 9, 9, 9 }, { 0, 0, 0 }, 1 };
+                                     ++payload->count;
+                                     return SHIP_NATIVE_OK;
+                                 },
+                                 &seen };
+        uint64_t handle = 0;
+        Check(policy.hooks->Register("test", spec, &handle) == SHIP_NATIVE_OK, "transform em oot.room.actors");
+        Check(ShipLuaHost::DispatchOotRoomActors(nullptr, 81, 0, 0, "scenes/x", entries.data(), 2, 8) == 3 &&
+                  entries[0].params == 0x42 && entries[2].id == 0x77 && seen.path == "scenes/x" && seen.scene == 81,
+              "transform edita e acrescenta atores");
+        Check(ShipLuaHost::DispatchOotRoomActors(nullptr, 81, 0, 0, "scenes/x", entries.data(), 8, 8) == 8,
+              "contagem acima da capacidade mantém a lista");
+        Check(policy.hooks->Unregister("test", handle) == SHIP_NATIVE_OK, "remove transform");
+        spec.callback = [](void*, const ShipNativeHookCall* call) -> ShipNativeStatus {
+            static_cast<ShipOotRoomActorsHookV1*>(call->payload)->count = 0;
+            return SHIP_NATIVE_FAILURE;
+        };
+        Check(policy.hooks->Register("test", spec, &handle) == SHIP_NATIVE_OK &&
+                  ShipLuaHost::DispatchOotRoomActors(nullptr, 81, 0, 0, "scenes/x", entries.data(), 3, 8) == 3 &&
+                  policy.hooks->Unregister("test", handle) == SHIP_NATIVE_OK,
+              "transform que falha tem a contagem restaurada");
+        spec.mode = SHIP_NATIVE_HOOK_REPLACE;
+        Check(policy.hooks->Register("test", spec, &handle) == SHIP_NATIVE_UNSUPPORTED,
+              "oot.room.actors recusa replace");
+    }
     {
         struct Seen { int calls = 0; int16_t id = 0; } seen;
         const ShipNativeHookSpec spec{sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ACTOR_UPDATE,

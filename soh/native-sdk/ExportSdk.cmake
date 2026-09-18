@@ -36,6 +36,7 @@ add_executable(oot_native_engine_tests
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeItems.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeView.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeWorld.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeSkeletons.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeEscape.cpp")
 target_include_directories(oot_native_engine_tests PRIVATE
     "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"

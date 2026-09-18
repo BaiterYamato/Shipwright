@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$ProviderDirectory = 'build\item-demo-native\mod\provider',
+    [string]$ProviderDirectory = 'build\familiar-demo-native\mod\provider',
     [string]$Validator = 'build\x64\ship-lua\Release\shiplua_manifest_validator.exe',
     [string]$LayoutHeader = 'build\x64\native-sdk\oot_layout_id.h',
-    [string]$OutputDirectory = 'build\item-demo',
+    [string]$OutputDirectory = 'build\familiar-demo',
     [ValidateSet('zip', 'shipmod')][string]$Extension = 'zip'
 )
 
-# Packages the synthetic item and actor type demo (OOT-CORE-003) as a Link-Span mod named after the host layout id.
+# Packages the animated familiar demo (slice D4, OOT-CORE-005B) as a Link-Span mod named after the host layout id.
 # -Extension shipmod writes the .shipmod container (the same ZIP) instead of .zip.
 
 $ErrorActionPreference = 'Stop'
@@ -34,7 +34,7 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
         $Source, $Destination, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 }
 
-$demoDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_item_demo.dll') 'Item demo DLL'
+$demoDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_familiar_demo.dll') 'Familiar demo DLL'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
 $layoutText = Get-Content -LiteralPath (Resolve-InputFile $LayoutHeader 'Layout id header') -Raw
 $layoutMatch = [regex]::Match($layoutText, 'LINKSPAN_OOT_LAYOUT_ID "([0-9a-f]{64})"')
@@ -43,35 +43,35 @@ if (-not $layoutMatch.Success) {
 }
 $layout = $layoutMatch.Groups[1].Value.Substring(0, 8)
 
-$sourceRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path 'soh\native-sdk\item-demo'))
+$sourceRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path 'soh\native-sdk\familiar-demo'))
 $packageRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $OutputDirectory))
-$stage = Join-Path $packageRoot 'staging\item-demo'
+$stage = Join-Path $packageRoot 'staging\familiar-demo'
 if (Test-Path -LiteralPath (Join-Path $packageRoot 'staging')) {
     Remove-Item -LiteralPath (Join-Path $packageRoot 'staging') -Recurse -Force
 }
 [System.IO.Directory]::CreateDirectory((Join-Path $stage 'provider')) | Out-Null
 
 Write-Utf8NoBom (Join-Path $stage 'manifest.toml') @'
-id = "linkspan.item-demo"
-name = "Link-Span Item Demo"
-version = "0.2.0"
+id = "linkspan.familiar-demo"
+name = "Link-Span Familiar Demo"
+version = "0.1.0"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
 
 [provider]
 abi_version = "1.2"
-win64 = "provider/linkspan_item_demo.dll"
+win64 = "provider/linkspan_familiar_demo.dll"
 '@
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'main.lua') -Destination (Join-Path $stage 'main.lua')
-Copy-Item -LiteralPath $demoDll -Destination (Join-Path $stage 'provider\linkspan_item_demo.dll')
+Copy-Item -LiteralPath $demoDll -Destination (Join-Path $stage 'provider\linkspan_familiar_demo.dll')
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = Join-Path $packageRoot "LinkSpan-Item-Demo-0.2.0-layout-$layout.$Extension"
+$zip = Join-Path $packageRoot "LinkSpan-Familiar-Demo-0.1.0-layout-$layout.$Extension"
 New-DeterministicZip $stage $zip
 
 & $validatorExe $zip
-if ($LASTEXITCODE -ne 0) { throw 'Invalid item demo package.' }
+if ($LASTEXITCODE -ne 0) { throw 'Invalid familiar demo package.' }
 
 [ordered]@{
     path = $zip
