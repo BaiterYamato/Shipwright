@@ -1,0 +1,181 @@
+// Coremod linkspan.nei (NEI-002): publica linkspan.nei.items v1 sobre linkspan.oot.items v3 e
+// linkspan.oot.save. O estado dos itens vai no bloco de save "nei.items"; os hooks de save trazem e
+// gravam o bloco. Tudo roda na thread do jogo; chamada de outra thread = INVALID_ARGUMENT.
+#include <cstring>
+#include <new>
+#include <string>
+#include <thread>
+
+#include "include/linkspan/nei/nei_items.h"
+#include "oot_engine.h"
+#include "oot_hooks.h"
+#include "oot_layout_id.h"
+#include "registry.h"
+
+namespace {
+
+struct Core {
+    LinkSpanNei::Registry registry;
+    std::thread::id owner;
+};
+
+// A tabela do serviço não leva contexto: uma instância do coremod por processo.
+Core* gCore = nullptr;
+
+LinkSpanNei::Registry* Owned() {
+    return gCore && gCore->owner == std::this_thread::get_id() ? &gCore->registry : nullptr;
+}
+
+#define NEI_FORWARD(call)                                        \
+    auto* registry = Owned();                                    \
+    return registry ? registry->call : SHIP_NATIVE_INVALID_ARGUMENT
+
+ShipNativeStatus SHIP_NATIVE_CALL DefineItem(const NeiItemDefinitionV1* definition, uint64_t* item) {
+    NEI_FORWARD(Define(definition, item));
+}
+ShipNativeStatus SHIP_NATIVE_CALL RemoveItem(uint64_t item) {
+    NEI_FORWARD(Remove(item));
+}
+ShipNativeStatus SHIP_NATIVE_CALL FindItem(const char* id, uint64_t* item) {
+    NEI_FORWARD(Find(id, item));
+}
+ShipNativeStatus SHIP_NATIVE_CALL ListItems(NeiItemVisitFn visit, void* user) {
+    NEI_FORWARD(List(visit, user));
+}
+ShipNativeStatus SHIP_NATIVE_CALL GetState(uint64_t item, NeiItemStateV1* state) {
+    NEI_FORWARD(GetState(item, state));
+}
+ShipNativeStatus SHIP_NATIVE_CALL GiveItem(uint64_t item) {
+    NEI_FORWARD(Give(item));
+}
+ShipNativeStatus SHIP_NATIVE_CALL GrantItem(uint64_t item) {
+    NEI_FORWARD(Grant(item));
+}
+ShipNativeStatus SHIP_NATIVE_CALL RevokeItem(uint64_t item) {
+    NEI_FORWARD(Revoke(item));
+}
+ShipNativeStatus SHIP_NATIVE_CALL SetCount(uint64_t item, uint16_t count) {
+    NEI_FORWARD(SetCount(item, count));
+}
+ShipNativeStatus SHIP_NATIVE_CALL AddCount(uint64_t item, int32_t delta, uint16_t* result) {
+    NEI_FORWARD(AddCount(item, delta, result));
+}
+ShipNativeStatus SHIP_NATIVE_CALL SetLevel(uint64_t item, uint8_t level) {
+    NEI_FORWARD(SetLevel(item, level));
+}
+ShipNativeStatus SHIP_NATIVE_CALL Equip(uint64_t item, uint8_t button) {
+    NEI_FORWARD(Equip(item, button));
+}
+ShipNativeStatus SHIP_NATIVE_CALL Unequip(uint64_t item) {
+    NEI_FORWARD(Unequip(item));
+}
+ShipNativeStatus SHIP_NATIVE_CALL GetName(uint64_t item, uint8_t language, char* output, uint32_t capacity,
+                                          uint32_t* outputSize) {
+    NEI_FORWARD(GetName(item, language, output, capacity, outputSize));
+}
+
+#undef NEI_FORWARD
+
+const NeiItemsV1 kService{ sizeof(NeiItemsV1), DefineItem, RemoveItem, FindItem,  ListItems,
+                           GetState,           GiveItem,   GrantItem,  RevokeItem, SetCount,
+                           AddCount,           SetLevel,   Equip,      Unequip,   GetName };
+
+ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void*, const ShipNativeHookCall*) {
+    if (auto* registry = Owned()) {
+        registry->OnSaveLoaded();
+    }
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL OnSaving(void*, const ShipNativeHookCall*) {
+    if (auto* registry = Owned()) {
+        registry->Flush();
+    }
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, ShipNativeWriteFn write, void* writer) {
+    auto* registry = Owned();
+    if (!registry || length || !write) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    try {
+        const std::string text = registry->Stats();
+        return write(writer, text.data(), static_cast<uint32_t>(text.size()));
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+ShipNativeStatus Observe(const ShipNativeRuntime* runtime, const char* point, ShipNativeHookFn callback) {
+    const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), point, LINKSPAN_OOT_HOOKS_VERSION,
+                                   sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE,
+                                   0, callback, nullptr };
+    uint64_t handle = 0;
+    return runtime->register_hook(runtime->context, &spec, &handle);
+}
+
+void Release() {
+    if (gCore) {
+        gCore->registry.Detach();
+        delete gCore;
+        gCore = nullptr;
+    }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
+    if (!runtime || !instance || runtime->size < sizeof(ShipNativeRuntime) || runtime->abi_minor < 2 ||
+        !runtime->get_service || !runtime->register_service || !runtime->register_function ||
+        !runtime->register_hook || gCore) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    const auto* engine = static_cast<const ShipOotEngineV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(ShipOotEngineV1)));
+    const auto* items = static_cast<const ShipOotItemsV3*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_3, sizeof(ShipOotItemsV3)));
+    const auto* save = static_cast<const ShipOotSaveV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_SAVE_SERVICE, LINKSPAN_OOT_SAVE_VERSION, sizeof(ShipOotSaveV1)));
+    if (!engine || !engine->layout_id || std::strcmp(engine->layout_id, LINKSPAN_OOT_LAYOUT_ID) || !items || !save) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    uint64_t saveHandle = 0;
+    ShipNativeStatus status = save->open_namespace(LinkSpanNei::kSaveNamespace, LinkSpanNei::kSaveVersion,
+                                                   &saveHandle);
+    if (status != SHIP_NATIVE_OK) {
+        return status;
+    }
+    gCore = new (std::nothrow) Core;
+    if (!gCore) {
+        return SHIP_NATIVE_FAILURE;
+    }
+    gCore->owner = std::this_thread::get_id();
+    gCore->registry.Attach(items, save, saveHandle);
+    status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_LOADED, OnLoaded);
+    if (status == SHIP_NATIVE_OK) {
+        status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_SAVING, OnSaving);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "stats", Stats, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,
+                                           sizeof(NeiItemsV1), &kService);
+    }
+    if (status != SHIP_NATIVE_OK) {
+        Release();
+        return status;
+    }
+    *instance = gCore;
+    return SHIP_NATIVE_OK;
+}
+
+// Os mods de conteúdo saem antes do coremod e removem seus itens; o que sobrar sai aqui.
+void SHIP_NATIVE_CALL Shutdown(void*) {
+    Release();
+}
+
+} // namespace
+
+extern "C" SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query(void) {
+    static const ShipNativeDescriptor descriptor{ sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, 2u, Init,
+                                                  Shutdown };
+    return &descriptor;
+}
