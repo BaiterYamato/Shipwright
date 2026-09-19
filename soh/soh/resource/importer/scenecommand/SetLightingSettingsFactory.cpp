@@ -99,6 +99,18 @@ SetLightingSettingsFactoryXML::ReadResource(std::shared_ptr<Ship::ResourceInitDa
             lightSettings.fogColor[2] = child->IntAttribute("FogColorB");
             lightSettings.fogNear = child->IntAttribute("FogNear");
             lightSettings.fogFar = child->IntAttribute("FogFar");
+            // SOH [Link-Span] OOT-CORE-008: neblina em unidades do mundo (SPEC.md §4.2 do Unbound). Qualquer um de
+            // FogStart, FogEnd ou DrawDistance liga o modo; os outros recebem os padrões do SPEC.
+            if (child->FindAttribute("FogStart") || child->FindAttribute("FogEnd") ||
+                child->FindAttribute("DrawDistance")) {
+                lightSettings.worldFog = 1;
+                lightSettings.drawDistance = child->FloatAttribute(
+                    "DrawDistance", lightSettings.fogFar > 0 ? (float)lightSettings.fogFar : 12800.0f);
+                lightSettings.fogEnd = child->FloatAttribute("FogEnd", lightSettings.drawDistance);
+                lightSettings.fogStart = child->FloatAttribute(
+                    "FogStart", Environment_LegacyFogStart(lightSettings.fogNear, lightSettings.fogEnd));
+                lightSettings.nearPlane = child->FloatAttribute("NearPlane", 0.0f);
+            }
             setLightingSettings->settings.push_back(lightSettings);
         }
 

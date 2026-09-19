@@ -23,6 +23,13 @@ MessageTableEntry* OTRMessage_Find(MessageTableEntry* table, u16 textId);
 s32 OTRMessage_Set(s32 language, u16 textId, u8 typePos, const char* bytes, u32 size);
 // Removes an added or vanilla message id; returns 1 when it existed.
 s32 OTRMessage_Remove(s32 language, u16 textId);
+// SOH [Link-Span] linkspan.oot.text: empties a language table (the terminator stays). Returns 1 on success.
+s32 OTRMessage_Clear(s32 language);
+// Rebuilds a language table as OTRMessage_Init did (base resource plus override/). Returns 1 on success.
+s32 OTRMessage_Reset(s32 language);
+// Calls `visitor` for each message in id order and stops at the first nonzero return, which it returns.
+typedef s32 (*OTRMessageVisitor)(void* user, u16 textId, u8 typePos, const char* bytes, u32 size);
+s32 OTRMessage_ForEach(s32 language, OTRMessageVisitor visitor, void* user);
 
 #ifdef __cplusplus
 }

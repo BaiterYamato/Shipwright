@@ -100,4 +100,38 @@ typedef struct ShipOotItemsV2 {
     ShipNativeStatus(SHIP_NATIVE_CALL* give_item)(uint8_t item);
 } ShipOotItemsV2;
 
+#define LINKSPAN_OOT_ITEMS_VERSION_3 3u
+/* Quantidade que o HUD desenha como a munição vanilla: dois dígitos. */
+#define LINKSPAN_OOT_ITEMS_MAX_AMMO 99u
+#define LINKSPAN_OOT_ITEMS_NO_AMMO 0xFFFFu
+
+/* Idioma do jogo, nos valores de gSaveContext.language. */
+#define LINKSPAN_OOT_LANGUAGE_ENGLISH 0u
+#define LINKSPAN_OOT_LANGUAGE_GERMAN 1u
+#define LINKSPAN_OOT_LANGUAGE_FRENCH 2u
+
+/* Prefixo binário compatível com ShipOotItemsV2.
+ *
+ * set_item_icon: troca o ícone de um item registrado (upgrade, por exemplo). Os
+ *   botões com o item passam a desenhar o novo ícone no próximo frame.
+ * set_item_ammo: número desenhado no botão C, como a munição vanilla; 0 fica
+ *   cinza e `full` (0 = nunca) fica verde. count LINKSPAN_OOT_ITEMS_NO_AMMO tira
+ *   o número; acima de LINKSPAN_OOT_ITEMS_MAX_AMMO = INVALID_ARGUMENT. Quem
+ *   registra controla o valor; o host não grava nem desconta nada.
+ * get_language: idioma atual (LINKSPAN_OOT_LANGUAGE_*), para o mod escolher o
+ *   texto de set_get_item. */
+typedef struct ShipOotItemsV3 {
+    uint32_t size;
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_item)(const ShipOotItemSpecV1* spec, uint8_t* item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* unregister_item)(uint8_t item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_item)(const char* name, uint8_t* item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* get_button_item)(uint8_t button, uint8_t* item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_button_item)(uint8_t button, uint8_t item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_get_item)(uint8_t item, const ShipOotGetItemSpecV1* spec);
+    ShipNativeStatus(SHIP_NATIVE_CALL* give_item)(uint8_t item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_item_icon)(uint8_t item, const char* icon_path);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_item_ammo)(uint8_t item, uint16_t count, uint16_t full);
+    uint8_t(SHIP_NATIVE_CALL* get_language)(void);
+} ShipOotItemsV3;
+
 #endif

@@ -58,6 +58,11 @@ extern "C" void OTRPlay_SpawnScene(PlayState* play, s32 sceneId, s32 spawn) {
     std::string scenePath = isCustom ? custom.path
                                      : StringHelper::Sprintf("scenes/%s/%s/%s", sceneVersion.c_str(),
                                                              scene->sceneFile.fileName, scene->sceneFile.fileName);
+    // SOH [Link-Span] linkspan.oot.scenes v2: um mod pode trocar o recurso de uma cena vanilla.
+    std::string overridePath;
+    if (!isCustom && ShipLuaHost::OotSceneOverridePath(sceneId, sceneVersion == "mq", overridePath)) {
+        scenePath = overridePath;
+    }
 
     play->sceneSegment = OTRPlay_LoadFile(play, scenePath.c_str());
 

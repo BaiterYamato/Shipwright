@@ -253,6 +253,7 @@ void RegisterOotItemGameHooks() {
     bridge.killActors = KillActors;
     bridge.drawDisplayList = ItemsDrawDisplayList;
     bridge.giveItem = ItemsGiveItem;
+    bridge.getLanguage = [] { return static_cast<uint8_t>(gSaveContext.language); };
     SetOotItemsBridge(bridge);
 
     GameInteractor::Instance->RegisterGameHookForID<GameInteractor::OnOpenText>(kGetItemTextId,
@@ -332,6 +333,17 @@ void RestoreOotItemButtonsFromSave() {
 // Chamadas por z_player.c, na thread do jogo.
 extern "C" s32 LinkSpan_IsSyntheticGetItem(u16 modIndex) {
     return modIndex == kGetItemModIndex ? 1 : 0;
+}
+
+// Interface_DrawAmmoCount: número de um item sintético com set_item_ammo.
+extern "C" s32 LinkSpan_GetSyntheticItemAmmo(s32 item, s16* ammo, s32* full) {
+    const auto* record = item >= 0 && item <= 0xFF ? ShipLuaHost::FindOotItem(static_cast<uint8_t>(item)) : nullptr;
+    if (!record || record->ammo == LINKSPAN_OOT_ITEMS_NO_AMMO) {
+        return 0;
+    }
+    *ammo = static_cast<s16>(record->ammo);
+    *full = record->ammoFull && record->ammo >= record->ammoFull ? 1 : 0;
+    return 1;
 }
 
 // Caixa de texto do get-item aberta: entrega ao mod.

@@ -60,10 +60,12 @@ std::shared_ptr<Ship::IResource> SetLightListFactoryXML::ReadResource(std::share
         if (childName == "LightInfo") {
             LightInfo light;
             light.type = child->IntAttribute("Type");
-            if (false /*light.type == LIGHT_DIRECTIONAL*/) {
-                light.params.dir.x = child->IntAttribute("X");
-                light.params.dir.y = child->IntAttribute("Y");
-                light.params.dir.z = child->IntAttribute("Z");
+            // SOH [Link-Span] OOT-CORE-008: luz direcional com DirX/DirY/DirZ. Sem esses atributos o XML segue
+            // lido como luz pontual, como antes.
+            if (light.type == 1 /* LIGHT_DIRECTIONAL */ && child->FindAttribute("DirX") != nullptr) {
+                light.params.dir.x = child->IntAttribute("DirX");
+                light.params.dir.y = child->IntAttribute("DirY");
+                light.params.dir.z = child->IntAttribute("DirZ");
                 light.params.dir.color[0] = child->IntAttribute("ColorR");
                 light.params.dir.color[1] = child->IntAttribute("ColorG");
                 light.params.dir.color[2] = child->IntAttribute("ColorB");

@@ -300,10 +300,42 @@ ShipNativeStatus SHIP_NATIVE_CALL GiveItem(uint8_t item) {
     return bridge.giveItem ? bridge.giveItem(item) : SHIP_NATIVE_UNSUPPORTED;
 }
 
+ShipNativeStatus SHIP_NATIVE_CALL SetItemIcon(uint8_t item, const char* iconPath) {
+    auto* record = OnOwnerThread() ? const_cast<OotItemRecord*>(FindOotItem(item)) : nullptr;
+    if (!record || !ValidPath(iconPath, LINKSPAN_OOT_ITEMS_MAX_PATH)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    try {
+        auto& state = State();
+        if (state.bridge.setItemVisual) {
+            state.bridge.setItemVisual(item, InternPath(iconPath), record->age);
+        }
+        return SHIP_NATIVE_OK;
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SetItemAmmo(uint8_t item, uint16_t count, uint16_t full) {
+    auto* record = OnOwnerThread() ? const_cast<OotItemRecord*>(FindOotItem(item)) : nullptr;
+    if (!record || (count != LINKSPAN_OOT_ITEMS_NO_AMMO && count > LINKSPAN_OOT_ITEMS_MAX_AMMO) ||
+        full > LINKSPAN_OOT_ITEMS_MAX_AMMO) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    record->ammo = count;
+    record->ammoFull = full;
+    return SHIP_NATIVE_OK;
+}
+
+uint8_t SHIP_NATIVE_CALL GetLanguage() {
+    const auto& bridge = State().bridge;
+    return OnOwnerThread() && bridge.getLanguage ? bridge.getLanguage() : LINKSPAN_OOT_LANGUAGE_ENGLISH;
+}
+
 const ShipOotItemsV1 itemsV1{ sizeof(ShipOotItemsV1), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
                               SetButtonItem };
 const ShipOotItemsV2 itemsV2{ sizeof(ShipOotItemsV2), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
                               SetButtonItem, SetGetItem, GiveItem };
+const ShipOotItemsV3 itemsV3{ sizeof(ShipOotItemsV3), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
+                              SetButtonItem, SetGetItem, GiveItem, SetItemIcon, SetItemAmmo, GetLanguage };
 const ShipOotActorsV1 actorsV1{ sizeof(ShipOotActorsV1), RegisterActorType, UnregisterActorType, FindActorType,
                                 DrawDisplayList };
 
@@ -341,6 +373,10 @@ const ShipOotItemsV1& GetOotNativeItemsService() {
 
 const ShipOotItemsV2& GetOotNativeItemsServiceV2() {
     return itemsV2;
+}
+
+const ShipOotItemsV3& GetOotNativeItemsServiceV3() {
+    return itemsV3;
 }
 
 const ShipOotActorsV1& GetOotNativeActorsService() {

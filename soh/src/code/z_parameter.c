@@ -33,6 +33,8 @@ extern MessageTableEntry* sJpnMessageEntryTablePtr;
 s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton);
 void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s16 y, s16 size, u16 alpha);
 s32 LinkSpan_ItemButtonHidden(s32 button);
+// Link-Span (OOT-CORE-008): quantidade de item sintético (linkspan.oot.items v3); 0 = sem número.
+s32 LinkSpan_GetSyntheticItemAmmo(s32 item, s16* ammo, s32* full);
 s32 LinkSpan_DpadHudOwned(void);
 void LinkSpan_CaptureDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u16 alpha);
 
@@ -4958,7 +4960,27 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
 
     i = gSaveContext.equips.buttonItems[button];
 
-    if (GameInteractor_Should(VB_DRAW_AMMO_COUNT,
+    s16 syntheticAmmo = 0;
+    s32 syntheticFull = 0;
+    if (LinkSpan_GetSyntheticItemAmmo(i, &syntheticAmmo, &syntheticFull)) {
+        gDPPipeSync(OVERLAY_DISP++);
+        ammo = syntheticAmmo;
+        if (syntheticFull) {
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 120, 255, 0, alpha);
+        }
+        if (ammo == 0) {
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 100, 100, 100, alpha);
+        }
+        for (i = 0; ammo >= 10; i++) {
+            ammo -= 10;
+        }
+        if (i != 0) {
+            OVERLAY_DISP = Gfx_TextureIA8(OVERLAY_DISP, (u8*)_gAmmoDigit0Tex[i], 8, 8, ItemIconPos[button][0],
+                                          ItemIconPos[button][1], 8, 8, 1 << 10, 1 << 10);
+        }
+        OVERLAY_DISP = Gfx_TextureIA8(OVERLAY_DISP, (u8*)_gAmmoDigit0Tex[ammo], 8, 8, ItemIconPos[button][0] + 6,
+                                      ItemIconPos[button][1], 8, 8, 1 << 10, 1 << 10);
+    } else if (GameInteractor_Should(VB_DRAW_AMMO_COUNT,
                               ((i == ITEM_STICK) || (i == ITEM_NUT) || (i == ITEM_BOMB) || (i == ITEM_BOW) ||
                                ((i >= ITEM_BOW_ARROW_FIRE) && (i <= ITEM_BOW_ARROW_LIGHT)) || (i == ITEM_SLINGSHOT) ||
                                (i == ITEM_BOMBCHU) || (i == ITEM_BEAN)),

@@ -23,6 +23,7 @@ struct SceneRecord {
     std::string displayName;
     std::string path;
     uint8_t drawConfig = 0;
+    std::string titleCard;
     std::vector<std::string> entrances;
 };
 
@@ -43,6 +44,8 @@ struct ScenesState {
     // Por nome da cena: a flag sobrevive a um novo registro da mesma cena na sessão.
     std::map<std::string, SavedSceneFlags, std::less<>> flags;
     SavedSceneFlags scratch{};
+    // override_scene: (id vanilla, variante MQ) -> recurso.
+    std::map<std::pair<int32_t, bool>, std::string> overrides;
 };
 
 // Dados do jogo: entregues uma vez pelo binding, sobrevivem ao reset dos mods.
@@ -110,12 +113,8 @@ const SceneRecord* FindRecordById(int32_t sceneId) {
     return scene == state.scenes.end() ? nullptr : &scene->second;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL RegisterScene(const ShipOotSceneDefinitionV1* definition, uint64_t* sceneHandle,
-                                                int32_t* sceneId) {
-    if (!OnOwnerThread() || !definition || definition->size < sizeof(ShipOotSceneDefinitionV1) || !sceneHandle ||
-        !sceneId) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
+ShipNativeStatus RegisterSceneRecord(const ShipOotSceneDefinitionV1* definition, const char* titleCard,
+                                     uint64_t* sceneHandle, int32_t* sceneId) {
     *sceneHandle = 0;
     *sceneId = 0;
     const size_t nameLength = BoundedLength(definition->name, LINKSPAN_OOT_SCENES_MAX_NAME);
@@ -133,6 +132,13 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterScene(const ShipOotSceneDefinitionV1* 
         record.displayName = hasDisplayName ? std::string(definition->display_name, displayLength) : record.name;
         record.path.assign(definition->scene_path, pathLength);
         record.drawConfig = definition->draw_config;
+        if (titleCard && *titleCard) {
+            const size_t titleLength = BoundedLength(titleCard, LINKSPAN_OOT_SCENES_MAX_PATH);
+            if (!titleLength) {
+                return SHIP_NATIVE_INVALID_ARGUMENT;
+            }
+            record.titleCard.assign(titleCard, titleLength);
+        }
         if (Vanilla().sceneIds.contains(record.name) || state.handlesByName.contains(record.name)) {
             return SHIP_NATIVE_INVALID_ARGUMENT;
         }
@@ -171,6 +177,27 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterScene(const ShipOotSceneDefinitionV1* 
     } catch (...) {
         return SHIP_NATIVE_FAILURE;
     }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL RegisterScene(const ShipOotSceneDefinitionV1* definition, uint64_t* sceneHandle,
+                                                int32_t* sceneId) {
+    if (!OnOwnerThread() || !definition || definition->size < sizeof(ShipOotSceneDefinitionV1) || !sceneHandle ||
+        !sceneId) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    return RegisterSceneRecord(definition, nullptr, sceneHandle, sceneId);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL RegisterSceneV2(const ShipOotSceneDefinitionV2* definition, uint64_t* sceneHandle,
+                                                  int32_t* sceneId) {
+    if (!OnOwnerThread() || !definition || definition->size < sizeof(ShipOotSceneDefinitionV2) || !sceneHandle ||
+        !sceneId) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    // Os campos V1 são o prefixo da V2.
+    const ShipOotSceneDefinitionV1 v1{ sizeof(ShipOotSceneDefinitionV1), definition->name, definition->display_name,
+                                       definition->scene_path, definition->requested_id, definition->draw_config };
+    return RegisterSceneRecord(&v1, definition->title_card_texture, sceneHandle, sceneId);
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL RegisterEntrance(uint64_t sceneHandle, const ShipOotEntranceDefinitionV1* definition,
@@ -345,9 +372,97 @@ ShipNativeStatus SHIP_NATIVE_CALL TravelToEntrance(int32_t entranceIndex) {
     return travel ? travel(entranceIndex) : SHIP_NATIVE_UNSUPPORTED;
 }
 
+int32_t SHIP_NATIVE_CALL GetSceneCount() {
+    return std::max(Vanilla().data.sceneCount, 0);
+}
+
+bool IsVanillaScene(int32_t sceneId) {
+    return sceneId >= 0 && sceneId < Vanilla().data.sceneCount;
+}
+
+bool HasMasterQuest(int32_t sceneId) {
+    const auto& data = Vanilla().data;
+    return IsVanillaScene(sceneId) && data.sceneHasMasterQuest && data.sceneHasMasterQuest(sceneId);
+}
+
+void CopyText(char* output, size_t capacity, const std::string& text) {
+    const size_t length = std::min(text.size(), capacity - 1);
+    std::memcpy(output, text.data(), length);
+    output[length] = '\0';
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL GetSceneInfo(int32_t sceneId, uint8_t masterQuest, ShipOotSceneInfoV1* info) {
+    if (!OnOwnerThread() || !info || info->size < sizeof(ShipOotSceneInfoV1)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const uint32_t size = info->size;
+    std::memset(info, 0, sizeof(ShipOotSceneInfoV1));
+    info->size = size;
+    info->scene_id = sceneId;
+    try {
+        const auto& data = Vanilla().data;
+        if (IsVanillaScene(sceneId)) {
+            const bool mq = HasMasterQuest(sceneId);
+            const char* file = data.sceneFileName ? data.sceneFileName(sceneId) : nullptr;
+            const std::string fileName = file ? file : "";
+            std::string path;
+            info->overridden = OotSceneOverridePath(sceneId, mq && masterQuest, path) ? 1 : 0;
+            if (!info->overridden && !fileName.empty()) {
+                const char* folder = mq ? (masterQuest ? "mq" : "nonmq") : "shared";
+                path = std::string("scenes/") + folder + "/" + fileName + "/" + fileName;
+            }
+            info->draw_config = data.sceneDrawConfig ? data.sceneDrawConfig(sceneId) : 0;
+            info->has_master_quest = mq ? 1 : 0;
+            const char* name = data.sceneNames ? data.sceneNames[sceneId] : nullptr;
+            CopyText(info->name, sizeof(info->name), name ? name : "");
+            CopyText(info->file_name, sizeof(info->file_name), fileName);
+            CopyText(info->scene_path, sizeof(info->scene_path), path);
+            return SHIP_NATIVE_OK;
+        }
+        const SceneRecord* record = FindRecordById(sceneId);
+        if (!record) {
+            return SHIP_NATIVE_UNSUPPORTED;
+        }
+        info->is_custom = 1;
+        info->draw_config = record->drawConfig;
+        CopyText(info->name, sizeof(info->name), record->name);
+        CopyText(info->scene_path, sizeof(info->scene_path), record->path);
+        return SHIP_NATIVE_OK;
+    } catch (...) {
+        return SHIP_NATIVE_FAILURE;
+    }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL OverrideScene(int32_t sceneId, uint8_t masterQuest, const char* scenePath) {
+    if (!OnOwnerThread() || !IsVanillaScene(sceneId) || masterQuest > 1 || (masterQuest && !HasMasterQuest(sceneId))) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const bool mq = masterQuest != 0;
+    auto& overrides = State().overrides;
+    if (!scenePath || !*scenePath) {
+        overrides.erase({ sceneId, mq });
+        return SHIP_NATIVE_OK;
+    }
+    const size_t length = BoundedLength(scenePath, LINKSPAN_OOT_SCENES_MAX_PATH);
+    if (!length) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    try {
+        overrides[{ sceneId, mq }].assign(scenePath, length);
+        return SHIP_NATIVE_OK;
+    } catch (...) {
+        return SHIP_NATIVE_FAILURE;
+    }
+}
+
 const ShipOotScenesV1 scenesService{
     sizeof(ShipOotScenesV1), RegisterScene, RegisterEntrance, UnregisterScene, FindScene, FindEntrance,
     TravelToEntrance,
+};
+
+const ShipOotScenesV2 scenesServiceV2{
+    sizeof(ShipOotScenesV2), RegisterScene, RegisterEntrance, UnregisterScene, FindScene, FindEntrance,
+    TravelToEntrance, RegisterSceneV2, GetSceneCount, GetSceneInfo, OverrideScene,
 };
 
 } // namespace
@@ -397,6 +512,10 @@ const ShipOotScenesV1& GetOotNativeScenesService() {
     return scenesService;
 }
 
+const ShipOotScenesV2& GetOotNativeScenesServiceV2() {
+    return scenesServiceV2;
+}
+
 int32_t OotEntranceCount() {
     return State().publishedCount;
 }
@@ -418,6 +537,25 @@ bool FindOotCustomScene(int32_t sceneId, OotCustomScene& scene) {
 const std::string* OotCustomSceneDisplayName(int32_t sceneId) {
     const SceneRecord* record = FindRecordById(sceneId);
     return record ? &record->displayName : nullptr;
+}
+
+const std::string* OotCustomSceneTitleCard(int32_t sceneId) {
+    const SceneRecord* record = FindRecordById(sceneId);
+    return record && !record->titleCard.empty() ? &record->titleCard : nullptr;
+}
+
+bool OotSceneOverridePath(int32_t sceneId, bool masterQuest, std::string& path) {
+    const auto& overrides = State().overrides;
+    const auto found = overrides.find({ sceneId, masterQuest });
+    if (found == overrides.end()) {
+        return false;
+    }
+    try {
+        path = found->second;
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 bool OotSceneStableName(int32_t sceneId, std::string& name) {

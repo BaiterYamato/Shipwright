@@ -906,8 +906,12 @@ void TitleCard_InitBossName(PlayState* play, TitleCardContext* titleCtx, void* t
     titleCtx->delayTimer = 0;
 }
 
+// Link-Span (OOT-CORE-008): título de cena de mod ("__OTR__..."), em soh/soh/native/OotNativeScenesGame.cpp.
+const char* LinkSpan_CustomSceneTitleCard(s32 sceneNum);
+
 void TitleCard_InitPlaceName(PlayState* play, TitleCardContext* titleCtx, void* texture, s32 x, s32 y, s32 width,
                              s32 height, s32 delay) {
+    s32 customTitle = false;
     switch (play->sceneNum) {
         case SCENE_DEKU_TREE:
             texture = gDekuTreeTitleCardENGTex;
@@ -1090,13 +1094,18 @@ void TitleCard_InitPlaceName(PlayState* play, TitleCardContext* titleCtx, void* 
             texture = gLonLonRanchTitleCardENGTex;
             break;
         default:
-            titleCtx->texture = NULL;
-            return;
+            texture = (void*)LinkSpan_CustomSceneTitleCard(play->sceneNum);
+            if (texture == NULL) {
+                titleCtx->texture = NULL;
+                return;
+            }
+            customTitle = true;
+            break;
     }
 
     static char newName[512];
 
-    if (gSaveContext.language != LANGUAGE_ENG) {
+    if (gSaveContext.language != LANGUAGE_ENG && !customTitle) {
         size_t length = strlen(texture);
         strcpy(newName, texture);
         if (gSaveContext.language == LANGUAGE_FRA) {

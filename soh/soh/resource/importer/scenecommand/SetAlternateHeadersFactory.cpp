@@ -4,6 +4,7 @@
 #include <ship/Context.h>
 #include <ship/resource/ResourceManager.h>
 #include <tinyxml2.h>
+#include "soh/resource/importer/SceneFactory.h"
 
 namespace SOH {
 std::shared_ptr<Ship::IResource>
@@ -42,18 +43,27 @@ SetAlternateHeadersFactoryXML::ReadResource(std::shared_ptr<Ship::ResourceInitDa
 
     auto child = reader->FirstChildElement();
 
+    // SOH [Link-Span] OOT-CORE-008: um <AlternateHeader> por cabeçalho, na ordem. Com Path, carrega o
+    // recurso; com comandos filhos, monta o cabeçalho em linha; vazio, fica nulo (o jogo cai no setup 0).
+    // O laço antigo dependia de numHeaders, que ainda era 0 aqui, e não carregava nenhum cabeçalho.
     while (child != nullptr) {
         std::string childName = child->Name();
         if (childName == "AlternateHeader") {
-            for (uint32_t i = 0; i < setAlternateHeaders->numHeaders; i++) {
-                auto headerName = std::string(child->Attribute("Path"));
-                if (!headerName.empty()) {
-                    setAlternateHeaders->headers.push_back(std::static_pointer_cast<Scene>(
-                        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(
-                            headerName.c_str())));
-                } else {
-                    setAlternateHeaders->headers.push_back(nullptr);
-                }
+            const char* path = child->Attribute("Path");
+            const std::string headerName = path ? path : "";
+            if (!headerName.empty()) {
+                setAlternateHeaders->headers.push_back(std::static_pointer_cast<Scene>(
+                    Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(headerName.c_str())));
+                setAlternateHeaders->headerFileNames.push_back(headerName);
+            } else if (child->FirstChildElement() != nullptr) {
+                auto header = std::make_shared<Scene>(initData);
+                ResourceFactoryXMLSceneV0::ParseSceneCommandList(header, child);
+                setAlternateHeaders->headers.push_back(header);
+                setAlternateHeaders->headerFileNames.push_back(initData->Path + "#" +
+                                                               std::to_string(setAlternateHeaders->headers.size()));
+            } else {
+                setAlternateHeaders->headers.push_back(nullptr);
+                setAlternateHeaders->headerFileNames.push_back("");
             }
         }
 

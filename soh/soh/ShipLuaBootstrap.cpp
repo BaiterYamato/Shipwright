@@ -7,6 +7,8 @@
 #include "native/OotNativeView.h"
 #include "native/OotNativeWorld.h"
 #include "native/OotNativeSkeletons.h"
+#include "native/OotNativeJsonTypes.h"
+#include "native/OotNativeText.h"
 #include "native/OotNativeSave.h"
 #include "OotActorProvider.h"
 #include "OotHotkeyRegistry.h"
@@ -7070,6 +7072,8 @@ void Shutdown() {
     ResetOotNativeView();
     ResetOotNativeWorld();
     ResetOotNativeSkeletons();
+    InitializeOotNativeJsonTypes(std::thread::id{});
+    InitializeOotNativeText(std::thread::id{});
     ClearNativeResourceArchives();
     SetOotNativeGamepadBridge({});
     SetOotNativeResourceBridge({});

@@ -19,6 +19,10 @@
 #include "oot_skeletons.h"
 #include "OotNativeSkeletons.h"
 #include "OotNativeHooks.h"
+#include "oot_text.h"
+#include "OotNativeText.h"
+#include "oot_resources.h"
+#include "OotNativeJsonTypes.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
@@ -446,6 +450,74 @@ ShipNativeStatus SHIP_NATIVE_CALL Receive(void* user, uint8_t) {
 }
 } // namespace FakeGetItem
 
+namespace FakeText {
+struct Message {
+    uint8_t typePos = 0;
+    std::string bytes;
+};
+std::map<uint16_t, Message> table;
+int32_t resets = 0;
+
+int32_t Set(int32_t language, uint16_t id, uint8_t typePos, const char* bytes, uint32_t size) {
+    if (language != 0) {
+        return 0;
+    }
+    table[id] = { typePos, std::string(bytes ? bytes : "", size) };
+    return 1;
+}
+int32_t Remove(int32_t, uint16_t id) {
+    return table.erase(id) ? 1 : 0;
+}
+int32_t Clear(int32_t) {
+    table.clear();
+    return 1;
+}
+int32_t Reset(int32_t) {
+    ++resets;
+    table = { { 0x0001, { 0x00, "a" } } };
+    return 1;
+}
+int32_t ForEach(int32_t, int32_t (*visitor)(void*, uint16_t, uint8_t, const char*, uint32_t), void* user) {
+    for (const auto& [id, message] : table) {
+        if (const int32_t result = visitor(user, id, message.typePos, message.bytes.data(),
+                                           static_cast<uint32_t>(message.bytes.size()))) {
+            return result;
+        }
+    }
+    return 0;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Collect(void* user, uint32_t id, uint8_t boxType, uint8_t boxPos,
+                                          const uint8_t* bytes, uint32_t length) {
+    auto& seen = *static_cast<std::vector<std::string>*>(user);
+    seen.push_back(std::to_string(id) + ":" + std::to_string(boxType) + "/" + std::to_string(boxPos) + ":" +
+                   std::string(reinterpret_cast<const char*>(bytes), length));
+    return seen.size() == 2 ? SHIP_NATIVE_LIMIT : SHIP_NATIVE_OK;
+}
+} // namespace FakeText
+
+namespace FakeJson {
+std::vector<std::string> declared;
+std::string lastPath;
+uint32_t lastVersion = 0;
+
+bool Declare(const std::string& type, uint32_t minVersion, uint32_t maxVersion) {
+    if (type == "Scene") {
+        return false; // nome de tipo do host
+    }
+    declared.push_back(type + "/" + std::to_string(minVersion) + "-" + std::to_string(maxVersion));
+    return true;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Transcode(void*, const char* path, uint32_t version, ShipNativeWriteFn write,
+                                            void* writer) {
+    lastPath = path;
+    lastVersion = version;
+    if (write(writer, "<Path ", 6) != SHIP_NATIVE_OK) {
+        return SHIP_NATIVE_FAILURE;
+    }
+    return write(writer, "Version=\"0\"/>", 13);
+}
+} // namespace FakeJson
+
 namespace FakeSkeletons {
 struct Instance {
     std::string skeleton;
@@ -497,7 +569,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 17 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 21 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -534,9 +606,21 @@ int main(int argc, char** argv) {
           policy.services[15].size == sizeof(ShipOotItemsV2) &&
           std::string(policy.services[16].name) == LINKSPAN_OOT_SKELETONS_SERVICE &&
           policy.services[16].version == LINKSPAN_OOT_SKELETONS_VERSION &&
-          policy.services[16].size == sizeof(ShipOotSkeletonsV1),
-          "host deve publicar engine, movement V1/V2, resources V1/V2, registry V1, ocarina V1, scenes V1, save V1, "
-          "items V1, actors V1, camera V1, render V1, world V1, colliders V1, items V2 e skeletons V1");
+          policy.services[16].size == sizeof(ShipOotSkeletonsV1) &&
+          std::string(policy.services[17].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
+          policy.services[17].version == LINKSPAN_OOT_ITEMS_VERSION_3 &&
+          policy.services[17].size == sizeof(ShipOotItemsV3) &&
+          std::string(policy.services[18].name) == LINKSPAN_OOT_RESOURCES_SERVICE &&
+          policy.services[18].version == LINKSPAN_OOT_RESOURCES_VERSION_3 &&
+          policy.services[18].size == sizeof(ShipOotResourcesV3) &&
+          std::string(policy.services[19].name) == LINKSPAN_OOT_SCENES_SERVICE &&
+          policy.services[19].version == LINKSPAN_OOT_SCENES_VERSION_2 &&
+          policy.services[19].size == sizeof(ShipOotScenesV2) &&
+          std::string(policy.services[20].name) == LINKSPAN_OOT_TEXT_SERVICE &&
+          policy.services[20].version == LINKSPAN_OOT_TEXT_VERSION &&
+          policy.services[20].size == sizeof(ShipOotTextV1),
+          "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1, ocarina V1, scenes V1/V2, "
+          "save V1, items V1/V2/V3, actors V1, camera V1, render V1, world V1, colliders V1, skeletons V1 e text V1");
     {
         using namespace FakeSkeletons;
         const auto* skeletons = static_cast<const ShipOotSkeletonsV1*>(policy.services[16].table);
@@ -651,6 +735,132 @@ int main(int argc, char** argv) {
               "id reaproveitado sem get-item antigo");
         Check(items->unregister_item(again) == SHIP_NATIVE_OK, "limpeza");
         ShipLuaHost::SetOotItemsBridge({});
+    }
+    {
+        using namespace FakeItems;
+        const auto* items = static_cast<const ShipOotItemsV3*>(policy.services[17].table);
+        Check(offsetof(ShipOotItemsV3, give_item) == offsetof(ShipOotItemsV2, give_item), "items V3 é prefixo da V2");
+        ShipLuaHost::OotItemsBridge bridge;
+        bridge.setItemVisual = SetItemVisual;
+        bridge.getButtonItem = GetButton;
+        bridge.setButtonItem = SetButton;
+        ShipLuaHost::SetOotItemsBridge(bridge);
+        Check(items->get_language() == LINKSPAN_OOT_LANGUAGE_ENGLISH, "idioma sem ponte = inglês");
+        bridge.getLanguage = [] { return static_cast<uint8_t>(LINKSPAN_OOT_LANGUAGE_FRENCH); };
+        ShipLuaHost::SetOotItemsBridge(bridge);
+        Check(items->get_language() == LINKSPAN_OOT_LANGUAGE_FRENCH, "idioma da ponte");
+        uint8_t item = 0;
+        const ShipOotItemSpecV1 spec{sizeof(spec), "autor.aljava", "textures/icon_item_static/gItemIconBowTex",
+                                     LINKSPAN_OOT_ITEM_AGE_ANY, nullptr, nullptr};
+        Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK, "registro v3");
+        const auto* record = ShipLuaHost::FindOotItem(item);
+        Check(record && record->ammo == LINKSPAN_OOT_ITEMS_NO_AMMO, "sem número por padrão");
+        Check(items->set_item_ammo(item, 100, 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  items->set_item_ammo(item, 5, 100) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  items->set_item_ammo(0x05, 5, 0) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "munição fora da faixa ou de item não registrado");
+        Check(items->set_item_ammo(item, 30, 30) == SHIP_NATIVE_OK && record->ammo == 30 && record->ammoFull == 30,
+              "set_item_ammo");
+        Check(items->set_item_ammo(item, LINKSPAN_OOT_ITEMS_NO_AMMO, 0) == SHIP_NATIVE_OK &&
+                  record->ammo == LINKSPAN_OOT_ITEMS_NO_AMMO,
+              "tirar o número");
+        Check(items->set_item_icon(item, "__OTR__textures/x") == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  items->set_item_icon(0x05, "textures/x") == SHIP_NATIVE_INVALID_ARGUMENT,
+              "ícone inválido ou item não registrado");
+        Check(items->set_item_icon(item, "textures/icon_item_static/gItemIconBowFireTex") == SHIP_NATIVE_OK &&
+                  icons[item] == "__OTR__textures/icon_item_static/gItemIconBowFireTex",
+              "set_item_icon troca o ícone");
+        std::thread([&] {
+            Check(items->set_item_ammo(item, 1, 0) == SHIP_NATIVE_INVALID_ARGUMENT, "munição só na thread do jogo");
+        }).join();
+        Check(items->unregister_item(item) == SHIP_NATIVE_OK, "limpeza v3");
+        ShipLuaHost::SetOotItemsBridge({});
+    }
+    {
+        using namespace FakeText;
+        const auto* text = static_cast<const ShipOotTextV1*>(policy.services[20].table);
+        const uint8_t hello[] = { 'o', 'i' };
+        Check(text->set_message(0, 0x10, 0, 0, hello, 2) == SHIP_NATIVE_UNSUPPORTED, "texto sem ponte");
+        ShipLuaHost::OotTextBridge bridge{ Set, Remove, Clear, Reset, ForEach };
+        ShipLuaHost::SetOotTextBridge(bridge);
+        Check(text->set_message(LINKSPAN_OOT_TEXT_LANGUAGES, 0x10, 0, 0, hello, 2) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  text->set_message(0, 0xFFFF, 0, 0, hello, 2) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  text->set_message(0, 0x10, 16, 0, hello, 2) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  text->set_message(0, 0x10, 0, 0, nullptr, 2) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  text->set_message(0, 0x10, 0, 0, hello, LINKSPAN_OOT_TEXT_MAX_MESSAGE) ==
+                      SHIP_NATIVE_INVALID_ARGUMENT,
+              "argumentos de texto inválidos");
+        Check(text->set_message(0, 0x10, 2, 3, hello, 2) == SHIP_NATIVE_OK && table[0x10].typePos == 0x23 &&
+                  table[0x10].bytes == "oi",
+              "set_message junta caixa e posição");
+        Check(text->set_message(1, 0x10, 0, 0, hello, 2) == SHIP_NATIVE_FAILURE, "idioma sem tabela");
+        Check(text->remove_message(0, 0x10) == SHIP_NATIVE_OK && text->remove_message(0, 0x10) == SHIP_NATIVE_FAILURE,
+              "remove_message");
+        Check(text->reset_language(0) == SHIP_NATIVE_OK && resets == 1 && table.size() == 1, "reset_language");
+        text->set_message(0, 0x20, 0, 1, hello, 1);
+        text->set_message(0, 0x30, 0, 0, hello, 2);
+        std::vector<std::string> seen;
+        Check(text->list_messages(0, Collect, &seen) == SHIP_NATIVE_LIMIT && seen.size() == 2 &&
+                  seen[0] == "1:0/0:a" && seen[1] == "32:0/1:o",
+              "list_messages em ordem de id, parando no status do callback");
+        Check(text->clear_language(0) == SHIP_NATIVE_OK && table.empty(), "clear_language");
+        std::thread([&] {
+            Check(text->remove_message(0, 1) == SHIP_NATIVE_INVALID_ARGUMENT, "texto só na thread do jogo");
+        }).join();
+        ShipLuaHost::SetOotTextBridge({});
+    }
+    {
+        using namespace FakeJson;
+        const auto* resources = static_cast<const ShipOotResourcesV3*>(policy.services[18].table);
+        Check(offsetof(ShipOotResourcesV3, read_file_layers) == offsetof(ShipOotResourcesV2, read_file_layers),
+              "resources V3 é prefixo da V2");
+        ShipOotJsonTypeSpecV1 spec{ sizeof(spec), "linkspan.test/doc", 1, 2, Transcode, nullptr };
+        uint64_t handle = 0;
+        Check(resources->register_json_type(&spec, &handle) == SHIP_NATIVE_UNSUPPORTED && handle == 0,
+              "tipo JSON sem ponte");
+        ShipLuaHost::OotJsonTypesBridge bridge;
+        bridge.declareType = Declare;
+        ShipLuaHost::SetOotJsonTypesBridge(bridge);
+        auto bad = spec;
+        bad.type = "tipo com espaço";
+        Check(resources->register_json_type(&bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "nome inválido");
+        bad = spec;
+        bad.min_version = 3;
+        Check(resources->register_json_type(&bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "faixa invertida");
+        bad = spec;
+        bad.max_version = 1000;
+        Check(resources->register_json_type(&bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "faixa larga demais");
+        bad = spec;
+        bad.transcode = nullptr;
+        Check(resources->register_json_type(&bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "sem transcodificador");
+        bad = spec;
+        bad.type = "Scene";
+        Check(resources->register_json_type(&bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "tipo do host");
+        Check(resources->register_json_type(&spec, &handle) == SHIP_NATIVE_OK && handle != 0 &&
+                  declared.back() == "linkspan.test/doc/1-2",
+              "register_json_type declara o tipo e as versões");
+        uint64_t other = 0;
+        Check(resources->register_json_type(&spec, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "um dono por tipo");
+        std::string xml;
+        Check(ShipLuaHost::TranscodeOotJson("linkspan.test/doc", "docs/a.json", 2, xml) == SHIP_NATIVE_OK &&
+                  xml == "<Path Version=\"0\"/>" && lastPath == "docs/a.json" && lastVersion == 2,
+              "o transcodificador escreve o XML em pedaços");
+        Check(ShipLuaHost::TranscodeOotJson("linkspan.test/doc", "docs/a.json", 3, xml) ==
+                  SHIP_NATIVE_INVALID_ARGUMENT,
+              "versão fora da faixa");
+        Check(ShipLuaHost::TranscodeOotJson("outro/tipo", "docs/a.json", 1, xml) == SHIP_NATIVE_UNSUPPORTED,
+              "tipo sem dono");
+        std::thread([&] {
+            Check(resources->unregister_json_type(handle) == SHIP_NATIVE_INVALID_ARGUMENT, "só na thread do jogo");
+        }).join();
+        Check(resources->unregister_json_type(handle) == SHIP_NATIVE_OK &&
+                  resources->unregister_json_type(handle) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  ShipLuaHost::TranscodeOotJson("linkspan.test/doc", "docs/a.json", 1, xml) == SHIP_NATIVE_UNSUPPORTED,
+              "unregister tira o dono");
+        Check(resources->register_json_type(&spec, &other) == SHIP_NATIVE_OK && other != handle &&
+                  resources->unregister_json_type(other) == SHIP_NATIVE_OK,
+              "o tipo pode ganhar outro dono");
+        ShipLuaHost::SetOotJsonTypesBridge({});
     }
     {
         using namespace FakeWorld;

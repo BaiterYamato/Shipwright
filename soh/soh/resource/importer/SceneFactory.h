@@ -35,6 +35,8 @@ class ResourceFactoryXMLSceneV0 final : public Ship::ResourceFactoryXML {
     std::shared_ptr<Ship::IResource> ReadResource(std::shared_ptr<Ship::File> file,
                                                   std::shared_ptr<Ship::ResourceInitData> initData) override;
     void ParseSceneCommands(std::shared_ptr<Scene> scene, std::shared_ptr<tinyxml2::XMLDocument> reader);
+    // SOH [Link-Span] OOT-CORE-008: comandos filhos de `parent` (um <AlternateHeader> em linha, por exemplo).
+    static void ParseSceneCommandList(std::shared_ptr<Scene> scene, tinyxml2::XMLElement* parent);
 
     // Doing something very similar to what we do on the ResourceLoader.
     // Eventually, scene commands should be moved up to the ResourceLoader as well.
@@ -43,7 +45,7 @@ class ResourceFactoryXMLSceneV0 final : public Ship::ResourceFactoryXML {
     static inline std::unordered_map<SceneCommandID, std::shared_ptr<SceneCommandFactoryXMLV0>> sceneCommandFactories;
 
   protected:
-    std::shared_ptr<ISceneCommand> ParseSceneCommand(std::shared_ptr<Scene> scene, tinyxml2::XMLElement* child,
-                                                     uint32_t index);
+    static std::shared_ptr<ISceneCommand> ParseSceneCommand(std::shared_ptr<Scene> scene, tinyxml2::XMLElement* child,
+                                                            uint32_t index);
 };
 } // namespace SOH

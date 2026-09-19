@@ -2,12 +2,14 @@
 #include "OotNativeEscape.h"
 #include "OotNativeHooks.h"
 #include "OotNativeItems.h"
+#include "OotNativeJsonTypes.h"
 #include "OotNativeRegistry.h"
 #include "OotNativeSave.h"
 #include "OotNativeScenes.h"
 #include "OotNativeView.h"
 #include "OotNativeWorld.h"
 #include "OotNativeSkeletons.h"
+#include "OotNativeText.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
 #include "oot_ocarina.h"
@@ -525,6 +527,10 @@ const ShipOotResourcesV2 resourcesV2{
     sizeof(ShipOotResourcesV2), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
     MountArchive, UnmountArchive, GetGameVersions, ReadFileLayers
 };
+const ShipOotResourcesV3 resourcesV3{
+    sizeof(ShipOotResourcesV3), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
+    MountArchive, UnmountArchive, GetGameVersions, ReadFileLayers, RegisterOotJsonType, UnregisterOotJsonType
+};
 const ShipOotOcarinaV1 ocarinaV1{
     sizeof(ShipOotOcarinaV1), OcarinaActive, OcarinaSongFlags, OcarinaSongCount, OcarinaSongPattern,
     OcarinaSubmitSong
@@ -559,6 +565,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeView(gameThread);
     InitializeOotNativeWorld(gameThread);
     InitializeOotNativeSkeletons(gameThread);
+    InitializeOotNativeText(gameThread);
+    InitializeOotNativeJsonTypes(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
     policy.services.push_back({LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION,
@@ -600,6 +608,15 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& skeletons = GetOotNativeSkeletonsService();
     policy.services.push_back(
         {LINKSPAN_OOT_SKELETONS_SERVICE, LINKSPAN_OOT_SKELETONS_VERSION, sizeof(skeletons), &skeletons});
+    // OOT-CORE-008: NEI-002 e fase E do Unbound.
+    const auto& itemsV3 = GetOotNativeItemsServiceV3();
+    policy.services.push_back({LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_3, sizeof(itemsV3), &itemsV3});
+    policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_3,
+                               sizeof(resourcesV3), &resourcesV3});
+    const auto& scenesV2 = GetOotNativeScenesServiceV2();
+    policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_2, sizeof(scenesV2), &scenesV2});
+    const auto& text = GetOotNativeTextService();
+    policy.services.push_back({LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION, sizeof(text), &text});
     policy.hooks = CreateOotHookRegistry();
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;

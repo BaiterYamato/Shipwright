@@ -4,6 +4,7 @@
 #include "soh/resource/importer/SceneFactory.h"
 #include "soh/resource/type/Scene.h"
 #include "soh/resource/type/scenecommand/SceneCommand.h"
+#include "soh/resource/importer/scenecommand/SetAnimatedMaterialListFactory.h"
 #include "soh/resource/importer/scenecommand/SetLightingSettingsFactory.h"
 #include "soh/resource/importer/scenecommand/SetWindSettingsFactory.h"
 #include "soh/resource/importer/scenecommand/SetExitListFactory.h"
@@ -139,6 +140,8 @@ ResourceFactoryXMLSceneV0::ResourceFactoryXMLSceneV0() {
     sceneCommandFactories[SceneCommandID::SetCutscenes] = std::make_shared<SetCutscenesFactoryXML>();
     sceneCommandFactories[SceneCommandID::SetLightList] = std::make_shared<SetLightListFactoryXML>();
     sceneCommandFactories[SceneCommandID::SetMesh] = std::make_shared<SetMeshFactoryXML>();
+    sceneCommandFactories[SceneCommandID::SetAnimatedMaterialList] =
+        std::make_shared<SetAnimatedMaterialListFactoryXML>();
 }
 
 std::vector<std::string> commandNames = {
@@ -168,6 +171,7 @@ std::vector<std::string> commandNames = {
     "SetCutscenes",
     "SetAlternateHeaders",
     "SetCameraSettings",
+    "SetAnimatedMaterialList", // SOH [Unbound] 0x1A; só existe em XML (OOT-CORE-008)
 };
 
 SceneCommandID GetCommandID(std::string commandName) {
@@ -182,7 +186,11 @@ SceneCommandID GetCommandID(std::string commandName) {
 
 void ResourceFactoryXMLSceneV0::ParseSceneCommands(std::shared_ptr<Scene> scene,
                                                    std::shared_ptr<tinyxml2::XMLDocument> reader) {
-    auto child = reader->RootElement()->FirstChildElement();
+    ParseSceneCommandList(scene, reader->RootElement());
+}
+
+void ResourceFactoryXMLSceneV0::ParseSceneCommandList(std::shared_ptr<Scene> scene, tinyxml2::XMLElement* parent) {
+    auto child = parent->FirstChildElement();
 
     int i = 0;
 

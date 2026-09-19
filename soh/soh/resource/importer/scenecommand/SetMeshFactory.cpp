@@ -152,6 +152,7 @@ std::shared_ptr<Ship::IResource> SetMeshFactoryXML::ReadResource(std::shared_ptr
     setMesh->data = reader->IntAttribute("Data");
 
     setMesh->meshHeader.base.type = reader->IntAttribute("MeshHeaderType");
+    setMesh->meshHeaderType = setMesh->meshHeader.base.type;
     int32_t polyNum = 1;
 
     if (setMesh->meshHeader.base.type != 1) {

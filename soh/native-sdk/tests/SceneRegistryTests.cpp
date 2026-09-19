@@ -59,6 +59,19 @@ ShipOotEntranceDefinitionV1 Entrance(const char* key, int32_t index = LINKSPAN_O
     return entrance;
 }
 
+const char* FileName(int32_t sceneId) {
+    static const char* const files[kSceneCount] = { "a_scene", "b_scene", "c_scene" };
+    return files[sceneId];
+}
+
+uint8_t DrawConfig(int32_t sceneId) {
+    return static_cast<uint8_t>(sceneId + 1);
+}
+
+bool HasMasterQuest(int32_t sceneId) {
+    return sceneId == 1;
+}
+
 bool SameEntrance(const EntranceInfo& left, const EntranceInfo& right) {
     return left.scene == right.scene && left.spawn == right.spawn && left.field == right.field;
 }
@@ -73,6 +86,9 @@ int main() {
     vanilla.entranceNames = kEntranceNames;
     vanilla.entranceCount = kEntranceCount;
     vanilla.drawConfigCount = 4;
+    vanilla.sceneFileName = FileName;
+    vanilla.sceneDrawConfig = DrawConfig;
+    vanilla.sceneHasMasterQuest = HasMasterQuest;
     ShipLuaHost::SetOotVanillaScenes(vanilla);
     ShipLuaHost::SetOotEntranceTableListener(ListenTable);
     ShipLuaHost::SetOotSceneTravel(Travel);
@@ -249,6 +265,49 @@ int main() {
     scene = Scene("demo/field", "scenes/shared/spot00_scene/spot00_scene");
     Check(scenes.register_scene(&scene, &fieldAgain, &fieldAgainId) == SHIP_NATIVE_OK && fieldAgainId == 128,
           "novo init deve recomeçar os ids em 128");
+
+    // V2 (OOT-CORE-008): título, info e override de cena vanilla.
+    const auto& v2 = ShipLuaHost::GetOotNativeScenesServiceV2();
+    Check(v2.size == sizeof(ShipOotScenesV2) && v2.get_scene_count() == kSceneCount, "V2 e contagem vanilla");
+    ShipOotSceneDefinitionV2 titled{ sizeof(titled), "demo/titled", nullptr, "scenes/demo/titled", 300, 1,
+                                     "textures/demo/title" };
+    uint64_t titledHandle = 0;
+    int32_t titledId = 0;
+    Check(v2.register_scene_v2(&titled, &titledHandle, &titledId) == SHIP_NATIVE_OK && titledId == 300 &&
+              ShipLuaHost::OotCustomSceneTitleCard(300) &&
+              *ShipLuaHost::OotCustomSceneTitleCard(300) == "textures/demo/title" &&
+              !ShipLuaHost::OotCustomSceneTitleCard(128),
+          "register_scene_v2 guarda o título");
+    ShipOotSceneInfoV1 info{ sizeof(info) };
+    Check(v2.get_scene_info(0, 0, &info) == SHIP_NATIVE_OK && !info.is_custom && !info.has_master_quest &&
+              info.draw_config == 1 && std::string(info.name) == "SCENE_A" &&
+              std::string(info.file_name) == "a_scene" &&
+              std::string(info.scene_path) == "scenes/shared/a_scene/a_scene",
+          "info de cena vanilla compartilhada");
+    Check(v2.get_scene_info(1, 1, &info) == SHIP_NATIVE_OK && info.has_master_quest &&
+              std::string(info.scene_path) == "scenes/mq/b_scene/b_scene",
+          "info da variante MQ");
+    Check(v2.get_scene_info(300, 0, &info) == SHIP_NATIVE_OK && info.is_custom &&
+              std::string(info.name) == "demo/titled" && std::string(info.scene_path) == "scenes/demo/titled",
+          "info de cena de mod");
+    Check(v2.get_scene_info(301, 0, &info) == SHIP_NATIVE_UNSUPPORTED, "id sem cena");
+    Check(v2.override_scene(128, 0, "x") == SHIP_NATIVE_INVALID_ARGUMENT &&
+              v2.override_scene(0, 1, "x") == SHIP_NATIVE_INVALID_ARGUMENT,
+          "override só de cena vanilla e MQ só onde existe");
+    std::string overridePath;
+    Check(v2.override_scene(1, 0, "scenes/b/scene.json") == SHIP_NATIVE_OK &&
+              ShipLuaHost::OotSceneOverridePath(1, false, overridePath) && overridePath == "scenes/b/scene.json" &&
+              !ShipLuaHost::OotSceneOverridePath(1, true, overridePath),
+          "override por variante");
+    Check(v2.get_scene_info(1, 0, &info) == SHIP_NATIVE_OK && info.overridden &&
+              std::string(info.scene_path) == "scenes/b/scene.json",
+          "info mostra o override");
+    Check(v2.override_scene(1, 0, nullptr) == SHIP_NATIVE_OK && !ShipLuaHost::OotSceneOverridePath(1, false, overridePath),
+          "NULL volta ao vanilla");
+    v2.override_scene(0, 0, "scenes/a/scene.json");
+    ShipLuaHost::ResetOotNativeScenes();
+    ShipLuaHost::InitializeOotNativeScenes();
+    Check(!ShipLuaHost::OotSceneOverridePath(0, false, overridePath), "shutdown limpa os overrides");
 
     if (failures) {
         return 1;

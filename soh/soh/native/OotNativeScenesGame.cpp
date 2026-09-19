@@ -3,6 +3,7 @@
 #include "OotNativeScenes.h"
 
 #include <iterator>
+#include <set>
 #include <spdlog/spdlog.h>
 
 #include "macros.h"
@@ -51,6 +52,20 @@ ShipNativeStatus TravelToEntrance(int32_t entranceIndex) {
     return SHIP_NATIVE_OK;
 }
 
+const char* SceneFileName(int32_t sceneId) {
+    return gSceneTable[sceneId].sceneFile.fileName;
+}
+
+uint8_t SceneDrawConfig(int32_t sceneId) {
+    return gSceneTable[sceneId].config;
+}
+
+// Mesma regra de OTRPlay_SpawnScene (z_play_otr.cpp).
+bool SceneHasMasterQuest(int32_t sceneId) {
+    return (sceneId >= SCENE_DEKU_TREE && sceneId <= SCENE_ICE_CAVERN) || sceneId == SCENE_GERUDO_TRAINING_GROUND ||
+           sceneId == SCENE_INSIDE_GANONS_CASTLE;
+}
+
 [[maybe_unused]] const bool kScenesBound = [] {
     ShipLuaHost::OotVanillaScenes vanilla;
     vanilla.sceneNames = kSceneNames;
@@ -59,6 +74,9 @@ ShipNativeStatus TravelToEntrance(int32_t entranceIndex) {
     vanilla.entranceNames = kEntranceNames;
     vanilla.entranceCount = ENTR_MAX;
     vanilla.drawConfigCount = SDC_MAX;
+    vanilla.sceneFileName = SceneFileName;
+    vanilla.sceneDrawConfig = SceneDrawConfig;
+    vanilla.sceneHasMasterQuest = SceneHasMasterQuest;
     ShipLuaHost::SetOotVanillaScenes(vanilla);
     ShipLuaHost::SetOotEntranceTableListener(ApplyEntranceTable);
     ShipLuaHost::SetOotSceneTravel(TravelToEntrance);
@@ -73,6 +91,20 @@ extern "C" SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum) {
         return &gSaveContext.sceneFlags[sceneNum];
     }
     return ShipLuaHost::OotCustomSceneFlags(sceneNum);
+}
+
+// TitleCard_InitPlaceName (z_actor.c): textura do título da cena de mod, ou NULL.
+extern "C" const char* LinkSpan_CustomSceneTitleCard(s32 sceneNum) {
+    static std::set<std::string, std::less<>> paths;
+    const std::string* texture = ShipLuaHost::OotCustomSceneTitleCard(sceneNum);
+    if (!texture) {
+        return nullptr;
+    }
+    try {
+        return paths.emplace("__OTR__" + *texture).first->c_str();
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 extern "C" s32 LinkSpan_EntranceCount(void) {

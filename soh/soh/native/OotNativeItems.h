@@ -24,6 +24,8 @@ struct OotItemsBridge {
     ShipNativeStatus (*drawDisplayList)(void* play, const char* path, uint8_t translucent) = nullptr;
     // Põe o Link para levantar o item; LIMIT se o Player não pode receber agora.
     ShipNativeStatus (*giveItem)(uint8_t item) = nullptr;
+    // Idioma do jogo (LINKSPAN_OOT_LANGUAGE_*).
+    uint8_t (*getLanguage)() = nullptr;
 };
 
 struct OotItemRecord {
@@ -39,6 +41,9 @@ struct OotItemRecord {
     std::string message;
     ShipOotItemReceiveFn receive = nullptr;
     void* receiveUser = nullptr;
+    // set_item_ammo (items v3); LINKSPAN_OOT_ITEMS_NO_AMMO = sem número no botão.
+    uint16_t ammo = LINKSPAN_OOT_ITEMS_NO_AMMO;
+    uint16_t ammoFull = 0;
 };
 
 struct OotActorTypeRecord {
@@ -53,6 +58,7 @@ void InitializeOotNativeItems(std::thread::id ownerThread = std::this_thread::ge
 void ResetOotNativeItems();
 const ShipOotItemsV1& GetOotNativeItemsService();
 const ShipOotItemsV2& GetOotNativeItemsServiceV2();
+const ShipOotItemsV3& GetOotNativeItemsServiceV3();
 const ShipOotActorsV1& GetOotNativeActorsService();
 
 // Consultas do jogo, na thread do jogo.

@@ -10,6 +10,7 @@
 #include <message_data_static.h>
 
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <array>
 #include <deque>
 #include <string>
@@ -109,6 +110,13 @@ struct MessageTable {
     MessageTableEntry* Find(uint16_t id) {
         auto it = index.find(id);
         return it == index.end() || id == kTerminatorId ? nullptr : &entries[it->second];
+    }
+
+    void Clear() {
+        storage.clear();
+        entries.clear();
+        index.clear();
+        loaded = false;
     }
 
     void Finalize() {
@@ -225,4 +233,55 @@ extern "C" s32 OTRMessage_Remove(s32 language, u16 textId) {
     const bool removed = sTables[language].Remove(textId);
     PublishTables();
     return removed ? 1 : 0;
+}
+
+extern "C" s32 OTRMessage_Clear(s32 language) {
+    if (language < 0 || language >= MSG_LANGUAGE_COUNT || !sTables[language].loaded) {
+        return 0;
+    }
+    MessageTable& table = sTables[language];
+    table.Clear();
+    table.Finalize();
+    PublishTables();
+    return 1;
+}
+
+extern "C" s32 OTRMessage_Reset(s32 language) {
+    if (language < 0 || language >= MSG_LANGUAGE_COUNT || !sInitialized) {
+        return 0;
+    }
+    const LanguageSpec& spec = kLanguages[language];
+    MessageTable& table = sTables[spec.language];
+    table.Clear();
+    if (LoadBase(table, spec)) {
+        LoadOverrides(table, spec);
+    }
+    if (!table.entries.empty()) {
+        table.Finalize();
+    }
+    PublishTables();
+    return table.loaded ? 1 : 0;
+}
+
+extern "C" s32 OTRMessage_ForEach(s32 language, OTRMessageVisitor visitor, void* user) {
+    if (language < 0 || language >= MSG_LANGUAGE_COUNT || !visitor || !sTables[language].loaded) {
+        return 0;
+    }
+    const MessageTable& table = sTables[language];
+    std::vector<std::pair<uint16_t, size_t>> order;
+    order.reserve(table.index.size());
+    for (const auto& [id, position] : table.index) {
+        if (id != kTerminatorId) {
+            order.emplace_back(id, position);
+        }
+    }
+    std::sort(order.begin(), order.end());
+    for (const auto& [id, position] : order) {
+        const MessageTableEntry& entry = table.entries[position];
+        const s32 result = visitor(user, id, entry.typePos, entry.segment, entry.msgSize);
+        if (result != 0) {
+            return result;
+        }
+    }
+    return 0;
 }

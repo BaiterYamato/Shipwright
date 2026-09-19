@@ -19,6 +19,10 @@ struct OotVanillaScenes {
     const char* const* entranceNames = nullptr; // enum ENTR_*, índice = posição na tabela
     int32_t entranceCount = 0;
     int32_t drawConfigCount = 0;
+    // gSceneTable: arquivo ("spot00_scene"), draw config e se a cena tem pastas nonmq/mq.
+    const char* (*sceneFileName)(int32_t sceneId) = nullptr;
+    uint8_t (*sceneDrawConfig)(int32_t sceneId) = nullptr;
+    bool (*sceneHasMasterQuest)(int32_t sceneId) = nullptr;
 };
 
 // Recebe a tabela de entradas vigente sempre que ela muda: nullptr quando só há
@@ -34,6 +38,7 @@ void SetOotSceneTravel(OotSceneTravelFn travel);
 void InitializeOotNativeScenes(std::thread::id ownerThread = std::this_thread::get_id());
 void ResetOotNativeScenes();
 const ShipOotScenesV1& GetOotNativeScenesService();
+const ShipOotScenesV2& GetOotNativeScenesServiceV2();
 
 struct OotCustomScene {
     std::string path;
@@ -44,6 +49,10 @@ struct OotCustomScene {
 int32_t OotEntranceCount();
 bool FindOotCustomScene(int32_t sceneId, OotCustomScene& scene);
 const std::string* OotCustomSceneDisplayName(int32_t sceneId);
+// Textura do título de uma cena registrada com register_scene_v2; nullptr sem título.
+const std::string* OotCustomSceneTitleCard(int32_t sceneId);
+// Caminho que substitui uma cena vanilla (override_scene), para a variante pedida.
+bool OotSceneOverridePath(int32_t sceneId, bool masterQuest, std::string& path);
 // Nome estável da cena: enum SCENE_* para vanilla, nome do registro para cenas de mod.
 bool OotSceneStableName(int32_t sceneId, std::string& name);
 bool OotSceneIdFromStableName(const std::string& name, int32_t& sceneId);

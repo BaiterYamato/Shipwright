@@ -7,6 +7,9 @@
 #include <tinyxml2.h>
 #include <cstddef>
 #include <cstring>
+#include <ship/Context.h>
+#include <ship/resource/ResourceManager.h>
+#include <ship/resource/archive/ArchiveManager.h>
 #include "z64bgcheck.h"
 
 namespace SOH {
@@ -53,6 +56,59 @@ static uint32_t UnpackLegacyVtxWord(uint16_t packed) {
 static uint32_t PackVtxWord(uint32_t index, uint32_t flags3) {
     return (index & 0x1FFFFFFFu) | ((flags3 & 7u) << 29);
 }
+
+// SOH [Link-Span] OOT-CORE-008: um CollisionHeader XML pode trazer vértices e polígonos num arquivo
+// binário (o collision.bin do SPEC.md §4.4.1 do Unbound): little-endian, sem cabeçalho, vértices
+// { s32 x, y, z } e depois polígonos { u16 type, u16 pad, u32 vA, vB, vC, s16 nx, ny, nz, s16 pad, s32 dist }.
+namespace {
+constexpr size_t kBulkVertexBytes = 12;
+constexpr size_t kBulkPolyBytes = 28;
+
+uint32_t LoadU32(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+uint16_t LoadU16(const uint8_t* p) {
+    return (uint16_t)(p[0] | (p[1] << 8));
+}
+
+bool ReadCollisionBulk(CollisionHeader& col, const std::string& docPath, const char* binPath, uint32_t numVertices,
+                       uint32_t numPolys) {
+    auto file = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->LoadFile(binPath);
+    if (file == nullptr || !file->IsLoaded || file->Buffer == nullptr) {
+        SPDLOG_ERROR("{}: collision bulk {} missing", docPath, binPath);
+        return false;
+    }
+    const size_t need = (size_t)numVertices * kBulkVertexBytes + (size_t)numPolys * kBulkPolyBytes;
+    if (file->Buffer->size() < need) {
+        SPDLOG_ERROR("{}: collision bulk {} is shorter than its declared counts", docPath, binPath);
+        return false;
+    }
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(file->Buffer->data());
+    col.vertices.reserve(col.vertices.size() + numVertices);
+    for (uint32_t i = 0; i < numVertices; i++, p += kBulkVertexBytes) {
+        Vec3i v;
+        v.x = (int32_t)LoadU32(p);
+        v.y = (int32_t)LoadU32(p + 4);
+        v.z = (int32_t)LoadU32(p + 8);
+        col.vertices.push_back(v);
+    }
+    col.polygons.reserve(col.polygons.size() + numPolys);
+    for (uint32_t i = 0; i < numPolys; i++, p += kBulkPolyBytes) {
+        CollisionPoly poly{};
+        poly.type = LoadU16(p);
+        poly.flags_vIA = LoadU32(p + 4);
+        poly.flags_vIB = LoadU32(p + 8);
+        poly.vIC = LoadU32(p + 12);
+        poly.normal.x = (int16_t)LoadU16(p + 16);
+        poly.normal.y = (int16_t)LoadU16(p + 18);
+        poly.normal.z = (int16_t)LoadU16(p + 20);
+        poly.dist = (int32_t)LoadU32(p + 24);
+        col.polygons.push_back(poly);
+    }
+    return true;
+}
+} // namespace
 
 std::shared_ptr<Ship::IResource>
 ResourceFactoryBinaryCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> file,
@@ -199,6 +255,13 @@ ResourceFactoryXMLCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> fi
     zero.z = 0;
     collisionHeader->camPosDataZero = zero;
 
+    if (const char* bulk = reader->Attribute("BulkFile")) {
+        if (!ReadCollisionBulk(*collisionHeader, initData->Path, bulk, reader->UnsignedAttribute("BulkVertices"),
+                               reader->UnsignedAttribute("BulkPolys"))) {
+            return nullptr;
+        }
+    }
+
     while (child != nullptr) {
         std::string childName = child->Name();
         if (childName == "Vertex") {
@@ -238,6 +301,26 @@ ResourceFactoryXMLCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> fi
             // SOH [Unbound]
             collisionHeader->surfaceTypes.push_back(
                 UnpackSurfaceType(child->UnsignedAttribute("Data1"), child->UnsignedAttribute("Data2")));
+        } else if (childName == "SurfaceType") {
+            // SOH [Link-Span] OOT-CORE-008: campos já separados, sem os limites dos words empacotados.
+            SurfaceType surface{};
+            surface.camera = child->IntAttribute("Camera");
+            surface.exit = child->IntAttribute("Exit");
+            surface.lightSetting = child->IntAttribute("LightSetting");
+            surface.floorType = (uint8_t)child->UnsignedAttribute("FloorType");
+            surface.wallFlags = (uint8_t)child->UnsignedAttribute("WallFlags");
+            surface.wallType = (uint8_t)child->UnsignedAttribute("WallType");
+            surface.floorProperty = (uint8_t)child->UnsignedAttribute("FloorProperty");
+            surface.isSoft = (uint8_t)child->UnsignedAttribute("IsSoft");
+            surface.isHorseBlocked = (uint8_t)child->UnsignedAttribute("IsHorseBlocked");
+            surface.material = (uint8_t)child->UnsignedAttribute("Material");
+            surface.floorEffect = (uint8_t)child->UnsignedAttribute("FloorEffect");
+            surface.echo = (uint8_t)child->UnsignedAttribute("Echo");
+            surface.canHookshot = (uint8_t)child->UnsignedAttribute("CanHookshot");
+            surface.conveyorSpeed = (uint8_t)child->UnsignedAttribute("ConveyorSpeed");
+            surface.conveyorDirection = (uint8_t)child->UnsignedAttribute("ConveyorDirection");
+            surface.isWallDamage = (uint8_t)child->UnsignedAttribute("IsWallDamage");
+            collisionHeader->surfaceTypes.push_back(surface);
         } else if (childName == "CameraData") {
             CamData camDataEntry;
             camDataEntry.cameraSType = child->UnsignedAttribute("SType");
@@ -270,7 +353,15 @@ ResourceFactoryXMLCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> fi
             waterBox.zMin = child->IntAttribute("ZMin");
             waterBox.xLength = child->IntAttribute("XLength");
             waterBox.zLength = child->IntAttribute("ZLength");
-            UnpackWaterBoxProperties(waterBox, child->UnsignedAttribute("Properties")); // SOH [Unbound]
+            if (child->FindAttribute("Room") != nullptr) {
+                // SOH [Link-Span] OOT-CORE-008: propriedades separadas (SPEC.md §4.4 do Unbound).
+                waterBox.camera = child->IntAttribute("Camera");
+                waterBox.lightSetting = child->IntAttribute("LightSetting");
+                waterBox.room = child->IntAttribute("Room");
+                waterBox.notSwimmable = child->BoolAttribute("NotSwimmable") ? 1 : 0;
+            } else {
+                UnpackWaterBoxProperties(waterBox, child->UnsignedAttribute("Properties")); // SOH [Unbound]
+            }
 
             collisionHeader->waterBoxes.push_back(waterBox);
         }
@@ -281,11 +372,17 @@ ResourceFactoryXMLCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> fi
     for (size_t i = 0; i < collisionHeader->camData.size(); i++) {
         int32_t idx = collisionHeader->camPosDataIndices[i];
 
-        if (collisionHeader->camPosData.size() > 0) {
+        // SOH [Link-Span] OOT-CORE-008: índice negativo (sem posição) ou além da lista usa a posição zero.
+        if (idx >= 0 && static_cast<size_t>(idx) < collisionHeader->camPosData.size()) {
             collisionHeader->camData[i].camPosData = &collisionHeader->camPosData[idx];
         } else {
             collisionHeader->camData[i].camPosData = &collisionHeader->camPosDataZero;
         }
+    }
+
+    if (collisionHeader->waterBoxes.size() > UINT16_MAX) {
+        SPDLOG_ERROR("{}: {} water boxes (at most {})", initData->Path, collisionHeader->waterBoxes.size(), UINT16_MAX);
+        return nullptr;
     }
 
     collisionHeader->collisionHeaderData.numVertices = static_cast<u32>(collisionHeader->vertices.size());
