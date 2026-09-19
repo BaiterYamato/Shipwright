@@ -144,7 +144,7 @@ void TestScene() {
           "spawns": {"0": {"id": 0, "pos": [1.5, 2, 3], "rot": [0, 49152, 0], "params": "0x0FFF"}},
           "exits": {"0": "ENTR_HYRULE_FIELD_0", "1": 5, "2": "mod/cena/main", "3": "0x10"},
           "materialAnims": {"0": {"segment": 8, "type": "texScroll",
-                                   "layers": [{"xStep": 0, "yStep": 1, "width": 32, "height": 32}]},
+                                   "layers": [{"xStep": 0, "yStep": 1, "xSpeed": 0.25, "width": 32, "height": 32}]},
                             "1": {"segment": 9, "type": "bogus"},
                             "2": {"segment": 10, "pass": "xlu", "type": "colorLerp", "length": 64,
                                   "keyFrames": [0, 32], "primColors": [[1,2,3,4,5],[6,7,8,9,10]],
@@ -169,8 +169,8 @@ void TestScene() {
     CHECK(Contains(xml, "<StartPositionEntry Id=\"0\" PosX=\"1.5\" PosY=\"2\" PosZ=\"3\" RotX=\"0\" RotY=\"-16384\" "
                         "RotZ=\"0\" Params=\"4095\"/>"));
     CHECK(Contains(xml, "<ExitEntry Id=\"205\"/><ExitEntry Id=\"5\"/><ExitEntry Id=\"1560\"/><ExitEntry Id=\"16\"/>"));
-    CHECK(Contains(xml, "<TexScroll Segment=\"8\" Pass=\"3\" Type=\"0\"><Layer XStep=\"0\" YStep=\"1\" Width=\"32\" "
-                        "Height=\"32\"/></TexScroll>"));
+    CHECK(Contains(xml, "<TexScroll Segment=\"8\" Pass=\"3\" Type=\"0\"><Layer XStep=\"0\" YStep=\"1\" XSpeed=\"0.25\" "
+                        "YSpeed=\"0\" Width=\"32\" Height=\"32\"/></TexScroll>"));
     CHECK(Contains(xml, "<Color Segment=\"10\" Pass=\"2\" Type=\"3\" Length=\"64\"><KeyFrame Frame=\"0\" PrimR=\"1\""));
     CHECK(Contains(xml, "EnvR=\"2\" EnvG=\"2\" EnvB=\"2\" EnvA=\"2\"/></Color>"));
     CHECK(Contains(xml, "<TexCycle Segment=\"11\" Pass=\"3\"><Texture Path=\"t/a\"/><Texture Path=\"t/b\"/><Frame "

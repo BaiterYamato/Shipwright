@@ -23,6 +23,12 @@ struct RegistryScene {
     int32_t sceneId = -1; // -1: próximo id livre
     uint8_t drawConfig = 0;
     std::string titleCard; // textura I8 144x24 no VFS; vazio = sem título
+    bool horse = false;
+    bool horseHasSpawn = false;
+    float horseX = 0.0f;
+    float horseY = 0.0f;
+    float horseZ = 0.0f;
+    int16_t horseAngle = 0;
     std::vector<RegistryEntrance> entrances;
 };
 

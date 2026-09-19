@@ -102,6 +102,34 @@ bool ReadEntrance(const std::string& scene, const std::string& key, const Json& 
     return true;
 }
 
+bool ReadHorse(const std::string& name, const Json& definition, RegistryScene& scene, std::vector<std::string>& notes) {
+    const auto horse = definition.find("horse");
+    if (horse == definition.end()) {
+        return true;
+    }
+    if (horse->is_boolean()) {
+        scene.horse = horse->get<bool>();
+        return true;
+    }
+    const auto pos = horse->is_object() ? horse->find("pos") : horse->end();
+    const auto angle = horse->is_object() ? horse->find("angle") : horse->end();
+    if (!horse->is_object() || pos == horse->end() || !pos->is_array() || pos->size() != 3 ||
+        angle == horse->end() || !angle->is_number_integer() || !(*pos)[0].is_number() ||
+        !(*pos)[1].is_number() || !(*pos)[2].is_number() ||
+        angle->get<int64_t>() < std::numeric_limits<int16_t>::min() ||
+        angle->get<int64_t>() > std::numeric_limits<int16_t>::max()) {
+        notes.push_back(name + ": horse recusado; use true ou {pos:[x,y,z],angle:s16}");
+        return false;
+    }
+    scene.horse = true;
+    scene.horseHasSpawn = true;
+    scene.horseX = (*pos)[0].get<float>();
+    scene.horseY = (*pos)[1].get<float>();
+    scene.horseZ = (*pos)[2].get<float>();
+    scene.horseAngle = static_cast<int16_t>(angle->get<int64_t>());
+    return true;
+}
+
 } // namespace
 
 bool ParseSceneRegistry(const std::string& json, SceneRegistryDocument& output, std::string& error) {
@@ -143,6 +171,7 @@ bool ParseSceneRegistry(const std::string& json, SceneRegistryDocument& output, 
                 continue;
             }
             scene.drawConfig = static_cast<uint8_t>(number);
+            ReadHorse(key, *value, scene, output.notes);
             const auto titleCard = value->find("titleCardTexture");
             if (titleCard != value->end() && titleCard->is_string()) {
                 scene.titleCard = titleCard->get<std::string>();

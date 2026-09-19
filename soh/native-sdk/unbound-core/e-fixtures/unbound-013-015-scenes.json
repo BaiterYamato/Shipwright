@@ -1,0 +1,14 @@
+{
+  "fixture/horse": {
+    "name": "Fixture Epona e Debug Warp",
+    "scene": "scenes/linkspan_e/lab/scene.json",
+    "drawConfig": 0,
+    "horse": { "pos": [0, 0, -120], "angle": 0 },
+    "entrances": { "main": { "spawn": 0 } }
+  },
+  "fixture/horse-malformed": {
+    "scene": "scenes/linkspan_e/lab/scene.json",
+    "horse": { "pos": [0, 0], "angle": 0 },
+    "entrances": { "main": { "spawn": 0 } }
+  }
+}

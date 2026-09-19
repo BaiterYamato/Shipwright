@@ -47,7 +47,7 @@ int main() {
 
     const std::vector<LinkSpanUnbound::LayerDocument> registryLayers{
         { "base.o2r",
-          R"({"mod/b":{"scene":"scenes/b","entrances":{"main":{"spawn":1}}},"mod/a":{"scene":"scenes/a","sceneId":200,"drawConfig":3,"titleCardTexture":"textures/a_title"},"mod/gone":{"scene":"scenes/gone"}})",
+          R"({"mod/b":{"scene":"scenes/b","entrances":{"main":{"spawn":1}}},"mod/a":{"scene":"scenes/a","sceneId":200,"drawConfig":3,"titleCardTexture":"textures/a_title","horse":{"pos":[1.5,2,3],"angle":-16384}},"mod/gone":{"scene":"scenes/gone"}})",
           1 },
         { "patch.o2r",
           R"({"mod/gone":null,"mod/a":{"name":"Cena A","entrances":{"north":{"index":1560,"showTitleCard":true,"endTransition":5,"layers":{}}}},"mod/bad":{"scene":"scenes/bad","sceneId":10},"mod/nopath":{"name":"x"},"$order":["mod/a"]})",
@@ -63,11 +63,12 @@ int main() {
           "cenas válidas devem sair em ordem de chave");
     const auto& sceneA = registry.scenes[0];
     Check(sceneA.displayName == "Cena A" && sceneA.path == "scenes/a" && sceneA.sceneId == 200 &&
-              sceneA.drawConfig == 3 && sceneA.entrances.size() == 1 && sceneA.entrances[0].key == "north" &&
+               sceneA.drawConfig == 3 && sceneA.entrances.size() == 1 && sceneA.entrances[0].key == "north" &&
               sceneA.entrances[0].index == 1560 && sceneA.entrances[0].showTitleCard &&
               sceneA.entrances[0].endTransition == 5 && sceneA.entrances[0].startTransition == 2 &&
-              sceneA.titleCard == "textures/a_title",
-          "campos da cena e da entrada devem vir do documento com os padrões do SPEC");
+               sceneA.titleCard == "textures/a_title" && sceneA.horse && sceneA.horseHasSpawn &&
+               sceneA.horseX == 1.5f && sceneA.horseAngle == -16384,
+           "campos da cena e da entrada devem vir do documento com os padrões do SPEC");
     const auto& sceneB = registry.scenes[1];
     Check(sceneB.displayName == "mod/b" && sceneB.sceneId == -1 && sceneB.entrances.size() == 1 &&
               sceneB.entrances[0].spawn == 1 && sceneB.entrances[0].index == -1,
@@ -75,6 +76,10 @@ int main() {
     Check(registry.notes.size() == 3, "sceneId fora do intervalo, cena sem caminho e layers devem virar notas");
     Check(!LinkSpanUnbound::ParseSceneRegistry("[]", registry, error) && !error.empty(),
           "raiz que não é objeto deve ser recusada");
+    Check(LinkSpanUnbound::ParseSceneRegistry(R"({"mod/horse":{"scene":"x","horse":{"pos":[0,1],"angle":0}}})",
+                                               registry, error) && registry.scenes.size() == 1 && !registry.scenes[0].horse &&
+              registry.notes.size() == 1,
+          "horse malformado deve ser recusado e registrado sem descartar a cena");
     Check(LinkSpanUnbound::ParseSceneRegistry(
               R"({"z":{"scene":"s"},"10":{"scene":"s"},"9":{"scene":"s"},"a":{"scene":"s"},"$order":["z"]})", registry,
               error) &&

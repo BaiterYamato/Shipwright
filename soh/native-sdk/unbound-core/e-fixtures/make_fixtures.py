@@ -267,7 +267,8 @@ def lab_vertices(index):
 
 
 def lab_material_anims():
-    layer = {"xStep": 3, "yStep": 0, "width": 32, "height": 32}
+    # UNBOUND-014: um quarto de texel por frame, visivelmente mais lento que um passo inteiro.
+    layer = {"xStep": 0, "yStep": 0, "xSpeed": 0.25, "width": 32, "height": 32}
     return {
         "0": {"segment": 8, "pass": "opa", "type": "texScroll", "layers": [layer]},
         "1": {"segment": 9, "pass": "opa", "type": "twoTexScroll",
@@ -340,7 +341,8 @@ def make_lab(put, registry, field, field_room, field_collision):
     room.update({"mesh": {"type": 0, "entries": {"0": {"opa": LAB_DL, "xlu": None}}}, "objects": {}, "actors": {}})
     put("scenes/linkspan_e/lab/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
     registry["linkspan_e/lab"] = {"name": "Link-Span E: materiais", "scene": "scenes/linkspan_e/lab/scene.json",
-                                  "drawConfig": 0, "entrances": {"main": {"spawn": 0}}}
+                                  "drawConfig": 0, "horse": {"pos": [0, 0, -120], "angle": 0},
+                                  "entrances": {"main": {"spawn": 0}}}
 
 
 MANY_ROOMS = 300

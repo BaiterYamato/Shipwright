@@ -86,6 +86,7 @@ struct State {
     const ShipOotScenesV1* scenes = nullptr;
     // v2: título das cenas, lista de cenas vanilla e override (a base convertida precisa dele).
     const ShipOotScenesV2* scenesV2 = nullptr;
+    const ShipOotScenesV3* scenesV3 = nullptr;
     const ShipOotTextV1* text = nullptr;
     std::vector<uint64_t> sceneHandles;
     TypeBinding bindings[4];
@@ -335,7 +336,23 @@ std::string ApplySceneRegistry(State& state) {
         uint64_t handle = 0;
         int32_t sceneId = 0;
         ShipNativeStatus sceneStatus = SHIP_NATIVE_UNSUPPORTED;
-        if (state.scenesV2) {
+        if (state.scenesV3) {
+            ShipOotSceneDefinitionV3 definition{};
+            definition.size = sizeof(definition);
+            definition.name = scene.name.c_str();
+            definition.display_name = scene.displayName.c_str();
+            definition.scene_path = scene.path.c_str();
+            definition.requested_id = scene.sceneId;
+            definition.draw_config = scene.drawConfig;
+            definition.title_card_texture = scene.titleCard.c_str();
+            definition.horse_enabled = scene.horse ? 1 : 0;
+            definition.horse_has_spawn = scene.horseHasSpawn ? 1 : 0;
+            definition.horse_x = scene.horseX;
+            definition.horse_y = scene.horseY;
+            definition.horse_z = scene.horseZ;
+            definition.horse_angle = scene.horseAngle;
+            sceneStatus = state.scenesV3->register_scene_v3(&definition, &handle, &sceneId);
+        } else if (state.scenesV2) {
             ShipOotSceneDefinitionV2 definition{};
             definition.size = sizeof(definition);
             definition.name = scene.name.c_str();
@@ -356,6 +373,9 @@ std::string ApplySceneRegistry(State& state) {
             sceneStatus = state.scenes->register_scene(&definition, &handle, &sceneId);
             if (sceneStatus == SHIP_NATIVE_OK && !scene.titleCard.empty()) {
                 notes.push_back(scene.name + ": titleCardTexture exige linkspan.oot.scenes v2");
+            }
+            if (sceneStatus == SHIP_NATIVE_OK && scene.horse) {
+                notes.push_back(scene.name + ": horse exige linkspan.oot.scenes v3");
             }
         }
         if (sceneStatus != SHIP_NATIVE_OK) {
@@ -1023,8 +1043,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     state->resourcesV3 = static_cast<const ShipOotResourcesV3*>(
         runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_3,
                              sizeof(ShipOotResourcesV3)));
-    state->scenesV2 = static_cast<const ShipOotScenesV2*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_2, sizeof(ShipOotScenesV2)));
+    state->scenesV3 = static_cast<const ShipOotScenesV3*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_3, sizeof(ShipOotScenesV3)));
+    state->scenesV2 = state->scenesV3 ? reinterpret_cast<const ShipOotScenesV2*>(state->scenesV3)
+                                      : static_cast<const ShipOotScenesV2*>(runtime->get_service(
+                                            runtime->context, LINKSPAN_OOT_SCENES_SERVICE,
+                                            LINKSPAN_OOT_SCENES_VERSION_2, sizeof(ShipOotScenesV2)));
     // ShipOotScenesV2 começa com a tabela V1.
     state->scenes = state->scenesV2 ? reinterpret_cast<const ShipOotScenesV1*>(state->scenesV2)
                                     : static_cast<const ShipOotScenesV1*>(runtime->get_service(

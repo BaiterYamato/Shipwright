@@ -223,9 +223,15 @@ void MaterialAnim(Xml& xml, const Json& entry) {
             if (!layer.is_object()) {
                 throw EntryError("layers tem um elemento que não é objeto");
             }
+            if ((layer.contains("xSpeed") && !layer["xSpeed"].is_number()) ||
+                (layer.contains("ySpeed") && !layer["ySpeed"].is_number())) {
+                throw EntryError("xSpeed e ySpeed precisam ser números");
+            }
             xml.Leaf("Layer")
                 .Attr("XStep", S8(Field(layer, "xStep")))
                 .Attr("YStep", S8(Field(layer, "yStep")))
+                .Float("XSpeed", ToNumber(layer.value("xSpeed", Json(0.0))))
+                .Float("YSpeed", ToNumber(layer.value("ySpeed", Json(0.0))))
                 .Attr("Width", U8(Field(layer, "width")))
                 .Attr("Height", U8(Field(layer, "height")))
                 .Close();
