@@ -70,6 +70,10 @@ bool MergeDocuments(const std::string& schema, const std::vector<LayerDocument>&
         Json merged;
         bool first = true;
         for (const auto& layer : layers) {
+            if (!JsonDepthWithin(layer.json)) {
+                error = "nesting deeper than " + std::to_string(kMaxJsonDepth) + " levels: " + layer.archive;
+                return false;
+            }
             const Json parsed = Json::parse(layer.json);
             if (!parsed.is_object()) {
                 error = "layer root must be an object: " + layer.archive;
@@ -109,6 +113,10 @@ bool MergeSchemaFreeDocuments(const std::vector<LayerDocument>& layers, MergeRes
         // Começa vazio: um null da primeira camada também não sobra no resultado.
         Json merged = Json::object();
         for (const auto& layer : layers) {
+            if (!JsonDepthWithin(layer.json)) {
+                error = "nesting deeper than " + std::to_string(kMaxJsonDepth) + " levels: " + layer.archive;
+                return false;
+            }
             const Json parsed = Json::parse(layer.json, nullptr, true, true);
             if (!parsed.is_object()) {
                 error = "layer root must be an object: " + layer.archive;

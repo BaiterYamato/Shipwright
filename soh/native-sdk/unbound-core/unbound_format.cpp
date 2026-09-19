@@ -76,6 +76,11 @@ bool MergeLayers(const std::vector<LayerDocument>& layers, bool strictStart, Mer
             out.notes.push_back(layer.archive + ": o primeiro byte não é '{'; camada pulada");
             continue;
         }
+        if (!JsonDepthWithin(layer.json)) {
+            out.notes.push_back(layer.archive + ": aninhamento acima de " + std::to_string(kMaxJsonDepth) +
+                                " níveis; camada pulada");
+            continue;
+        }
         Json doc = Json::parse(layer.json, nullptr, false, true);
         if (doc.is_discarded() || !doc.is_object()) {
             out.notes.push_back(layer.archive + ": JSON inválido ou raiz que não é objeto; camada pulada");

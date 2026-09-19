@@ -205,16 +205,23 @@ void Registry::OnSaveLoaded() {
                 text.resize(size);
                 const auto doc = nlohmann::json::parse(text, nullptr, false);
                 if (doc.is_object() && doc.contains("items") && doc["items"].is_object()) {
+                    // Campo com tipo trocado (save editado à mão) vale o padrão só naquele item. value() lançaria
+                    // type_error no meio do laço, e o próximo Flush gravaria o estado pela metade.
+                    const auto integer = [](const nlohmann::json& object, const char* key) -> int64_t {
+                        const auto found = object.find(key);
+                        return found != object.end() && found->is_number_integer() ? found->get<int64_t>() : 0;
+                    };
                     for (const auto& [id, value] : doc["items"].items()) {
                         if (!value.is_object()) {
                             continue;
                         }
                         SavedState state;
-                        state.owned = value.value("owned", false);
-                        state.count = static_cast<uint16_t>(
-                            std::clamp<int64_t>(value.value("count", int64_t{ 0 }), 0, LINKSPAN_NEI_MAX_COUNT));
+                        const auto owned = value.find("owned");
+                        state.owned = owned != value.end() && owned->is_boolean() && owned->get<bool>();
+                        state.count =
+                            static_cast<uint16_t>(std::clamp<int64_t>(integer(value, "count"), 0, LINKSPAN_NEI_MAX_COUNT));
                         state.level = static_cast<uint8_t>(
-                            std::clamp<int64_t>(value.value("level", int64_t{ 0 }), 0, LINKSPAN_NEI_MAX_LEVELS - 1));
+                            std::clamp<int64_t>(integer(value, "level"), 0, LINKSPAN_NEI_MAX_LEVELS - 1));
                         mStates[id] = state;
                     }
                 }
@@ -283,8 +290,15 @@ ShipNativeStatus Registry::Define(const NeiItemDefinitionV1* definition, uint64_
         const uint64_t id = mNextHandle++;
         item->handle = id;
         Item& stored = *item;
-        mById.emplace(stored.id, id);
-        mDefined.emplace(id, std::move(item));
+        try {
+            mById.emplace(stored.id, id);
+            mDefined.emplace(id, std::move(item));
+        } catch (...) {
+            // Sem entrada nos mapas, nem Remove nem Detach achariam o item: devolve o id ao host aqui.
+            mById.erase(stored.id);
+            mItems->unregister_item(stored.runtime);
+            return SHIP_NATIVE_FAILURE;
+        }
         Refresh(stored);
         *handle = id;
         return SHIP_NATIVE_OK;

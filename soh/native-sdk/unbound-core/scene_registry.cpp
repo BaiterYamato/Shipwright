@@ -108,6 +108,10 @@ bool ParseSceneRegistry(const std::string& json, SceneRegistryDocument& output, 
     output = {};
     error.clear();
     try {
+        if (!JsonDepthWithin(json)) {
+            error = "unbound/scenes.json com aninhamento acima de " + std::to_string(kMaxJsonDepth) + " níveis";
+            return false;
+        }
         const Json root = Json::parse(json, nullptr, true, true);
         if (!root.is_object()) {
             error = "unbound/scenes.json precisa ser um objeto";

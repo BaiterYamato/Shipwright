@@ -74,6 +74,14 @@ void TestMerge() {
     m = Merge({ R"({"$schema":"unbound/scene/1","s":{"a":1,"b":2}})", R"({"s":{"$replace":true,"c":3}})" });
     CHECK(m.doc["s"] == Json::parse(R"({"c":3})"));
 
+    // Aninhamento acima do limite pula a camada antes do parse; colchete dentro de string não conta.
+    const std::string deep = std::string(kMaxJsonDepth, '[') + std::string(kMaxJsonDepth, ']');
+    CHECK(JsonDepthWithin(deep) && !JsonDepthWithin("[" + deep + "]"));
+    CHECK(JsonDepthWithin(R"({"s":"[[[[[[[[\"{{{{{"})", 2) && !JsonDepthWithin(R"({"a":{"b":[]}})", 2));
+    m = Merge({ R"({"$schema":"unbound/scene/1","k":1})", "{\"x\":" + std::string(100000, '[') });
+    CHECK(m.layersUsed == 1 && m.doc["k"] == 1 && m.notes.size() == 1 &&
+          m.notes[0].find("aninhamento") != std::string::npos);
+
     // Camada inválida é pulada e as outras mesclam; primeiro byte que não é '{' também.
     m = Merge({ R"({"$schema":"unbound/scene/1","k":1})", "{quebrado", " {\"k\":2}", R"({"k":3})" });
     CHECK(m.layersUsed == 2 && m.doc["k"] == 3 && m.notes.size() == 2);

@@ -157,10 +157,10 @@ void Lighting(Xml& xml, const Json& list, TranscodeContext& context) {
     const auto keys = PositionalKeys(list, Where(context, "lighting"));
     if (keys.size() > 255) {
         context.notes.push_back(Where(context, "lighting") + ": " + std::to_string(keys.size()) +
-                                " entradas; o índice de luz é um byte (§9)");
+                                " entradas; o índice de luz é um byte, cortado em 255 (§9)");
     }
-    for (const auto& key : keys) {
-        const Json& entry = list[key];
+    for (size_t i = 0; i < keys.size() && i < 255; ++i) {
+        const Json& entry = list[keys[i]];
         xml.Leaf("LightingSetting");
         Rgb(xml, SubArray(entry, "ambient"), "AmbientColorR", "AmbientColorG", "AmbientColorB");
         Dir(xml, SubArray(entry, "light1Dir"), "Light1DirX", "Light1DirY", "Light1DirZ");

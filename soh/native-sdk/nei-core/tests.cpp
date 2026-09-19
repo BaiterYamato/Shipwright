@@ -352,6 +352,17 @@ void TestSaveRoundTrip() {
           state.level == 0 && state.max_count == 10);
     CHECK(FakeItems::items.at(runtime).icon == "textures/a");
 
+    // JSON válido com tipo trocado num campo: só aquele campo vale o padrão; o resto do item e os outros ids
+    // carregam e sobrevivem à próxima gravação.
+    FakeSave::block = "{\"items\":{\"test.nei.seeds\":{\"owned\":\"sim\",\"count\":\"12\",\"level\":1},"
+                      "\"other.mod.thing\":{\"owned\":true,\"count\":3,\"level\":0}}}";
+    registry.OnSaveLoaded();
+    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && !state.owned && state.count == 0 &&
+          state.level == 1);
+    CHECK(registry.SetLevel(handle, 0) == SHIP_NATIVE_OK);
+    CHECK(FakeSave::block.find("\"other.mod.thing\":{\"count\":3,\"level\":0,\"owned\":true}") !=
+          std::string::npos);
+
     // Bloco corrompido é ignorado; sem arquivo carregado nada é gravado.
     FakeSave::block = "{nao e json";
     registry.OnSaveLoaded();

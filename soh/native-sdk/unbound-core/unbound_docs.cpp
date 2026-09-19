@@ -40,6 +40,10 @@ bool ParseMessageId(const std::string& key, uint32_t& id) {
 
 ManifestCheck CheckManifest(const std::string& json) {
     ManifestCheck check;
+    if (!JsonDepthWithin(json)) {
+        check.note = "unbound.json com aninhamento acima de " + std::to_string(kMaxJsonDepth) + " níveis";
+        return check;
+    }
     const Json doc = Json::parse(json, nullptr, false, true);
     if (doc.is_discarded() || !doc.is_object()) {
         check.note = "unbound.json não é um objeto JSON";
@@ -117,6 +121,11 @@ bool BuildTextTable(const std::vector<LayerDocument>& layers, TextTable& out) {
     // Chave de "messages" -> o valor mais alto que a menciona é null.
     std::map<std::string, bool> nulled;
     for (const auto& layer : layers) {
+        if (!JsonDepthWithin(layer.json)) {
+            out.notes.push_back(layer.archive + ": aninhamento acima de " + std::to_string(kMaxJsonDepth) +
+                                " níveis; camada pulada");
+            continue;
+        }
         Json doc = Json::parse(layer.json, nullptr, false, true);
         if (doc.is_discarded() || !doc.is_object()) {
             out.notes.push_back(layer.archive + ": JSON inválido ou raiz que não é objeto; camada pulada");

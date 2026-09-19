@@ -26,9 +26,17 @@ LinkSpanNei::Registry* Owned() {
     return gCore && gCore->owner == std::this_thread::get_id() ? &gCore->registry : nullptr;
 }
 
+// Outros mods chamam a tabela direto, sem o Invoke do host no meio: nenhuma exceção atravessa a fronteira C.
 #define NEI_FORWARD(call)                                        \
     auto* registry = Owned();                                    \
-    return registry ? registry->call : SHIP_NATIVE_INVALID_ARGUMENT
+    if (!registry) {                                             \
+        return SHIP_NATIVE_INVALID_ARGUMENT;                     \
+    }                                                            \
+    try {                                                        \
+        return registry->call;                                   \
+    } catch (...) {                                              \
+        return SHIP_NATIVE_FAILURE;                              \
+    }
 
 ShipNativeStatus SHIP_NATIVE_CALL DefineItem(const NeiItemDefinitionV1* definition, uint64_t* item) {
     NEI_FORWARD(Define(definition, item));
@@ -82,7 +90,11 @@ const NeiItemsV1 kService{ sizeof(NeiItemsV1), DefineItem, RemoveItem, FindItem,
 
 ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void*, const ShipNativeHookCall*) {
     if (auto* registry = Owned()) {
-        registry->OnSaveLoaded();
+        try {
+            registry->OnSaveLoaded();
+        } catch (...) {
+            return SHIP_NATIVE_FAILURE;
+        }
     }
     return SHIP_NATIVE_OK;
 }

@@ -251,6 +251,9 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
                 if (layer.json.empty() || layer.json[0] != '{') {
                     throw std::runtime_error("o primeiro byte precisa ser '{'");
                 }
+                if (!JsonDepthWithin(layer.json)) {
+                    throw std::runtime_error("aninhamento acima de " + std::to_string(kMaxJsonDepth) + " níveis");
+                }
                 parsed = Json::parse(layer.json, nullptr, true, true);
             } catch (const std::exception& exception) {
                 output.notes.push_back(layer.archive + ": camada pulada (" + exception.what() + ")");
