@@ -1,0 +1,26 @@
+# Funções fora de soh/include/functions.h que mods nativos chamam pelo escape hatch (tools/gen-host-keep.py).
+# NEI (fase F): inlinadas pelo LTCG no build 8C7BC455.
+CollisionPoly_GetNormalF
+include overlays/actors/ovl_En_Fz/z_en_fz.h
+EnFz_SetupMelt
+FB_WriteFramebufferSliceToCPU
+FrameInterpolation_RecordCloseChild
+Player_AnimPlayOnce
+Player_AnimPlayLoop
+Player_AnimPlayOnceAdjusted
+Player_IsZTargeting
+Player_RequestRumble
+Player_SetIntangibility
+Player_SetUpperActionFunc
+Player_ZeroSpeedXZ
+func_80834EB8
+func_80835688
+func_808377DC
+# Definidas com extern "C" em .cpp (GbiWrap, ActorDB, ResourceManagerHelpers).
+include soh/ActorDB.h
+ActorDB_Retrieve
+ResourceMgr_LoadVtxByName
+gSPDisplayList
+gSPVertex
+gSPSegmentLoadRes
+gSPInvalidateTexCache

@@ -481,7 +481,8 @@ if(MSVC)
             >
             $<$<CONFIG:Release>:
                 /OPT:REF;
-                /OPT:ICF;
+                # Sem ICF: o escape hatch (soh.symbols) recusa funções fundidas, e mods nativos chamam a API do jogo por nome.
+                /OPT:NOICF;
                 /INCREMENTAL:NO;
                 /FORCE:MULTIPLE
             >
