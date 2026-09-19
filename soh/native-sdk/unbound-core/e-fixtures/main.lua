@@ -7,6 +7,8 @@ local PLAN = table.concat({
     "linkspan_e/wide/main",   -- 008/009: colisão de 45 mil polígonos, x=z=45000, 600 atores
     "linkspan_e/cavern/main", -- 011: materialAnims (texCycle, scroll, cor por segmento)
     "linkspan_e/cavern_b/main",
+    "linkspan_e/lab/main",    -- 011: um quad por receita de material (segmentos 8 a 13)
+    "linkspan_e/many/main",   -- 008/009: 300 salas, 200 objetos, 100 portas, 60 caixas DynaPoly, água na sala 299
     "linkspan_e/house/main",  -- retorno
 }, ";")
 

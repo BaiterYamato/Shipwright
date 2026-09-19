@@ -45,6 +45,41 @@ bool PlayerReady(const Fixtures& fixtures, const PlayState*& play, const Player*
     return play && save && save->fileNum != 0xFF && player;
 }
 
+// Limites ampliados (UNBOUND-008/009): salas da cena, objetos carregados, transition actors, entradas da malha da
+// sala atual, DynaPoly em uso, portas e caixas vivas, água sob o jogador e nado.
+std::string Limits(const PlayState* play, const Player* player) {
+    unsigned doors = 0;
+    unsigned crates = 0;
+    for (int category = 0; category < ACTORCAT_MAX; ++category) {
+        for (const Actor* actor = play->actorCtx.actorLists[category].head; actor; actor = actor->next) {
+            doors += actor->id == 0x0009 ? 1 : 0;
+            crates += actor->id == 0x01A0 ? 1 : 0;
+        }
+    }
+    const auto& dyna = play->colCtx.dyna;
+    int dynaInUse = 0;
+    for (int32_t i = 0; dyna.bgActorFlags && i < dyna.bgActorMax; ++i) {
+        dynaInUse += (dyna.bgActorFlags[i] & 1) ? 1 : 0;
+    }
+    unsigned meshEntries = 0;
+    if (const MeshHeader* mesh = play->roomCtx.curRoom.meshHeader) {
+        meshEntries = mesh->base.type == 0 ? mesh->polygon0.num : mesh->base.type == 2 ? mesh->polygon2.num : 1;
+    }
+    if (doors == 0 && crates == 0 && play->numRooms < 2 && meshEntries < 2 && !dynaInUse &&
+        !(player->actor.bgCheckFlags & BGCHECKFLAG_WATER)) {
+        return {};
+    }
+    char text[256];
+    std::snprintf(text, sizeof(text),
+                  " | salas=%u objetos=%u transicao=%u malha=%u dyna=%d/%d polys=%d portas=%u caixas=%u agua=%d "
+                  "nado=%d",
+                  static_cast<unsigned>(play->numRooms), static_cast<unsigned>(play->objectCtx.num),
+                  static_cast<unsigned>(play->transiActorCtx.numActors), meshEntries, dynaInUse, dyna.bgActorMax,
+                  dyna.polyListMax, doors, crates, (player->actor.bgCheckFlags & BGCHECKFLAG_WATER) ? 1 : 0,
+                  (player->stateFlags1 & PLAYER_STATE1_IN_WATER) ? 1 : 0);
+    return text;
+}
+
 std::string Describe(const PlayState* play, const Player* player) {
     // Coletáveis (En_Item00) vivos e o mais próximo do jogador: a fixture ampla põe 600 à frente do spawn.
     unsigned items = 0;
@@ -65,16 +100,20 @@ std::string Describe(const PlayState* play, const Player* player) {
             }
         }
     }
-    char text[320];
+    char text[640];
     int used = std::snprintf(text, sizeof(text), "scene=%d room=%d pos=%.1f,%.1f,%.1f chao=%d atores=%u",
                              play->sceneNum, static_cast<int>(play->roomCtx.curRoom.num), player->actor.world.pos.x,
                              player->actor.world.pos.y, player->actor.world.pos.z,
                              (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0,
                              static_cast<unsigned>(play->actorCtx.total));
     if (nearest && used > 0 && used < static_cast<int>(sizeof(text))) {
-        std::snprintf(text + used, sizeof(text) - used, " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X",
-                      items, nearest->world.pos.x, nearest->world.pos.y, nearest->world.pos.z,
-                      nearest->draw != nullptr ? 1 : 0, static_cast<unsigned>(nearest->flags));
+        used += std::snprintf(text + used, sizeof(text) - used,
+                              " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X", items, nearest->world.pos.x,
+                              nearest->world.pos.y, nearest->world.pos.z, nearest->draw != nullptr ? 1 : 0,
+                              static_cast<unsigned>(nearest->flags));
+    }
+    if (used > 0 && used < static_cast<int>(sizeof(text))) {
+        std::snprintf(text + used, sizeof(text) - used, "%s", Limits(play, player).c_str());
     }
     return text;
 }
