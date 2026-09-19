@@ -4,12 +4,10 @@
 #include <limits>
 #include <map>
 
-#include <nlohmann/json.hpp>
+#include "unbound_format.h"
 
 namespace LinkSpanUnbound {
 namespace {
-
-using Json = nlohmann::json;
 
 constexpr int64_t FIRST_CUSTOM_SCENE_ID = 128;
 constexpr int64_t MAX_SCENE_ID = 32767;
@@ -59,12 +57,11 @@ bool ReadFlag(const Json& object, const char* key, bool& output) {
     return false;
 }
 
-std::map<std::string, const Json*> OrderedEntries(const Json& object) {
-    std::map<std::string, const Json*> ordered;
-    for (const auto& [key, value] : object.items()) {
-        if (!key.empty() && key.front() != '$') {
-            ordered.emplace(key, &value);
-        }
+// Ordem de registro (§3.5): $order, depois chaves inteiras em ordem numérica, depois o resto.
+std::vector<std::pair<std::string, const Json*>> OrderedEntries(const Json& object) {
+    std::vector<std::pair<std::string, const Json*>> ordered;
+    for (const auto& key : ListKeys(object)) {
+        ordered.emplace_back(key, &object[key]);
     }
     return ordered;
 }
@@ -142,8 +139,11 @@ bool ParseSceneRegistry(const std::string& json, SceneRegistryDocument& output, 
                 continue;
             }
             scene.drawConfig = static_cast<uint8_t>(number);
-            if (value->contains("titleCardTexture")) {
-                output.notes.push_back(key + ": titleCardTexture ainda não é aplicado pelo host");
+            const auto titleCard = value->find("titleCardTexture");
+            if (titleCard != value->end() && titleCard->is_string()) {
+                scene.titleCard = titleCard->get<std::string>();
+            } else if (titleCard != value->end() && !titleCard->is_null()) {
+                output.notes.push_back(key + ": titleCardTexture ignorado, não é texto");
             }
             const auto entrances = value->find("entrances");
             if (entrances != value->end() && !entrances->is_object()) {

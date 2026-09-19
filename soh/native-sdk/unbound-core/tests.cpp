@@ -47,7 +47,7 @@ int main() {
 
     const std::vector<LinkSpanUnbound::LayerDocument> registryLayers{
         { "base.o2r",
-          R"({"mod/b":{"scene":"scenes/b","entrances":{"main":{"spawn":1}}},"mod/a":{"scene":"scenes/a","sceneId":200,"drawConfig":3},"mod/gone":{"scene":"scenes/gone"}})",
+          R"({"mod/b":{"scene":"scenes/b","entrances":{"main":{"spawn":1}}},"mod/a":{"scene":"scenes/a","sceneId":200,"drawConfig":3,"titleCardTexture":"textures/a_title"},"mod/gone":{"scene":"scenes/gone"}})",
           1 },
         { "patch.o2r",
           R"({"mod/gone":null,"mod/a":{"name":"Cena A","entrances":{"north":{"index":1560,"showTitleCard":true,"endTransition":5,"layers":{}}}},"mod/bad":{"scene":"scenes/bad","sceneId":10},"mod/nopath":{"name":"x"},"$order":["mod/a"]})",
@@ -65,7 +65,8 @@ int main() {
     Check(sceneA.displayName == "Cena A" && sceneA.path == "scenes/a" && sceneA.sceneId == 200 &&
               sceneA.drawConfig == 3 && sceneA.entrances.size() == 1 && sceneA.entrances[0].key == "north" &&
               sceneA.entrances[0].index == 1560 && sceneA.entrances[0].showTitleCard &&
-              sceneA.entrances[0].endTransition == 5 && sceneA.entrances[0].startTransition == 2,
+              sceneA.entrances[0].endTransition == 5 && sceneA.entrances[0].startTransition == 2 &&
+              sceneA.titleCard == "textures/a_title",
           "campos da cena e da entrada devem vir do documento com os padrões do SPEC");
     const auto& sceneB = registry.scenes[1];
     Check(sceneB.displayName == "mod/b" && sceneB.sceneId == -1 && sceneB.entrances.size() == 1 &&
@@ -74,6 +75,12 @@ int main() {
     Check(registry.notes.size() == 3, "sceneId fora do intervalo, cena sem caminho e layers devem virar notas");
     Check(!LinkSpanUnbound::ParseSceneRegistry("[]", registry, error) && !error.empty(),
           "raiz que não é objeto deve ser recusada");
+    Check(LinkSpanUnbound::ParseSceneRegistry(
+              R"({"z":{"scene":"s"},"10":{"scene":"s"},"9":{"scene":"s"},"a":{"scene":"s"},"$order":["z"]})", registry,
+              error) &&
+              registry.scenes.size() == 4 && registry.scenes[0].name == "z" && registry.scenes[1].name == "9" &&
+              registry.scenes[2].name == "10" && registry.scenes[3].name == "a",
+          "o registro deve seguir $order, depois inteiros em ordem numérica, depois bytes (§3.5)");
 
     using LinkSpanUnbound::RoomActor;
     Check(LinkSpanUnbound::RoomDocumentPath("scenes/shared/spot00_scene/spot00_room_0", 0) ==

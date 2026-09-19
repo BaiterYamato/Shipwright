@@ -22,6 +22,7 @@ struct RegistryScene {
     std::string path;
     int32_t sceneId = -1; // -1: próximo id livre
     uint8_t drawConfig = 0;
+    std::string titleCard; // textura I8 144x24 no VFS; vazio = sem título
     std::vector<RegistryEntrance> entrances;
 };
 
@@ -31,8 +32,8 @@ struct SceneRegistryDocument {
     std::vector<std::string> notes;
 };
 
-// Lê unbound/scenes.json já mesclado (SPEC do Unbound §7). Cenas e entradas saem em ordem de chave;
-// chaves começadas por '$' ficam de fora. Retorna false só quando o documento inteiro é inválido.
+// Lê unbound/scenes.json já mesclado (SPEC do Unbound §7). Cenas e entradas saem na ordem de chave da
+// §3.5 ($order, inteiros, depois bytes); chaves começadas por '$' ficam de fora. Retorna false só quando o documento inteiro é inválido.
 bool ParseSceneRegistry(const std::string& json, SceneRegistryDocument& output, std::string& error);
 
 } // namespace LinkSpanUnbound

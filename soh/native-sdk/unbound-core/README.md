@@ -1,53 +1,81 @@
-# Factory JSON do Unbound
+# Framework Unbound (Link-Span)
 
-Este projeto é um coremod externo de prova para o Shipwright 9.2.3 com o
-overlay Link-Span. Ele não linka `soh.exe` e não contém código específico no
-host.
+`linkspan.unbound.framework` é a core extension que lê o formato 2 do SoH: Unbound (a SPEC do fork
+`roborich/Shipwright`, `unbound-docs/SPEC.md`) sobre o host Link-Span do Shipwright 9.2.3. Não linka
+`soh.exe`: usa só os serviços `linkspan.oot.*`.
 
-O pacote `linkspan.unbound.framework` consulta `linkspan.oot.resources` v2,
-registra o schema `linkspan.unbound.actor-patch/v1` e publica o serviço C
-`linkspan.unbound.json_factory` v1. Um consumidor pode:
+## O que a versão 0.4.0 faz
 
-- descobrir schemas e tipos registrados;
-- carregar todas as camadas JSON de um caminho virtual;
-- receber um handle opaco para o resultado mesclado;
-- consultar JSON, número de camadas e hash determinístico;
-- liberar o handle explicitamente.
+- **Base convertida (UNBOUND-006).** No init, antes de o SoH montar os mods, converte as cenas vanilla dos
+  archives do jogo para o formato 2 e grava `oot-unbound.o2r` ao lado do `oot.o2r`, com a proveniência em
+  `oot-unbound.o2r.source.json` (versão do conversor, versões da ROM, tamanho e data de `oot.o2r`,
+  `oot-mq.o2r` e do executável). Proveniência igual reaproveita o arquivo; diferente converte de novo. A
+  gravação é num `.tmp` seguida de rename: um arquivo pela metade nunca substitui o anterior. A base é
+  montada logo em seguida, abaixo dos mods.
+- **Tipos JSON (UNBOUND-002/005).** Registra `unbound/scene/1`, `unbound/room/1`, `unbound/collision/3` e
+  `unbound/paths/1` em `linkspan.oot.resources` v3. Um recurso JSON com esse `$schema` é mesclado em todas
+  as camadas (SPEC §3) e transcodificado para o XML que as fábricas do host leem. Documento recusado não
+  carrega e o motivo vai para `logs/linkspan-unbound.log` e para o log do jogo.
+- **Cenas vanilla pelo JSON (§1.3/§1.6).** No `game.ready`, com uma camada cujo `unbound.json` traz
+  `"scenes"` em `features`, cada cena vanilla com `scenes/<cena>/scene.json` no VFS passa a carregar dele
+  (`override_scene`). Um mod altera uma cena vanilla com uma camada do mesmo caminho: só as chaves que ele
+  traz mudam. Com a base ativa o patch de atores da 0.3.0 (hook `oot.room.actors`) sai de cena; o mesmo
+  documento agora mescla direto na sala.
+- **Registro (§7).** `unbound/scenes.json` registra cenas e entradas (`linkspan.oot.scenes` v2, com
+  `titleCardTexture`), na ordem de chave da §3.5. Exits por nome (`ENTR_*` ou `"<cena>/<entrada>"`) são
+  resolvidos quando a cena carrega.
+- **Texto (§5).** `text/<lang>/messages.json` (eng, ger, fra, jpn, staff) mescla por mensagem sobre a
+  tabela do jogo (`linkspan.oot.text`): acrescenta, troca e `null` remove. `$replace` em `messages`
+  esvazia a tabela antes. Mensagem acima de 8 192 bytes é truncada com aviso.
 
-Nesta primeira versão, objetos são mesclados recursivamente e arrays ou valores
-escalares são substituídos pela camada de maior prioridade. Todas as camadas
-precisam declarar o mesmo `$schema`. As regras de `null`, `$replace`, `$order`
-e remoção de campos pertencem ao próximo recorte do VFS mergeável.
+## Diferenças conhecidas em relação ao Unbound 0.6
 
-## Registro de cenas (0.2.0)
+- A base não exporta texto: a tabela vanilla faz o papel da camada de baixo. Para um mod, o efeito é o da
+  SPEC. Só muda a precedência de `override/`: o JSON é aplicado depois dele.
+- O transcodificador roda numa thread do pool de recursos da libultraship, um por vez, enquanto a thread
+  do jogo espera o recurso. Dentro dele valem `has_file`, `read_file`, `read_file_layers` e
+  `find_entrance`. O comentário de `oot_resources.h` ainda diz "thread do jogo" e será corrigido na
+  próxima mudança de layout do SDK.
 
-Com o serviço `linkspan.oot.scenes` v1 do host, a função nativa `load_scene_registry`
-lê `unbound/scenes.json` em todas as camadas montadas, mescla (objetos por chave,
-camada de cima vence, `null` remove, `$schema` opcional) e registra cada cena e
-entrada. O `main.lua` do framework chama a função no `game.ready`, quando os
-archives dos mods já estão montados. Chamar de novo troca o registro anterior pelo
-das camadas atuais, e o shutdown remove tudo.
+## Ferramenta de linha de comando
 
-O documento segue o §7 do SPEC do Unbound 0.6: a chave é o id da cena (não pode
-ser um enum vanilla), `scene` é obrigatório, `sceneId` vai de 128 a 32767 e cada
-entrada ocupa um grupo de quatro posições da tabela, endereçável como
-`"<cena>/<entrada>"`. Entradas recusadas viram notas no resultado e as demais
-seguem. `titleCardTexture` e `layers` ainda não são aplicados.
+`tools/linkspan_unbound_convert.exe`:
 
-`scene-demo/` é um mod de prova: monta o próprio `assets/` na raiz do VFS com um
-`unbound/scenes.json` que registra uma cópia do Hyrule Field e, com um save aberto,
-viaja uma vez para `linkspan_demo/field_copy/main`.
+```
+linkspan_unbound_convert <pasta-extraida> <saida.o2r>   # converte recursos extraídos de um oot.o2r
+linkspan_unbound_convert --check <pasta-de-assets>      # valida documentos como o framework faria
+```
 
-## Compilar
+O `--check` passa cada `.json` pelo mesmo caminho do jogo (merge de uma camada, transcodificação, leitor de
+texto, registro e manifesto) e termina com código 1 se algum for recusado. Nomes de entrada não são
+resolvidos fora do jogo.
+
+## Funções nativas (para o `main.lua`)
+
+| Função | Quando | Resultado |
+|---|---|---|
+| `ready` | `game.ready` | base e registro com as camadas atuais (chamar de novo refaz) |
+| `apply_text` | primeiro `game.frame` | texto; o SoH só carrega as tabelas de mensagens depois do `game.ready` |
+| `unbound_report` | a qualquer momento | estado da base, contagem de documentos e as últimas notas |
+| `load_scene_registry` | compatibilidade 0.2/0.3 | só o registro |
+| `room_report` | compatibilidade 0.3 | salas vistas pelo patch de atores |
+
+O serviço C `linkspan.unbound.json_factory` v1 (`include/linkspan/unbound/json_factory.h`) continua como na
+0.1.0.
+
+## Compilar e testar
 
 ```powershell
 $sdk = (Resolve-Path ..\..\..\build\x64\native-sdk\Release\OotNativeSdk.cmake).Path
-cmake -S . -B ..\..\..\build\unbound-factory-native -A x64 -DOOT_NATIVE_SDK="$sdk"
-cmake --build ..\..\..\build\unbound-factory-native --config Release
-ctest --test-dir ..\..\..\build\unbound-factory-native -C Release --output-on-failure
+cmake -S . -B ..\..\..\build\unbound-scene-native -A x64 -DOOT_NATIVE_SDK="$sdk"
+cmake --build ..\..\..\build\unbound-scene-native --config Release
+ctest --test-dir ..\..\..\build\unbound-scene-native -C Release --output-on-failure
 ```
 
-Na raiz da worktree do host, `tools/package-unbound-factory-demo.ps1` cria e
-valida os dois mods, as duas camadas de prova e o bundle instalável.
-`tools/package-unbound-scene-demo.ps1` empacota o framework 0.2.0 e a demo de
-cenas com o layout id do host no nome (build em `build/unbound-scene-native`).
+Na raiz da worktree do host:
+
+- `tools/package-unbound-framework.ps1` gera o `.shipmod` único do framework (DLL, Lua, ferramenta,
+  header, documentação e licenças), com SHA-256 e relatório de conteúdo;
+- `tools/package-unbound-scene-demo.ps1` gera as demos de cena e de atores;
+- `tools/package-unbound-e-fixtures.ps1 -BaseArchive <oot-unbound.o2r>` gera as fixtures da fase E. Elas
+  saem da base local e contêm dados do jogo, então ficam em `build/` e não são publicadas.
