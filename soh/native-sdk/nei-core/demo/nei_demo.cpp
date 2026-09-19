@@ -143,6 +143,29 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void* user, const char*, uint32_t length
     return write(writer, text, static_cast<uint32_t>(count));
 }
 
+// Teste dos itens do fork NEI (fase F): posse do item pelo id namespaced e equipado no C esquerdo.
+ShipNativeStatus SHIP_NATIVE_CALL ForkGive(void* user, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                           void* writer) {
+    auto& demo = *static_cast<Demo*>(user);
+    char id[LINKSPAN_NEI_MAX_ID + 1] = {};
+    if (!args || length == 0 || length > LINKSPAN_NEI_MAX_ID || !write) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    std::memcpy(id, args, length);
+    uint64_t item = 0;
+    ShipNativeStatus status = demo.nei->find_item(id, &item);
+    if (status == SHIP_NATIVE_OK) {
+        status = demo.nei->grant_item(item);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = demo.nei->equip(item, LINKSPAN_OOT_ITEMS_BUTTON_C_LEFT);
+    }
+    char text[160];
+    const int count = std::snprintf(text, sizeof(text), "%s: %s", id, status == SHIP_NATIVE_OK ? "no C esquerdo"
+                                                                                                : "recusado");
+    return write(writer, text, static_cast<uint32_t>(count));
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
     if (!runtime || !instance || runtime->size < sizeof(ShipNativeRuntime) || runtime->abi_minor < 2 ||
         !runtime->get_service || !runtime->register_function || !runtime->register_hook) {
@@ -189,6 +212,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "stats", Stats, demo);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "fork_give", ForkGive, demo);
     }
     if (status != SHIP_NATIVE_OK) {
         if (demo->item) {

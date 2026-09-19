@@ -1,0 +1,53 @@
+diff --git a/soh/mods/items/custom_items_common.c b/soh/mods/items/custom_items_common.c
+index 4382ecc..c821043 100644
+--- a/soh/mods/items/custom_items_common.c
++++ b/soh/mods/items/custom_items_common.c
+@@ -223,7 +223,7 @@ s32 CustomItems_IsBlocked(Player* p, PlayState* play) {
+ static u8 IsItemEquipped(u8 itemId) {
+     // i < 8: buttonItems is u8[8]; `i <= 8` read one past it and could report a false positive.
+     for (u8 i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
+-        if (gSaveContext.equips.buttonItems[i] == itemId)
++        if (NeiFork_ToLogicalItem(gSaveContext.equips.buttonItems[i]) == itemId) // Link-Span: id runtime -> id do fork
+             return 1;
+     }
+     return 0;
+@@ -812,7 +812,7 @@ void CustomItems_Update(Player* p, PlayState* play) {
+                 continue;
+             if (CHECK_BTN_ALL(ctrl->press.button, sMaskBtns[mi])) {
+                 u8 slot = (mi < 3) ? (mi + 1) : (mi - 3 + 5); // C-buttons: slots 1-3, D-pad: slots 5-8
+-                u8 maskItem = gSaveContext.equips.buttonItems[slot];
++                u8 maskItem = NeiFork_ToLogicalItem(gSaveContext.equips.buttonItems[slot]); // Link-Span
+                 if (maskItem == ITEM_MM_MASK_ZORA || maskItem == ITEM_MASK_ZORA) {
+                     extern void TransformMasks_HandleMaskUse(PlayState*, Player*, s32);
+                     TransformMasks_HandleMaskUse(play, p, maskItem);
+@@ -828,7 +828,7 @@ void CustomItems_Update(Player* p, PlayState* play) {
+     // Feather equipped to B never had their handler dispatched. Fix:
+     // i = 0..7 covers B + 3 C-buttons + 4 D-pad slots cleanly.
+     for (u8 i = 0; i < 8; i++) {
+-        u8 item = gSaveContext.equips.buttonItems[i];
++        u8 item = NeiFork_ToLogicalItem(gSaveContext.equips.buttonItems[i]); // Link-Span
+         // Skijer's NEI — Bomb Arrows rides the bow's element flag; the button holds ITEM_BOW, which
+         // the custom-item range guard below would reject. This clause must therefore sit ABOVE it.
+         if (Sw97_IsBowItem(item) && (Sw97_EffectiveElement(0) == SW97_ELEM_BOMB)) {
+@@ -1055,7 +1055,7 @@ s32 CustomItems_OverrideDraw(Player* p, PlayState* play) {
+         // Check if lantern is still on any C-button
+         u8 lanternOnC = 0;
+         for (u8 btn = 1; btn < ARRAY_COUNT(gSaveContext.equips.buttonItems); btn++) { // was <= 8, one past the end
+-            if (gSaveContext.equips.buttonItems[btn] == ITEM_LANTERN) {
++            if (NeiFork_ToLogicalItem(gSaveContext.equips.buttonItems[btn]) == ITEM_LANTERN) { // Link-Span
+                 lanternOnC = 1;
+                 break;
+             }
+diff --git a/soh/mods/items/helpers/equip_helper.c b/soh/mods/items/helpers/equip_helper.c
+index 98c2946..a033cbb 100644
+--- a/soh/mods/items/helpers/equip_helper.c
++++ b/soh/mods/items/helpers/equip_helper.c
+@@ -35,7 +35,7 @@ static void EquipCache_Update(PlayState* play) {
+     // registered alongside C-buttons / D-pad slots. Previously the loop
+     // started at slot 1, so B-equipped custom items never received input.
+     for (u8 slot = 0; slot < maxSlot; slot++) {
+-        u8 itemId = gSaveContext.equips.buttonItems[slot];
++        u8 itemId = NeiFork_ToLogicalItem(gSaveContext.equips.buttonItems[slot]); // Link-Span: id runtime -> id do fork
+         sEquipCache.cachedItems[slot] = itemId;
+         if (itemId != ITEM_NONE && itemId < 256) {
+             sEquipCache.cachedButtons[itemId] = sButtonMasks[slot];

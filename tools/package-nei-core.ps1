@@ -3,11 +3,14 @@ param(
     [string]$ProviderDirectory = 'build\nei-core-native\mod\provider',
     [string]$Validator = 'build\x64\ship-lua\Release\shiplua_manifest_validator.exe',
     [string]$LayoutHeader = 'build\x64\native-sdk\oot_layout_id.h',
-    [string]$OutputDirectory = 'build\nei-core'
+    [string]$OutputDirectory = 'build\nei-core',
+    [string]$HostExecutable = 'x64\Release\soh.exe'
 )
 
 # Empacota o coremod Not Enough Items (linkspan.nei, NEI-002) e o mod de demonstração, com o layout id do host
-# no nome. O coremod leva o header público para quem compila mods de conteúdo.
+# no nome. O coremod leva o header público para quem compila mods de conteúdo. Desde a fase F o coremod traz o
+# código de itens do fork NEI, que chama o soh.exe pelo escape hatch (ABI 1.3): o manifesto lista o SHA-256 do
+# executável alvo, e em outro executável só o registro de itens funciona.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -42,6 +45,7 @@ if (-not $layoutMatch.Success) {
     throw "Layout id not found in $LayoutHeader"
 }
 $layout = $layoutMatch.Groups[1].Value.Substring(0, 8)
+$fingerprint = (Get-FileHash -LiteralPath (Resolve-InputFile $HostExecutable 'Host executable') -Algorithm SHA256).Hash.ToLowerInvariant()
 
 $sourceRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path 'soh\native-sdk\nei-core'))
 $packageRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $OutputDirectory))
@@ -56,10 +60,10 @@ foreach ($directory in @((Join-Path $coreStage 'provider'), (Join-Path $coreStag
     [System.IO.Directory]::CreateDirectory($directory) | Out-Null
 }
 
-Write-Utf8NoBom (Join-Path $coreStage 'manifest.toml') @'
+$coreManifest = @'
 id = "linkspan.nei"
 name = "Not Enough Items (Link-Span)"
-version = "0.1.0"
+version = "0.2.0"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -67,9 +71,11 @@ kind = "core_extension"
 load_phase = "pre_game"
 
 [provider]
-abi_version = "1.2"
+abi_version = "1.3"
 win64 = "provider/linkspan_nei_core.dll"
+host_fingerprints = ["__FINGERPRINT__"]
 '@
+Write-Utf8NoBom (Join-Path $coreStage 'manifest.toml') $coreManifest.Replace('__FINGERPRINT__', $fingerprint)
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'core-main.lua') -Destination (Join-Path $coreStage 'main.lua')
 Copy-Item -LiteralPath $coreDll -Destination (Join-Path $coreStage 'provider\linkspan_nei_core.dll')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\nei\nei_items.h') `
@@ -78,7 +84,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\nei\nei_items.h'
 Write-Utf8NoBom (Join-Path $demoStage 'manifest.toml') @'
 id = "linkspan.nei-demo"
 name = "Not Enough Items Demo"
-version = "0.1.0"
+version = "0.2.0"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -88,14 +94,14 @@ abi_version = "1.2"
 win64 = "provider/linkspan_nei_demo.dll"
 
 [dependencies]
-"linkspan.nei" = ">=0.1.0 <0.2.0"
+"linkspan.nei" = ">=0.2.0 <0.3.0"
 '@
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'demo\main.lua') -Destination (Join-Path $demoStage 'main.lua')
 Copy-Item -LiteralPath $demoDll -Destination (Join-Path $demoStage 'provider\linkspan_nei_demo.dll')
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$coreZip = Join-Path $packageRoot "LinkSpan-NEI-Core-0.1.0-layout-$layout.zip"
-$demoZip = Join-Path $packageRoot "LinkSpan-NEI-Demo-0.1.0-layout-$layout.zip"
+$coreZip = Join-Path $packageRoot "LinkSpan-NEI-Core-0.2.0-layout-$layout.zip"
+$demoZip = Join-Path $packageRoot "LinkSpan-NEI-Demo-0.2.0-layout-$layout.zip"
 New-DeterministicZip $coreStage $coreZip
 New-DeterministicZip $demoStage $demoZip
 

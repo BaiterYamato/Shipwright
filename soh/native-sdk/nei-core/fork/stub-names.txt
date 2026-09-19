@@ -1,0 +1,183 @@
+# Funções e variáveis do fork NEI que o código da DLL chama, mas cujo subsistema não entrou nela.
+# gen_stubs.py (via sync.py) gera um corpo que devolve "recurso ausente" (0, NULL ou void). Agrupadas
+# pelo arquivo do fork onde estão definidas. Os stubs à mão (sem declaração no fork) ficam em stubs.c.
+
+# (sem definição em C no fork: código C++ ou fora das árvores copiadas)
+BossRemains_IsGyorgWorn
+FourSwordClone_EnsureRegistered
+FourSword_TotemGrabAllowed
+GaroForm_HasPassiveLens
+GaroForm_WalksOnWater
+MmForm_RitoAirRocsAllowed
+MmMaskWear_GetCurrent
+Nei_TrirodNotify
+Picto_SyncClear
+Picto_SyncReadColor
+Picto_SyncWrite
+Picto_SyncWriteColor
+Randomizer_SensorBuildHint
+ResourceMgr_LoadPlayerAnimAsHeader
+ResourceMgr_LoadPlayerAnimAsHeaderInPlace
+SeasonScene_SuppressVoidDamage
+SeasonScene_UpdateWasteland
+SeasonScene_UpdateWater
+
+# soh/expansions/sw97/actors/spells/z_magic_wind.inc.c
+sWindEffTexture
+
+# soh/expansions/sw97/player/sw97_player_behavior.inc.c
+Sw97_TagBlinded
+
+# soh/mods/equipment/behaviors/byrna_ig_combat.inc.c
+ResourceMgr_LoadPlayerAnimAsHeaderInPlaceRange
+ResourceMgr_LoadPlayerAnimAsHeaderInPlaceResampled
+
+# soh/mods/equipment/kite_surf.c
+KiteSurf_Abort
+KiteSurf_Tick
+
+# soh/mods/ext_buttons/ext_buttons.cpp
+ExtButton_GetItem
+
+# soh/mods/extended_inventory.c
+BombArrows_RandoMode
+ExtInv_GetItemIcon
+Seasons_GetSeason
+Seasons_SeasonCount
+Seasons_SeasonIcon
+Seasons_SeasonOwned
+Seasons_SetSeason
+Slate_GetRune
+Slate_RuneAt
+Slate_RuneCount
+Slate_RuneMiniIcon
+Slate_SetRune
+Sw97_BombArrowsOnButton
+Sw97_BombArrowsOwned
+Sw97_EffectiveElement
+Sw97_IsBowItem
+Wand_GetMode
+Wand_ModeAt
+Wand_ModeCount
+Wand_ModeMedallion
+Wand_SetMode
+
+# soh/mods/items/objects/ball_and_chainDL/model.inc.c
+gBallDL
+
+# soh/mods/items/objects/beetle_giveDL/model.inc.c
+g_beetle_body_dl
+g_beetle_wings_dl
+
+# soh/mods/items/objects/fire_rodDL/model.inc.c
+Cylinder_001_opaque_dl
+
+# soh/mods/items/objects/ice_rodDL/model.inc.c
+ice_rod_opaque_dl
+ice_rod_transparent_dl
+
+# soh/mods/items/objects/light_rodDL/Cylinder_002.c
+Cylinder_002_opaque_dl
+Cylinder_002_transparent_dl
+
+# soh/mods/items/objects/object_tornado.cpp
+Tornado_AdvanceScroll
+Tornado_Draw
+Tornado_GetAxis
+Tornado_RibbonsStop
+Tornado_RibbonsUpdate
+
+# soh/mods/transformation_masks/assets/mm_asset_loader.cpp
+MmAssets_IsAvailable
+MmAssets_IsLoaded
+MmAssets_LoadHookshotBodyDL
+MmAssets_LoadResource
+MmAssets_LoadResourceWithSize
+MmSfx_IsAvailable
+MmSfx_PlayAtPos
+MmSfx_Stop
+
+# soh/mods/transformation_masks/mm_player_form.cpp
+MmForm_GetCurrentForm
+MmForm_HandleMaskUse
+
+# soh/mods/transformation_masks/transformation_masks.c
+MmPlayer_GetForm
+TransformMasks_DragonScaleEnterSwim
+TransformMasks_DragonScaleExitSwim
+TransformMasks_DragonScaleSwimUpdate
+TransformMasks_HandleMaskUse
+TransformMasks_IsTransformed
+TransformMasks_IsTransformedAny
+TransformMasks_IsZoraSwimEnabled
+TransformMasks_LoadMmDL
+TransformMasks_TryPlayMmVoice
+TransformMasks_WearGetCurrent
+
+# soh/mods/transformation_masks/transformation_masks.h
+ExtPlayer_GetMeleeAnim
+ExtPlayer_SetMeleeAnim
+
+# soh/soh/Enhancements/randomizer/draw.cpp
+Randomizer_DrawBallAndChain
+Randomizer_DrawBeetle
+Randomizer_DrawBombArrows
+Randomizer_DrawBottleWithMagicMushroom
+Randomizer_DrawCaneOfSomaria
+Randomizer_DrawDekuLeaf
+Randomizer_DrawDemiseDestruction
+Randomizer_DrawDominionRod
+Randomizer_DrawElementalWand
+Randomizer_DrawFireRod
+Randomizer_DrawGustJar
+Randomizer_DrawHyliaGrace
+Randomizer_DrawIceRod
+Randomizer_DrawLantern
+Randomizer_DrawLightRod
+Randomizer_DrawMarioMask
+Randomizer_DrawMinishCap
+Randomizer_DrawMmBossKey
+Randomizer_DrawMmCompass
+Randomizer_DrawMmDungeonMap
+Randomizer_DrawMmFrog
+Randomizer_DrawMmGoldDustBottle
+Randomizer_DrawMmGsToken
+Randomizer_DrawMmMask
+Randomizer_DrawMmOwlStatue
+Randomizer_DrawMmRemains
+Randomizer_DrawMmSmallKey
+Randomizer_DrawMmSoul
+Randomizer_DrawMmStrayFairy
+Randomizer_DrawMmTradeQuest
+Randomizer_DrawMogmaMitts
+Randomizer_DrawPokeball
+Randomizer_DrawShovel
+Randomizer_DrawSpinner
+Randomizer_DrawSwitchHook
+Randomizer_DrawTimeGate
+Randomizer_DrawWhip
+Randomizer_DrawZonaiPermafrost
+
+# soh/soh/FleetShipCombo/FleetShipCombo.cpp
+FleetShipCombo_GetActiveGame
+FleetShipCombo_IsGuestResponsive
+FleetShipCombo_IsThisGameActive
+FleetShipCombo_ReportGuestUnavailable
+FleetShipCombo_SetSendFadeAlpha
+
+# soh/soh/FleetShipCombo/FleetSync.cpp
+FleetSync_BeginSwapTrace
+FleetSync_ClearHoleFall
+FleetSync_HoleFallPending
+FleetSync_SwapTrace
+FleetSync_WriteDeparture
+
+# soh/soh/FleetShipCombo/FleetWarpBoot.cpp
+FleetLimbo_DepartToMm
+FleetLimbo_InFlight
+
+# soh/soh/Network/Harpoon/PropHunt/PropHunt.cpp
+HarpoonPropHunt_IsActive
+
+# soh/mods/items/objects/object_net.c (estado: a DLL guarda a própria cópia zerada)
+gNetCatchPts

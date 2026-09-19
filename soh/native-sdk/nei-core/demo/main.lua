@@ -16,3 +16,15 @@ ship.events.on("game.frame", function()
         ship.log.info("nei-demo: " .. text)
     end
 end)
+
+-- Itens do fork NEI (fase F): J dá o Roc's Feather e U o Roc's Cape, no C esquerdo.
+local function give(id)
+    local text, failure = ship.native.call("fork_give", id)
+    ship.log.info("nei-demo: " .. (text or ("fork_give falhou: " .. tostring(failure))))
+end
+ship.hotkeys.register("fork_feather", { default = "J", label = "NEI: Roc's Feather" }, function()
+    give("skijer.nei.rocs_feather")
+end)
+ship.hotkeys.register("fork_cape", { default = "U", label = "NEI: Roc's Cape" }, function()
+    give("skijer.nei.rocs_cape")
+end)

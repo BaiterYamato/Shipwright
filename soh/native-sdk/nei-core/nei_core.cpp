@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 
+#include "fork/fork_glue.h"
 #include "include/linkspan/nei/nei_items.h"
 #include "oot_engine.h"
 #include "oot_hooks.h"
@@ -112,7 +113,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, Shi
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     try {
-        const std::string text = registry->Stats();
+        const std::string text = registry->Stats() + " | fork: " + LinkSpanNei::ForkStatus();
         return write(writer, text.data(), static_cast<uint32_t>(text.size()));
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
@@ -127,6 +128,7 @@ ShipNativeStatus Observe(const ShipNativeRuntime* runtime, const char* point, Sh
 
 void Release() {
     if (gCore) {
+        LinkSpanNei::StopFork();
         gCore->registry.Detach();
         delete gCore;
         gCore = nullptr;
@@ -175,6 +177,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         Release();
         return status;
     }
+    // O código de itens do fork NEI é opcional: sem escape hatch para este soh.exe o registro segue sem ele.
+    LinkSpanNei::StartFork(runtime, &gCore->registry);
     *instance = gCore;
     return SHIP_NATIVE_OK;
 }
@@ -187,7 +191,7 @@ void SHIP_NATIVE_CALL Shutdown(void*) {
 } // namespace
 
 extern "C" SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query(void) {
-    static const ShipNativeDescriptor descriptor{ sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, 2u, Init,
+    static const ShipNativeDescriptor descriptor{ sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, 3u, Init,
                                                   Shutdown };
     return &descriptor;
 }

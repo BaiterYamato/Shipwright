@@ -1,0 +1,10 @@
+# Funções que o fork NEI acrescentou em arquivos do host e que a DLL chama. extract_additions.py (via
+# sync.py) copia cada uma com o fecho de dependências do fork; o que o host já tem vira import.
+# Formato: <arquivo do host>: <sementes>. Com @ na frente, a saída entra no fim do player_unit.c, sem
+# includes (o z_player.c do fork inclui os .c dos mods, que a unidade já tem). Com + na frente, o arquivo só
+# existe no fork e é C++ com funções extern "C" em C puro: vira TU própria em C; depois de | vêm os includes.
+soh/src/overlays/actors/ovl_Bg_Ice_Shelter/z_bg_ice_shelter.c: BgIceShelter_MeltInstantly BgIceShelter_ShatterMelt
+soh/src/overlays/actors/ovl_Bg_Jya_Ironobj/z_bg_jya_ironobj.c: BgJyaIronobj_DestroyInstantly
+soh/src/overlays/actors/ovl_En_M_Thunder/z_en_m_thunder.c: EnMThunder_DrawChargeGlow
+@soh/src/overlays/actors/ovl_player_actor/z_player.c: ExtPlayer_CopyUpperBody ExtPlayer_GetAnimGroupAnim ExtPlayer_GetChargeAnim ExtPlayer_SetAnimGroupAnim ExtPlayer_SetChargeAnim Player_CatchFire Player_EndIKAxeThrow Player_StartIKAxeThrow Player_StartLanternSwing
++soh/mods/nei_save.cpp: Nei_Save Nei_GetOwnedItem Nei_SetOwnedItem Nei_CaneActiveSkill Nei_CaneGetSkillSlot Nei_CaneGetType Nei_CaneGrantSkill Nei_CaneHasSkill Nei_CaneOwned Nei_CaneSetSkillSlot Nei_CaneSetType Nei_TrirodEchoLearned Nei_TrirodFullList Nei_TrirodGetSel Nei_TrirodLearnEcho Nei_TrirodSetSel | mods/nei_save.h

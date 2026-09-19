@@ -1,0 +1,58 @@
+diff --git a/soh/mods/actors/stasis_rune.c b/soh/mods/actors/stasis_rune.c
+index 06d364a..1c6735b 100644
+--- a/soh/mods/actors/stasis_rune.c
++++ b/soh/mods/actors/stasis_rune.c
+@@ -382,7 +382,7 @@ static CollisionHeader* Stasis_FindBg(PlayState* play, Actor* actor, s32* bgIdOu
+ // happened. One neutral entry, and every poly points at index 0.
+ static CamData sStasisCamData[1];
+ 
+-static Vec3s sStasisVtxPool[STASIS_BOX_VTX];
++static Vec3i sStasisVtxPool[STASIS_BOX_VTX]; // Link-Span: CollisionHeader.vtxList é Vec3i no host
+ static CollisionPoly sStasisPolyPool[STASIS_BOX_POLY];
+ static SurfaceType sStasisSurfPool[1];
+ static CollisionHeader sStasisHeader;
+@@ -821,8 +821,9 @@ static s32 Stasis_BuildCollision(PlayState* play, Actor* actor, u8 climbable) {
+     // the engine's own SurfaceType_GetWallFlags, so leaving 4 here would make a frozen pot climbable
+     // through the vanilla path no matter what Stasis_IsClimbableBgId says.
+     // Bits 0..7 of data[0] are the camera index — it must stay 0, which is the one entry above.
+-    sStasisSurfPool[0].data[0] = (u32)((climbable ? STASIS_WALL_TYPE_CLIMBABLE : 0) << 21);
+-    sStasisSurfPool[0].data[1] = 0;
++    // Link-Span: o SurfaceType do host vem decodificado em campos; o wall type era data[0] bits 21..25.
++    memset(&sStasisSurfPool[0], 0, sizeof(sStasisSurfPool[0]));
++    sStasisSurfPool[0].wallType = climbable ? STASIS_WALL_TYPE_CLIMBABLE : 0;
+ 
+     sStasisHeader.minBounds.x = (s16)-maxR;
+     sStasisHeader.minBounds.y = minY;
+diff --git a/soh/mods/items/helpers/grappling_helper.c b/soh/mods/items/helpers/grappling_helper.c
+index 6d9a992..d3e6479 100644
+--- a/soh/mods/items/helpers/grappling_helper.c
++++ b/soh/mods/items/helpers/grappling_helper.c
+@@ -41,7 +41,7 @@ static void SortDims3(f32* a, f32* b, f32* c) {
+ // =============================================================================
+ // Internal: expand bounding box with a Vec3s vertex
+ // =============================================================================
+-static void ExpandBBox(Vec3f* bMin, Vec3f* bMax, Vec3s* vtx) {
++static void ExpandBBox(Vec3f* bMin, Vec3f* bMax, Vec3i* vtx) {
+     if (vtx->x < bMin->x)
+         bMin->x = vtx->x;
+     if (vtx->y < bMin->y)
+@@ -59,7 +59,7 @@ static void ExpandBBox(Vec3f* bMin, Vec3f* bMax, Vec3s* vtx) {
+ // =============================================================================
+ // Internal: get center of a polygon
+ // =============================================================================
+-static void GetPolyCenterF(Vec3s* vtxList, u16 idxA, u16 idxB, u16 idxC, Vec3f* out) {
++static void GetPolyCenterF(Vec3i* vtxList, u32 idxA, u32 idxB, u32 idxC, Vec3f* out) {
+     out->x = (vtxList[idxA].x + vtxList[idxB].x + vtxList[idxC].x) / 3.0f;
+     out->y = (vtxList[idxA].y + vtxList[idxB].y + vtxList[idxC].y) / 3.0f;
+     out->z = (vtxList[idxA].z + vtxList[idxB].z + vtxList[idxC].z) / 3.0f;
+@@ -81,8 +81,8 @@ static s32 NormalsAreSimilar(CollisionPoly* p1, CollisionPoly* p2) {
+ // =============================================================================
+ s32 Grapple_AnalyzeSurface(PlayState* play, CollisionPoly* poly, s32 bgId, Vec3f* hitPos, GrappleTarget* outTarget) {
+     CollisionHeader* colHeader;
+-    Vec3s* vtxList;
+-    u16 idxA, idxB, idxC;
++    Vec3i* vtxList; // Link-Span: vértices s32 do host (Unbound)
++    u32 idxA, idxB, idxC;
+     Vec3f bMin, bMax, hitCenter;
+     f32 dx, dy, dz, aspectRatio;
+ 
