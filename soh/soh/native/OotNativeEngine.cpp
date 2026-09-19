@@ -45,11 +45,14 @@ extern u8 gEquipAgeReqs[][4];
 }
 
 namespace ShipLuaHost {
+bool InOotJsonTranscode(); // OotNativeJsonTypes.cpp
 namespace {
 std::thread::id gameThread;
 OotNativeGamepadBridge gamepadBridge;
 OotNativeResourceBridge resourceBridge;
 bool OnGameThread() { return std::this_thread::get_id() == gameThread; }
+// Leitura do VFS: na thread do jogo ou dentro de um transcode JSON (thread do pool de recursos).
+bool OnResourceThread() { return OnGameThread() || InOotJsonTranscode(); }
 bool ValidText(const char* value) { return value && *value && std::strlen(value) <= 4096; }
 void* SHIP_NATIVE_CALL Play() { return OnGameThread() ? gPlayState : nullptr; }
 void* SHIP_NATIVE_CALL CurrentPlayer() {
@@ -448,12 +451,12 @@ ShipNativeStatus SHIP_NATIVE_CALL OcarinaSubmitSong(uint8_t song) {
     return SHIP_NATIVE_OK;
 }
 uint8_t SHIP_NATIVE_CALL HasFile(const char* path) {
-    if (!OnGameThread() || !ValidText(path) || !resourceBridge.hasFile) return 0;
+    if (!OnResourceThread() || !ValidText(path) || !resourceBridge.hasFile) return 0;
     try { return resourceBridge.hasFile(path); } catch (...) { return 0; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL ReadFile(const char* path, uint8_t* output, uint32_t capacity,
                                            uint32_t* outputSize) {
-    if (!OnGameThread() || !ValidText(path) || !outputSize || (!output && capacity) || !resourceBridge.readFile)
+    if (!OnResourceThread() || !ValidText(path) || !outputSize || (!output && capacity) || !resourceBridge.readFile)
         return SHIP_NATIVE_INVALID_ARGUMENT;
     try { return resourceBridge.readFile(path, output, capacity, outputSize); }
     catch (...) { return SHIP_NATIVE_FAILURE; }
@@ -495,7 +498,7 @@ ShipNativeStatus SHIP_NATIVE_CALL GetGameVersions(uint32_t* output, uint32_t cap
     catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL ReadFileLayers(const char* path, ShipOotResourceLayerFn callback, void* user) {
-    if (!OnGameThread() || !ValidText(path) || !callback || !resourceBridge.readFileLayers)
+    if (!OnResourceThread() || !ValidText(path) || !callback || !resourceBridge.readFileLayers)
         return SHIP_NATIVE_INVALID_ARGUMENT;
     try { return resourceBridge.readFileLayers(path, callback, user); }
     catch (...) { return SHIP_NATIVE_FAILURE; }

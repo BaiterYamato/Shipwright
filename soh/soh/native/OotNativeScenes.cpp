@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace ShipLuaHost {
+bool InOotJsonTranscode(); // OotNativeJsonTypes.cpp
 namespace {
 
 constexpr int32_t ENTRANCE_LAYERS = LINKSPAN_OOT_SCENES_ENTRANCE_LAYERS;
@@ -70,6 +71,11 @@ VanillaState& Vanilla() {
 bool OnOwnerThread() {
     const auto& state = State();
     return state.ownerThread != std::thread::id{} && std::this_thread::get_id() == state.ownerThread;
+}
+
+// Um transcode JSON resolve exits por nome numa thread do pool, com a thread do jogo esperando o recurso.
+bool OnLookupThread() {
+    return OnOwnerThread() || InOotJsonTranscode();
 }
 
 // Tamanho da string, ou 0 quando ela é nula, vazia ou maior que o limite.
@@ -307,7 +313,7 @@ ShipNativeStatus SHIP_NATIVE_CALL UnregisterScene(uint64_t sceneHandle) {
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL FindScene(const char* name, int32_t* sceneId) {
-    if (!OnOwnerThread() || !sceneId) {
+    if (!OnLookupThread() || !sceneId) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     *sceneId = 0;
@@ -334,7 +340,7 @@ ShipNativeStatus SHIP_NATIVE_CALL FindScene(const char* name, int32_t* sceneId) 
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL FindEntrance(const char* name, int32_t* entranceIndex) {
-    if (!OnOwnerThread() || !entranceIndex) {
+    if (!OnLookupThread() || !entranceIndex) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     *entranceIndex = 0;

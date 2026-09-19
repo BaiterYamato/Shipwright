@@ -65,6 +65,15 @@ extern "C" void OTRPlay_SpawnScene(PlayState* play, s32 sceneId, s32 spawn) {
     }
 
     play->sceneSegment = OTRPlay_LoadFile(play, scenePath.c_str());
+    // SOH [Link-Span] recurso trocado que não carrega: volta ao vanilla. Cair direto na Dodongo's Cavern
+    // entraria em recursão quando ela também está trocada (base Unbound com um documento recusado).
+    if (play->sceneSegment == nullptr && !overridePath.empty()) {
+        SPDLOG_ERROR("Link-Span: a cena {:#x} trocada por {} não carregou; usando o recurso vanilla", sceneId,
+                     overridePath);
+        scenePath = StringHelper::Sprintf("scenes/%s/%s/%s", sceneVersion.c_str(), scene->sceneFile.fileName,
+                                          scene->sceneFile.fileName);
+        play->sceneSegment = OTRPlay_LoadFile(play, scenePath.c_str());
+    }
 
     // Failed to load scene... default to doodongs cavern
     if (play->sceneSegment == nullptr) {

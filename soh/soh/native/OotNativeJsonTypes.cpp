@@ -3,6 +3,7 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <string_view>
 
 namespace ShipLuaHost {
@@ -31,6 +32,15 @@ JsonTypesState& State() {
     static JsonTypesState state;
     return state;
 }
+
+// A fábrica proxy roda numa thread do pool da libultraship (LoadResource = LoadResourceAsync().get()),
+// com a thread do jogo esperando o recurso. Um transcode por vez; dentro dele a thread do pool pode
+// ler o VFS (InOotJsonTranscode) como se fosse a do jogo.
+std::recursive_mutex& TranscodeMutex() {
+    static std::recursive_mutex mutex;
+    return mutex;
+}
+thread_local bool tInTranscode = false;
 
 bool OnOwnerThread() {
     const auto& state = State();
@@ -87,6 +97,7 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterOotJsonType(const ShipOotJsonTypeSpecV
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     *handle = 0;
+    std::lock_guard lock(TranscodeMutex());
     auto& state = State();
     try {
         std::string type(spec->type);
@@ -112,6 +123,7 @@ ShipNativeStatus SHIP_NATIVE_CALL UnregisterOotJsonType(uint64_t handle) {
     if (!OnOwnerThread()) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
+    std::lock_guard lock(TranscodeMutex());
     auto& state = State();
     const auto found = state.registrations.find(handle);
     if (found == state.registrations.end()) {
@@ -124,10 +136,11 @@ ShipNativeStatus SHIP_NATIVE_CALL UnregisterOotJsonType(uint64_t handle) {
 
 ShipNativeStatus TranscodeOotJson(const std::string& type, const std::string& path, uint32_t version,
                                   std::string& xml) {
-    if (!OnOwnerThread()) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
+    std::lock_guard lock(TranscodeMutex());
     const auto& state = State();
+    if (state.ownerThread == std::thread::id{}) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
     const auto owner = state.byType.find(type);
     if (owner == state.byType.end()) {
         return SHIP_NATIVE_UNSUPPORTED;
@@ -140,7 +153,16 @@ ShipNativeStatus TranscodeOotJson(const std::string& type, const std::string& pa
     const auto transcode = registration.transcode;
     void* user = registration.user;
     xml.clear();
+    struct Scope {
+        Scope() { tInTranscode = true; }
+        ~Scope() { tInTranscode = false; }
+    } scope;
     return transcode(user, path.c_str(), version, AppendXml, &xml);
+}
+
+// Declarada nos .cpp que a usam (OotNativeEngine, OotNativeScenes): mudar um header do SDK muda o layout id.
+bool InOotJsonTranscode() {
+    return tInTranscode;
 }
 
 } // namespace ShipLuaHost

@@ -6557,6 +6557,45 @@ void Initialize() {
          },
           "Dispara o callback já registrado por uma hotkey ShipLua.",
           { { "mod_id", Ship::ArgumentType::TEXT, false }, { "hotkey_id", Ship::ArgumentType::TEXT, false } } });
+    // Viagem por nome de entrada (UNBOUND-007): vanilla (ENTR_*) ou de mod ("<cena>/<entrada>"), ou índice.
+    console->AddCommand(
+        "linkspan_travel",
+        { [](std::shared_ptr<Ship::Console>, std::vector<std::string> args, std::string* output) -> int32_t {
+             const auto reply = [output](std::string text) {
+                 if (output != nullptr) {
+                     *output = std::move(text);
+                 }
+             };
+             if (args.size() < 2) {
+                 reply("uso: linkspan_travel <ENTR_*|cena/entrada|indice>");
+                 return 1;
+             }
+             const auto& scenes = ShipLuaHost::GetOotNativeScenesService();
+             int32_t index = -1;
+             if (scenes.find_entrance(args[1].c_str(), &index) != SHIP_NATIVE_OK) {
+                 index = -1;
+                 try {
+                     size_t used = 0;
+                     const int value = std::stoi(args[1], &used, 0);
+                     if (used == args[1].size()) {
+                         index = value;
+                     }
+                 } catch (const std::exception&) {
+                 }
+             }
+             if (index < 0 || index >= ShipLuaHost::OotEntranceCount()) {
+                 reply("entrada desconhecida: " + args[1]);
+                 return 1;
+             }
+             if (scenes.travel_to_entrance(index) != SHIP_NATIVE_OK) {
+                 reply("viagem recusada: abra um save e espere a transicao terminar");
+                 return 1;
+             }
+             reply("viajando para " + args[1] + " (" + std::to_string(index) + ")");
+             return 0;
+         },
+          "Viaja para uma entrada pelo nome (ENTR_*, cena/entrada de mod) ou pelo indice.",
+          { { "entrada", Ship::ArgumentType::TEXT, false } } });
     gCapabilityRegistry = std::make_shared<ShipLua::CapabilityRegistry>();
     gTimers = std::make_shared<ShipLua::FrameTimerScheduler>();
     gActorProvider = CreateActorProvider();
@@ -7033,8 +7072,8 @@ void Initialize() {
                                  NativeUnmountResourceArchive, NativeGetResourceGameVersions,
                                  NativeReadResourceFileLayers });
     gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
-    SPDLOG_INFO("Link-Span: providers nativos ABI 1.1 e core extensions ativos; serviços "
-                "linkspan.oot.engine/registry/ocarina v1; movement v1/v2; resources v1/v2; pacotes ZIP/SHIPMOD");
+    SPDLOG_INFO("Link-Span: providers nativos (ABI {}.{}) e core extensions ativos; serviços linkspan.oot.*; "
+                "pacotes ZIP/SHIPMOD", SHIP_NATIVE_ABI_MAJOR, SHIP_NATIVE_ABI_MINOR);
     MountCrossWorldArchives();
     MountModAssetArchives();
     // Diagnóstico da Fase 1 do port de áudio do MM (handoff OOT-AUDIO-001).

@@ -65,7 +65,8 @@ add_test(NAME oot_native_registry_tests COMMAND oot_native_registry_tests)
 
 add_executable(oot_native_scenes_tests
     "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/SceneRegistryTests.cpp"
-    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp")
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeJsonTypes.cpp")
 target_include_directories(oot_native_scenes_tests PRIVATE
     "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
     "${CMAKE_SOURCE_DIR}/soh/soh/native")
