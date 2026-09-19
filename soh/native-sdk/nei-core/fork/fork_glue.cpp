@@ -146,6 +146,10 @@ void StopFork() {
     NeiFork_ClearItems();
 }
 
+bool ForkActive() {
+    return gFork.active;
+}
+
 const std::string& ForkStatus() {
     return gFork.status;
 }

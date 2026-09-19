@@ -5,7 +5,20 @@
 #include <map>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
+#include "fork/nei_save_bridge.h"
+#include "fork_save.h"
 #include "registry.h"
+#include "mods/nei_save.h"
+
+namespace {
+NeiSaveData gForkSave;
+}
+
+extern "C" NeiSaveData* Nei_Save(void) {
+    return &gForkSave;
+}
 
 namespace {
 
@@ -382,12 +395,71 @@ void TestSaveRoundTrip() {
     registry.Detach();
 }
 
+void TestForkSaveRoundTrip() {
+    using Json = nlohmann::json;
+    FakeSave::slot = 0;
+    FakeSave::hasBlock = false;
+    LinkSpanNei::ForkSave save;
+    save.Attach(&FakeSave::table, 8);
+    save.OnSaveLoaded();
+    CHECK(gForkSave.ownedItems[0] == 0xFF && gForkSave.bottleSlots[0] == 0xFF);
+
+    Json input = Json::object();
+    input["ownedItems"] = Json::array();
+    for (uint16_t i = 0; i < 48; ++i) {
+        input["ownedItems"].push_back(i + 1);
+    }
+    input["bottleSlots"] = Json::array();
+    for (uint8_t i = 0; i < 8; ++i) {
+        input["bottleSlots"].push_back(i + 10);
+    }
+    input["caneSkills"] = 63;
+    input["trirodEchoesHi"] = 305419896u;
+    input["trirodLayoutVersion"] = 2;
+    input["pictoFlags0"] = 17;
+    // Não pertence ao contrato nei.state: a foto I5 não pode inflar o save em 11200 numeros JSON.
+    input["pictoPhotoI5"] = Json::array({ 1, 2, 3 });
+    FakeSave::block = input.dump();
+    FakeSave::hasBlock = true;
+    save.OnSaveLoaded();
+    CHECK(gForkSave.ownedItems[0] == 1 && gForkSave.ownedItems[47] == 48);
+    CHECK(gForkSave.bottleSlots[0] == 10 && gForkSave.bottleSlots[7] == 17);
+    CHECK(gForkSave.caneSkills == 63 && gForkSave.trirodEchoesHi == 305419896u && gForkSave.pictoFlags0 == 17);
+    const Json output = Json::parse(save.SerializeForTests());
+    CHECK(output["ownedItems"].is_array() && output["ownedItems"].size() == 48 && output["ownedItems"][47] == 48);
+    CHECK(output["bottleSlots"].is_array() && output["bottleSlots"].size() == 8 && output["caneSkills"] == 63);
+    CHECK(!output.contains("pictoPhotoI5"));
+
+    // Um campo ruim volta ao inicial dele, sem impedir os seguintes de carregarem; array curto preenche o começo.
+    FakeSave::block = "{\"ownedItems\":[1,\"x\"],\"bottleSlots\":\"nao\",\"caneSkills\":\"sim\","
+                      "\"trirodEchoesHi\":7,\"trirodLayoutVersion\":2,\"season\":3}";
+    save.OnSaveLoaded();
+    CHECK(gForkSave.ownedItems[0] == 1 && gForkSave.ownedItems[1] == 0xFF && gForkSave.ownedItems[47] == 0xFF);
+    CHECK(gForkSave.bottleSlots[0] == 0xFF && gForkSave.caneSkills == 0 && gForkSave.bottomlessContent == 0xFF);
+    CHECK(gForkSave.trirodEchoesHi == 7 && gForkSave.season == 3);
+
+    // Máscara de ecos da tabela v1 é descartada, como no NeiSave_Load do fork.
+    FakeSave::block = "{\"trirodEchoesLo\":5,\"trirodEchoesHi\":7,\"trirodSel\":2}";
+    save.OnSaveLoaded();
+    CHECK(gForkSave.trirodEchoesLo == 0 && gForkSave.trirodEchoesHi == 0 && gForkSave.trirodSel == 0);
+    CHECK(gForkSave.trirodLayoutVersion == 2);
+    FakeSave::block = "{\"trirodEchoesHi\":7,\"trirodLayoutVersion\":2}";
+    save.OnSaveLoaded();
+
+    const uint32_t writes = FakeSave::writes;
+    save.OnSaving();
+    CHECK(FakeSave::writes == writes + 1);
+    CHECK(Json::parse(FakeSave::block)["trirodEchoesHi"] == 7);
+    save.Detach();
+}
+
 } // namespace
 
 int main() {
     TestValidation();
     TestGiveUseAndLevels();
     TestSaveRoundTrip();
+    TestForkSaveRoundTrip();
     if (gFailures) {
         std::fprintf(stderr, "nei core: %d falhas\n", gFailures);
         return EXIT_FAILURE;

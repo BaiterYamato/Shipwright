@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "fork/fork_glue.h"
+#include "fork_save.h"
 #include "include/linkspan/nei/nei_items.h"
 #include "oot_engine.h"
 #include "oot_hooks.h"
@@ -17,6 +18,7 @@ namespace {
 
 struct Core {
     LinkSpanNei::Registry registry;
+    LinkSpanNei::ForkSave forkSave;
     std::thread::id owner;
 };
 
@@ -90,9 +92,10 @@ const NeiItemsV1 kService{ sizeof(NeiItemsV1), DefineItem, RemoveItem, FindItem,
                            AddCount,           SetLevel,   Equip,      Unequip,   GetName };
 
 ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void*, const ShipNativeHookCall*) {
-    if (auto* registry = Owned()) {
+    if (gCore && gCore->owner == std::this_thread::get_id()) {
         try {
-            registry->OnSaveLoaded();
+            gCore->forkSave.OnSaveLoaded();
+            gCore->registry.OnSaveLoaded();
         } catch (...) {
             return SHIP_NATIVE_FAILURE;
         }
@@ -101,8 +104,12 @@ ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void*, const ShipNativeHookCall*) {
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL OnSaving(void*, const ShipNativeHookCall*) {
-    if (auto* registry = Owned()) {
-        registry->Flush();
+    if (gCore && gCore->owner == std::this_thread::get_id()) {
+        gCore->registry.Flush();
+        // Sem escape hatch o fork não roda: não regravar seu bloco preserva o save já existente.
+        if (LinkSpanNei::ForkActive()) {
+            gCore->forkSave.OnSaving();
+        }
     }
     return SHIP_NATIVE_OK;
 }
@@ -130,6 +137,7 @@ void Release() {
     if (gCore) {
         LinkSpanNei::StopFork();
         gCore->registry.Detach();
+        gCore->forkSave.Detach();
         delete gCore;
         gCore = nullptr;
     }
@@ -156,12 +164,18 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     if (status != SHIP_NATIVE_OK) {
         return status;
     }
+    uint64_t forkSaveHandle = 0;
+    status = save->open_namespace(LinkSpanNei::kForkSaveNamespace, LinkSpanNei::kForkSaveVersion, &forkSaveHandle);
+    if (status != SHIP_NATIVE_OK) {
+        return status;
+    }
     gCore = new (std::nothrow) Core;
     if (!gCore) {
         return SHIP_NATIVE_FAILURE;
     }
     gCore->owner = std::this_thread::get_id();
     gCore->registry.Attach(items, save, saveHandle);
+    gCore->forkSave.Attach(save, forkSaveHandle);
     status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_LOADED, OnLoaded);
     if (status == SHIP_NATIVE_OK) {
         status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_SAVING, OnSaving);

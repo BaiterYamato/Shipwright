@@ -12,6 +12,7 @@ class Registry;
 // Chamados na thread do jogo, no init e no shutdown do coremod. Falha deixa o fork desligado (ForkStatus).
 void StartFork(const ShipNativeRuntime* runtime, Registry* registry);
 void StopFork();
+bool ForkActive();
 const std::string& ForkStatus();
 // Teste em jogo: posse do item do fork pelo id namespaced e equipado no C esquerdo.
 ShipNativeStatus GiveForkItem(const char* id);
