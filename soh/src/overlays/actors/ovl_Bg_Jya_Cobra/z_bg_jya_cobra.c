@@ -7,6 +7,8 @@
 #include "objects/object_jya_obj/object_jya_obj.h"
 #include "vt.h"
 
+s32 LinkSpan_RenderSuppressVanillaShadows(void);
+
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
 void BgJyaCobra_Init(Actor* thisx, PlayState* play);
@@ -563,6 +565,10 @@ void BgJyaCobra_DrawShadow(BgJyaCobra* this, PlayState* play) {
     s16 params = this->dyna.actor.params & 3;
     Vec3f sp64;
     Vec3s* phi_a3;
+
+    if (LinkSpan_RenderSuppressVanillaShadows()) {
+        return;
+    }
 
     OPEN_DISPS(play->state.gfxCtx);
 

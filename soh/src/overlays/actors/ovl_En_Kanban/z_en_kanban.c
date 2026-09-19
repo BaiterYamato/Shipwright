@@ -9,6 +9,8 @@
 #include "objects/object_kanban/object_kanban.h"
 #include "vt.h"
 
+s32 LinkSpan_RenderSuppressVanillaShadows(void);
+
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
 #define PART_UPPER_LEFT (1 << 0)
@@ -841,7 +843,8 @@ void EnKanban_Draw(Actor* thisx, PlayState* play) {
             gSPDisplayList(POLY_XLU_DISP++, object_kanban_DL_001630);
         }
     }
-    if ((this->actor.projectedPos.z <= 400.0f) && (this->actor.projectedPos.z > 0.0f) &&
+    if (!LinkSpan_RenderSuppressVanillaShadows() && (this->actor.projectedPos.z <= 400.0f) &&
+        (this->actor.projectedPos.z > 0.0f) &&
         (this->actor.floorHeight > -3000.0f)) {
         if ((this->bounceX != 0) || (this->bounceZ != 0)) {
             u16 dayTime = gSaveContext.dayTime;

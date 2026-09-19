@@ -2,6 +2,11 @@
 // matrizes, display lists por caminho e o hook oot.player.limb_draw.
 #include "OotNativeView.h"
 
+#include <fast/Fast3dWindow.h>
+#include <fast/interpreter.h>
+#include <ship/Context.h>
+#include <fast/toon_shading.h>
+
 #include "OotNativeHooks.h"
 #include "oot_hooks.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -115,6 +120,70 @@ void MatrixRotateApply(int16_t x, int16_t y, int16_t z) {
     Matrix_RotateZYX(x, y, z, MTXMODE_APPLY);
 }
 
+// Cabeça da display list da camada. Sem OPEN_DISPS: a macro declara FrameInterpolation_* no escopo do bloco, o que
+// dentro deste namespace anônimo vira outro símbolo, e estes opcodes não levam matriz para interpolar.
+Gfx** RenderLayerHead(uint8_t layer) {
+    GraphicsContext* gfxCtx = gPlayState->state.gfxCtx;
+    return layer == LINKSPAN_OOT_RENDER_TRANSLUCENT ? &gfxCtx->polyXlu.p : &gfxCtx->polyOpa.p;
+}
+
+ShipNativeStatus EmitToonKey(uint8_t layer, int8_t dx, int8_t dy, int8_t dz, uint8_t r, uint8_t g, uint8_t b) {
+    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    Gfx** head = RenderLayerHead(layer);
+    gSPToonKey((*head)++, dx, dy, dz, r, g, b);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus EmitStencil(uint8_t layer, uint8_t mode) {
+    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    Gfx** head = RenderLayerHead(layer);
+    gSPStencil((*head)++, mode);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus EmitToonShadow(uint8_t layer, int16_t feetClampY, float size) {
+    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    Gfx** head = RenderLayerHead(layer);
+    gSPToonShadowArm((*head)++, feetClampY, size);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus FlushToonShadows(uint8_t layer) {
+    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    Gfx** head = RenderLayerHead(layer);
+    gSPToonShadowFlush((*head)++);
+    return SHIP_NATIVE_OK;
+}
+
+std::shared_ptr<Fast::Interpreter> CurrentInterpreter() {
+    auto wnd = Ship::Context::GetRawInstance()
+                   ? std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow())
+                   : nullptr;
+    return wnd ? wnd->GetInterpreterWeak().lock() : nullptr;
+}
+
+void SetToonRamp(float center, float softness, float highlight, float shadow, bool debugBands) {
+    if (auto interpreter = CurrentInterpreter()) {
+        if (auto* rapi = interpreter->GetCurrentRenderingAPI()) {
+            rapi->SetToonRamp(center, softness, highlight, shadow, debugBands ? 1.0f : 0.0f);
+        }
+    }
+}
+
+void SetToonShadowParams(float opacity, float minElevation, float slabDepth, float slabRise, int32_t edgeSoftness,
+                         bool showVolume) {
+    if (auto interpreter = CurrentInterpreter()) {
+        interpreter->SetToonShadowParams(opacity, minElevation, slabDepth, slabRise, edgeSoftness, showVolume);
+    }
+}
+
+// Valores iniciais do renderer (toon_shading.h e os membros de Fast::Interpreter).
+void ResetToonLook() {
+    SetToonRamp(TOON_SHADING_DEFAULT_RAMP_CENTER, TOON_SHADING_DEFAULT_RAMP_SOFTNESS, TOON_SHADING_DEFAULT_HIGHLIGHT,
+                TOON_SHADING_DEFAULT_SHADOW, false);
+    SetToonShadowParams(0.5f, 0.6f, 40.0f, 10.0f, 1, false);
+}
+
 } // namespace
 
 namespace ShipLuaHost {
@@ -137,6 +206,13 @@ void RegisterOotViewGameHooks() {
     bridge.matrixTranslate = MatrixTranslateApply;
     bridge.matrixScale = MatrixScaleApply;
     bridge.matrixRotateZYX = MatrixRotateApply;
+    bridge.emitToonKey = EmitToonKey;
+    bridge.emitStencil = EmitStencil;
+    bridge.emitToonShadow = EmitToonShadow;
+    bridge.flushToonShadows = FlushToonShadows;
+    bridge.setToonRamp = SetToonRamp;
+    bridge.setToonShadowParams = SetToonShadowParams;
+    bridge.resetToonLook = ResetToonLook;
     SetOotViewBridge(bridge);
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnCameraState>(
         [](PlayState*) { ShipLuaHost::UpdateOotCamera(); });

@@ -107,10 +107,22 @@ void ActorShape_Init(ActorShape* shape, f32 yOffset, ActorShadowFunc shadowDraw,
     shape->shadowAlpha = 255;
 }
 
+// SOH [Link-Span] chaves do serviço linkspan.oot.render; não leem configuração do jogo.
+s32 LinkSpan_RenderToonActorsEnabled(void);
+s32 LinkSpan_RenderSuppressVanillaShadows(void);
+s32 LinkSpan_RenderHasShadowReceivers(void);
+s32 LinkSpan_RenderIsShadowReceiver(s16 actorId);
+s32 LinkSpan_RenderStateActive(void);
+void LinkSpan_RenderWorldLights(PlayState* play);
+
 void ActorShadow_Draw(Actor* actor, Lights* lights, PlayState* play, Gfx* dlist, Color_RGBA8* color) {
     f32 temp1;
     f32 temp2;
     MtxF sp60;
+
+    if (LinkSpan_RenderSuppressVanillaShadows()) {
+        return;
+    }
 
     if (actor->floorPoly != NULL) {
         temp1 = actor->world.pos.y - actor->floorHeight;
@@ -190,6 +202,10 @@ void ActorShadow_DrawFoot(PlayState* play, Light* light, MtxF* arg2, s32 arg3, f
 
 void ActorShadow_DrawFeet(Actor* actor, Lights* lights, PlayState* play) {
     f32 distToFloor = actor->world.pos.y - actor->floorHeight;
+
+    if (LinkSpan_RenderSuppressVanillaShadows()) {
+        return;
+    }
 
     if (distToFloor > 20.0f) {
         f32 shadowScale = actor->shape.shadowScale;
@@ -2582,6 +2598,7 @@ SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum);
 // SOH [Link-Span] update/draw passando pelos hooks nativos (soh/soh/native/OotNativeHooksGame.cpp).
 void LinkSpan_ActorUpdate(Actor* actor, PlayState* play);
 void LinkSpan_ActorDraw(Actor* actor, PlayState* play);
+void LinkSpan_RenderActorDraw(Actor* actor, PlayState* play);
 
 void Actor_InitContext(PlayState* play, ActorContext* actorCtx, ActorEntry* actorEntry) {
     SavedSceneFlags* savedSceneFlags;
@@ -2813,6 +2830,10 @@ void Actor_Draw(PlayState* play, Actor* actor) {
     Lights_BindAll(lights, play->lightCtx.listHead,
                    (actor->flags & ACTOR_FLAG_IGNORE_POINTLIGHTS) ? NULL : &actor->world.pos);
     Lights_Draw(lights, play->state.gfxCtx);
+
+    // CEL-003: mesma posição do fork, depois de escolher as luzes do ator e
+    // antes do draw. Sem hook registrado a função só consulta a flag do ponto.
+    LinkSpan_RenderActorDraw(actor, play);
 
     FrameInterpolation_RecordActorPosRotMatrix();
     if (actor->flags & ACTOR_FLAG_IGNORE_QUAKE) {
@@ -3098,6 +3119,77 @@ s32 Ship_CalcShouldDrawAndUpdate(PlayState* play, Actor* actor, Vec3f* projected
 }
 // #endregion
 
+// CEL-003: corpo do laço de desenho de atores, igual ao original, compartilhado pelo pré-passe de
+// receptores de sombra e pelo laço principal (mesma divisão do fork) para os dois desenharem do mesmo jeito.
+static void Actor_DrawListEntry(PlayState* play, Actor* actor, s32 listIndex, Actor** invisibleActors,
+                                s32* invisibleActorCounter) {
+    OPEN_DISPS(play->state.gfxCtx);
+
+    char* actorName = ActorDB_Retrieve(actor->id)->name;
+
+    gDPNoOpString(POLY_OPA_DISP++, actorName, listIndex);
+    gDPNoOpString(POLY_XLU_DISP++, actorName, listIndex);
+
+    HREG(66) = listIndex;
+
+    if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(68) == 0)) {
+        SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, &actor->world.pos, &actor->projectedPos,
+                                     &actor->projectedW);
+    }
+
+    if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(69) == 0)) {
+        if (actor->sfx != 0) {
+            Actor_UpdateFlaggedAudio(actor);
+        }
+    }
+
+    // #region SOH [Enhancement] Extended culling updates
+    bool shipShouldDraw = false;
+    bool shipShouldUpdate = false;
+    if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(70) == 0)) {
+        if (CVarGetInteger(CVAR_ENHANCEMENT("DisableDrawDistance"), 1) > 1 ||
+            CVarGetInteger(CVAR_ENHANCEMENT("WidescreenActorCulling"), 0)) {
+            Ship_CalcShouldDrawAndUpdate(play, actor, &actor->projectedPos, actor->projectedW, &shipShouldDraw,
+                                         &shipShouldUpdate);
+
+            if (shipShouldUpdate) {
+                actor->flags |= ACTOR_FLAG_INSIDE_CULLING_VOLUME;
+            } else {
+                actor->flags &= ~ACTOR_FLAG_INSIDE_CULLING_VOLUME;
+            }
+        } else {
+            if (Actor_CullingCheck(play, actor)) {
+                actor->flags |= ACTOR_FLAG_INSIDE_CULLING_VOLUME;
+            } else {
+                actor->flags &= ~ACTOR_FLAG_INSIDE_CULLING_VOLUME;
+            }
+        }
+    }
+
+    actor->isDrawn = false;
+
+    if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(71) == 0)) {
+        if ((actor->init == NULL) && (actor->draw != NULL) &&
+            ((actor->flags & (ACTOR_FLAG_DRAW_CULLING_DISABLED | ACTOR_FLAG_INSIDE_CULLING_VOLUME)) ||
+             shipShouldDraw)) {
+            // #endregion
+            if ((actor->flags & ACTOR_FLAG_REACT_TO_LENS) &&
+                ((play->roomCtx.curRoom.lensMode == LENS_MODE_HIDE_ACTORS) || play->actorCtx.lensActive ||
+                 (actor->room != play->roomCtx.curRoom.num))) {
+                assert(*invisibleActorCounter < INVISIBLE_ACTOR_MAX);
+                invisibleActors[*invisibleActorCounter] = actor;
+                (*invisibleActorCounter)++;
+            } else {
+                if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(72) == 0)) {
+                    Actor_Draw(play, actor);
+                    actor->isDrawn = true;
+                }
+            }
+        }
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
 void Actor_DrawAll(PlayState* play, ActorContext* actorCtx) {
     s32 invisibleActorCounter;
     Actor* invisibleActors[INVISIBLE_ACTOR_MAX];
@@ -3109,77 +3201,61 @@ void Actor_DrawAll(PlayState* play, ActorContext* actorCtx) {
 
     OPEN_DISPS(play->state.gfxCtx);
 
+    // CEL-003: o estado de render dos mods é lido uma vez por frame e reusado no fechamento, para o
+    // colchete nunca ficar desbalanceado. Sem mod as consultas devolvem zero e nada é emitido.
+    const s32 toonActors = LinkSpan_RenderToonActorsEnabled();
+    const s32 shadowReceivers = LinkSpan_RenderHasShadowReceivers();
+    const s32 renderStateActive = LinkSpan_RenderStateActive();
+    if (toonActors) {
+        gSPToon(POLY_OPA_DISP++, true);
+        gSPToon(POLY_XLU_DISP++, true);
+    }
+
+    // Alguns pisos são atores (ponte levadiça, plataformas). A lista de ids vem do mod; o host não fixa
+    // política. Desenhados aqui, antes das luzes do mundo e da descarga das sombras, entram no depth buffer
+    // como o cenário; o laço principal os pula, e cada um continua desenhado uma vez só.
+    if (shadowReceivers) {
+        static const u8 receiverCategories[] = { ACTORCAT_BG, ACTORCAT_PROP, ACTORCAT_SWITCH };
+        for (i = 0; i < ARRAY_COUNT(receiverCategories); i++) {
+            actorListEntry = &actorCtx->actorLists[receiverCategories[i]];
+            for (actor = actorListEntry->head; actor != NULL; actor = actor->next) {
+                if (LinkSpan_RenderIsShadowReceiver(actor->id)) {
+                    Actor_DrawListEntry(play, actor, receiverCategories[i], invisibleActors, &invisibleActorCounter);
+                }
+            }
+        }
+    }
+
+    LinkSpan_RenderWorldLights(play);
+    if (shadowReceivers) {
+        gSPToonShadowFlush(POLY_OPA_DISP++);
+    }
+
     actorListEntry = &actorCtx->actorLists[0];
 
     for (i = 0; i < ARRAY_COUNT(actorCtx->actorLists); i++, actorListEntry++) {
         actor = actorListEntry->head;
 
         while (actor != NULL) {
-            char* actorName = ActorDB_Retrieve(actor->id)->name;
-
-            gDPNoOpString(POLY_OPA_DISP++, actorName, i);
-            gDPNoOpString(POLY_XLU_DISP++, actorName, i);
-
-            HREG(66) = i;
-
-            if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(68) == 0)) {
-                SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, &actor->world.pos, &actor->projectedPos,
-                                             &actor->projectedW);
+            // Receptores já passaram pelo pré-passe.
+            if (shadowReceivers && LinkSpan_RenderIsShadowReceiver(actor->id)) {
+                actor = actor->next;
+                continue;
             }
 
-            if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(69) == 0)) {
-                if (actor->sfx != 0) {
-                    Actor_UpdateFlaggedAudio(actor);
-                }
-            }
-
-            // #region SOH [Enhancement] Extended culling updates
-            bool shipShouldDraw = false;
-            bool shipShouldUpdate = false;
-            if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(70) == 0)) {
-                if (CVarGetInteger(CVAR_ENHANCEMENT("DisableDrawDistance"), 1) > 1 ||
-                    CVarGetInteger(CVAR_ENHANCEMENT("WidescreenActorCulling"), 0)) {
-                    Ship_CalcShouldDrawAndUpdate(play, actor, &actor->projectedPos, actor->projectedW, &shipShouldDraw,
-                                                 &shipShouldUpdate);
-
-                    if (shipShouldUpdate) {
-                        actor->flags |= ACTOR_FLAG_INSIDE_CULLING_VOLUME;
-                    } else {
-                        actor->flags &= ~ACTOR_FLAG_INSIDE_CULLING_VOLUME;
-                    }
-                } else {
-                    if (Actor_CullingCheck(play, actor)) {
-                        actor->flags |= ACTOR_FLAG_INSIDE_CULLING_VOLUME;
-                    } else {
-                        actor->flags &= ~ACTOR_FLAG_INSIDE_CULLING_VOLUME;
-                    }
-                }
-            }
-
-            actor->isDrawn = false;
-
-            if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(71) == 0)) {
-                if ((actor->init == NULL) && (actor->draw != NULL) &&
-                    ((actor->flags & (ACTOR_FLAG_DRAW_CULLING_DISABLED | ACTOR_FLAG_INSIDE_CULLING_VOLUME)) ||
-                     shipShouldDraw)) {
-                    // #endregion
-                    if ((actor->flags & ACTOR_FLAG_REACT_TO_LENS) &&
-                        ((play->roomCtx.curRoom.lensMode == LENS_MODE_HIDE_ACTORS) || play->actorCtx.lensActive ||
-                         (actor->room != play->roomCtx.curRoom.num))) {
-                        assert(invisibleActorCounter < INVISIBLE_ACTOR_MAX);
-                        invisibleActors[invisibleActorCounter] = actor;
-                        invisibleActorCounter++;
-                    } else {
-                        if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(72) == 0)) {
-                            Actor_Draw(play, actor);
-                            actor->isDrawn = true;
-                        }
-                    }
-                }
-            }
+            Actor_DrawListEntry(play, actor, i, invisibleActors, &invisibleActorCounter);
 
             actor = actor->next;
         }
+    }
+
+    if (toonActors) {
+        gSPToon(POLY_OPA_DISP++, false);
+        gSPToon(POLY_XLU_DISP++, false);
+    } else if (renderStateActive) {
+        // Sem o colchete toon não há borda de objeto depois do último ator: marca a borda para a captura de
+        // sombra armada por um mod não vazar para a geometria iluminada seguinte (efeitos, XLU).
+        gSPToonShadow(POLY_OPA_DISP++, 0, 0, 0, 0.0f);
     }
 
     if ((HREG(64) != 1) || (HREG(73) != 0)) {
@@ -3192,7 +3268,16 @@ void Actor_DrawAll(PlayState* play, ActorContext* actorCtx) {
 
     if ((HREG(64) != 1) || (HREG(72) != 0)) {
         if (play->actorCtx.lensActive) {
+            // CEL-003: atores da lente desenham depois do fechamento do colchete; reabre em volta deles.
+            if (toonActors) {
+                gSPToon(POLY_OPA_DISP++, true);
+                gSPToon(POLY_XLU_DISP++, true);
+            }
             Actor_DrawLensActors(play, invisibleActorCounter, invisibleActors);
+            if (toonActors) {
+                gSPToon(POLY_OPA_DISP++, false);
+                gSPToon(POLY_XLU_DISP++, false);
+            }
             if ((play->csCtx.state != CS_STATE_IDLE) || Player_InCsMode(play)) {
                 Actor_DisableLens(play);
             }

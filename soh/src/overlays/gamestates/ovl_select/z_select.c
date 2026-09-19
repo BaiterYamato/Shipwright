@@ -17,6 +17,8 @@
 
 void Select_SwitchBetterWarpMode(SelectContext* this, u8 isBetterWarpMode);
 void Sram_InitDebugSave(void);
+BetterSceneSelectEntry* LinkSpan_BuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, s32 vanillaCount,
+                                                        void (*loadFunc)(SelectContext*, s32), s32* count);
 
 void Select_LoadTitle(SelectContext* this) {
     this->state.running = false;
@@ -1827,12 +1829,23 @@ void Select_SwitchBetterWarpMode(SelectContext* this, u8 isBetterWarpMode) {
 
     if (isBetterWarpMode) {
         s32 currScene = CVarGetInteger(CVAR_GENERAL("BetterDebugWarpScreenCurrentScene"), 0);
-        this->count = ARRAY_COUNT(sBetterScenes);
+        this->betterScenes =
+            LinkSpan_BuildBetterWarpScenes(sBetterScenes, ARRAY_COUNT(sBetterScenes), Select_LoadGame, &this->count);
 
         if (currScene >= 0 && currScene < this->count) {
             this->currentScene = currScene;
             this->topDisplayedScene = CVarGetInteger(CVAR_GENERAL("BetterDebugWarpScreenTopDisplayedScene"), 0);
             this->pageDownIndex = CVarGetInteger(CVAR_GENERAL("BetterDebugWarpScreenPageDownIndex"), 0);
+            // A janela lembrada pode ter sido salva com outro conjunto de mods. Reancore a seleção antes de o menu
+            // desenhar, para ela nunca ficar fora das 19 linhas visíveis depois de a lista mudar de tamanho.
+            this->topDisplayedScene = ((this->topDisplayedScene % this->count) + this->count) % this->count;
+            if ((this->currentScene - this->topDisplayedScene + this->count) % this->count > 18) {
+                this->topDisplayedScene = (this->currentScene - 1 + this->count) % this->count;
+            }
+            if (this->pageDownIndex < 0 ||
+                this->pageDownIndex >= this->betterScenes[this->currentScene].entranceCount) {
+                this->pageDownIndex = 0;
+            }
 
             BetterSceneSelectEntrancePair entrancePair =
                 this->betterScenes[this->currentScene].entrancePairs[this->pageDownIndex];

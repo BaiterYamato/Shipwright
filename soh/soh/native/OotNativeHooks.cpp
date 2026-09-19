@@ -37,6 +37,19 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
     points.roomActors = Declare(LINKSPAN_OOT_HOOK_ROOM_ACTORS, sizeof(ShipOotRoomActorsHookV2),
                                 SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM,
                                 LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION);
+    points.renderActorDraw = Declare(LINKSPAN_OOT_HOOK_RENDER_ACTOR_DRAW, sizeof(ShipOotRenderActorDrawHookV1),
+                                     SHIP_NATIVE_HOOK_OBSERVE);
+    points.renderWorldLights = Declare(LINKSPAN_OOT_HOOK_RENDER_WORLD_LIGHTS, sizeof(ShipOotRenderPlayHookV1),
+                                       SHIP_NATIVE_HOOK_OBSERVE);
+    points.renderSkyGradient = Declare(LINKSPAN_OOT_HOOK_RENDER_SKY_GRADIENT, sizeof(ShipOotRenderPlayHookV1),
+                                       SHIP_NATIVE_HOOK_OBSERVE);
+    points.renderSky = Declare(LINKSPAN_OOT_HOOK_RENDER_SKY, sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.renderSkyClouds =
+        Declare(LINKSPAN_OOT_HOOK_RENDER_SKY_CLOUDS, sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.renderFileSelectSky = Declare(LINKSPAN_OOT_HOOK_RENDER_FILE_SELECT_SKY,
+                                         sizeof(ShipOotRenderFileSelectSkyHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.pointLightColor = Declare(LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR, sizeof(ShipOotPointLightColorHookV1),
+                                     SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM);
     return registry;
 }
 
@@ -71,6 +84,15 @@ uint32_t DispatchOotRoomActors(void* play, int32_t sceneId, int32_t room, int32_
         return count;
     }
     return payload.count;
+}
+
+void DispatchOotPointLightColor(ShipOotPointLightColorHookV1* payload) {
+    if (!payload || !registry || !registry->HasHooks(points.pointLightColor)) return;
+    registry->Dispatch(points.pointLightColor, payload, sizeof(*payload), nullptr, nullptr);
+}
+
+bool HasOotPointLightColorHooks() {
+    return registry && registry->HasHooks(points.pointLightColor);
 }
 
 void ResetOotHooks() {

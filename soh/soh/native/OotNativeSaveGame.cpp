@@ -10,12 +10,18 @@
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 
+extern "C" {
+#include "variables.h"
+}
+
 namespace {
 
 constexpr const char* kSectionName = "linkspan";
 constexpr int kSectionVersion = 1;
 constexpr const char* kSceneFlagsBlock = "linkspan.scenes";
 constexpr uint32_t kSceneFlagsVersion = 1;
+constexpr const char* kHorseSceneBlock = "linkspan.horse.scene";
+constexpr uint32_t kHorseSceneVersion = 1;
 
 void SaveSection(SaveContext*, int, bool) {
     auto section = ShipLuaHost::ExportOotSaveSection();
@@ -33,6 +39,24 @@ void LoadSection() {
 void InitFile(bool) {
     ShipLuaHost::ClearOotSaveData();
     ShipLuaHost::ReplaceOotCustomSceneFlags({});
+    ShipLuaHost::ReplaceOotHorseSceneSnapshotName({});
+}
+
+void StoreHorseScene() {
+    std::string name;
+    if (!ShipLuaHost::OotSceneStableName(gSaveContext.horseData.scene, name)) {
+        return;
+    }
+    ShipLuaHost::SetOotHostSaveBlock(kHorseSceneBlock, kHorseSceneVersion, nlohmann::json{ { "scene", name } });
+}
+
+void RestoreHorseScene() {
+    nlohmann::json data;
+    uint32_t version = 0;
+    if (ShipLuaHost::GetOotHostSaveBlock(kHorseSceneBlock, data, version) && version == kHorseSceneVersion &&
+        data.is_object() && data.contains("scene") && data["scene"].is_string()) {
+        ShipLuaHost::ReplaceOotHorseSceneSnapshotName(data["scene"].get<std::string>());
+    }
 }
 
 void StoreSceneFlags() {
@@ -90,6 +114,7 @@ void RegisterOotSaveSection() {
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnLoadFile>([](int32_t fileNum) {
         SetOotSaveSlot(fileNum);
         RestoreSceneFlags();
+        RestoreHorseScene();
         RestoreOotItemButtonsFromSave();
         for (const auto& name : MissingRequiredOotNamespaces()) {
             SPDLOG_WARN("Link-Span save: o arquivo {} depende de '{}', que nenhum mod carregado abriu", fileNum + 1,
@@ -109,6 +134,7 @@ void OotBeforeSave(int32_t fileNum, int32_t sectionId) {
     SetOotSaveSlot(fileNum);
     DispatchOotSaveHook(GetOotHookPoints().saveSaving, fileNum, -1);
     StoreSceneFlags();
+    StoreHorseScene();
     StoreOotItemButtons();
 }
 

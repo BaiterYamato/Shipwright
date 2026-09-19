@@ -50,6 +50,23 @@ void DispatchActor(uint64_t point, Actor* actor, PlayState* play, ShipNativeHook
     ShipOotActorHookV1 payload{sizeof(ShipOotActorHookV1), play, actor, actor->id, actor->params};
     ShipLuaHost::GetOotHookRegistry()->Dispatch(point, &payload, sizeof(payload), original, nullptr);
 }
+
+void DispatchRenderActorDraw(Actor* actor, PlayState* play) {
+    auto* registry = ShipLuaHost::GetOotHookRegistry();
+    const auto point = ShipLuaHost::GetOotHookPoints().renderActorDraw;
+    if (!registry || !registry->HasHooks(point)) return;
+    ShipOotRenderActorDrawHookV1 payload{sizeof(ShipOotRenderActorDrawHookV1), play, actor, actor->id, actor->params};
+    registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
+}
+
+void DispatchRenderPlay(uint64_t point, PlayState* play) {
+    auto* registry = ShipLuaHost::GetOotHookRegistry();
+    if (!registry || !registry->HasHooks(point)) return;
+    ShipOotRenderPlayHookV1 payload{sizeof(ShipOotRenderPlayHookV1), play};
+    ShipLuaHost::EnterOotRenderScope();
+    registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
+    ShipLuaHost::LeaveOotRenderScope();
+}
 } // namespace
 
 // Chamadas pelo código C do jogo, sempre na thread do jogo.
@@ -85,6 +102,52 @@ extern "C" void LinkSpan_ActorDraw(Actor* actor, PlayState* play) {
     ShipLuaHost::EnterOotRenderScope();
     DispatchActor(point, actor, play, ActorDrawOriginal);
     ShipLuaHost::LeaveOotRenderScope();
+}
+
+extern "C" void LinkSpan_RenderActorDraw(Actor* actor, PlayState* play) {
+    const auto* registry = ShipLuaHost::GetOotHookRegistry();
+    const auto point = ShipLuaHost::GetOotHookPoints().renderActorDraw;
+    if (!registry || !registry->HasHooks(point)) return;
+    ShipLuaHost::EnterOotRenderScope();
+    DispatchRenderActorDraw(actor, play);
+    ShipLuaHost::LeaveOotRenderScope();
+}
+
+extern "C" void LinkSpan_RenderWorldLights(PlayState* play) {
+    DispatchRenderPlay(ShipLuaHost::GetOotHookPoints().renderWorldLights, play);
+}
+
+extern "C" void LinkSpan_RenderSkyGradient(PlayState* play) {
+    DispatchRenderPlay(ShipLuaHost::GetOotHookPoints().renderSkyGradient, play);
+}
+
+extern "C" void LinkSpan_RenderSky(PlayState* play) {
+    DispatchRenderPlay(ShipLuaHost::GetOotHookPoints().renderSky, play);
+}
+
+extern "C" void LinkSpan_RenderSkyClouds(PlayState* play) {
+    DispatchRenderPlay(ShipLuaHost::GetOotHookPoints().renderSkyClouds, play);
+}
+
+extern "C" void LinkSpan_RenderFileSelectSky(void* gameState, void* graphicsContext, void* view) {
+    auto* registry = ShipLuaHost::GetOotHookRegistry();
+    const auto point = ShipLuaHost::GetOotHookPoints().renderFileSelectSky;
+    if (!registry || !registry->HasHooks(point)) return;
+    ShipOotRenderFileSelectSkyHookV1 payload{sizeof(ShipOotRenderFileSelectSkyHookV1), gameState, graphicsContext, view};
+    ShipLuaHost::EnterOotRenderScope();
+    registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
+    ShipLuaHost::LeaveOotRenderScope();
+}
+
+extern "C" void LinkSpan_PointLightColor(LightInfo* info, u8* r, u8* g, u8* b, s16 radius) {
+    if (!info || !r || !g || !b || !ShipLuaHost::HasOotPointLightColorHooks()) return;
+    ShipOotPointLightColorHookV1 payload{sizeof(ShipOotPointLightColorHookV1), info->params.point.x,
+                                         info->params.point.y, info->params.point.z, radius, info->type,
+                                         *r, *g, *b};
+    ShipLuaHost::DispatchOotPointLightColor(&payload);
+    *r = payload.r;
+    *g = payload.g;
+    *b = payload.b;
 }
 
 static_assert(sizeof(ShipOotActorEntryV2) == sizeof(ActorEntry) &&

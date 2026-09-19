@@ -620,7 +620,14 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_2, sizeof(scenesV2), &scenesV2});
     const auto& text = GetOotNativeTextService();
     policy.services.push_back({LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION, sizeof(text), &text});
+    // Fase W: CEL-003 e UNBOUND-013.
+    const auto& renderV2 = GetOotNativeRenderServiceV2();
+    policy.services.push_back(
+        {LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_2, sizeof(renderV2), &renderV2});
+    const auto& scenesV3 = GetOotNativeScenesServiceV3();
+    policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_3, sizeof(scenesV3), &scenesV3});
     policy.hooks = CreateOotHookRegistry();
+    policy.onProviderUnload = [](std::string_view owner) { ReleaseOotRenderOwner(owner); };
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;
 }

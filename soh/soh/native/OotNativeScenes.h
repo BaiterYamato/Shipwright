@@ -23,6 +23,8 @@ struct OotVanillaScenes {
     const char* (*sceneFileName)(int32_t sceneId) = nullptr;
     uint8_t (*sceneDrawConfig)(int32_t sceneId) = nullptr;
     bool (*sceneHasMasterQuest)(int32_t sceneId) = nullptr;
+    const int32_t* horseScenes = nullptr; // cinco cenas vanilla que já aceitavam Epona
+    int32_t horseSceneCount = 0;
 };
 
 // Recebe a tabela de entradas vigente sempre que ela muda: nullptr quando só há
@@ -39,6 +41,7 @@ void InitializeOotNativeScenes(std::thread::id ownerThread = std::this_thread::g
 void ResetOotNativeScenes();
 const ShipOotScenesV1& GetOotNativeScenesService();
 const ShipOotScenesV2& GetOotNativeScenesServiceV2();
+const ShipOotScenesV3& GetOotNativeScenesServiceV3();
 
 struct OotCustomScene {
     std::string path;
@@ -62,5 +65,15 @@ SavedSceneFlags* OotCustomSceneFlags(int32_t sceneId);
 // Flags das cenas de mod por nome, para gravar e restaurar com o save.
 std::map<std::string, SavedSceneFlags, std::less<>> ExportOotCustomSceneFlags();
 void ReplaceOotCustomSceneFlags(std::map<std::string, SavedSceneFlags, std::less<>> flags);
+// Capacidade registrada pelo V3; cenas vanilla são semeadas no init.
+bool OotSceneHorseAllowed(int32_t sceneId);
+bool OotHasRegisteredHorseScenes();
+bool OotSceneHorseSpawn(int32_t sceneId, Vec3f& pos, int16_t& angle);
+bool OotSceneUsesGeneratedHorseCall(int32_t sceneId);
+void ReplaceOotHorseSceneSnapshotName(std::string name);
+bool ResolveOotHorseSceneSnapshotName(int32_t& sceneId);
+// Anexa cenas registradas à lista Better Debug Warp sem manter política de mod no menu C.
+BetterSceneSelectEntry* OotBuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, int32_t vanillaCount,
+                                                  void (*loadFunc)(SelectContext*, int32_t), int32_t& count);
 
 } // namespace ShipLuaHost

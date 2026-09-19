@@ -122,4 +122,49 @@ typedef struct ShipOotScenesV2 {
                                                        const char* scene_path);
 } ShipOotScenesV2;
 
+#define LINKSPAN_OOT_SCENES_VERSION_3 3u
+
+/* Definição V3: V2 com a capacidade genérica de cavalo da cena. Quando
+ * horse_enabled é zero, todos os campos horse_* são ignorados. A posição
+ * opcional é o ponto onde o jogo deixa o cavalo já existente depois de uma
+ * transição; sem ela, a cena ainda pode chamar o cavalo pela canção. */
+typedef struct ShipOotSceneDefinitionV3 {
+    uint32_t size;
+    const char* name;
+    const char* display_name;
+    const char* scene_path;
+    int32_t requested_id;
+    uint8_t draw_config;
+    const char* title_card_texture;
+    uint8_t horse_enabled;
+    uint8_t horse_has_spawn;
+    float horse_x;
+    float horse_y;
+    float horse_z;
+    int16_t horse_angle;
+} ShipOotSceneDefinitionV3;
+
+/* Prefixo binário compatível com ShipOotScenesV2. */
+typedef struct ShipOotScenesV3 {
+    uint32_t size;
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene)(const ShipOotSceneDefinitionV1* scene, uint64_t* scene_handle,
+                                                       int32_t* scene_id);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_entrance)(uint64_t scene_handle,
+                                                          const ShipOotEntranceDefinitionV1* entrance,
+                                                          int32_t* entrance_index);
+    ShipNativeStatus(SHIP_NATIVE_CALL* unregister_scene)(uint64_t scene_handle);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_scene)(const char* name, int32_t* scene_id);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_entrance)(const char* name, int32_t* entrance_index);
+    ShipNativeStatus(SHIP_NATIVE_CALL* travel_to_entrance)(int32_t entrance_index);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v2)(const ShipOotSceneDefinitionV2* scene,
+                                                          uint64_t* scene_handle, int32_t* scene_id);
+    int32_t(SHIP_NATIVE_CALL* get_scene_count)(void);
+    ShipNativeStatus(SHIP_NATIVE_CALL* get_scene_info)(int32_t scene_id, uint8_t master_quest,
+                                                       ShipOotSceneInfoV1* info);
+    ShipNativeStatus(SHIP_NATIVE_CALL* override_scene)(int32_t scene_id, uint8_t master_quest,
+                                                       const char* scene_path);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v3)(const ShipOotSceneDefinitionV3* scene,
+                                                          uint64_t* scene_handle, int32_t* scene_id);
+} ShipOotScenesV3;
+
 #endif

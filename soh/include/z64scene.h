@@ -436,7 +436,9 @@ typedef struct {
     /* 0x1 */ s8 yStep;
     /* 0x2 */ u8 width;
     /* 0x3 */ u8 height;
-} AnimatedMatTexScrollParams; // size = 0x4; the two-layer form is an array of two
+    /* 0x4 */ f32 xSpeed;
+    /* 0x8 */ f32 ySpeed;
+} AnimatedMatTexScrollParams; // size = 0xC; the two-layer form is an array of two
 
 typedef struct {
     /* 0x0 */ u16 keyFrameLength;

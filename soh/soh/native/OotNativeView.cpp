@@ -1,5 +1,6 @@
 #include "OotNativeView.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <set>
@@ -25,6 +26,17 @@ struct ViewState {
     // Push feitos pelo mod em cada escopo de draw aberto.
     std::vector<uint32_t> scopes;
     std::set<std::string, std::less<>> paths;
+    struct RenderState {
+        uint64_t token = 0;
+        std::string owner;
+        uint32_t features = 0;
+        std::vector<int16_t> receivers;
+    };
+    uint64_t nextRenderToken = 1;
+    std::vector<RenderState> renderStates;
+    uint32_t renderFeatures = 0;
+    // Algum mod mudou a rampa ou a sombra; volta ao padrão quando o último estado sai.
+    bool toonLookChanged = false;
 };
 
 ViewState& State() {
@@ -96,6 +108,27 @@ bool ValidView(const ShipOotCameraViewV1* view) {
 
 bool InScope() {
     return !State().scopes.empty();
+}
+
+uint32_t RenderFeatures() {
+    return State().renderFeatures;
+}
+
+void RebuildRenderFeatures() {
+    auto& state = State();
+    state.renderFeatures = 0;
+    for (const auto& renderState : state.renderStates) state.renderFeatures |= renderState.features;
+    if (state.renderStates.empty() && state.toonLookChanged) {
+        state.toonLookChanged = false;
+        if (state.bridge.resetToonLook) state.bridge.resetToonLook();
+    }
+}
+
+ViewState::RenderState* FindRenderState(uint64_t token) {
+    auto& states = State().renderStates;
+    const auto it = std::find_if(states.begin(), states.end(),
+                                 [token](const auto& state) { return state.token == token; });
+    return it == states.end() ? nullptr : &*it;
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Acquire(const char* owner, uint64_t* token) {
@@ -254,9 +287,109 @@ ShipNativeStatus SHIP_NATIVE_CALL MatrixRotateZYX(int16_t x, int16_t y, int16_t 
     return SHIP_NATIVE_OK;
 }
 
+ShipNativeStatus SHIP_NATIVE_CALL AcquireRenderState(const char* owner, uint64_t* token) {
+    if (!OnOwnerThread() || !owner || !*owner || !token || std::strlen(owner) > 128) return SHIP_NATIVE_INVALID_ARGUMENT;
+    try {
+        auto& state = State();
+        *token = state.nextRenderToken++;
+        state.renderStates.push_back({*token, owner, 0, {}});
+        return SHIP_NATIVE_OK;
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL ReleaseRenderState(uint64_t token) {
+    if (!OnOwnerThread() || !token) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& states = State().renderStates;
+    const auto oldSize = states.size();
+    std::erase_if(states, [token](const auto& state) { return state.token == token; });
+    RebuildRenderFeatures();
+    return states.size() == oldSize ? SHIP_NATIVE_INVALID_ARGUMENT : SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SetRenderState(uint64_t token, uint32_t features, const int16_t* receivers,
+                                                  uint32_t receiverCount) {
+    if (!OnOwnerThread() || receiverCount > LINKSPAN_OOT_RENDER_MAX_SHADOW_RECEIVERS ||
+        (receiverCount && !receivers) || (features & ~(LINKSPAN_OOT_RENDER_FEATURE_TOON_ACTORS |
+                                                       LINKSPAN_OOT_RENDER_FEATURE_SUPPRESS_VANILLA_SHADOWS |
+                                                       LINKSPAN_OOT_RENDER_FEATURE_HIDE_VANILLA_POINT_GLOW)))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto* state = FindRenderState(token);
+    if (!state) return SHIP_NATIVE_INVALID_ARGUMENT;
+    try {
+        std::vector<int16_t> copied;
+        if (receiverCount) copied.assign(receivers, receivers + receiverCount);
+        std::sort(copied.begin(), copied.end());
+        copied.erase(std::unique(copied.begin(), copied.end()), copied.end());
+        state->features = features;
+        state->receivers = std::move(copied);
+        RebuildRenderFeatures();
+        return SHIP_NATIVE_OK;
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+bool ValidRenderLayer(uint8_t layer) {
+    return layer == LINKSPAN_OOT_RENDER_OPAQUE || layer == LINKSPAN_OOT_RENDER_TRANSLUCENT;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL EmitToonKey(uint8_t layer, int8_t dx, int8_t dy, int8_t dz,
+                                              uint8_t r, uint8_t g, uint8_t b) {
+    const auto& bridge = State().bridge;
+    if (!OnOwnerThread() || !InScope() || !ValidRenderLayer(layer) || !bridge.emitToonKey) return SHIP_NATIVE_UNSUPPORTED;
+    return bridge.emitToonKey(layer, dx, dy, dz, r, g, b);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL EmitStencil(uint8_t layer, uint8_t mode) {
+    const auto& bridge = State().bridge;
+    if (!OnOwnerThread() || !InScope() || !ValidRenderLayer(layer) || !bridge.emitStencil) return SHIP_NATIVE_UNSUPPORTED;
+    return bridge.emitStencil(layer, mode);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL EmitToonShadow(uint8_t layer, int16_t feetClampY, float size) {
+    const auto& bridge = State().bridge;
+    if (!OnOwnerThread() || !InScope() || !ValidRenderLayer(layer) || !bridge.emitToonShadow)
+        return SHIP_NATIVE_UNSUPPORTED;
+    if (!std::isfinite(size)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    return bridge.emitToonShadow(layer, feetClampY, size);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SetToonRamp(float center, float softness, float highlight, float shadow,
+                                              uint8_t debugBands) {
+    auto& state = State();
+    if (!OnOwnerThread() || !state.bridge.setToonRamp) return SHIP_NATIVE_UNSUPPORTED;
+    if (!std::isfinite(center) || !std::isfinite(softness) || !std::isfinite(highlight) || !std::isfinite(shadow) ||
+        softness < 0.0f)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    state.bridge.setToonRamp(center, softness, highlight, shadow, debugBands != 0);
+    state.toonLookChanged = true;
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SetToonShadowParams(float opacity, float minElevation, float slabDepth,
+                                                      float slabRise, int32_t edgeSoftness, uint8_t showVolume) {
+    auto& state = State();
+    if (!OnOwnerThread() || !state.bridge.setToonShadowParams) return SHIP_NATIVE_UNSUPPORTED;
+    if (!std::isfinite(opacity) || !std::isfinite(minElevation) || !std::isfinite(slabDepth) ||
+        !std::isfinite(slabRise) || edgeSoftness < 0 || edgeSoftness > 2)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    state.bridge.setToonShadowParams(opacity, minElevation, slabDepth, slabRise, edgeSoftness, showVolume != 0);
+    state.toonLookChanged = true;
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL FlushToonShadows(uint8_t layer) {
+    const auto& bridge = State().bridge;
+    if (!OnOwnerThread() || !InScope() || !ValidRenderLayer(layer) || !bridge.flushToonShadows)
+        return SHIP_NATIVE_UNSUPPORTED;
+    return bridge.flushToonShadows(layer);
+}
+
 const ShipOotCameraV1 cameraV1{ sizeof(ShipOotCameraV1), Acquire, Release, SetView, GetView, IsOwned };
 const ShipOotRenderV1 renderV1{ sizeof(ShipOotRenderV1), DrawDisplayList, MatrixPush,     MatrixPop,
                                 MatrixTranslate,         MatrixScale,     MatrixRotateZYX };
+const ShipOotRenderV2 renderV2{ sizeof(ShipOotRenderV2), DrawDisplayList, MatrixPush, MatrixPop,
+                                MatrixTranslate, MatrixScale, MatrixRotateZYX, AcquireRenderState,
+                                ReleaseRenderState, SetRenderState, EmitToonKey, EmitStencil,
+                                EmitToonShadow, FlushToonShadows, SetToonRamp, SetToonShadowParams };
 
 } // namespace
 
@@ -275,6 +408,8 @@ void ResetOotNativeView() {
         DropCamera(true);
     }
     state.scopes.clear();
+    state.renderStates.clear();
+    RebuildRenderFeatures();
 }
 
 const ShipOotCameraV1& GetOotNativeCameraService() {
@@ -283,6 +418,16 @@ const ShipOotCameraV1& GetOotNativeCameraService() {
 
 const ShipOotRenderV1& GetOotNativeRenderService() {
     return renderV1;
+}
+
+const ShipOotRenderV2& GetOotNativeRenderServiceV2() {
+    return renderV2;
+}
+
+void ReleaseOotRenderOwner(std::string_view owner) {
+    auto& states = State().renderStates;
+    std::erase_if(states, [owner](const auto& state) { return state.owner == owner; });
+    RebuildRenderFeatures();
 }
 
 void UpdateOotCamera() {
@@ -297,6 +442,34 @@ void UpdateOotCamera() {
 
 bool InOotRenderScope() {
     return InScope();
+}
+
+bool OotRenderToonActorsEnabled() {
+    return (RenderFeatures() & LINKSPAN_OOT_RENDER_FEATURE_TOON_ACTORS) != 0;
+}
+
+bool OotRenderVanillaShadowsSuppressed() {
+    return (RenderFeatures() & LINKSPAN_OOT_RENDER_FEATURE_SUPPRESS_VANILLA_SHADOWS) != 0;
+}
+
+bool OotRenderVanillaPointGlowHidden() {
+    return (RenderFeatures() & LINKSPAN_OOT_RENDER_FEATURE_HIDE_VANILLA_POINT_GLOW) != 0;
+}
+
+bool OotRenderStateActive() {
+    return !State().renderStates.empty();
+}
+
+bool OotRenderHasShadowReceivers() {
+    for (const auto& state : State().renderStates) if (!state.receivers.empty()) return true;
+    return false;
+}
+
+bool OotRenderIsShadowReceiver(int16_t actorId) {
+    for (const auto& state : State().renderStates) {
+        if (std::binary_search(state.receivers.begin(), state.receivers.end(), actorId)) return true;
+    }
+    return false;
 }
 
 void EnterOotRenderScope() {
@@ -317,3 +490,27 @@ void LeaveOotRenderScope() {
 }
 
 } // namespace ShipLuaHost
+
+extern "C" int32_t LinkSpan_RenderToonActorsEnabled(void) {
+    return ShipLuaHost::OotRenderToonActorsEnabled() ? 1 : 0;
+}
+
+extern "C" int32_t LinkSpan_RenderSuppressVanillaShadows(void) {
+    return ShipLuaHost::OotRenderVanillaShadowsSuppressed() ? 1 : 0;
+}
+
+extern "C" int32_t LinkSpan_RenderHideVanillaPointGlow(void) {
+    return ShipLuaHost::OotRenderVanillaPointGlowHidden() ? 1 : 0;
+}
+
+extern "C" int32_t LinkSpan_RenderHasShadowReceivers(void) {
+    return ShipLuaHost::OotRenderHasShadowReceivers() ? 1 : 0;
+}
+
+extern "C" int32_t LinkSpan_RenderIsShadowReceiver(int16_t actorId) {
+    return ShipLuaHost::OotRenderIsShadowReceiver(actorId) ? 1 : 0;
+}
+
+extern "C" int32_t LinkSpan_RenderStateActive(void) {
+    return ShipLuaHost::OotRenderStateActive() ? 1 : 0;
+}

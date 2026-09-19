@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 #include <thread>
 
 #include "oot_camera.h"
@@ -26,6 +27,16 @@ struct OotViewBridge {
     void (*matrixTranslate)(float x, float y, float z) = nullptr;
     void (*matrixScale)(float x, float y, float z) = nullptr;
     void (*matrixRotateZYX)(int16_t x, int16_t y, int16_t z) = nullptr;
+    ShipNativeStatus (*emitToonKey)(uint8_t layer, int8_t dx, int8_t dy, int8_t dz,
+                                    uint8_t r, uint8_t g, uint8_t b) = nullptr;
+    ShipNativeStatus (*emitStencil)(uint8_t layer, uint8_t mode) = nullptr;
+    ShipNativeStatus (*emitToonShadow)(uint8_t layer, int16_t feetClampY, float size) = nullptr;
+    ShipNativeStatus (*flushToonShadows)(uint8_t layer) = nullptr;
+    void (*setToonRamp)(float center, float softness, float highlight, float shadow, bool debugBands) = nullptr;
+    void (*setToonShadowParams)(float opacity, float minElevation, float slabDepth, float slabRise,
+                                int32_t edgeSoftness, bool showVolume) = nullptr;
+    // Devolve rampa e sombra aos valores padrão do renderer.
+    void (*resetToonLook)() = nullptr;
 };
 
 void SetOotViewBridge(const OotViewBridge& bridge);
@@ -34,6 +45,8 @@ void InitializeOotNativeView(std::thread::id ownerThread = std::this_thread::get
 void ResetOotNativeView();
 const ShipOotCameraV1& GetOotNativeCameraService();
 const ShipOotRenderV1& GetOotNativeRenderService();
+const ShipOotRenderV2& GetOotNativeRenderServiceV2();
+void ReleaseOotRenderOwner(std::string_view owner);
 
 // Uma vez por frame, antes do update das câmeras: perde a posse se a câmera mudou,
 // senão reaplica a vista.
@@ -45,6 +58,13 @@ void EnterOotRenderScope();
 void LeaveOotRenderScope();
 // Há um escopo de draw aberto (linkspan.oot.skeletons desenha só dentro dele).
 bool InOotRenderScope();
+bool OotRenderToonActorsEnabled();
+bool OotRenderVanillaShadowsSuppressed();
+bool OotRenderVanillaPointGlowHidden();
+// Algum mod registrou estado de render (linkspan.oot.render v2).
+bool OotRenderStateActive();
+bool OotRenderHasShadowReceivers();
+bool OotRenderIsShadowReceiver(int16_t actorId);
 
 // Integração com o jogo (OotNativeViewGame.cpp, só no jogo).
 void RegisterOotViewGameHooks();

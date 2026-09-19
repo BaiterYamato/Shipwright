@@ -43,6 +43,13 @@
 #define LINKSPAN_OOT_HOOK_SAVE_COPIED "oot.save.copied"
 #define LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW "oot.player.limb_draw"
 #define LINKSPAN_OOT_HOOK_ROOM_ACTORS "oot.room.actors"
+#define LINKSPAN_OOT_HOOK_RENDER_ACTOR_DRAW "oot.render.actor_draw"
+#define LINKSPAN_OOT_HOOK_RENDER_WORLD_LIGHTS "oot.render.world_lights"
+#define LINKSPAN_OOT_HOOK_RENDER_SKY_GRADIENT "oot.render.sky_gradient"
+#define LINKSPAN_OOT_HOOK_RENDER_SKY "oot.render.sky"
+#define LINKSPAN_OOT_HOOK_RENDER_SKY_CLOUDS "oot.render.sky_clouds"
+#define LINKSPAN_OOT_HOOK_RENDER_FILE_SELECT_SKY "oot.render.file_select_sky"
+#define LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR "oot.light.point_color"
 /* v2: posições f32 (mundo amplo do OOT-CORE-007). A v1, com posições s16, saiu antes do release. */
 #define LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION 2u
 /* Máximo de entradas por sala depois do TRANSFORM (teto de atores vivos). */
@@ -74,6 +81,43 @@ typedef struct ShipOotPlayerLimbHookV1 {
     void* actor;
     int32_t limb;
 } ShipOotPlayerLimbHookV1;
+
+/* Hooks de render CEL-003. São OBSERVE e cada payload vale somente no callback.
+ * actor_draw acontece antes do draw real do ator, dentro do escopo de
+ * linkspan.oot.render. Os quatro hooks de Play_Draw também possuem esse escopo. */
+typedef struct ShipOotRenderActorDrawHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* actor;
+    int16_t actor_id;
+    int16_t params;
+} ShipOotRenderActorDrawHookV1;
+
+typedef struct ShipOotRenderPlayHookV1 {
+    uint32_t size;
+    void* play_state;
+} ShipOotRenderPlayHookV1;
+
+typedef struct ShipOotRenderFileSelectSkyHookV1 {
+    uint32_t size;
+    void* game_state;
+    void* graphics_context;
+    void* view;
+} ShipOotRenderFileSelectSkyHookV1;
+
+/* TRANSFORM: r/g/b são o resultado que Lights_PointSetColorAndRadius grava.
+ * A posição e o raio identificam a luz sem expor LightInfo ao mod. */
+typedef struct ShipOotPointLightColorHookV1 {
+    uint32_t size;
+    float x;
+    float y;
+    float z;
+    int16_t radius;
+    uint8_t type;
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+} ShipOotPointLightColorHookV1;
 
 /* Igual ao ActorEntry do jogo: `pos` em unidades do mundo (f32), `rot` em unidade
  * binária de ângulo e `params` no formato do tipo de ator. */

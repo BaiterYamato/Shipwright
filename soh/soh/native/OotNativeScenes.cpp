@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cmath>
+#include <deque>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -27,6 +29,10 @@ struct SceneRecord {
     std::string path;
     uint8_t drawConfig = 0;
     std::string titleCard;
+    bool horse = false;
+    bool horseHasSpawn = false;
+    Vec3f horseSpawn{};
+    int16_t horseAngle = 0;
     std::vector<std::string> entrances;
 };
 
@@ -49,6 +55,9 @@ struct ScenesState {
     SavedSceneFlags scratch{};
     // override_scene: (id vanilla, variante MQ) -> recurso.
     std::map<std::pair<int32_t, bool>, std::string> overrides;
+    std::set<int32_t> vanillaHorseScenes;
+    uint32_t customHorseSceneCount = 0;
+    std::string horseSceneSnapshotName;
 };
 
 // Dados do jogo: entregues uma vez pelo binding, sobrevivem ao reset dos mods.
@@ -131,7 +140,8 @@ const SceneRecord* FindRecordById(int32_t sceneId) {
 }
 
 ShipNativeStatus RegisterSceneRecord(const ShipOotSceneDefinitionV1* definition, const char* titleCard,
-                                     uint64_t* sceneHandle, int32_t* sceneId) {
+                                     const ShipOotSceneDefinitionV3* horseDefinition, uint64_t* sceneHandle,
+                                     int32_t* sceneId) {
     *sceneHandle = 0;
     *sceneId = 0;
     const size_t nameLength = BoundedLength(definition->name, LINKSPAN_OOT_SCENES_MAX_NAME);
@@ -149,6 +159,19 @@ ShipNativeStatus RegisterSceneRecord(const ShipOotSceneDefinitionV1* definition,
         record.displayName = hasDisplayName ? std::string(definition->display_name, displayLength) : record.name;
         record.path.assign(definition->scene_path, pathLength);
         record.drawConfig = definition->draw_config;
+        if (horseDefinition) {
+            if (horseDefinition->horse_has_spawn && !horseDefinition->horse_enabled) {
+                return SHIP_NATIVE_INVALID_ARGUMENT;
+            }
+            if (!std::isfinite(horseDefinition->horse_x) || !std::isfinite(horseDefinition->horse_y) ||
+                !std::isfinite(horseDefinition->horse_z)) {
+                return SHIP_NATIVE_INVALID_ARGUMENT;
+            }
+            record.horse = horseDefinition->horse_enabled != 0;
+            record.horseHasSpawn = horseDefinition->horse_has_spawn != 0;
+            record.horseSpawn = { horseDefinition->horse_x, horseDefinition->horse_y, horseDefinition->horse_z };
+            record.horseAngle = horseDefinition->horse_angle;
+        }
         if (titleCard && *titleCard) {
             const size_t titleLength = BoundedLength(titleCard, LINKSPAN_OOT_SCENES_MAX_PATH);
             if (!titleLength) {
@@ -188,6 +211,9 @@ ShipNativeStatus RegisterSceneRecord(const ShipOotSceneDefinitionV1* definition,
             throw;
         }
         ++state.nextHandle;
+        if (state.scenes.at(handle).horse) {
+            ++state.customHorseSceneCount;
+        }
         state.nextSceneId = std::max(state.nextSceneId, id + 1);
         *sceneHandle = handle;
         *sceneId = id;
@@ -203,7 +229,7 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterScene(const ShipOotSceneDefinitionV1* 
         !sceneId) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    return RegisterSceneRecord(definition, nullptr, sceneHandle, sceneId);
+    return RegisterSceneRecord(definition, nullptr, nullptr, sceneHandle, sceneId);
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL RegisterSceneV2(const ShipOotSceneDefinitionV2* definition, uint64_t* sceneHandle,
@@ -215,7 +241,18 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterSceneV2(const ShipOotSceneDefinitionV2
     // Os campos V1 são o prefixo da V2.
     const ShipOotSceneDefinitionV1 v1{ sizeof(ShipOotSceneDefinitionV1), definition->name, definition->display_name,
                                        definition->scene_path, definition->requested_id, definition->draw_config };
-    return RegisterSceneRecord(&v1, definition->title_card_texture, sceneHandle, sceneId);
+    return RegisterSceneRecord(&v1, definition->title_card_texture, nullptr, sceneHandle, sceneId);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL RegisterSceneV3(const ShipOotSceneDefinitionV3* definition, uint64_t* sceneHandle,
+                                                  int32_t* sceneId) {
+    if (!OnOwnerThread() || !definition || definition->size < sizeof(ShipOotSceneDefinitionV3) || !sceneHandle ||
+        !sceneId) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const ShipOotSceneDefinitionV1 v1{ sizeof(ShipOotSceneDefinitionV1), definition->name, definition->display_name,
+                                       definition->scene_path, definition->requested_id, definition->draw_config };
+    return RegisterSceneRecord(&v1, definition->title_card_texture, definition, sceneHandle, sceneId);
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL RegisterEntrance(uint64_t sceneHandle, const ShipOotEntranceDefinitionV1* definition,
@@ -310,6 +347,9 @@ ShipNativeStatus SHIP_NATIVE_CALL UnregisterScene(uint64_t sceneHandle) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     const EntranceInfo unused = UnusedEntrance();
+    if (scene->second.horse) {
+        --state.customHorseSceneCount;
+    }
     {
         const std::unique_lock lock(NamesMutex());
         for (const auto& name : scene->second.entrances) {
@@ -491,6 +531,11 @@ const ShipOotScenesV2 scenesServiceV2{
     TravelToEntrance, RegisterSceneV2, GetSceneCount, GetSceneInfo, OverrideScene,
 };
 
+const ShipOotScenesV3 scenesServiceV3{
+    sizeof(ShipOotScenesV3), RegisterScene, RegisterEntrance, UnregisterScene, FindScene, FindEntrance,
+    TravelToEntrance, RegisterSceneV2, GetSceneCount, GetSceneInfo, OverrideScene, RegisterSceneV3,
+};
+
 } // namespace
 
 void SetOotVanillaScenes(const OotVanillaScenes& data) {
@@ -530,6 +575,10 @@ void InitializeOotNativeScenes(std::thread::id ownerThread) {
         state = ScenesState{};
     }
     state.ownerThread = ownerThread;
+    const auto& vanilla = Vanilla().data;
+    for (int32_t i = 0; vanilla.horseScenes && i < std::max(vanilla.horseSceneCount, 0); ++i) {
+        state.vanillaHorseScenes.insert(vanilla.horseScenes[i]);
+    }
     state.publishedCount = VanillaEntranceCount();
 }
 
@@ -543,6 +592,10 @@ const ShipOotScenesV1& GetOotNativeScenesService() {
 
 const ShipOotScenesV2& GetOotNativeScenesServiceV2() {
     return scenesServiceV2;
+}
+
+const ShipOotScenesV3& GetOotNativeScenesServiceV3() {
+    return scenesServiceV3;
 }
 
 int32_t OotEntranceCount() {
@@ -632,6 +685,103 @@ std::map<std::string, SavedSceneFlags, std::less<>> ExportOotCustomSceneFlags() 
 
 void ReplaceOotCustomSceneFlags(std::map<std::string, SavedSceneFlags, std::less<>> flags) {
     State().flags = std::move(flags);
+}
+
+bool OotSceneHorseAllowed(int32_t sceneId) {
+    const auto& state = State();
+    if (state.vanillaHorseScenes.contains(sceneId)) {
+        return true;
+    }
+    // A semeadura normal ocorre no init do host; este fallback mantém as cinco cenas vanilla idênticas durante
+    // qualquer chamada de inicialização anterior a ele.
+    const auto& vanilla = Vanilla().data;
+    for (int32_t i = 0; vanilla.horseScenes && i < std::max(vanilla.horseSceneCount, 0); ++i) {
+        if (vanilla.horseScenes[i] == sceneId) {
+            return true;
+        }
+    }
+    const SceneRecord* record = FindRecordById(sceneId);
+    return record && record->horse;
+}
+
+bool OotHasRegisteredHorseScenes() {
+    return State().customHorseSceneCount != 0;
+}
+
+bool OotSceneHorseSpawn(int32_t sceneId, Vec3f& pos, int16_t& angle) {
+    const SceneRecord* record = FindRecordById(sceneId);
+    if (!record || !record->horse || !record->horseHasSpawn) {
+        return false;
+    }
+    pos = record->horseSpawn;
+    angle = record->horseAngle;
+    return true;
+}
+
+bool OotSceneUsesGeneratedHorseCall(int32_t sceneId) {
+    const SceneRecord* record = FindRecordById(sceneId);
+    return record && record->horse;
+}
+
+void ReplaceOotHorseSceneSnapshotName(std::string name) {
+    State().horseSceneSnapshotName = std::move(name);
+}
+
+bool ResolveOotHorseSceneSnapshotName(int32_t& sceneId) {
+    const auto& name = State().horseSceneSnapshotName;
+    return !name.empty() && OotSceneIdFromStableName(name, sceneId);
+}
+
+BetterSceneSelectEntry* OotBuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, int32_t vanillaCount,
+                                                  void (*loadFunc)(SelectContext*, int32_t), int32_t& count) {
+    static std::vector<BetterSceneSelectEntry> entries;
+    static std::deque<std::string> text;
+    entries.clear();
+    text.clear();
+    if (!vanilla || vanillaCount <= 0) {
+        count = 0;
+        return nullptr;
+    }
+    entries.assign(vanilla, vanilla + vanillaCount);
+    const auto string = [](std::string value) -> char* {
+        text.push_back(std::move(value));
+        return text.back().data();
+    };
+    const auto& state = State();
+    for (const auto& [_, scene] : state.scenes) {
+        if (scene.entrances.empty()) {
+            continue;
+        }
+        BetterSceneSelectEntry entry{};
+        char* const name = string(std::to_string(entries.size() + 1) + ": " + scene.displayName);
+        entry.japaneseName = name;
+        entry.englishName = name;
+        entry.germanName = name;
+        entry.frenchName = name;
+        entry.loadFunc = loadFunc;
+        for (const auto& fullName : scene.entrances) {
+            if (entry.entranceCount >= 18) {
+                break;
+            }
+            const auto found = state.entrances.find(fullName);
+            if (found == state.entrances.end()) {
+                continue;
+            }
+            BetterSceneSelectEntrancePair& pair = entry.entrancePairs[entry.entranceCount++];
+            char* const key = string(fullName.substr(scene.name.size() + 1));
+            pair.japaneseName = key;
+            pair.englishName = key;
+            pair.germanName = key;
+            pair.frenchName = key;
+            pair.entranceIndex = found->second;
+            pair.canBeMQ = false;
+        }
+        if (entry.entranceCount) {
+            entries.push_back(entry);
+        }
+    }
+    count = static_cast<int32_t>(entries.size());
+    return entries.data();
 }
 
 } // namespace ShipLuaHost

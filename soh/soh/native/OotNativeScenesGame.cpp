@@ -36,6 +36,8 @@ const char* const kEntranceNames[] = {
 
 static_assert(std::size(kSceneNames) == SCENE_ID_MAX);
 static_assert(std::size(kEntranceNames) == ENTR_MAX);
+constexpr int32_t kHorseScenes[] = { SCENE_HYRULE_FIELD, SCENE_LAKE_HYLIA, SCENE_GERUDO_VALLEY,
+                                     SCENE_GERUDOS_FORTRESS, SCENE_LON_LON_RANCH };
 
 void ApplyEntranceTable(EntranceInfo* table, int32_t) {
     gEntranceTable = table ? table : gEntranceTableVanilla;
@@ -81,6 +83,8 @@ bool SceneHasMasterQuest(int32_t sceneId) {
     vanilla.sceneFileName = SceneFileName;
     vanilla.sceneDrawConfig = SceneDrawConfig;
     vanilla.sceneHasMasterQuest = SceneHasMasterQuest;
+    vanilla.horseScenes = kHorseScenes;
+    vanilla.horseSceneCount = std::size(kHorseScenes);
     ShipLuaHost::SetOotVanillaScenes(vanilla);
     ShipLuaHost::SetOotEntranceTableListener(ApplyEntranceTable);
     ShipLuaHost::SetOotSceneTravel(TravelToEntrance);
@@ -133,4 +137,37 @@ extern "C" s32 LinkSpan_EntranceCount(void) {
 extern "C" void LinkSpan_ReportInvalidEntrance(s32 entranceIndex, s32 sceneLayer) {
     SPDLOG_ERROR("Link-Span: entrada {:#x} (camada {}) fora da tabela de {} entradas", entranceIndex, sceneLayer,
                  ShipLuaHost::OotEntranceCount());
+}
+
+extern "C" s32 LinkSpan_HorseAllowed(s32 sceneNum) {
+    return ShipLuaHost::OotSceneHorseAllowed(sceneNum);
+}
+
+extern "C" s32 LinkSpan_HorseSpawn(s32 sceneNum, Vec3f* pos, s16* angle) {
+    return pos && angle && ShipLuaHost::OotSceneHorseSpawn(sceneNum, *pos, *angle);
+}
+
+extern "C" s32 LinkSpan_UsesGeneratedHorseCall(s32 sceneNum) {
+    return ShipLuaHost::OotSceneUsesGeneratedHorseCall(sceneNum);
+}
+
+extern "C" s32 LinkSpan_ResolveHorseScene(s16* sceneNum) {
+    int32_t resolved = 0;
+    if (!sceneNum || !ShipLuaHost::ResolveOotHorseSceneSnapshotName(resolved)) {
+        return false;
+    }
+    *sceneNum = static_cast<s16>(resolved);
+    return true;
+}
+
+extern "C" BetterSceneSelectEntry* LinkSpan_BuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, s32 vanillaCount,
+                                                                     void (*loadFunc)(SelectContext*, s32), s32* count) {
+    if (!count) {
+        return vanilla;
+    }
+    int32_t builtCount = vanillaCount;
+    BetterSceneSelectEntry* entries =
+        ShipLuaHost::OotBuildBetterWarpScenes(vanilla, vanillaCount, loadFunc, builtCount);
+    *count = builtCount;
+    return entries;
 }

@@ -569,7 +569,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 21 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 23 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -618,9 +618,16 @@ int main(int argc, char** argv) {
           policy.services[19].size == sizeof(ShipOotScenesV2) &&
           std::string(policy.services[20].name) == LINKSPAN_OOT_TEXT_SERVICE &&
           policy.services[20].version == LINKSPAN_OOT_TEXT_VERSION &&
-          policy.services[20].size == sizeof(ShipOotTextV1),
-          "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1, ocarina V1, scenes V1/V2, "
-          "save V1, items V1/V2/V3, actors V1, camera V1, render V1, world V1, colliders V1, skeletons V1 e text V1");
+          policy.services[20].size == sizeof(ShipOotTextV1) &&
+          std::string(policy.services[21].name) == LINKSPAN_OOT_RENDER_SERVICE &&
+          policy.services[21].version == LINKSPAN_OOT_RENDER_VERSION_2 &&
+          policy.services[21].size == sizeof(ShipOotRenderV2) &&
+          std::string(policy.services[22].name) == LINKSPAN_OOT_SCENES_SERVICE &&
+          policy.services[22].version == LINKSPAN_OOT_SCENES_VERSION_3 &&
+          policy.services[22].size == sizeof(ShipOotScenesV3) && policy.onProviderUnload,
+          "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1, ocarina V1, scenes V1/V2/V3, "
+          "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1 e "
+          "text V1, com as versões novas no fim");
     {
         using namespace FakeSkeletons;
         const auto* skeletons = static_cast<const ShipOotSkeletonsV1*>(policy.services[16].table);

@@ -7,10 +7,12 @@
 // up the scrolled tile, the interpolated colours, or the current flipbook texture.
 //
 // Differences from MM: segments are absolute and the list carries a count (no negative-segment
-// terminator); each entry chooses OPA/XLU itself; the scroll lists come from SoH's *Ex helpers so
-// the motion interpolates between game frames at high frame rates.
+// terminator); each entry chooses OPA/XLU itself; scroll rates can be fractional and the offset wraps at 8192
+// texels, rather than the 512 texels used by the legacy helper.
 
 #include "global.h"
+
+#include <math.h>
 
 typedef struct {
     GraphicsContext* gfxCtx;
@@ -35,24 +37,56 @@ static void MatAnim_BindSegment(MatAnimDraw* d, s32 segment, void* data) {
 /**
  * Type 0: scrolls a single layer texture.
  */
-static void MatAnim_DrawTexScroll(MatAnimDraw* d, s32 segment, void* params) {
-    AnimatedMatTexScrollParams* p = params;
-    Gfx* dl =
-        Gfx_TexScrollEx(d->gfxCtx, p->xStep * d->step, -(p->yStep * d->step), p->width, p->height, p->xStep, -p->yStep);
+// O offset da tile dá a volta a cada tantos quartos de texel (8192 texels). A volta só é invisível numa textura
+// cujo tamanho divide o período, por isso uma potência de dois bem acima dos 2048 do MM (512 texels), que pula
+// numa textura maior. Nessa grandeza um offset f32 ainda resolve 1/512 de quarto de texel.
+#define MAT_ANIM_SCROLL_PERIOD 32768.0
 
-    MatAnim_BindSegment(d, segment, dl);
+// Offset de uma camada num eixo, em quartos de texel dentro de [0, período), num frame de jogo. Sem estado e em
+// f64: uma taxa fracionária lenta não deriva nem perde precisão em sessões longas.
+static f32 MatAnim_ScrollOffset(f64 rate, f64 frame) {
+    f64 offset = fmod(rate * frame, MAT_ANIM_SCROLL_PERIOD);
+    return (f32)(offset < 0.0 ? offset + MAT_ANIM_SCROLL_PERIOD : offset);
+}
+
+// Tile size de uma camada interpolado pelo renderer entre este tick e o seguinte, como o Gfx_TexScrollEx do host.
+// A taxa é o passo inteiro mais a fração, somada em f64 (em f32 uma fração pequena some ao lado de um passo grande);
+// y anda ao contrário. O fim não dá a volta, para a interpolação não pular no meio do tick.
+static Gfx* MatAnim_WriteScrollTile(Gfx* gfx, s32 tile, const AnimatedMatTexScrollParams* p, f64 frame) {
+    const f64 xRate = (f64)p->xStep + p->xSpeed;
+    const f64 yRate = -((f64)p->yStep + p->ySpeed);
+    const f32 x0 = MatAnim_ScrollOffset(xRate, frame);
+    const f32 y0 = MatAnim_ScrollOffset(yRate, frame);
+    const f32 x1 = x0 + (f32)xRate;
+    const f32 y1 = y0 + (f32)yRate;
+    const f32 w = (f32)((p->width - 1) << 2);
+    const f32 h = (f32)((p->height - 1) << 2);
+
+    __gDPSetTileSizeLerp(gfx, tile, x0, y0, x0 + w, y0 + h, x1, y1, x1 + w, y1 + h);
+    return gfx + 5; // o tile size interpolado ocupa cinco palavras
+}
+
+static Gfx* MatAnim_ScrollList(MatAnimDraw* d, const AnimatedMatTexScrollParams* layers, s32 layerCount) {
+    Gfx* const list = Graph_Alloc(d->gfxCtx, (2 + 5 * layerCount) * sizeof(Gfx));
+    Gfx* gfx = list;
+
+    gDPTileSync(gfx++);
+    for (s32 tile = 0; tile < layerCount; tile++) {
+        gfx = MatAnim_WriteScrollTile(gfx, tile, &layers[tile], d->step);
+    }
+    gSPEndDisplayList(gfx);
+    return list;
+}
+
+static void MatAnim_DrawTexScroll(MatAnimDraw* d, s32 segment, void* params) {
+    MatAnim_BindSegment(d, segment, MatAnim_ScrollList(d, params, 1));
 }
 
 /**
  * Type 1: scrolls two texture layers (render tiles 0 and 1).
  */
 static void MatAnim_DrawTwoTexScroll(MatAnimDraw* d, s32 segment, void* params) {
-    AnimatedMatTexScrollParams* p = params;
-    Gfx* dl = Gfx_TwoTexScrollEx(d->gfxCtx, 0, p[0].xStep * d->step, -(p[0].yStep * d->step), p[0].width, p[0].height,
-                                 1, p[1].xStep * d->step, -(p[1].yStep * d->step), p[1].width, p[1].height, p[0].xStep,
-                                 -p[0].yStep, p[1].xStep, -p[1].yStep);
-
-    MatAnim_BindSegment(d, segment, dl);
+    MatAnim_BindSegment(d, segment, MatAnim_ScrollList(d, params, 2));
 }
 
 /**

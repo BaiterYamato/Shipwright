@@ -1,11 +1,14 @@
 #include <memory>
 #include <cassert>
 #include <limits>
+#include <algorithm>
+#include <vector>
 
 #include <ship/resource/type/Blob.h>
 #include <spdlog/spdlog.h>
 
 #include "global.h"
+#include "soh/native/OotNativeScenes.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "ResourceManagerHelpers.h"
 #include "soh/resource/type/Scene.h"
@@ -178,6 +181,11 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
     s32 i;
     s32 j;
     s32 k;
+    std::vector<s16> objects = cmdObj->objects;
+    if (ShipLuaHost::OotHasRegisteredHorseScenes() && ShipLuaHost::OotSceneHorseAllowed(play->sceneNum) &&
+        std::find(objects.begin(), objects.end(), OBJECT_HORSE) == objects.end()) {
+        objects.push_back(OBJECT_HORSE);
+    }
     // s16* objectEntry = SEGMENTED_TO_VIRTUAL(cmd->objectList.segment);
     s16* objectEntry = (s16*)cmdObj->GetRawPointer();
 
@@ -187,7 +195,7 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
     // Loop until a mismatch in the object lists
     // Then clear all object ids past that in the context object list and kill actors for those objects
     for (i = play->objectCtx.unk_09, k = 0; i < play->objectCtx.num; i++, k++) {
-        if (static_cast<size_t>(k) >= cmdObj->objects.size() || play->objectCtx.status[i].id != cmdObj->objects[k]) {
+        if (static_cast<size_t>(k) >= objects.size() || play->objectCtx.status[i].id != objects[k]) {
             for (j = i; j < play->objectCtx.num; j++) {
                 play->objectCtx.status[j].id = OBJECT_INVALID;
             }
@@ -198,13 +206,13 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
 
     // Continuing from the last index, add the remaining object ids from the command object list.
     // SOH [Unbound] Keep the stored count inside the enlarged bank even when a malformed resource exceeds it.
-    for (; k < cmdObj->objects.size() && i < OBJECT_EXCHANGE_BANK_MAX; k++, i++) {
-        OTRfunc_800982FC(&play->objectCtx, i, cmdObj->objects[k]);
+    for (; k < objects.size() && i < OBJECT_EXCHANGE_BANK_MAX; k++, i++) {
+        OTRfunc_800982FC(&play->objectCtx, i, objects[k]);
     }
 
-    if (k < cmdObj->objects.size()) {
+    if (k < objects.size()) {
         SPDLOG_ERROR("[Unbound] object list exceeds the bank ({} slots); dropping {} objects",
-                     OBJECT_EXCHANGE_BANK_MAX, cmdObj->objects.size() - k);
+                     OBJECT_EXCHANGE_BANK_MAX, objects.size() - k);
     }
 
     play->objectCtx.num = i;

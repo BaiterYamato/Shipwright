@@ -12,6 +12,8 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <assert.h>
 
+s32 LinkSpan_UsesGeneratedHorseCall(s32 sceneNum);
+
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
 typedef void (*EnHorseCsFunc)(EnHorse*, PlayState*, CsCmdActorCue*);
@@ -672,6 +674,74 @@ void EnHorse_IdleAnimSounds(EnHorse* this, PlayState* play) {
     }
 }
 
+// Uma cena registrada não tem pontos pré-autorizados na tabela vanilla. Procura-se um ponto no anel do jogador
+// usando a mesma validação de chão da Epona: sem água, rampa acima de 35 graus ou desnível maior que 300.
+#define ENHORSE_CALL_RADIUS 300.0f
+#define ENHORSE_CALL_RAYCAST_HEIGHT 200.0f
+#define ENHORSE_CALL_MAX_DROP 300.0f
+#define ENHORSE_CALL_SCREEN_MARGIN 1.2f
+#define ENHORSE_CALL_MIN_EYE_DIST 100.0f
+static const s16 sCallPointOffsets[] = { 0x0000, 0x2000, -0x2000, 0x4000, -0x4000, 0x6000, -0x6000, -0x8000 };
+
+void EnHorse_Vec3fOffset(Vec3f* src, s16 yaw, f32 dist, f32 height, Vec3f* dst);
+s32 EnHorse_CalcFloorHeight(EnHorse* this, PlayState* play, Vec3f* pos, CollisionPoly** floorPoly, f32* floorHeight);
+
+static s32 EnHorse_CallPointOnGround(EnHorse* this, PlayState* play, s16 offset, Vec3f* pos) {
+    Player* player = GET_PLAYER(play);
+    CollisionPoly* floorPoly;
+    f32 floorY;
+    EnHorse_Vec3fOffset(&player->actor.world.pos, player->actor.shape.rot.y + 0x8000 + offset,
+                         ENHORSE_CALL_RADIUS, ENHORSE_CALL_RAYCAST_HEIGHT, pos);
+    if (EnHorse_CalcFloorHeight(this, play, pos, &floorPoly, &floorY) != 0 ||
+        fabsf(floorY - player->actor.world.pos.y) > ENHORSE_CALL_MAX_DROP) {
+        return false;
+    }
+    pos->y = floorY;
+    return true;
+}
+
+static s32 EnHorse_CallPointOnScreen(PlayState* play, Vec3f* pos) {
+    Vec3f projected;
+    f32 w;
+    SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, pos, &projected, &w);
+    return w >= 1.0f && fabsf(projected.x / w) < ENHORSE_CALL_SCREEN_MARGIN &&
+           fabsf(projected.y / w) < ENHORSE_CALL_SCREEN_MARGIN;
+}
+
+static void EnHorse_PlaceAtCallPoint(EnHorse* this, PlayState* play, Vec3f* pos) {
+    Player* player = GET_PLAYER(play);
+    this->actor.world.pos = *pos;
+    this->actor.prevPos = *pos;
+    this->actor.world.rot.y = Math_Vec3f_Yaw(pos, &player->actor.world.pos);
+    this->actor.shape.rot.y = this->actor.world.rot.y;
+    SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, pos, &this->actor.projectedPos, &this->actor.projectedW);
+}
+
+static s32 EnHorse_SpawnNearPlayer(EnHorse* this, PlayState* play) {
+    Vec3f onScreenPoint;
+    s32 haveOnScreenPoint = false;
+    for (s32 i = 0; i < ARRAY_COUNT(sCallPointOffsets); i++) {
+        Vec3f pos;
+        if (!EnHorse_CallPointOnGround(this, play, sCallPointOffsets[i], &pos) ||
+            Math3D_Vec3f_DistXYZ(&pos, &play->view.eye) < ENHORSE_CALL_MIN_EYE_DIST) {
+            continue;
+        }
+        if (!EnHorse_CallPointOnScreen(play, &pos)) {
+            EnHorse_PlaceAtCallPoint(this, play, &pos);
+            return true;
+        }
+        if (!haveOnScreenPoint) {
+            onScreenPoint = pos;
+            haveOnScreenPoint = true;
+        }
+    }
+    if (haveOnScreenPoint) {
+        EnHorse_PlaceAtCallPoint(this, play, &onScreenPoint);
+        return true;
+    }
+    return false;
+}
+
 s32 EnHorse_Spawn(EnHorse* this, PlayState* play) {
     f32 minDist = 1e38f;
     s32 spawn = false;
@@ -713,7 +783,7 @@ s32 EnHorse_Spawn(EnHorse* this, PlayState* play) {
         }
     }
 
-    return spawn;
+    return !spawn && LinkSpan_UsesGeneratedHorseCall(play->sceneNum) ? EnHorse_SpawnNearPlayer(this, play) : spawn;
 }
 
 void EnHorse_ResetCutscene(EnHorse* this, PlayState* play) {

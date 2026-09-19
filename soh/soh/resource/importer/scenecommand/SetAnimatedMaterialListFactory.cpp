@@ -1,6 +1,6 @@
 // SOH [Link-Span] OOT-CORE-008: <SetAnimatedMaterialList> em XML. Cada filho é uma entrada:
 //
-//   <TexScroll Segment="8" Pass="3" Type="0|1"> <Layer XStep YStep Width Height/> (1 ou 2) </TexScroll>
+//   <TexScroll Segment="8" Pass="3" Type="0|1"> <Layer XStep YStep XSpeed YSpeed Width Height/> (1 ou 2) </TexScroll>
 //   <Color Segment Pass Type="2|3|4" Length="64">
 //       <KeyFrame Frame PrimR PrimG PrimB PrimA LodFrac [EnvR EnvG EnvB EnvA]/> ... </Color>
 //   <TexCycle Segment Pass> <Texture Path/> ... <Frame Index/> ... </TexCycle>
@@ -11,6 +11,7 @@
 #include "soh/resource/type/scenecommand/SetAnimatedMaterialList.h"
 
 #include <spdlog/spdlog.h>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <tinyxml2.h>
@@ -51,6 +52,11 @@ void AddScroll(SetAnimatedMaterialList& list, tinyxml2::XMLElement* e) {
             auto& p = storage.layers[count];
             p.xStep = static_cast<s8>(layer->IntAttribute("XStep"));
             p.yStep = static_cast<s8>(layer->IntAttribute("YStep"));
+            p.xSpeed = layer->FloatAttribute("XSpeed", 0.0f);
+            p.ySpeed = layer->FloatAttribute("YSpeed", 0.0f);
+            if (!std::isfinite(p.xSpeed) || !std::isfinite(p.ySpeed)) {
+                throw EntryError("XSpeed and YSpeed must be finite");
+            }
             p.width = static_cast<u8>(layer->UnsignedAttribute("Width"));
             p.height = static_cast<u8>(layer->UnsignedAttribute("Height"));
         }

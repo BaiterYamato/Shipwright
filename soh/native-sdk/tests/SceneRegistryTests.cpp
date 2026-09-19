@@ -16,6 +16,7 @@ void Check(bool condition, const char* message) {
 }
 
 constexpr int32_t kSceneCount = 3;
+const int32_t kHorseScenes[] = { 0, 2 };
 const char* const kSceneNames[kSceneCount] = { "SCENE_A", "SCENE_B", "SCENE_C" };
 constexpr int32_t kEntranceCount = 6;
 const char* const kEntranceNames[kEntranceCount] = { "ENTR_A_0", "ENTR_A_1", "ENTR_A_2",
@@ -89,6 +90,8 @@ int main() {
     vanilla.sceneFileName = FileName;
     vanilla.sceneDrawConfig = DrawConfig;
     vanilla.sceneHasMasterQuest = HasMasterQuest;
+    vanilla.horseScenes = kHorseScenes;
+    vanilla.horseSceneCount = static_cast<int32_t>(sizeof(kHorseScenes) / sizeof(kHorseScenes[0]));
     ShipLuaHost::SetOotVanillaScenes(vanilla);
     ShipLuaHost::SetOotEntranceTableListener(ListenTable);
     ShipLuaHost::SetOotSceneTravel(Travel);
@@ -304,6 +307,19 @@ int main() {
           "info mostra o override");
     Check(v2.override_scene(1, 0, nullptr) == SHIP_NATIVE_OK && !ShipLuaHost::OotSceneOverridePath(1, false, overridePath),
           "NULL volta ao vanilla");
+    const auto& v3 = ShipLuaHost::GetOotNativeScenesServiceV3();
+    ShipOotSceneDefinitionV3 horse{ sizeof(horse), "demo/horse", nullptr, "scenes/demo/horse", 301, 1, nullptr,
+                                    1, 1, 1.5f, 2.0f, 3.0f, -16384 };
+    uint64_t horseHandle = 0;
+    int32_t horseId = 0;
+    Check(v3.size == sizeof(ShipOotScenesV3) && v3.register_scene_v3(&horse, &horseHandle, &horseId) == SHIP_NATIVE_OK &&
+              horseId == 301 && ShipLuaHost::OotSceneHorseAllowed(0) && ShipLuaHost::OotSceneHorseAllowed(horseId),
+          "V3 deve preservar a semente vanilla e registrar a capacidade de cavalo");
+    Vec3f horsePos{};
+    int16_t horseAngle = 0;
+    Check(ShipLuaHost::OotSceneHorseSpawn(horseId, horsePos, horseAngle) && horsePos.x == 1.5f && horseAngle == -16384 &&
+              ShipLuaHost::OotSceneUsesGeneratedHorseCall(horseId),
+          "V3 deve publicar a posição de espera e a chamada gerada");
     v2.override_scene(0, 0, "scenes/a/scene.json");
     ShipLuaHost::ResetOotNativeScenes();
     ShipLuaHost::InitializeOotNativeScenes();

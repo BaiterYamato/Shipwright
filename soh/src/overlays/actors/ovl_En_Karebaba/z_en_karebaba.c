@@ -10,6 +10,8 @@
 #include "overlays/effects/ovl_Effect_Ss_Hahen/z_eff_ss_hahen.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 
+s32 LinkSpan_RenderSuppressVanillaShadows(void);
+
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
 void EnKarebaba_Init(Actor* thisx, PlayState* play);
@@ -443,6 +445,10 @@ void EnKarebaba_Update(Actor* thisx, PlayState* play) {
 
 void EnKarebaba_DrawBaseShadow(EnKarebaba* this, PlayState* play) {
     MtxF mf;
+
+    if (LinkSpan_RenderSuppressVanillaShadows()) {
+        return;
+    }
 
     OPEN_DISPS(play->state.gfxCtx);
 

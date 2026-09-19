@@ -15,6 +15,12 @@
 #include "soh/SaveManager.h"
 #include "soh/framebuffer_effects.h"
 
+// SOH [Link-Span] pontos genéricos do serviço de render; os callbacks são
+// despachados somente quando algum mod os registrou.
+void LinkSpan_RenderSkyGradient(PlayState* play);
+void LinkSpan_RenderSky(PlayState* play);
+void LinkSpan_RenderSkyClouds(PlayState* play);
+
 #include <time.h>
 #include <assert.h>
 
@@ -1520,6 +1526,11 @@ void Play_Draw(PlayState* play) {
                 }
             }
         }
+
+        // CEL-003: mesmas posições do fork, entre o skybox e sol/lua/mundo.
+        LinkSpan_RenderSkyGradient(play);
+        LinkSpan_RenderSky(play);
+        LinkSpan_RenderSkyClouds(play);
 
         if ((HREG(80) != 10) || (HREG(90) & 2)) {
             if (!play->envCtx.sunMoonDisabled) {

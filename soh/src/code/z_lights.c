@@ -8,6 +8,10 @@
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/savestate_serialize.h"
 
+// SOH [Link-Span] hook TRANSFORM e chave de serviço; inativos por padrão.
+void LinkSpan_PointLightColor(LightInfo* info, u8* r, u8* g, u8* b, s16 radius);
+s32 LinkSpan_RenderHideVanillaPointGlow(void);
+
 #define LIGHTS_BUFFER_SIZE 32
 //#define LIGHTS_BUFFER_SIZE 1024 // Kill me
 
@@ -39,6 +43,7 @@ void Lights_PointGlowSetInfo(LightInfo* info, f32 x, f32 y, f32 z, u8 r, u8 g, u
 }
 
 void Lights_PointSetColorAndRadius(LightInfo* info, u8 r, u8 g, u8 b, s16 radius) {
+    LinkSpan_PointLightColor(info, &r, &g, &b, radius);
     info->params.point.color[0] = r;
     info->params.point.color[1] = g;
     info->params.point.color[2] = b;
@@ -420,6 +425,10 @@ void Lights_GlowCheck(PlayState* play) {
 void Lights_DrawGlow(PlayState* play) {
     s32 pad;
     LightNode* node;
+
+    if (LinkSpan_RenderHideVanillaPointGlow()) {
+        return;
+    }
 
     node = play->lightCtx.listHead;
 

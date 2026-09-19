@@ -4,18 +4,12 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 
+s32 LinkSpan_HorseAllowed(s32 sceneNum);
+s32 LinkSpan_HorseSpawn(s32 sceneNum, Vec3f* pos, s16* angle);
+s32 LinkSpan_ResolveHorseScene(s16* sceneNum);
+
 s32 Horse_CanSpawn(s32 scene) {
-    s32 validScenes[] = { SCENE_HYRULE_FIELD, SCENE_LAKE_HYLIA, SCENE_GERUDO_VALLEY, SCENE_GERUDOS_FORTRESS,
-                          SCENE_LON_LON_RANCH };
-    s32 i;
-
-    for (i = 0; i < ARRAY_COUNT(validScenes); i++) {
-        if (scene == validScenes[i]) {
-            return 1;
-        }
-    }
-
-    return 0;
+    return LinkSpan_HorseAllowed(scene);
 }
 
 void Horse_ResetHorseData(PlayState* play) {
@@ -50,6 +44,9 @@ void Horse_SetupInGameplay(PlayState* play, Player* player) {
         { SCENE_GERUDO_VALLEY, 2566, -259, 767, 0, 2 }, { SCENE_GERUDOS_FORTRESS, -328, 10, 953, 0, 2 },
         { SCENE_LON_LON_RANCH, 928, 0, -2280, 0, 2 },
     };
+
+    // O bloco de save guarda o nome estável; resolve o id somente depois que o registro atual existe.
+    LinkSpan_ResolveHorseScene(&gSaveContext.horseData.scene);
 
     if ((AREG(6) != 0) && (Flags_GetEventChkInf(EVENTCHKINF_EPONA_OBTAINED) || (DREG(1) != 0))) {
         player->rideActor = Actor_Spawn(&play->actorCtx, play, ACTOR_EN_HORSE, player->actor.world.pos.x,
@@ -119,6 +116,15 @@ void Horse_SetupInGameplay(PlayState* play, Player* player) {
                 }
 
                 break;
+            }
+        }
+        if (i >= ARRAY_COUNT(horseSpawns)) {
+            Vec3f spawnPos;
+            s16 spawnAngle;
+            if (LinkSpan_HorseSpawn(play->sceneNum, &spawnPos, &spawnAngle)) {
+                Actor* horseActor = Actor_Spawn(&play->actorCtx, play, ACTOR_EN_HORSE, spawnPos.x, spawnPos.y,
+                                                spawnPos.z, 0, spawnAngle, 0, 2);
+                assert(horseActor != NULL);
             }
         }
     } else if (!Flags_GetEventChkInf(EVENTCHKINF_EPONA_OBTAINED)) {

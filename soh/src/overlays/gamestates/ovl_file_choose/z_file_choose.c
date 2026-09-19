@@ -22,6 +22,9 @@
 #include "z64save.h"
 #include "variables.h"
 #include "soh/SaveManager.h"
+
+// SOH [Link-Span] ponto de extensão para céu da seleção de arquivo.
+void LinkSpan_RenderFileSelectSky(void* gameState, void* graphicsContext, void* view);
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/ShipUtils.h"
@@ -2135,6 +2138,7 @@ void FileChoose_ConfigModeDraw(GameState* thisx) {
     FileChoose_SetView(this, eyeX, eyeY, eyeZ);
     SkyboxDraw_Draw(&this->skyboxCtx, this->state.gfxCtx, 1, this->envCtx.skyboxBlend, eyeX, eyeY, eyeZ);
     gDPSetTextureLUT(POLY_OPA_DISP++, G_TT_NONE);
+    LinkSpan_RenderFileSelectSky(this, this->state.gfxCtx, &this->view);
     ZREG(11) += ZREG(10);
     Environment_UpdateSkybox(NULL, SKYBOX_NORMAL_SKY, &this->envCtx, &this->skyboxCtx);
     gDPPipeSync(POLY_OPA_DISP++);
@@ -2644,6 +2648,7 @@ void FileChoose_SelectModeDraw(GameState* thisx) {
     FileChoose_SetView(this, eyeX, eyeY, eyeZ);
     SkyboxDraw_Draw(&this->skyboxCtx, this->state.gfxCtx, 1, this->envCtx.skyboxBlend, eyeX, eyeY, eyeZ);
     gDPSetTextureLUT(POLY_OPA_DISP++, G_TT_NONE);
+    LinkSpan_RenderFileSelectSky(this, this->state.gfxCtx, &this->view);
     ZREG(11) += ZREG(10);
     Environment_UpdateSkybox(NULL, SKYBOX_NORMAL_SKY, &this->envCtx, &this->skyboxCtx);
     gDPPipeSync(POLY_OPA_DISP++);
