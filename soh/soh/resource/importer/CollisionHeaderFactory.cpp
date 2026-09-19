@@ -108,6 +108,39 @@ bool ReadCollisionBulk(CollisionHeader& col, const std::string& docPath, const c
     }
     return true;
 }
+
+// SOH [Link-Span] O motor lê vtxList[índice] e surfaceTypeList[type] sem conferir, todo frame perto da
+// geometria. Índice de fora (arquivo de mod malformado) vira 0: o polígono fica degenerado e o tipo cai no
+// primeiro surface, em vez de ler fora do vetor. Vale para as duas fábricas; uma linha de log por recurso.
+void ClampCollisionIndices(CollisionHeader& col, const std::string& docPath) {
+    const uint32_t vertices = static_cast<uint32_t>(col.vertices.size());
+    const uint32_t surfaces = static_cast<uint32_t>(col.surfaceTypes.size());
+    uint32_t clamped = 0;
+    for (CollisionPoly& poly : col.polygons) {
+        bool bad = false;
+        if ((poly.flags_vIA & 0x1FFFFFFFu) >= vertices) {
+            poly.flags_vIA &= ~0x1FFFFFFFu;
+            bad = true;
+        }
+        if ((poly.flags_vIB & 0x1FFFFFFFu) >= vertices) {
+            poly.flags_vIB &= ~0x1FFFFFFFu;
+            bad = true;
+        }
+        if ((poly.vIC & 0x1FFFFFFFu) >= vertices) {
+            poly.vIC &= ~0x1FFFFFFFu;
+            bad = true;
+        }
+        if (poly.type >= surfaces) {
+            poly.type = 0;
+            bad = true;
+        }
+        clamped += bad ? 1 : 0;
+    }
+    if (clamped) {
+        SPDLOG_WARN("{}: {} polygons pointed past the {} vertices or {} surface types; clamped to 0", docPath,
+                    clamped, vertices, surfaces);
+    }
+}
 } // namespace
 
 std::shared_ptr<Ship::IResource>
@@ -169,6 +202,7 @@ ResourceFactoryBinaryCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File>
         collisionHeader->surfaceTypes.push_back(UnpackSurfaceType(data0, data1)); // SOH [Unbound]
     }
     collisionHeader->collisionHeaderData.surfaceTypeList = collisionHeader->surfaceTypes.data();
+    ClampCollisionIndices(*collisionHeader, initData->Path);
 
     collisionHeader->camDataCount = reader->ReadUInt32();
     collisionHeader->camData.reserve(collisionHeader->camDataCount);
@@ -385,6 +419,7 @@ ResourceFactoryXMLCollisionHeaderV0::ReadResource(std::shared_ptr<Ship::File> fi
         return nullptr;
     }
 
+    ClampCollisionIndices(*collisionHeader, initData->Path);
     collisionHeader->collisionHeaderData.numVertices = static_cast<u32>(collisionHeader->vertices.size());
     collisionHeader->collisionHeaderData.numPolygons = static_cast<u32>(collisionHeader->polygons.size());
     collisionHeader->surfaceTypesCount = static_cast<uint32_t>(collisionHeader->surfaceTypes.size());

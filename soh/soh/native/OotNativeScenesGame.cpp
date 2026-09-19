@@ -3,7 +3,11 @@
 #include "OotNativeScenes.h"
 
 #include <iterator>
+#include <map>
 #include <set>
+#include <fast/resource/type/Texture.h>
+#include <ship/Context.h>
+#include <ship/resource/ResourceManager.h>
 #include <spdlog/spdlog.h>
 
 #include "macros.h"
@@ -93,15 +97,30 @@ extern "C" SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum) {
     return ShipLuaHost::OotCustomSceneFlags(sceneNum);
 }
 
-// TitleCard_InitPlaceName (z_actor.c): textura do título da cena de mod, ou NULL.
+// TitleCard_InitPlaceName (z_actor.c): textura do título da cena de mod, ou NULL. O TitleCard_Draw carrega um
+// bloco I8 de 144x24 com esses números fixos; textura menor seria lida além do fim, então ela só vale se o
+// recurso tiver pelo menos esse tamanho (conferido uma vez por caminho).
 extern "C" const char* LinkSpan_CustomSceneTitleCard(s32 sceneNum) {
+    static std::map<std::string, bool, std::less<>> checked;
     static std::set<std::string, std::less<>> paths;
     const std::string* texture = ShipLuaHost::OotCustomSceneTitleCard(sceneNum);
     if (!texture) {
         return nullptr;
     }
     try {
-        return paths.emplace("__OTR__" + *texture).first->c_str();
+        auto found = checked.find(*texture);
+        if (found == checked.end()) {
+            const auto resource = std::dynamic_pointer_cast<Fast::Texture>(
+                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(*texture));
+            const bool fits = resource && resource->Width == 144 && resource->Height == 24 &&
+                              resource->ImageDataSize >= 144u * 24u;
+            if (!fits) {
+                SPDLOG_WARN("Link-Span: título de cena {} não é uma textura de 144x24 com 3456 bytes; ignorado",
+                            *texture);
+            }
+            found = checked.emplace(*texture, fits).first;
+        }
+        return found->second ? paths.emplace("__OTR__" + *texture).first->c_str() : nullptr;
     } catch (...) {
         return nullptr;
     }

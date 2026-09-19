@@ -36,6 +36,10 @@ JsonTypesState& State() {
 // A fábrica proxy roda numa thread do pool da libultraship (LoadResource = LoadResourceAsync().get()),
 // com a thread do jogo esperando o recurso. Um transcode por vez; dentro dele a thread do pool pode
 // ler o VFS (InOotJsonTranscode) como se fosse a do jogo.
+// Invariante: um recurso pedido de dentro de um transcode tem que ser carregado na mesma thread
+// (LoadResourceProcess, como o SetAlternateHeadersFactory faz). Se uma fábrica pedir por
+// LoadResourceAsync().get(), o outro transcode roda em outra thread do pool e espera este mutex, que a
+// primeira segura enquanto espera por ele: deadlock.
 std::recursive_mutex& TranscodeMutex() {
     static std::recursive_mutex mutex;
     return mutex;

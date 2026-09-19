@@ -4,7 +4,9 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
+#include <shared_mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -76,6 +78,15 @@ bool OnOwnerThread() {
 // Um transcode JSON resolve exits por nome numa thread do pool, com a thread do jogo esperando o recurso.
 bool OnLookupThread() {
     return OnOwnerThread() || InOotJsonTranscode();
+}
+
+// Os mapas de nome (scenes, handlesByName, entrances) são lidos por FindScene/FindEntrance também na thread do
+// transcode, e escritos só na thread do jogo. Espera do jogo pelo recurso não é garantia de exclusão (carga
+// assíncrona, prefetch), então a escrita pega o lock exclusivo, só em volta da mudança nos mapas e sem chamar
+// nada de fora com ele, e a busca pega o compartilhado.
+std::shared_mutex& NamesMutex() {
+    static std::shared_mutex mutex;
+    return mutex;
 }
 
 // Tamanho da string, ou 0 quando ela é nula, vazia ou maior que o limite.
@@ -166,6 +177,7 @@ ShipNativeStatus RegisterSceneRecord(const ShipOotSceneDefinitionV1* definition,
         const uint64_t handle = state.nextHandle;
         const std::string name = record.name;
         record.id = id;
+        const std::unique_lock lock(NamesMutex());
         state.scenes.emplace(handle, std::move(record));
         try {
             state.handlesById.emplace(id, handle);
@@ -263,14 +275,17 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterEntrance(uint64_t sceneHandle, const S
             state.table.resize(required, UnusedEntrance());
             tableChanged = true;
         }
-        scene->second.entrances.push_back(name);
-        try {
-            state.entrances.emplace(name, index);
-            state.groups.insert(index);
-        } catch (...) {
-            state.entrances.erase(name);
-            scene->second.entrances.pop_back();
-            throw;
+        {
+            const std::unique_lock lock(NamesMutex());
+            scene->second.entrances.push_back(name);
+            try {
+                state.entrances.emplace(name, index);
+                state.groups.insert(index);
+            } catch (...) {
+                state.entrances.erase(name);
+                scene->second.entrances.pop_back();
+                throw;
+            }
         }
         std::fill_n(state.table.begin() + index, ENTRANCE_LAYERS, info);
         tableChanged = true;
@@ -295,18 +310,21 @@ ShipNativeStatus SHIP_NATIVE_CALL UnregisterScene(uint64_t sceneHandle) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     const EntranceInfo unused = UnusedEntrance();
-    for (const auto& name : scene->second.entrances) {
-        const auto entrance = state.entrances.find(name);
-        if (entrance == state.entrances.end()) {
-            continue;
+    {
+        const std::unique_lock lock(NamesMutex());
+        for (const auto& name : scene->second.entrances) {
+            const auto entrance = state.entrances.find(name);
+            if (entrance == state.entrances.end()) {
+                continue;
+            }
+            std::fill_n(state.table.begin() + entrance->second, ENTRANCE_LAYERS, unused);
+            state.groups.erase(entrance->second);
+            state.entrances.erase(entrance);
         }
-        std::fill_n(state.table.begin() + entrance->second, ENTRANCE_LAYERS, unused);
-        state.groups.erase(entrance->second);
-        state.entrances.erase(entrance);
+        state.handlesById.erase(scene->second.id);
+        state.handlesByName.erase(scene->second.name);
+        state.scenes.erase(scene);
     }
-    state.handlesById.erase(scene->second.id);
-    state.handlesByName.erase(scene->second.name);
-    state.scenes.erase(scene);
     // A tabela não encolhe: índices já lidos pelo jogo continuam dentro dela.
     PublishTable(state);
     return SHIP_NATIVE_OK;
@@ -329,6 +347,7 @@ ShipNativeStatus SHIP_NATIVE_CALL FindScene(const char* name, int32_t* sceneId) 
             return SHIP_NATIVE_OK;
         }
         const auto& state = State();
+        const std::shared_lock lock(NamesMutex());
         if (const auto found = state.handlesByName.find(key); found != state.handlesByName.end()) {
             *sceneId = state.scenes.at(found->second).id;
             return SHIP_NATIVE_OK;
@@ -356,6 +375,7 @@ ShipNativeStatus SHIP_NATIVE_CALL FindEntrance(const char* name, int32_t* entran
             return SHIP_NATIVE_OK;
         }
         const auto& state = State();
+        const std::shared_lock lock(NamesMutex());
         if (const auto found = state.entrances.find(key); found != state.entrances.end()) {
             *entranceIndex = found->second;
             return SHIP_NATIVE_OK;
@@ -505,7 +525,10 @@ void InitializeOotNativeScenes(std::thread::id ownerThread) {
         listener(nullptr, VanillaEntranceCount());
     }
     auto& state = State();
-    state = ScenesState{};
+    {
+        const std::unique_lock lock(NamesMutex());
+        state = ScenesState{};
+    }
     state.ownerThread = ownerThread;
     state.publishedCount = VanillaEntranceCount();
 }
