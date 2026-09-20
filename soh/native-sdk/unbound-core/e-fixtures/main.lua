@@ -8,6 +8,7 @@ local PLAN = table.concat({
     "linkspan_e/cavern/main", -- 011: materialAnims (texCycle, scroll, cor por segmento)
     "linkspan_e/cavern_b/main",
     "linkspan_e/lab/main",    -- 011: um quad por receita de material (segmentos 8 a 13)
+    "linkspan_e/lab_b/main",  -- 013: destino registrado da saída montada do lab
     "linkspan_e/many/main",   -- 008/009: 300 salas, 200 objetos, 100 portas, 60 caixas DynaPoly, água na sala 299
     "linkspan_e/house/main",  -- retorno
 }, ";")
@@ -17,6 +18,18 @@ ship.log.info("unbound-e: " .. (configured or ("falhou: " .. tostring(failure)))
 
 ship.hotkeys.register("next_fixture", { default = "K", label = "Unbound E: próxima fixture" }, function()
     local result = ship.native.call("next", "")
+    ship.log.info("unbound-e: " .. tostring(result))
+end)
+
+-- Só teste (UNBOUND-013): J deixa o Link adulto com a Epona e a ocarina e volta ao lab, que tem `horse`.
+ship.hotkeys.register("adult_epona", { default = "J", label = "Unbound E: adulto com Epona no lab" }, function()
+    local result = ship.native.call("adult_epona", "linkspan_e/lab/main")
+    ship.log.info("unbound-e: " .. tostring(result))
+end)
+
+-- Só teste (UNBOUND-013): U traz a Epona para o lado do Link, para o A virar "Ride" numa sequência automatizada.
+ship.hotkeys.register("horse_here", { default = "U", label = "Unbound E: Epona ao lado do Link" }, function()
+    local result = ship.native.call("horse_here", "")
     ship.log.info("unbound-e: " .. tostring(result))
 end)
 

@@ -301,17 +301,21 @@ def outdoor_setup(field, spawn, rot_y, room):
     }
 
 
-def flat_collision(field_collision, water_boxes):
+def flat_collision(field_collision, water_boxes, *, bulk_file="scenes/linkspan_e/wide/collision.bin",
+                   vertices=(WIDE_GRID + 1) ** 2, polys=2 * WIDE_GRID * WIDE_GRID, exit_surface=False):
     camera = dict(field_collision["cameras"]["0"], count=0, positionIndex=None)
+    surfaces = {"0": {"camera": 0, "exit": 0, "floorType": 0, "wallFlags": 0, "wallType": 0,
+                      "floorProperty": 0, "isSoft": 0, "isHorseBlocked": 0, "material": 0,
+                      "floorEffect": 0, "lightSetting": 0, "echo": 0, "canHookshot": 0,
+                      "conveyorSpeed": 0, "conveyorDirection": 0, "isWallDamage": 0}}
+    # O valor da superfície é o índice da lista de exits mais um: 0 não tem saída; 1 usa exits[0].
+    if exit_surface:
+        surfaces["1"] = {**surfaces["0"], "exit": 1}
     return {
         "$schema": "unbound/collision/3",
         "bounds": {"min": [-WIDE_EXTENT, -10, -WIDE_EXTENT], "max": [WIDE_EXTENT, 10, WIDE_EXTENT]},
-        "bulk": {"file": "scenes/linkspan_e/wide/collision.bin", "vertices": (WIDE_GRID + 1) ** 2,
-                 "polys": 2 * WIDE_GRID * WIDE_GRID},
-        "surfaceTypes": {"0": {"camera": 0, "exit": 0, "floorType": 0, "wallFlags": 0, "wallType": 0,
-                               "floorProperty": 0, "isSoft": 0, "isHorseBlocked": 0, "material": 0,
-                               "floorEffect": 0, "lightSetting": 0, "echo": 0, "canHookshot": 0,
-                               "conveyorSpeed": 0, "conveyorDirection": 0, "isWallDamage": 0}},
+        "bulk": {"file": bulk_file, "vertices": vertices, "polys": polys},
+        "surfaceTypes": surfaces,
         "cameras": {"0": camera},
         "cameraPositions": {},
         "waterBoxes": water_boxes,
@@ -322,6 +326,31 @@ def base_room(field_room):
     return {key: copy.deepcopy(value) for key, value in field_room.items() if key not in ("actors", "objects", "mesh")}
 
 
+LAB_EXIT_Z = (560, 760)
+
+
+def lab_floor(with_exit):
+    """Piso pequeno do lab; a faixa z=560..760 recebe a superfície de saída 1 quando solicitada."""
+    xs = (-1200, -400, 400, 1200)
+    zs = (-600, 0, 400, LAB_EXIT_Z[0], LAB_EXIT_Z[1], 1200)
+    vertices = bytearray()
+    for z in zs:
+        for x in xs:
+            vertices += struct.pack("<iii", x, 0, z)
+    polys = bytearray()
+    columns = len(xs)
+    for row in range(len(zs) - 1):
+        for column in range(columns - 1):
+            a = row * columns + column
+            b = a + columns
+            c = a + 1
+            d = b + 1
+            surface = 1 if with_exit and (zs[row], zs[row + 1]) == LAB_EXIT_Z else 0
+            for va, vb, vc in ((a, b, c), (c, b, d)):
+                polys += struct.pack("<HHIIIhhhhi", surface, 0, va, vb, vc, 0, 32767, 0, 0, 0)
+    return bytes(vertices + polys), len(xs) * len(zs), 2 * (len(xs) - 1) * (len(zs) - 1)
+
+
 def make_lab(put, registry, field, field_room, field_collision):
     for name, pixel in LAB_TEXTURES.items():
         put(f"textures/linkspan_e/{name}", rgba16_texture(pixel))
@@ -330,19 +359,47 @@ def make_lab(put, registry, field, field_room, field_collision):
         put(f"scenes/linkspan_e/lab/v{index}", lab_vertices(index))
     setup = outdoor_setup(field, [0, 0, 0], 0, 0)
     setup["materialAnims"] = lab_material_anims()
+    # Saída montada: a faixa em z=560..760 fica em linha reta à frente do spawn (que olha para +z).
+    setup["exits"] = {"0": "linkspan_e/lab_b/main"}
     put("scenes/linkspan_e/lab/scene.json", {
         "$schema": "unbound/scene/1",
         "collision": "scenes/linkspan_e/lab/collision.json",
         "rooms": {"0": "scenes/linkspan_e/lab/rooms/0.json"},
         "setups": {"0": setup},
     })
-    put("scenes/linkspan_e/lab/collision.json", flat_collision(field_collision, {}))
+    floor, vertices, polys = lab_floor(with_exit=True)
+    put("scenes/linkspan_e/lab/collision.bin", floor)
+    put("scenes/linkspan_e/lab/collision.json", flat_collision(
+        field_collision, {}, bulk_file="scenes/linkspan_e/lab/collision.bin", vertices=vertices, polys=polys,
+        exit_surface=True))
     room = base_room(field_room)
     room.update({"mesh": {"type": 0, "entries": {"0": {"opa": LAB_DL, "xlu": None}}}, "objects": {}, "actors": {}})
     put("scenes/linkspan_e/lab/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
     registry["linkspan_e/lab"] = {"name": "Link-Span E: materiais", "scene": "scenes/linkspan_e/lab/scene.json",
                                   "drawConfig": 0, "horse": {"pos": [0, 0, -120], "angle": 0},
                                   "entrances": {"main": {"spawn": 0}}}
+
+    # Destino da saída: mantém piso simples e registro de Epona para a comprovação da transição montada.
+    lab_b_setup = outdoor_setup(field, [0, 0, 0], 0, 0)
+    lab_b_setup["materialAnims"] = lab_material_anims()
+    put("scenes/linkspan_e/lab_b/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": "scenes/linkspan_e/lab_b/collision.json",
+        "rooms": {"0": "scenes/linkspan_e/lab_b/rooms/0.json"},
+        "setups": {"0": lab_b_setup},
+    })
+    floor, vertices, polys = lab_floor(with_exit=False)
+    put("scenes/linkspan_e/lab_b/collision.bin", floor)
+    put("scenes/linkspan_e/lab_b/collision.json", flat_collision(
+        field_collision, {}, bulk_file="scenes/linkspan_e/lab_b/collision.bin", vertices=vertices, polys=polys))
+    room = base_room(field_room)
+    # Mesma malha do lab (segmentos 8 a 13 vêm das materialAnims acima), para a chegada ter referência visual.
+    room.update({"mesh": {"type": 0, "entries": {"0": {"opa": LAB_DL, "xlu": None}}}, "objects": {}, "actors": {}})
+    put("scenes/linkspan_e/lab_b/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/lab_b"] = {"name": "Link-Span E: chegada montada",
+                                    "scene": "scenes/linkspan_e/lab_b/scene.json", "drawConfig": 0,
+                                    "horse": {"pos": [0, 0, -120], "angle": 0},
+                                    "entrances": {"main": {"spawn": 0}}}
 
 
 MANY_ROOMS = 300

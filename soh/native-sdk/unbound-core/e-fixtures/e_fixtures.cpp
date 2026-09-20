@@ -1,5 +1,6 @@
 // Fixtures da fase E do Unbound: monta assets/ (cenas JSON, registro, texto) na raiz do VFS e percorre um
 // roteiro de entradas, uma por hotkey, relatando chegada, posição, chão e atores vivos.
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <new>
@@ -18,7 +19,7 @@ namespace {
 
 constexpr uint32_t MAX_PLAN = 4096;
 // Relatórios de posição depois da chegada: o jogador assentou no chão (ou caiu no vazio).
-constexpr uint32_t REPORT_FRAMES[] = { 60, 300 };
+constexpr uint32_t REPORT_FRAMES[] = { 60, 300, 450, 600, 900 };
 
 struct Fixtures {
     const ShipOotEngineV1* engine = nullptr;
@@ -30,6 +31,7 @@ struct Fixtures {
     size_t next = 0;
     bool travelling = false;
     int32_t fromScene = -1;
+    int32_t stableScene = -1;
     uint32_t framesInScene = 0;
     size_t reportsDone = 0;
 };
@@ -112,6 +114,21 @@ std::string Describe(const PlayState* play, const Player* player) {
                               nearest->world.pos.y, nearest->world.pos.z, nearest->draw != nullptr ? 1 : 0,
                               static_cast<unsigned>(nearest->flags));
     }
+    // UNBOUND-013: idade, cavalo vivo, montaria e a cena gravada da Epona.
+    const Actor* horse = nullptr;
+    for (int category = 0; category < ACTORCAT_MAX && !horse; ++category) {
+        for (const Actor* actor = play->actorCtx.actorLists[category].head; actor && !horse; actor = actor->next) {
+            horse = actor->id == 0x0014 ? actor : nullptr;
+        }
+    }
+    if (used > 0 && used < static_cast<int>(sizeof(text))) {
+        used += std::snprintf(text + used, sizeof(text) - used, " adulto=%d montado=%d", play->linkAgeOnLoad == 0,
+                              player->rideActor != nullptr ? 1 : 0);
+    }
+    if (horse && used > 0 && used < static_cast<int>(sizeof(text))) {
+        used += std::snprintf(text + used, sizeof(text) - used, " cavalo=%.1f,%.1f,%.1f", horse->world.pos.x,
+                              horse->world.pos.y, horse->world.pos.z);
+    }
     if (used > 0 && used < static_cast<int>(sizeof(text))) {
         std::snprintf(text + used, sizeof(text) - used, "%s", Limits(play, player).c_str());
     }
@@ -178,7 +195,80 @@ ShipNativeStatus SHIP_NATIVE_CALL Next(void* user, const char*, uint32_t length,
                                     Describe(play, player));
 }
 
-// Por frame: chegada numa cena nova e relatórios de posição depois dela.
+// Só teste (UNBOUND-013): Link adulto na próxima carga, Epona obtida, ocarina e Epona's Song, e viagem de volta para a
+// cena pedida. O save da cópia de teste é restaurado depois da sessão.
+ShipNativeStatus SHIP_NATIVE_CALL AdultEpona(void* user, const char* request, uint32_t length,
+                                             ShipNativeWriteFn write, void* writer) {
+    auto& fixtures = *static_cast<Fixtures*>(user);
+    const PlayState* play = nullptr;
+    const Player* player = nullptr;
+    if (!request || !length) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    if (!PlayerReady(fixtures, play, player)) {
+        return Write(write, writer, "sem jogador em cena");
+    }
+    const std::string target(request, length);
+    int32_t index = -1;
+    if (fixtures.scenes->find_entrance(target.c_str(), &index) != SHIP_NATIVE_OK) {
+        return Write(write, writer, "entrada desconhecida: " + target);
+    }
+    auto* save = const_cast<SaveContext*>(static_cast<const SaveContext*>(fixtures.engine->get_save_context()));
+    save->inventory.items[SLOT_OCARINA] = ITEM_OCARINA_TIME;
+    save->inventory.questItems |= 1u << QUEST_SONG_EPONA;
+    save->eventChkInf[EVENTCHKINF_EPONA_OBTAINED >> 4] |= 1 << (EVENTCHKINF_EPONA_OBTAINED & 0xF);
+    const_cast<PlayState*>(play)->linkAgeOnLoad = 0;
+    if (fixtures.scenes->travel_to_entrance(index) != SHIP_NATIVE_OK) {
+        return Write(write, writer, "viagem recusada: " + target);
+    }
+    fixtures.travelling = true;
+    fixtures.fromScene = play->sceneNum;
+    fixtures.framesInScene = 0;
+    fixtures.reportsDone = 0;
+    return Write(write, writer, "adulto com Epona, travel " + target + " from " + Describe(play, player));
+}
+
+// Só teste (UNBOUND-013): põe a Epona ao lado do Link. Ela anda sozinha pela cena, e uma sequência automatizada
+// não tem como persegui-la até o A virar "Ride"; a montaria em si continua sendo a do jogo.
+ShipNativeStatus SHIP_NATIVE_CALL HorseHere(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                            void* writer) {
+    auto& fixtures = *static_cast<Fixtures*>(user);
+    const PlayState* play = nullptr;
+    const Player* player = nullptr;
+    if (length) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    if (!PlayerReady(fixtures, play, player)) {
+        return Write(write, writer, "sem jogador em cena");
+    }
+    Actor* horse = nullptr;
+    for (int category = 0; category < ACTORCAT_MAX && !horse; ++category) {
+        for (Actor* actor = play->actorCtx.actorLists[category].head; actor && !horse; actor = actor->next) {
+            horse = actor->id == 0x0014 ? actor : nullptr;
+        }
+    }
+    if (!horse) {
+        return Write(write, writer, "sem cavalo na cena");
+    }
+    // A direção em que o Link olha vira a direção da cavalgada: a Epona fica de lado para ele, a um quarto de volta,
+    // e o Link gira para encará-la, que é o jeito de o A virar "Ride". Depois de montar, a frente dela é a original.
+    auto* mutablePlayer = const_cast<Player*>(player);
+    const int16_t ride = player->actor.shape.rot.y;
+    const int16_t facing = static_cast<int16_t>(ride - 0x4000);
+    const float yaw = static_cast<float>(facing) * (3.14159265f / 32768.0f);
+    horse->world.pos.x = player->actor.world.pos.x + 70.0f * std::sin(yaw);
+    horse->world.pos.y = player->actor.world.pos.y;
+    horse->world.pos.z = player->actor.world.pos.z + 70.0f * std::cos(yaw);
+    horse->prevPos = horse->world.pos;
+    horse->shape.rot.y = ride;
+    horse->world.rot.y = ride;
+    horse->speedXZ = 0.0f;
+    mutablePlayer->actor.shape.rot.y = facing;
+    mutablePlayer->actor.world.rot.y = facing;
+    return Write(write, writer, "cavalo ao lado " + Describe(play, player));
+}
+
+// Por frame: chegada numa cena nova (inclusive por saída física) e relatórios de posição depois dela.
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
                                          void* writer) {
     auto& fixtures = *static_cast<Fixtures*>(user);
@@ -197,11 +287,24 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         }
         if (play->transitionTrigger == TRANS_TRIGGER_OFF && play->transitionMode == TRANS_MODE_OFF) {
             fixtures.travelling = false;
+            fixtures.stableScene = play->sceneNum;
             fixtures.framesInScene = 0;
             fixtures.reportsDone = 0;
             return Write(write, writer, "arrived " + Describe(play, player));
         }
         return Write(write, writer, "idle");
+    }
+    // J/K marcam travelling; uma saída de colisão é iniciada pelo host. Registre a chegada dela sem interferir no input.
+    if (fixtures.stableScene == -1) {
+        fixtures.stableScene = play->sceneNum;
+    } else if (fixtures.stableScene != play->sceneNum) {
+        if (play->transitionTrigger != TRANS_TRIGGER_OFF || play->transitionMode != TRANS_MODE_OFF) {
+            return Write(write, writer, "idle");
+        }
+        fixtures.stableScene = play->sceneNum;
+        fixtures.framesInScene = 0;
+        fixtures.reportsDone = 0;
+        return Write(write, writer, "arrived por saida " + Describe(play, player));
     }
     ++fixtures.framesInScene;
     if (fixtures.reportsDone < std::size(REPORT_FRAMES) &&
@@ -289,7 +392,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     if (runtime->register_function(runtime->context, "configure", Configure, fixtures) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "next", Next, fixtures) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, fixtures) != SHIP_NATIVE_OK ||
-        runtime->register_function(runtime->context, "text_probe", TextProbe, fixtures) != SHIP_NATIVE_OK) {
+        runtime->register_function(runtime->context, "text_probe", TextProbe, fixtures) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "adult_epona", AdultEpona, fixtures) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "horse_here", HorseHere, fixtures) != SHIP_NATIVE_OK) {
         delete fixtures;
         return SHIP_NATIVE_FAILURE;
     }
