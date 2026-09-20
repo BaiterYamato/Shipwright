@@ -715,6 +715,10 @@ static void EnHorse_PlaceAtCallPoint(EnHorse* this, PlayState* play, Vec3f* pos)
     this->actor.world.rot.y = Math_Vec3f_Yaw(pos, &player->actor.world.pos);
     this->actor.shape.rot.y = this->actor.world.rot.y;
     SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, pos, &this->actor.projectedPos, &this->actor.projectedW);
+    // A chamada grava a cena da Epona, mas a posição só muda quando o Link desmonta: sem isto a volta à cena
+    // registrada a poria na posição gravada em outra cena, fora do mapa.
+    gSaveContext.horseData.pos = *pos;
+    gSaveContext.horseData.angle = this->actor.shape.rot.y;
 }
 
 static s32 EnHorse_SpawnNearPlayer(EnHorse* this, PlayState* play) {

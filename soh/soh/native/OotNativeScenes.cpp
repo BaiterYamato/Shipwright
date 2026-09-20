@@ -727,9 +727,18 @@ void ReplaceOotHorseSceneSnapshotName(std::string name) {
     State().horseSceneSnapshotName = std::move(name);
 }
 
+const std::string& PendingOotHorseSceneSnapshotName() {
+    return State().horseSceneSnapshotName;
+}
+
 bool ResolveOotHorseSceneSnapshotName(int32_t& sceneId) {
-    const auto& name = State().horseSceneSnapshotName;
-    return !name.empty() && OotSceneIdFromStableName(name, sceneId);
+    auto& name = State().horseSceneSnapshotName;
+    if (name.empty() || !OotSceneIdFromStableName(name, sceneId)) {
+        return false;
+    }
+    // Consumido: dali em diante a Epona muda de cena pelo jogo, e reaplicar o nome do save a levaria de volta.
+    name.clear();
+    return true;
 }
 
 BetterSceneSelectEntry* OotBuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, int32_t vanillaCount,

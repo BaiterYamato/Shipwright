@@ -43,14 +43,17 @@ void InitFile(bool) {
 }
 
 void StoreHorseScene() {
-    std::string name;
-    if (!ShipLuaHost::OotSceneStableName(gSaveContext.horseData.scene, name)) {
+    // Ainda não resolvido (ex.: salvo antes de uma cena adulta): o id em horseData pode ser o de outro registro.
+    std::string name = ShipLuaHost::PendingOotHorseSceneSnapshotName();
+    if (name.empty() && !ShipLuaHost::OotSceneStableName(gSaveContext.horseData.scene, name)) {
         return;
     }
     ShipLuaHost::SetOotHostSaveBlock(kHorseSceneBlock, kHorseSceneVersion, nlohmann::json{ { "scene", name } });
 }
 
 void RestoreHorseScene() {
+    // Um save sem o bloco não herda o snapshot do save carregado antes.
+    ShipLuaHost::ReplaceOotHorseSceneSnapshotName({});
     nlohmann::json data;
     uint32_t version = 0;
     if (ShipLuaHost::GetOotHostSaveBlock(kHorseSceneBlock, data, version) && version == kHorseSceneVersion &&

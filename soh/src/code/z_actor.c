@@ -3237,8 +3237,10 @@ void Actor_DrawAll(PlayState* play, ActorContext* actorCtx) {
         actor = actorListEntry->head;
 
         while (actor != NULL) {
-            // Receptores já passaram pelo pré-passe.
-            if (shadowReceivers && LinkSpan_RenderIsShadowReceiver(actor->id)) {
+            // Receptores já passaram pelo pré-passe, que só percorre BG, PROP e SWITCH; um id de outra categoria
+            // registrado como receptor segue no laço normal em vez de sumir.
+            if (shadowReceivers && (i == ACTORCAT_BG || i == ACTORCAT_PROP || i == ACTORCAT_SWITCH) &&
+                LinkSpan_RenderIsShadowReceiver(actor->id)) {
                 actor = actor->next;
                 continue;
             }

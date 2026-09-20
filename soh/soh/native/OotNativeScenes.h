@@ -70,7 +70,9 @@ bool OotSceneHorseAllowed(int32_t sceneId);
 bool OotHasRegisteredHorseScenes();
 bool OotSceneHorseSpawn(int32_t sceneId, Vec3f& pos, int16_t& angle);
 bool OotSceneUsesGeneratedHorseCall(int32_t sceneId);
+// Nome estável da cena da Epona lido do save. Vale até ser resolvido uma vez (depois o id em horseData manda).
 void ReplaceOotHorseSceneSnapshotName(std::string name);
+const std::string& PendingOotHorseSceneSnapshotName();
 bool ResolveOotHorseSceneSnapshotName(int32_t& sceneId);
 // Anexa cenas registradas à lista Better Debug Warp sem manter política de mod no menu C.
 BetterSceneSelectEntry* OotBuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, int32_t vanillaCount,

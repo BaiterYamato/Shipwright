@@ -45,9 +45,6 @@ void Horse_SetupInGameplay(PlayState* play, Player* player) {
         { SCENE_LON_LON_RANCH, 928, 0, -2280, 0, 2 },
     };
 
-    // O bloco de save guarda o nome estável; resolve o id somente depois que o registro atual existe.
-    LinkSpan_ResolveHorseScene(&gSaveContext.horseData.scene);
-
     if ((AREG(6) != 0) && (Flags_GetEventChkInf(EVENTCHKINF_EPONA_OBTAINED) || (DREG(1) != 0))) {
         player->rideActor = Actor_Spawn(&play->actorCtx, play, ACTOR_EN_HORSE, player->actor.world.pos.x,
                                         player->actor.world.pos.y, player->actor.world.pos.z, player->actor.shape.rot.x,
@@ -254,6 +251,9 @@ void Horse_SetupInCutscene(PlayState* play, Player* player) {
 }
 
 void Horse_InitPlayerHorse(PlayState* play, Player* player) {
+    // O bloco de save guarda o nome estável; resolve o id uma vez, com o registro atual, antes de validar a cena.
+    LinkSpan_ResolveHorseScene(&gSaveContext.horseData.scene);
+
     if (LINK_IS_ADULT) {
         if (!Horse_CanSpawn(gSaveContext.horseData.scene)) {
             osSyncPrintf(VT_COL(RED, WHITE));
