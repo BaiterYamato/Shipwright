@@ -133,6 +133,7 @@ std::string block;
 bool hasBlock = false;
 int32_t slot = 0;
 uint32_t writes = 0;
+uint32_t storedVersion = 1;
 
 ShipNativeStatus SHIP_NATIVE_CALL Open(const char*, uint32_t, uint64_t* handle) {
     *handle = 7;
@@ -162,7 +163,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Handle(uint64_t) {
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus SHIP_NATIVE_CALL Version(uint64_t, uint32_t* version) {
-    *version = hasBlock ? 1 : 0;
+    *version = hasBlock ? storedVersion : 0;
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus SHIP_NATIVE_CALL Required(uint64_t, uint8_t) {
@@ -450,6 +451,25 @@ void TestForkSaveRoundTrip() {
     save.OnSaving();
     CHECK(FakeSave::writes == writes + 1);
     CHECK(Json::parse(FakeSave::block)["trirodEchoesHi"] == 7);
+
+    // Arquivo novo depois de outro carregado: sentinelas de novo, sem nada do arquivo anterior.
+    FakeSave::block = input.dump();
+    FakeSave::hasBlock = true;
+    save.OnSaveLoaded();
+    CHECK(gForkSave.ownedItems[0] == 1 && gForkSave.bottleSlots[0] == 10);
+    save.ResetForNewSlot();
+    CHECK(gForkSave.ownedItems[0] == 0xFF && gForkSave.bottleSlots[0] == 0xFF && save.StoredVersion() == 0);
+
+    // Bloco de uma versão futura: o arquivo roda com os sentinelas e o save não regrava por cima dele.
+    FakeSave::block = "{\"caneSkills\":9}";
+    FakeSave::hasBlock = true;
+    FakeSave::storedVersion = 2;
+    save.OnSaveLoaded();
+    CHECK(gForkSave.caneSkills == 0 && save.StoredVersion() == 2);
+    const uint32_t kept = FakeSave::writes;
+    save.OnSaving();
+    CHECK(FakeSave::writes == kept && FakeSave::block == "{\"caneSkills\":9}");
+    FakeSave::storedVersion = 1;
     save.Detach();
 }
 

@@ -192,6 +192,14 @@ void Registry::Flush() {
     }
 }
 
+void Registry::ResetForNewSlot() {
+    mStates.clear();
+    mDirty = false;
+    for (auto& [handle, item] : mDefined) {
+        Refresh(*item);
+    }
+}
+
 void Registry::OnSaveLoaded() {
     ++mLoads;
     mStates.clear();

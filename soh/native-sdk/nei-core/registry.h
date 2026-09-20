@@ -50,6 +50,8 @@ class Registry {
 
     // Hook oot.save.loaded: lê o bloco do arquivo carregado e reaplica em todos os itens definidos.
     void OnSaveLoaded();
+    // Arquivo novo: esquece o estado do arquivo anterior sem ler bloco nenhum.
+    void ResetForNewSlot();
     // Grava o bloco se algo mudou desde a última gravação (antes do save do jogo e a cada mudança).
     void Flush();
     std::string Stats() const;

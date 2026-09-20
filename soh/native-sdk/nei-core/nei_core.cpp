@@ -20,6 +20,9 @@ struct Core {
     LinkSpanNei::Registry registry;
     LinkSpanNei::ForkSave forkSave;
     std::thread::id owner;
+    // Arquivo cujo estado está na memória. Um arquivo novo não passa por oot.save.loaded: o jogo chama
+    // Save_InitFile e grava, então sem isto o primeiro save do arquivo novo levaria os itens do anterior.
+    int32_t loadedSlot = -1;
 };
 
 // A tabela do serviço não leva contexto: uma instância do coremod por processo.
@@ -91,11 +94,21 @@ const NeiItemsV1 kService{ sizeof(NeiItemsV1), DefineItem, RemoveItem, FindItem,
                            GetState,           GiveItem,   GrantItem,  RevokeItem, SetCount,
                            AddCount,           SetLevel,   Equip,      Unequip,   GetName };
 
-ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void*, const ShipNativeHookCall*) {
+// O arquivo do payload, ou -1 quando o host não mandou um (ponto antigo ou payload curto).
+int32_t HookSlot(const ShipNativeHookCall* call) {
+    if (!call || !call->payload || call->payload_size < sizeof(ShipOotSaveHookV1)) {
+        return -1;
+    }
+    const auto* save = static_cast<const ShipOotSaveHookV1*>(call->payload);
+    return save->size >= sizeof(ShipOotSaveHookV1) ? save->slot : -1;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void*, const ShipNativeHookCall* call) {
     if (gCore && gCore->owner == std::this_thread::get_id()) {
         try {
             gCore->forkSave.OnSaveLoaded();
             gCore->registry.OnSaveLoaded();
+            gCore->loadedSlot = HookSlot(call);
         } catch (...) {
             return SHIP_NATIVE_FAILURE;
         }
@@ -103,13 +116,32 @@ ShipNativeStatus SHIP_NATIVE_CALL OnLoaded(void*, const ShipNativeHookCall*) {
     return SHIP_NATIVE_OK;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL OnSaving(void*, const ShipNativeHookCall*) {
+ShipNativeStatus SHIP_NATIVE_CALL OnSaving(void*, const ShipNativeHookCall* call) {
     if (gCore && gCore->owner == std::this_thread::get_id()) {
+        const int32_t slot = HookSlot(call);
+        // Arquivo que não foi carregado nesta sessão (novo, apagado ou sobrescrito por cópia) começa do zero.
+        if (slot != gCore->loadedSlot) {
+            try {
+                gCore->forkSave.ResetForNewSlot();
+                gCore->registry.ResetForNewSlot();
+            } catch (...) {
+                return SHIP_NATIVE_FAILURE;
+            }
+            gCore->loadedSlot = slot;
+        }
         gCore->registry.Flush();
         // Sem escape hatch o fork não roda: não regravar seu bloco preserva o save já existente.
         if (LinkSpanNei::ForkActive()) {
             gCore->forkSave.OnSaving();
         }
+    }
+    return SHIP_NATIVE_OK;
+}
+
+// Apagar ou sobrescrever por cópia o arquivo carregado desliga o vínculo: o próximo save dele recomeça.
+ShipNativeStatus SHIP_NATIVE_CALL OnSlotReplaced(void*, const ShipNativeHookCall* call) {
+    if (gCore && gCore->owner == std::this_thread::get_id() && HookSlot(call) == gCore->loadedSlot) {
+        gCore->loadedSlot = -1;
     }
     return SHIP_NATIVE_OK;
 }
@@ -120,7 +152,13 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, Shi
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     try {
-        const std::string text = registry->Stats() + " | fork: " + LinkSpanNei::ForkStatus();
+        std::string text = registry->Stats() + " | fork: " + LinkSpanNei::ForkStatus() + " | arquivo=" +
+                           std::to_string(gCore->loadedSlot);
+        // Bloco de versão futura: o arquivo é lido com os sentinelas e não é regravado; fica visível no stats.
+        const uint32_t stored = gCore->forkSave.StoredVersion();
+        if (stored > LinkSpanNei::kForkSaveVersion) {
+            text += " | nei.state v" + std::to_string(stored) + " preservado (nao suportado)";
+        }
         return write(writer, text.data(), static_cast<uint32_t>(text.size()));
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
@@ -179,6 +217,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_LOADED, OnLoaded);
     if (status == SHIP_NATIVE_OK) {
         status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_SAVING, OnSaving);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_DELETED, OnSlotReplaced);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_COPIED, OnSlotReplaced);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "stats", Stats, nullptr);

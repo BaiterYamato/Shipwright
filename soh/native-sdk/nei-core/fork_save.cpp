@@ -153,9 +153,26 @@ void ForkSave::OnSaveLoaded() {
     NeiSave_AfterLoad();
 }
 
+void ForkSave::ResetForNewSlot() {
+    // Mesmo caminho sem o bloco: é o NeiSave_Init do fork num arquivo que ainda não tem nada gravado.
+    NeiSave_Reset();
+    NeiSave_AfterLoad();
+    mStoredVersion = 0;
+}
+
 void ForkSave::LoadFields() {
     if (!mSave || !mSaveHandle) {
         return;
+    }
+    // Bloco escrito por uma versão futura do NEI: os campos podem ter outro significado. O arquivo fica com os
+    // sentinelas desta versão e o bloco não é regravado, para a v1 não apagar o que a v2 gravou.
+    uint32_t stored = 0;
+    mStoredVersion = 0;
+    if (mSave->get_stored_version(mSaveHandle, &stored) == SHIP_NATIVE_OK) {
+        mStoredVersion = stored;
+        if (stored > kForkSaveVersion) {
+            return;
+        }
     }
     uint32_t size = 0;
     if (mSave->read(mSaveHandle, nullptr, 0, &size) != SHIP_NATIVE_OK || !size) {
@@ -205,7 +222,7 @@ void ForkSave::LoadFields() {
 }
 
 void ForkSave::OnSaving() {
-    if (!mSave || !mSaveHandle || mSave->get_slot() < 0) {
+    if (!mSave || !mSaveHandle || mSave->get_slot() < 0 || mStoredVersion > kForkSaveVersion) {
         return;
     }
     try {
