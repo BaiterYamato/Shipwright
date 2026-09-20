@@ -54,6 +54,10 @@ int SDL_main(int argc, char* argv[]) {
 #endif
     // Allow non-ascii characters for Windows
     setlocale(LC_ALL, ".UTF8");
+    // ".UTF8" adota o locale do usuário: num Windows pt-BR o separador decimal do CRT vira vírgula e o
+    // sscanf("%f") do tinyxml2 para no ponto, então um atributo fracionário como XSpeed="0.25" é lido como 0.
+    // Todo número escrito e lido pelo jogo usa ponto, por isso só LC_NUMERIC volta para C.
+    setlocale(LC_NUMERIC, "C");
 
 #else //_WIN32
 int main(int argc, char* argv[]) {

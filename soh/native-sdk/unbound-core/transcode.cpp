@@ -1,8 +1,10 @@
 #include "transcode.h"
 
 #include <algorithm>
+#include <clocale>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace LinkSpanUnbound {
 namespace {
@@ -54,10 +56,20 @@ class Xml {
     Xml& Attr(const char* name, uint32_t value) {
         return Attr(name, std::to_string(value));
     }
+    // O XML do jogo é sempre lido com ponto decimal. O snprintf segue o LC_NUMERIC de quem carregou o mod, que
+    // num Windows pt-BR escreveria "0,25", então o separador do locale é trocado por ponto aqui.
     Xml& Float(const char* name, double value) {
         char text[40];
         std::snprintf(text, sizeof(text), "%.9g", std::isfinite(value) ? value : 0.0);
-        return Attr(name, std::string(text));
+        std::string number(text);
+        const char* point = std::localeconv()->decimal_point;
+        if (point != nullptr && *point != '\0' && *point != '.') {
+            const size_t at = number.find(point);
+            if (at != std::string::npos) {
+                number.replace(at, std::strlen(point), ".");
+            }
+        }
+        return Attr(name, number);
     }
     Xml& Close() {
         if (mTagOpen) {

@@ -1,6 +1,8 @@
 // Testes das regras da SPEC.md §2–§4 do Unbound: merge por camada e JSON -> XML do host.
+#include <clocale>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 #include "transcode.h"
@@ -178,6 +180,25 @@ void TestScene() {
     CHECK(context.notes.size() == 1 && Contains(context.notes[0], "materialAnims/1"));
     CHECK(Contains(xml, "<Pathway FilePath=\"scenes/test/paths/a.json\"/>"));
     CHECK(xml.size() >= 19 && xml.compare(xml.size() - 19, 19, "<EndMarker/></Room>") == 0);
+
+    // O jogo lê todo número do XML com ponto. Num locale de vírgula decimal (pt-BR, de-DE) o snprintf escreveria
+    // "0,25" e o sscanf do host pararia no ponto, lendo 0: o transcode precisa sair com ponto de qualquer jeito.
+    for (const char* localeName : { "de-DE", "German_Germany.1252", "pt_BR.UTF-8", "de_DE.UTF-8" }) {
+        const char* current = std::setlocale(LC_NUMERIC, nullptr);
+        const std::string previous = current != nullptr ? current : "C";
+        if (std::setlocale(LC_NUMERIC, localeName) == nullptr) {
+            continue;
+        }
+        const char* point = std::localeconv()->decimal_point;
+        const bool comma = point != nullptr && std::strcmp(point, ",") == 0;
+        TranscodeContext localized = Context();
+        const std::string text = TranscodeScene(doc, false, localized);
+        std::setlocale(LC_NUMERIC, previous.c_str());
+        CHECK(comma); // sem vírgula o locale não serve de teste; troque o nome acima
+        CHECK(Contains(text, "XSpeed=\"0.25\""));
+        CHECK(Contains(text, "PosX=\"1.5\""));
+        break;
+    }
 
     // Saídas: nome desconhecido, fracionário e negativo recusam o documento.
     for (const char* exit : { R"("NAO_EXISTE")", "1.5", "-1", "true" }) {
