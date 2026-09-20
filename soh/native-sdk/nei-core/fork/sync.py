@@ -21,7 +21,7 @@ import sys
 
 FORK_COMMIT = "c29262b"
 FORK_BASE = "783139310"  # develop do Shipwright em que o fork se baseia
-TREES = ["soh/mods", "soh/expansions/NEI", "soh/expansions/trirod", "soh/soh/NEI"]
+TREES = ["soh/mods", "soh/expansions/NEI", "soh/expansions/sw97", "soh/expansions/trirod", "soh/soh/NEI"]
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -47,6 +47,7 @@ def host_data_macros(repo, symbols):
         if len(parts) == 4 and parts[2] == "[data]" and parts[1] == "-":
             data.add(parts[3])
     names = set()
+    declaracoes = {}
     plain = re.compile(r"^\s*extern\s+(?!\"C\")[^;()=]*?\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*;")
     pointer = re.compile(r"^\s*extern\s+(?!\"C\")[^;=]*\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(")
     for folder in ("soh/include", "soh/soh", "soh/src"):
@@ -60,13 +61,45 @@ def host_data_macros(repo, symbols):
                     m = plain.match(line) or pointer.match(line)
                     if m and m.group(1) in data and m.group(1) not in DATA_EXCLUDE:
                         names.add(m.group(1))
+                        declaracoes.setdefault(m.group(1), line.strip())
     lines = ["// Gerado por sync.py: variáveis globais do host lidas por ponteiro resolvido no init da DLL.",
              "// Incluído antes do global.h: `extern T gX;` vira `extern T (*nei_host_gX);`.", "#pragma once"]
     lines += [f"#define {n} (*nei_host_{n})" for n in sorted(names)]
-    return "\n".join(lines) + "\n", len(names)
+    return "\n".join(lines) + "\n", declaracoes
 
 
-def extract(repo, out):
+def alinhar_redeclaracoes_de_array(raiz, declaracoes):
+    """Faz a declaração local de um array do host usar o mesmo subscrito do header do host.
+
+    O nei_host_data.h transforma `gX` em `(*nei_host_gX)`, então `extern void* gX[];` escrito dentro
+    do fork vira um ponteiro para array **incompleto**, tipo diferente do `[158]` que o header do host
+    declara, e o compilador recusa com C2369. Apagar a linha não serve: às vezes ela é a única
+    declaração que aquele arquivo enxerga (o gEquipAgeReqs só aparece no z_kaleido_scope.h). Trocar
+    pela declaração do próprio host resolve os dois casos, porque as duas passam a expandir igual."""
+    padrao = re.compile(r"^([ \t]*)extern\s+[^;=(){}]*?\b(%s)\b\s*(?:\[[^\]]*\]\s*)+;[ \t]*$"
+                        % "|".join(sorted(declaracoes)), re.M)
+
+    def troca(m):
+        host = declaracoes[m.group(2)]
+        return m.group(1) + host if host != m.group(0).strip() else m.group(0)
+
+    total = 0
+    for root, _, files in os.walk(raiz):
+        for file in files:
+            if not file.endswith((".c", ".h", ".cpp", ".inc")):
+                continue
+            path = os.path.join(root, file)
+            with open(path, encoding="utf-8", errors="replace") as f:
+                texto = f.read()
+            novo, n = padrao.subn(troca, texto)
+            if novo != texto:
+                with open(path, "w", encoding="utf-8", newline="") as f:
+                    f.write(novo)
+                total += n
+    return total
+
+
+def extract(repo, out, symbols):
     """Funções que o fork acrescentou em arquivos do host (extract.txt) -> <out>/extracted."""
     count = 0
     for line in open(os.path.join(HERE, "extract.txt"), encoding="utf-8"):
@@ -81,8 +114,16 @@ def extract(repo, out):
         target = os.path.join(out, "extracted", "unit" if unit else "", name + ".c")
         args = [sys.executable, os.path.join(HERE, "extract_additions.py"), "--repo", repo, "--fork", FORK_COMMIT,
                 "--file", path, "--out", target, "--report", os.path.join(out, "extracted", name + ".txt")]
-        args += [a for seed in seeds.split() for a in ("--seed", seed)]
-        args += [a for header in extra_includes.split() for a in ("--inclui", header)]
+        # Semente com > na frente é sobreposição: o host também tem a função, mas quem vale é a
+        # versão do fork, porque a DLL desvia a do host para ela (fork/kaleido_glue.cpp).
+        for seed in seeds.split():
+            args += ["--seed", seed.lstrip(">")]
+            if seed.startswith(">"):
+                args += ["--sobrepoe", seed[1:]]
+        args += ["--symbols", symbols]
+        # Header com - na frente é o contrário: um #include do fork que a saída não deve copiar.
+        for header in extra_includes.split():
+            args += (["--exclui", header[1:]] if header.startswith("-") else ["--inclui", header])
         if unit:
             args.append("--sem-includes")
         if fork_only:
@@ -127,10 +168,12 @@ def main():
 
     subprocess.run([sys.executable, os.path.join(HERE, "gen_compat.py"), repo, FORK_COMMIT, FORK_BASE,
                     os.path.join(out, "compat", "nei_compat.h"), os.path.join(out, "compat-report.txt")], check=True)
-    macros, count = host_data_macros(repo, symbols)
+    macros, dados = host_data_macros(repo, symbols)
     with open(os.path.join(out, "compat", "nei_host_data.h"), "w", encoding="utf-8", newline="\n") as f:
         f.write(macros)
-    extracted = extract(repo, out)
+    extracted = extract(repo, out, symbols)
+    redeclaracoes = sum(alinhar_redeclaracoes_de_array(os.path.join(out, pasta), dados)
+                        for pasta in ("fork", "extracted"))
     subprocess.run([sys.executable, os.path.join(HERE, "gen_stubs.py"), "--names", os.path.join(HERE, "stub-names.txt"),
                     "--search", os.path.join(out, "fork", "soh"), "--search", os.path.join(out, "compat"),
                     "--out", os.path.join(out, "nei_stubs.c"), "--report", os.path.join(out, "nei_stubs.txt")],
@@ -138,7 +181,8 @@ def main():
     with open(stamp, "w", encoding="utf-8") as f:
         f.write(signature)
     print(f"nei fork: {len(files)} arquivos do fork, {len(added)} headers novos, patches aplicados, "
-          f"{count} variáveis do host por ponteiro, {extracted} arquivos do host extraídos, stubs gerados")
+          f"{len(dados)} variáveis do host por ponteiro, {redeclaracoes} redeclarações de array alinhadas, "
+          f"{extracted} arquivos do host extraídos, stubs gerados")
 
 
 main()

@@ -27,8 +27,9 @@ endif()
 # Funções que o fork acrescentou em arquivos do host; a do z_player.c (extracted/unit) entra no player_unit.c.
 file(GLOB nei_fork_extracted "${nei_fork_dir}/extracted/*.c")
 
-add_library(nei_fork OBJECT "${fork_src}/player_unit.c" "${fork_src}/fork_items.c" "${fork_src}/stubs.c"
-    "${fork_src}/nei_save_bridge.c" "${nei_fork_dir}/nei_stubs.c" ${nei_fork_extracted})
+add_library(nei_fork OBJECT "${fork_src}/player_unit.c" "${fork_src}/inventory_unit.c" "${fork_src}/fork_items.c"
+    "${fork_src}/kaleido_shim.c" "${fork_src}/pipeline_probe.c" "${fork_src}/stubs.c" "${fork_src}/nei_save_bridge.c"
+    "${nei_fork_dir}/nei_stubs.c" ${nei_fork_extracted})
 target_include_directories(nei_fork PRIVATE "${fork_src}" "${nei_fork_dir}" "${nei_fork_dir}/compat"
     "${nei_fork_dir}/compat/src" "${nei_fork_dir}/fork/soh" "${nei_fork_dir}/fork/soh/mods" ${OOT_NATIVE_INCLUDE_DIRS})
 target_compile_definitions(nei_fork PRIVATE ${OOT_NATIVE_COMPILE_DEFINITIONS})
@@ -48,7 +49,7 @@ add_custom_command(OUTPUT "${nei_imports_asm}" "${nei_imports_c}"
     DEPENDS nei_fork $<TARGET_OBJECTS:nei_fork> "${fork_src}/gen_imports.py" "${NEI_HOST_SYMBOLS}"
     COMMAND_EXPAND_LISTS VERBATIM)
 
-add_library(linkspan_nei_core SHARED nei_core.cpp registry.cpp fork/fork_glue.cpp fork_save.cpp
+add_library(linkspan_nei_core SHARED nei_core.cpp registry.cpp fork/fork_glue.cpp fork/kaleido_glue.cpp fork_save.cpp
     $<TARGET_OBJECTS:nei_fork> "${nei_imports_asm}" "${nei_imports_c}")
 # O .map traduz o RVA que o crash handler do host mostra (a DLL não leva PDB) na função do fork.
 target_link_options(linkspan_nei_core PRIVATE /MAP)

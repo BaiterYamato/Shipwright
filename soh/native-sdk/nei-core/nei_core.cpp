@@ -7,6 +7,10 @@
 #include <thread>
 
 #include "fork/fork_glue.h"
+#include "fork/kaleido_glue.h"
+
+// fork/pipeline_probe.c: estado do pipeline de Player do fork, lido no frame corrente (NEI-005).
+extern "C" uint32_t NeiPipeline_Describe(char* out, uint32_t capacity);
 #include "fork_save.h"
 #include "include/linkspan/nei/nei_items.h"
 #include "oot_engine.h"
@@ -152,13 +156,41 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, Shi
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     try {
-        std::string text = registry->Stats() + " | fork: " + LinkSpanNei::ForkStatus() + " | arquivo=" +
-                           std::to_string(gCore->loadedSlot);
+        std::string text = registry->Stats() + " | fork: " + LinkSpanNei::ForkStatus() + " | " +
+                           LinkSpanNei::InventoryStatus() + " | arquivo=" + std::to_string(gCore->loadedSlot);
+        // Estado do pipeline de Player (NEI-005). Só faz sentido com o fork ligado: sem escape hatch
+        // as funções do fork não rodam e o Player não é o desta DLL.
+        if (LinkSpanNei::ForkActive()) {
+            char pipeline[192];
+            const uint32_t size = NeiPipeline_Describe(pipeline, sizeof(pipeline));
+            if (size) {
+                text += " | " + std::string(pipeline, size);
+            }
+        }
         // Bloco de versão futura: o arquivo é lido com os sentinelas e não é regravado; fica visível no stats.
         const uint32_t stored = gCore->forkSave.StoredVersion();
         if (stored > LinkSpanNei::kForkSaveVersion) {
             text += " | nei.state v" + std::to_string(stored) + " preservado (nao suportado)";
         }
+        return write(writer, text.data(), static_cast<uint32_t>(text.size()));
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+// Prova do NEI-003 em jogo: "inv_fill" enche a página do NEI com os itens que o fork declara para
+// ela e "inv_fill clear" a esvazia. É instrumento de teste, não aquisição: a aquisição de verdade
+// é o get-item do fork, que entra no NEI-008.
+ShipNativeStatus SHIP_NATIVE_CALL InvFill(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                          void* writer) {
+    if (!write) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const bool clear = args && length == 5 && std::strncmp(args, "clear", 5) == 0;
+    try {
+        const ShipNativeStatus status = LinkSpanNei::FillInventory(clear);
+        const std::string text = status == SHIP_NATIVE_OK
+                                     ? (clear ? "página do NEI esvaziada | " : "página do NEI preenchida | ") +
+                                           LinkSpanNei::InventoryStatus()
+                                     : std::string("recusado: o kaleido do NEI não está ativo");
         return write(writer, text.data(), static_cast<uint32_t>(text.size()));
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
@@ -226,6 +258,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "stats", Stats, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "inv_fill", InvFill, nullptr);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,

@@ -36,31 +36,32 @@ ResourceMgr_LoadPlayerAnimAsHeaderInPlaceResampled
 KiteSurf_Abort
 KiteSurf_Tick
 
-# soh/mods/ext_buttons/ext_buttons.cpp
-ExtButton_GetItem
+# soh/mods/ext_buttons/ext_buttons.cpp entrou como fork/kaleido_shim.c no NEI-003: o campo
+# extButtons do fork não existe no SaveContext deste host, então a tabela vive na DLL.
 
-# soh/mods/extended_inventory.c
-BombArrows_RandoMode
-ExtInv_GetItemIcon
-Seasons_GetSeason
-Seasons_SeasonCount
-Seasons_SeasonIcon
-Seasons_SeasonOwned
-Seasons_SetSeason
-Slate_GetRune
-Slate_RuneAt
-Slate_RuneCount
-Slate_RuneMiniIcon
-Slate_SetRune
-Sw97_BombArrowsOnButton
-Sw97_BombArrowsOwned
-Sw97_EffectiveElement
-Sw97_IsBowItem
-Wand_GetMode
-Wand_ModeAt
-Wand_ModeCount
-Wand_ModeMedallion
-Wand_SetMode
+# soh/mods/extended_inventory.c entrou na DLL com o NEI-003 (fork/inventory_unit.c): as funções de
+# página, slot, ícone, nome e trava de idade são as do fork, não mais stub.
+
+# soh/mods/items/custom_bottles.cpp (rodas de garrafa da página 1; C++ fora das árvores compiladas)
+Bottle_BottomlessCount
+Bottle_BottomlessOwned
+Bottle_WheelBottleCount
+Bottle_WheelContains
+Bottle_WheelFirstItem
+Bottle_WheelPeek
+Bottle_WheelStep
+
+# soh/mods/transformation_masks/custom_forms.cpp (máscara Rito divide a célula do Farore's Wind)
+RitoItem_CanCycle
+RitoItem_OtherItem
+RitoItem_SyncCell
+
+# soh/mods/transformation_masks/kafei_form.cpp
+KafeiForm_ReplacesBombchu
+
+# soh/mods/cane_ship.cpp (roda de tipo da Cane of Somaria)
+Nei_CaneNextType
+Nei_CaneTypeCount
 
 # soh/mods/items/objects/ball_and_chainDL/model.inc.c
 gBallDL
@@ -88,9 +89,12 @@ Tornado_RibbonsStop
 Tornado_RibbonsUpdate
 
 # soh/mods/transformation_masks/assets/mm_asset_loader.cpp
+MmAssets_GetChateauIconPath
 MmAssets_IsAvailable
 MmAssets_IsLoaded
+MmAssets_LoadFDSwordIcon
 MmAssets_LoadHookshotBodyDL
+MmAssets_LoadHookshotIcon
 MmAssets_LoadResource
 MmAssets_LoadResourceWithSize
 MmSfx_IsAvailable
@@ -102,8 +106,14 @@ MmForm_GetCurrentForm
 MmForm_HandleMaskUse
 
 # soh/mods/transformation_masks/transformation_masks.c
+MmMasks_GetIconPath
+MmMasks_GetNamePath
 MmPlayer_GetForm
 TransformMasks_DragonScaleEnterSwim
+TransformMasks_IsEnabled
+TransformMasks_IsFDSkinMode
+TransformMasks_IsItemAllowed
+TransformMasks_IsSlotAllowed
 TransformMasks_DragonScaleExitSwim
 TransformMasks_DragonScaleSwimUpdate
 TransformMasks_HandleMaskUse

@@ -234,6 +234,9 @@ def declaracao_externa_variavel(d):
     base = d.texto[:limite].rstrip()
     base = re.sub(r"\bstatic\s+", "", base, count=1).strip()
     base = base.rstrip().rstrip(";").rstrip()
+    # No fork a declaracao pode ja ser extern (variavel definida em outra unidade dele).
+    if re.match(r"\bextern\b", base):
+        return base + ";"
     return "extern " + base + ";"
 
 
@@ -267,8 +270,38 @@ def main():
     ap.add_argument("--de-cpp", action="store_true",
                     help='fonte C++ com funcoes extern "C" em C puro: extern "C" vira extern, nullptr vira NULL')
     ap.add_argument("--inclui", action="append", default=[], help="#include extra na saida (repetivel)")
+    ap.add_argument("--exclui", action="append", default=[],
+                    help="#include do fork que nao deve ser copiado, por caminho (repetivel). Serve para o "
+                         "include de unity de um .c que ja tem unidade propria na DLL")
+    ap.add_argument("--sobrepoe", action="append", default=[],
+                    help="nome que o host tambem tem, mas cuja versao do fork deve ser copiada; a DLL desvia a do host")
+    ap.add_argument("--symbols", help="soh.symbols do host: funcao ausente dele nao tem endereco para resolver, "
+                                      "entao e copiada do fork em vez de virar import")
     a = ap.parse_args()
     repo = os.path.abspath(a.repo)
+    sobrepoe = set(a.sobrepoe)
+    resolviveis = None
+    if a.symbols:
+        resolviveis = set()
+        with open(a.symbols, encoding="utf-8", errors="replace") as f:
+            for linha in f:
+                partes = linha.rstrip("\n").split("\t")
+                if len(partes) == 4:
+                    resolviveis.add(partes[3])
+    inlinadas = set()
+
+    def e_import(nome, d):
+        """O host ter o nome nao basta para ele virar import.
+
+        Duas excecoes: o nome esta na lista de sobreposicao (a DLL desvia a versao do host, entao
+        precisa da versao do fork no proprio modulo) ou o LTCG inlinou a funcao e ela nao aparece
+        no soh.symbols, caso em que nao ha endereco para o escape hatch resolver."""
+        if nome in sobrepoe:
+            return False
+        if resolviveis is not None and d.tipo == "funcao" and nome not in resolviveis:
+            inlinadas.add(nome)
+            return False
+        return True
     if a.sem_host:
         host = ""
     else:
@@ -293,7 +326,7 @@ def main():
             if nome not in hmap:
                 ausentes.append(nome)
             continue
-        if nome in hmap:
+        if nome in hmap and e_import(nome, d):
             if d.tipo == "funcao": imports_func.add(nome)
             elif d.tipo == "variavel": imports_var.add(nome)
             elif d.tipo in ("tipo", "define"):
@@ -309,7 +342,7 @@ def main():
                 continue
             outro = fmap.get(ident)
             if outro:
-                if ident in hmap:
+                if ident in hmap and e_import(ident, outro):
                     if outro.tipo == "funcao": imports_func.add(ident)
                     elif outro.tipo == "variavel": imports_var.add(ident)
                     elif outro.tipo in ("tipo", "define"):
@@ -340,6 +373,7 @@ def main():
     impf_d.sort(key=lambda d: hmap[d.nome].inicio)
     impv_d.sort(key=lambda d: d.inicio)
     includes = [] if a.sem_includes else INCLUDE.findall(fork)
+    includes = [linha for linha in includes if not any(x in linha for x in a.exclui)]
     # A saida nao fica ao lado do fonte: include curto ("z_ator.h") vira caminho a partir de soh/src.
     pasta = os.path.dirname(a.file.replace("\\", "/"))
     if pasta.startswith("soh/src/"):
@@ -376,6 +410,8 @@ def main():
            "Funcoes copiadas (%d): %s" % (len(funcoes), ", ".join(d.nome for d in funcoes) or "nenhuma"),
            "Imports de funcao do host (%d; static no host: %d): %s" % (len(impf_d), len(staticos), ", ".join(d.nome for d in impf_d) or "nenhum"),
            "Static no host: %s" % (", ".join(staticos) or "nenhum"),
+           "Sobrepostas (o host tem, a DLL desvia): %s" % (", ".join(sorted(sobrepoe & escolhidas)) or "nenhuma"),
+           "Copiadas por ausencia no soh.symbols (LTCG inlinou): %s" % (", ".join(sorted(inlinadas)) or "nenhuma"),
            "Variaveis importadas do host (%d): %s" % (len(impv_d), ", ".join(d.nome for d in impv_d) or "nenhuma"),
            "Divergencias de tipos/macros: %s" % (", ".join(divergencias) or "nenhuma"),
            "Identificadores nao encontrados (provaveis headers): %s" % (", ".join(sorted(set(ausentes))) or "nenhum")]

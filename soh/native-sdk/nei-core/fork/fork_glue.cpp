@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "fork_items.h"
+#include "kaleido_glue.h"
 #include "registry.h"
 
 namespace LinkSpanNei {
@@ -123,11 +124,16 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
         return;
     }
     gFork.active = true;
-    gFork.status = "ativo (" + std::to_string(gFork.items.size()) + " itens)";
+    // Só agora: a página de itens do kaleido do fork chama o host pelos mesmos thunks resolvidos
+    // acima, e o menu pode abrir no primeiro frame. Se os desvios forem recusados, o fork continua —
+    // os itens funcionam, o inventário é que fica o do host (NEI-003).
+    StartKaleido(runtime);
+    gFork.status = "ativo (" + std::to_string(gFork.items.size()) + " itens) | kaleido: " + KaleidoStatus();
 }
 
 void StopFork() {
     gFork.active = false;
+    StopKaleido();
     if (gFork.runtime && gFork.runtime->remove_patch) {
         if (gFork.drawPatch) {
             gFork.runtime->remove_patch(gFork.runtime->context, gFork.drawPatch);

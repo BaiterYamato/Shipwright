@@ -3,8 +3,17 @@
 # Formato: <arquivo do host>: <sementes>. Com @ na frente, a saída entra no fim do player_unit.c, sem
 # includes (o z_player.c do fork inclui os .c dos mods, que a unidade já tem). Com + na frente, o arquivo só
 # existe no fork e é C++ com funções extern "C" em C puro: vira TU própria em C; depois de | vêm os includes.
+# Semente com > na frente é sobreposição: o host também tem a função, mas vale a versão do fork, porque a
+# DLL desvia a do host para ela (fork/kaleido_glue.cpp). Função do host que o LTCG inlinou — ausente do
+# soh.symbols — também é copiada, porque não há endereço para o escape hatch resolver.
 soh/src/overlays/actors/ovl_Bg_Ice_Shelter/z_bg_ice_shelter.c: BgIceShelter_MeltInstantly BgIceShelter_ShatterMelt
 soh/src/overlays/actors/ovl_Bg_Jya_Ironobj/z_bg_jya_ironobj.c: BgJyaIronobj_DestroyInstantly
 soh/src/overlays/actors/ovl_En_M_Thunder/z_en_m_thunder.c: EnMThunder_DrawChargeGlow
 @soh/src/overlays/actors/ovl_player_actor/z_player.c: ExtPlayer_CopyUpperBody ExtPlayer_GetAnimGroupAnim ExtPlayer_GetChargeAnim ExtPlayer_SetAnimGroupAnim ExtPlayer_SetChargeAnim Player_CatchFire Player_EndIKAxeThrow Player_StartIKAxeThrow Player_StartLanternSwing
+# Página de itens do kaleido (NEI-003). O DrawItemSelect do fork é quem desenha a página 2/3, move o
+# cursor nela, troca de página (ExtInv_SwitchPage) e equipa nos botões C; as outras quatro são os pontos
+# que o z_kaleido_scope_PAL.c do host chama e que precisam enxergar os slots acima de 23.
+# O -mods/extended_inventory.c tira o include de unity: o inventário tem unidade própria na DLL
+# (fork/inventory_unit.c), senão as duas TUs definiriam as mesmas funções.
+soh/src/overlays/misc/ovl_kaleido_scope/z_kaleido_item.c: >KaleidoScope_DrawItemSelect >KaleidoScope_SetupItemEquip >KaleidoScope_UpdateItemEquip >KaleidoScope_DrawAmmoCount >KaleidoScope_HandleItemCycles >KaleidoScope_DrawItemCycles >KaleidoScope_DrawItemCycleExtras >KaleidoScope_HandleItemCycleExtras | -mods/extended_inventory.c
 +soh/mods/nei_save.cpp: Nei_Save Nei_GetOwnedItem Nei_SetOwnedItem Nei_CaneActiveSkill Nei_CaneGetSkillSlot Nei_CaneGetType Nei_CaneGrantSkill Nei_CaneHasSkill Nei_CaneOwned Nei_CaneSetSkillSlot Nei_CaneSetType Nei_TrirodEchoLearned Nei_TrirodFullList Nei_TrirodGetSel Nei_TrirodLearnEcho Nei_TrirodSetSel | mods/nei_save.h

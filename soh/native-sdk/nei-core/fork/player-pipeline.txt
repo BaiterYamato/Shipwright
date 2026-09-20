@@ -1,0 +1,23 @@
+# Pipeline de Player do NEI (NEI-005): onde cada item do aceite mora dentro da DLL.
+#
+# O pipeline não foi reescrito: é o do fork, compilado em C dentro da DLL. O que o Link-Span faz é
+# instalar os dois desvios que o colocam no lugar certo do frame (fork/fork_glue.cpp) e publicar uma
+# leitura do estado para que a limpeza seja verificável (fork/pipeline_probe.c).
+#
+# Formato: <item do plano> | <onde está> | <como se vê>
+
+dispatcher por frame          | CustomItems_Update, chamado depois do Player_Update do host pelo desvio de fork_glue.cpp | linha `pipeline:` do stats muda de frame a frame com o item na mão
+prioridade de item bloqueante | CustomItems_IsBlocked (mods/items/custom_items_common.c)                                   | campo `bloq=` do stats
+estados de dialogo/cutscene   | ItemInput_Update + os guardas do extended_player.c (caixa de texto, cutscene, escalada,      | `bloq=1` enquanto a caixa do demo está aberta
+  /escalada/natacao/dano/load | natação, dano, loading)                                                                    |
+animacao superior e corpo     | ExtPlayer_CopyUpperBody, ExtPlayer_GetAnimGroupAnim / SetAnimGroupAnim, extraídos do        | campo `acao=` (itemAction) e `grupo=` (modelGroup)
+  inteiro, joint callbacks    | z_player.c do fork por extract.txt                                                         |
+item na mao e override de draw| CustomItems_OverrideDraw, chamado depois do Player_Draw do host pelo segundo desvio         | campo `visual=` (bitfield CI_FLAG_* do CustomItems_BuildVisualSync)
+cleanup em dano, troca de     | ItemEquip_Update + ItemInput_RequestItemChange (helpers/equip_helper.c), que é quem embainha| os cinco campos voltam ao valor de repouso depois da troca
+  item, cena, morte, shutdown | o item anterior antes de o novo montar                                                     |
+
+# Os quatro lugares onde o resíduo apareceria, e o que o probe lê em cada um (fork/pipeline_probe.c):
+#   modelo/animação -> visual= (bitfield do fork) e acao=/grupo= (Player)
+#   collider        -> at= (AT_ON dos meleeWeaponQuads do Link)
+#   camera          -> camera= (setting da câmera ativa do PlayState)
+#   prioridade      -> bloq= (CustomItems_IsBlocked)

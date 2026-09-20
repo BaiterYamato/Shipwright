@@ -1,0 +1,33 @@
+# Helpers compartilhados do NEI (NEI-004): o contrato entre as categorias do plano e os arquivos do
+# fork que as implementam dentro da DLL. tools/check-nei-fork-helpers.ps1 lê este arquivo e confere,
+# no objeto compilado, que cada categoria tem símbolo próprio — sem isso o "compilam dentro da DLL"
+# do aceite seria só afirmação.
+#
+# Nenhum destes arquivos é uma unidade de compilação por conta própria: o
+# soh/mods/items/logic/custom_items.c do fork os inclui em sequência (unity build) e ele por sua vez
+# entra no fork/player_unit.c. Por isso todos os símbolos aparecem em player_unit.obj.
+#
+# Formato: <categoria do plano> | <arquivo do fork, a partir de soh/mods/items/helpers> | <símbolo
+# testemunha, que precisa estar definido no objeto>
+
+input/equip                 | equip_helper.c          | ItemInput_GetEquippedButton
+movimento e physics         | movement_helper.c       | Movement_IsOnGround
+camera e reticulo           | camera_helper.c         | FirstPerson_Update
+combate/colliders/dano      | combat_helper.c         | Combat_RegisterCollider
+cutscene e animacao         | cutscene_helper.c       | CutsceneHelper_Start
+efeitos                     | fx_helper.c             | FX_SpawnParticles
+grappling                   | grappling_helper.c      | Grapple_FindTarget
+target selection            | target_select_helper.c  | TargetSelect_ScanCats
+time stop                   | timestop_helper.c       | TimeCtl_Request
+rewind                      | rewind_helper.c         | Rewind_SetEnabled
+
+# Fora das oito categorias do plano, mas no mesmo recorte e pelo mesmo caminho: são helpers que o
+# fork compartilha entre itens e que o NEI-003 e as ondas de item vão usar.
+voz de item                 | item_voice.c            | ItemVoice_Play
+menu de caixa (seletor)     | box_menu.c              | BoxMenu_Open
+ima de switch               | switch_magnet.c         | SwitchMagnet_Steer
+kaleido do Minish Cap       | minish_kaleido.c        | MinishKaleido_Draw
+kaleido do Postman          | postman_kaleido.c       | PostmanKaleido_Draw
+ator de caixa de correio    | mailbox_actor.c         | Mailbox_Spawn
+ator seguidor do Bremen     | bremen_follower_actor.c | BremenFollower_SpawnChick
+ator de ponto de cogumelo   | mushroom_spot_actor.c   | MushroomSpot_ResetAll
