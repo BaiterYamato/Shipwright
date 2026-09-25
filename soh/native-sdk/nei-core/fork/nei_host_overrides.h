@@ -24,3 +24,12 @@ u8 NeiFork_ToRuntimeItem(u8 logicalId);
 #define sActionModelGroups (*nei_host_sActionModelGroups)
 #define sItemActionUpdateFuncs (*nei_host_sItemActionUpdateFuncs)
 #define sItemActionInitFuncs (*nei_host_sItemActionInitFuncs)
+
+// actor_guard.c (NEI-006): o sync.py reescreve as trocas de update/draw/destroy, os Actor_Spawn e os testes
+// `p->update == NULL` do código do fork para passar por aqui.
+struct Actor;
+struct Actor* NeiActor_Spawned(struct Actor* actor);
+void NeiActor_SetUpdate(struct Actor* actor, void (*fn)(struct Actor*, struct PlayState*));
+void NeiActor_SetDraw(struct Actor* actor, void (*fn)(struct Actor*, struct PlayState*));
+void NeiActor_SetDestroy(struct Actor* actor, void (*fn)(struct Actor*, struct PlayState*));
+int NeiActor_IsAlive(const struct Actor* actor);

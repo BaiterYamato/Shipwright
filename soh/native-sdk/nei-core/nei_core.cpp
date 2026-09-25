@@ -1,6 +1,7 @@
 // Coremod linkspan.nei (NEI-002): publica linkspan.nei.items v1 sobre linkspan.oot.items v3 e
 // linkspan.oot.save. O estado dos itens vai no bloco de save "nei.items"; os hooks de save trazem e
 // gravam o bloco. Tudo roda na thread do jogo; chamada de outra thread = INVALID_ARGUMENT.
+#include <cstdio>
 #include <cstring>
 #include <new>
 #include <string>
@@ -12,6 +13,10 @@
 
 // fork/pipeline_probe.c: estado do pipeline de Player do fork, lido no frame corrente (NEI-005).
 extern "C" uint32_t NeiPipeline_Describe(char* out, uint32_t capacity);
+extern "C" int NeiActor_Stats(char* out, int capacity);
+extern "C" int NeiActor_TestSomaria(int spawn);
+extern "C" void NeiActor_Unload(int dryRun);
+extern "C" int NeiActor_UnloadStats(char* out, int capacity);
 #include "fork_save.h"
 #include "include/linkspan/nei/nei_items.h"
 #include "oot_engine.h"
@@ -168,6 +173,11 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, Shi
             if (size) {
                 text += " | " + std::string(pipeline, size);
             }
+            char actors[128];
+            const int count = NeiActor_Stats(actors, sizeof(actors));
+            if (count > 0) {
+                text += " | atores: " + std::string(actors, static_cast<size_t>(count));
+            }
         }
         // Bloco de versão futura: o arquivo é lido com os sentinelas e não é regravado; fica visível no stats.
         const uint32_t stored = gCore->forkSave.StoredVersion();
@@ -195,6 +205,37 @@ ShipNativeStatus SHIP_NATIVE_CALL InvFill(void*, const char* args, uint32_t leng
                                      : std::string("recusado: o kaleido do NEI não está ativo");
         return write(writer, text.data(), static_cast<uint32_t>(text.size()));
     } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+// Prova do NEI-006 em jogo: "actors spawn" cria uma de cada invocação da Cane of Somaria na frente do Link e
+// "actors kill" mata todas, pelas funções do fork; o stats mostra criados, vivos e liberados.
+ShipNativeStatus SHIP_NATIVE_CALL Actors(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                         void* writer) {
+    if (!write || !LinkSpanNei::ForkActive()) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const bool spawn = args && length == 5 && std::strncmp(args, "spawn", 5) == 0;
+    const bool kill = args && length == 4 && std::strncmp(args, "kill", 4) == 0;
+    const bool probe = args && length == 5 && std::strncmp(args, "probe", 5) == 0;
+    if (!spawn && !kill && !probe) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    char text[256];
+    int size = 0;
+    if (probe) {
+        // Ensaio do descarregamento: quantos atores apontam para a DLL agora e o que aconteceria com eles.
+        NeiActor_Unload(1);
+        char unload[96];
+        const int count = NeiActor_UnloadStats(unload, sizeof(unload));
+        size = std::snprintf(text, sizeof(text), "descarregamento (ensaio): %.*s", count > 0 ? count : 0, unload);
+    } else {
+        const int result = NeiActor_TestSomaria(spawn ? 1 : 0);
+        char stats[128];
+        const int count = NeiActor_Stats(stats, sizeof(stats));
+        size = std::snprintf(text, sizeof(text), "%s -> %d | %.*s", spawn ? "spawn" : "kill", result,
+                             count > 0 ? count : 0, stats);
+    }
+    return write(writer, text, static_cast<uint32_t>(size));
 }
 
 // Aquisição de um item do fork pelo get-item do registro (NEI-008): "give deku_leaf". Sem argumento, lista os
@@ -287,6 +328,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "give", Give, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "actors", Actors, nullptr);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,

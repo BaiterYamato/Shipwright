@@ -14,6 +14,10 @@
 #include "kaleido_glue.h"
 #include "registry.h"
 
+// actor_guard.c (NEI-006).
+extern "C" void NeiActor_Frame(void);
+extern "C" void NeiActor_Unload(int dryRun);
+
 namespace LinkSpanNei {
 namespace {
 
@@ -59,6 +63,7 @@ void SyncInventory() {
 void PlayerUpdate(void* actor, void* play) {
     gFork.originalUpdate(actor, play);
     if (gFork.active) {
+        NeiActor_Frame();
         SyncInventory();
         CustomItems_Update(actor, play);
     }
@@ -294,6 +299,10 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
 
 void StopFork() {
     gFork.active = false;
+    // Antes de tirar os desvios: nenhum ator do jogo pode continuar com update/draw/destroy dentro da DLL.
+    if (gFork.runtime) {
+        NeiActor_Unload(0);
+    }
     StopKaleido();
     if (gFork.runtime && gFork.runtime->remove_patch) {
         if (gFork.drawPatch) {

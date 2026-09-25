@@ -51,3 +51,12 @@ ship.hotkeys.register("give_next", { default = "N", label = "NEI: get-item do pr
     local text, failure = ship.native.call("give", giveList[giveNext])
     ship.log.info("nei-core: give " .. giveList[giveNext] .. ": " .. (text or ("falhou: " .. tostring(failure))))
 end)
+
+-- Instrumento de teste do NEI-006: cria e mata as invocações da Cane of Somaria pelas funções do fork e ensaia o
+-- descarregamento. Sem tecla: só pelo console (shiplua_fire_hotkey linkspan.nei actors_spawn).
+for _, action in ipairs({ "spawn", "kill", "probe" }) do
+    ship.hotkeys.register("actors_" .. action, { default = "", label = "NEI: atores " .. action }, function()
+        local text, failure = ship.native.call("actors", action)
+        ship.log.info("nei-core: actors " .. (text or ("falhou: " .. tostring(failure))))
+    end)
+end

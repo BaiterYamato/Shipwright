@@ -167,6 +167,70 @@ def converter_modelos_c(repo, out):
     return len(names), len(convert), headers
 
 
+ACTOR_EXPR = r"[A-Za-z_]\w*(?:(?:->|\.)\w+|\[[^\]\n]*\])*?"
+ACTOR_SET = re.compile(r"(?<![\w.>])(" + ACTOR_EXPR + r")(->|\.)(update|draw|destroy)\s*=(?!=)\s*([^;\n]+);")
+ACTOR_ALIVE = re.compile(r"(?<![\w.>])(" + ACTOR_EXPR + r")->update\s*(==|!=)\s*NULL\b")
+ACTOR_SPAWN = re.compile(r"(?<![\w.>])(Actor_Spawn|Actor_SpawnAsChild)\s*\(")
+
+
+def proteger_atores(out):
+    """NEI-006: o código do fork que entra na DLL passa pela guarda de atores (fork/actor_guard.c). Troca de
+    update/draw/destroy vira NeiActor_Set*, Actor_Spawn vira NeiActor_Spawned(Actor_Spawn(...)) e o teste de vida
+    `p->update == NULL` vira !NeiActor_IsAlive(p), que não lê ator já liberado."""
+    def campo(m):
+        alvo = m.group(1) if m.group(2) == "->" else "&" + m.group(1)
+        funcao = {"update": "NeiActor_SetUpdate", "draw": "NeiActor_SetDraw", "destroy": "NeiActor_SetDestroy"}
+        return "%s(%s, %s);" % (funcao[m.group(3)], alvo, m.group(4).strip())
+
+    def spawns(texto):
+        partes, pos, total = [], 0, 0
+        for m in ACTOR_SPAWN.finditer(texto):
+            if m.start() < pos:
+                continue
+            inicio_linha = texto.rfind("\n", 0, m.start()) + 1
+            if "//" in texto[inicio_linha:m.start()] or texto[inicio_linha:m.start()].lstrip().startswith(("*", "#")):
+                continue
+            nivel, i = 0, m.end() - 1
+            while i < len(texto):
+                if texto[i] == "(":
+                    nivel += 1
+                elif texto[i] == ")":
+                    nivel -= 1
+                    if nivel == 0:
+                        break
+                i += 1
+            partes.append(texto[pos:m.start()])
+            partes.append("NeiActor_Spawned(" + texto[m.start():i + 1] + ")")
+            pos = i + 1
+            total += 1
+        partes.append(texto[pos:])
+        return "".join(partes), total
+
+    contagem = {"set": 0, "vivo": 0, "spawn": 0, "arquivos": 0}
+    raiz = os.path.join(out, "fork", "soh", "mods")
+    for pasta, _, arquivos in os.walk(raiz):
+        if os.path.relpath(pasta, raiz).replace("\\", "/").startswith("mm_sources"):
+            continue
+        for nome in arquivos:
+            if not nome.endswith((".c", ".h", ".inc")):
+                continue
+            caminho = os.path.join(pasta, nome)
+            with open(caminho, encoding="utf-8", errors="surrogateescape", newline="") as f:
+                texto = f.read()
+            novo, n_set = ACTOR_SET.subn(campo, texto)
+            novo, n_vivo = ACTOR_ALIVE.subn(
+                lambda m: ("!" if m.group(2) == "==" else "") + "NeiActor_IsAlive(%s)" % m.group(1), novo)
+            novo, n_spawn = spawns(novo)
+            if novo != texto:
+                with open(caminho, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
+                    f.write(novo)
+                contagem["arquivos"] += 1
+                contagem["set"] += n_set
+                contagem["vivo"] += n_vivo
+                contagem["spawn"] += n_spawn
+    return contagem
+
+
 def extract(repo, out, symbols):
     """Funções que o fork acrescentou em arquivos do host (extract.txt) -> <out>/extracted."""
     count = 0
@@ -245,6 +309,7 @@ def main():
     subprocess.run([sys.executable, os.path.join(HERE, "gen_item_models.py"), repo, FORK_COMMIT,
                     os.path.join(out, "nei_item_models.c"), os.path.join(out, "nei_item_models.txt")], check=True)
     modelos_c = converter_modelos_c(repo, out)
+    atores = proteger_atores(out)
     redeclaracoes = sum(alinhar_redeclaracoes_de_array(os.path.join(out, pasta), dados)
                         for pasta in ("fork", "extracted"))
     subprocess.run([sys.executable, os.path.join(HERE, "gen_stubs.py"), "--names", os.path.join(HERE, "stub-names.txt"),
@@ -256,7 +321,9 @@ def main():
     print(f"nei fork: {len(files)} arquivos do fork, {len(added)} headers novos, patches aplicados, "
           f"{len(dados)} variáveis do host por ponteiro, {redeclaracoes} redeclarações de array alinhadas, "
           f"{extracted} arquivos do host extraídos, {substituicoes} substituições, "
-          f"modelos em C: {modelos_c[0]} arrays ({modelos_c[1]} convertidos, {modelos_c[2]} headers), stubs gerados")
+          f"modelos em C: {modelos_c[0]} arrays ({modelos_c[1]} convertidos, {modelos_c[2]} headers), "
+          f"atores: {atores['set']} trocas, {atores['vivo']} testes de vida e {atores['spawn']} spawns em "
+          f"{atores['arquivos']} arquivos, stubs gerados")
 
 
 main()
