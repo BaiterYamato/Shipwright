@@ -16,7 +16,6 @@ Picto_SyncReadColor
 Picto_SyncWrite
 Picto_SyncWriteColor
 Randomizer_SensorBuildHint
-ResourceMgr_LoadPlayerAnimAsHeader
 ResourceMgr_LoadPlayerAnimAsHeaderInPlace
 SeasonScene_SuppressVoidDamage
 SeasonScene_UpdateWasteland

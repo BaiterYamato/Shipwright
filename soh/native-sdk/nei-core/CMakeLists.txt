@@ -28,7 +28,7 @@ endif()
 # Funções que o fork acrescentou em arquivos do host; a do z_player.c (extracted/unit) entra no player_unit.c.
 file(GLOB nei_fork_extracted "${nei_fork_dir}/extracted/*.c")
 
-add_library(nei_fork OBJECT "${fork_src}/player_unit.c" "${fork_src}/actor_guard.c"
+add_library(nei_fork OBJECT "${fork_src}/player_unit.c" "${fork_src}/actor_guard.c" "${fork_src}/host_additions.c"
     "${fork_src}/inventory_unit.c" "${fork_src}/fork_items.c"
     "${fork_src}/kaleido_shim.c" "${fork_src}/pipeline_probe.c" "${fork_src}/stubs.c" "${fork_src}/nei_save_bridge.c"
     "${nei_fork_dir}/nei_stubs.c" "${nei_fork_dir}/nei_item_models.c" "${nei_fork_dir}/nei_cmodels.c" ${nei_fork_extracted})

@@ -37,6 +37,7 @@ uint8_t NeiFork_ToLogicalItem(uint8_t runtimeId);
 uint8_t NeiFork_ToRuntimeItem(uint8_t logicalId);
 
 // fork/inventory_unit.c: posse do item na página do NEI (gNeiSave), a que o kaleido do fork mostra.
+void NeiInv_ReceiveItem(uint8_t logicalId);
 void NeiInv_PlaceItem(uint8_t logicalId);
 void NeiInv_RemoveItem(uint8_t logicalId);
 int NeiInv_HasItem(uint8_t logicalId);

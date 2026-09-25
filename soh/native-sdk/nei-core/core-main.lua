@@ -60,3 +60,19 @@ for _, action in ipairs({ "spawn", "kill", "probe" }) do
         ship.log.info("nei-core: actors " .. (text or ("falhou: " .. tostring(failure))))
     end)
 end
+
+-- Instrumento de teste das ondas de itens (NEI-008..011): uma hotkey sem tecla por item do fork, que dá a posse
+-- e equipa no C esquerdo (shiplua_fire_hotkey linkspan.nei eq_shovel).
+local forkItems = ship.native.call("give", "")
+if forkItems then
+    for name in forkItems:gmatch("([%w_]+)%(0x") do
+        ship.hotkeys.register("eq_" .. name, { default = "", label = "NEI: equipar " .. name }, function()
+            local text, failure = ship.native.call("equip", name)
+            ship.log.info("nei-core: equip " .. (text or ("falhou: " .. tostring(failure))))
+        end)
+    end
+end
+ship.hotkeys.register("test_magic", { default = "", label = "NEI: medidor de magia cheio (teste)" }, function()
+    local text, failure = ship.native.call("magic", "")
+    ship.log.info("nei-core: " .. (text or ("magic falhou: " .. tostring(failure))))
+end)

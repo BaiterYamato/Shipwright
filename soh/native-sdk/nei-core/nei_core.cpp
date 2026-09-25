@@ -16,6 +16,7 @@ extern "C" uint32_t NeiPipeline_Describe(char* out, uint32_t capacity);
 extern "C" int NeiActor_Stats(char* out, int capacity);
 extern "C" int NeiActor_TestSomaria(int spawn);
 extern "C" void NeiActor_Unload(int dryRun);
+extern "C" void NeiTest_GrantMagic(void);
 extern "C" int NeiActor_UnloadStats(char* out, int capacity);
 #include "fork_save.h"
 #include "include/linkspan/nei/nei_items.h"
@@ -238,6 +239,33 @@ ShipNativeStatus SHIP_NATIVE_CALL Actors(void*, const char* args, uint32_t lengt
     return write(writer, text, static_cast<uint32_t>(size));
 }
 
+// Prova das ondas de itens (NEI-008..011): "equip shovel" dá a posse do item do fork e o põe no C esquerdo, sem
+// get-item, para o teste usar o item logo em seguida.
+ShipNativeStatus SHIP_NATIVE_CALL EquipTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                            void* writer) {
+    if (!write || !args || length == 0 || length > 64) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    std::string id(args, length);
+    if (id.rfind("skijer.nei.", 0) != 0) {
+        id = "skijer.nei." + id;
+    }
+    const ShipNativeStatus status = LinkSpanNei::GiveForkItem(id.c_str());
+    const std::string text = id + (status == SHIP_NATIVE_OK ? ": no C esquerdo" : ": recusado");
+    write(writer, text.data(), static_cast<uint32_t>(text.size()));
+    return status;
+}
+
+// Prova das ondas de itens: medidor de magia cheio, só em memória (o save de teste é de antes da Grande Fada).
+ShipNativeStatus SHIP_NATIVE_CALL MagicTest(void*, const char*, uint32_t, ShipNativeWriteFn write, void* writer) {
+    if (!write || !LinkSpanNei::ForkActive()) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    NeiTest_GrantMagic();
+    static const char text[] = "magia: medidor cheio (so em memoria)";
+    return write(writer, text, sizeof(text) - 1);
+}
+
 // Aquisição de um item do fork pelo get-item do registro (NEI-008): "give deku_leaf". Sem argumento, lista os
 // itens do fork no registro com o id runtime, a posse e se já estão na página do NEI.
 ShipNativeStatus SHIP_NATIVE_CALL Give(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
@@ -331,6 +359,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "actors", Actors, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "equip", EquipTest, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "magic", MagicTest, nullptr);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,

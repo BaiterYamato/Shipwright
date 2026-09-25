@@ -36,9 +36,19 @@ uint32_t NeiInv_OccupiedSlots(void) {
 /* Posse na página do NEI, pelo mesmo caminho que o Item_Give do fork usa (ExtInv_SetItemById). A célula do Roc's
  * Feather é progressiva: o Cape a toma, e o Feather dado depois do Cape não volta para ela. Item sem célula
  * própria (0xFF) não tem o que pôr aqui. */
+u8 Cane_GiveSkill(u8 skill); /* item_cane_of_somaria.c, no player_unit.c */
+
 void NeiInv_PlaceItem(uint8_t logicalId) {
     const uint8_t slot = ExtInv_GetItemSlot(logicalId);
     if (slot == 0xFF || slot < 24) {
+        return;
+    }
+    /* A Cane é seis skills numa célula só, e a posse é o bit da skill: o Cane_GiveSkill da primeira é que põe a
+     * Cane na célula. Sem skill, a Cane na célula não lança nada. */
+    if (logicalId == ITEM_CANE_OF_SOMARIA) {
+        if (!Nei_CaneOwned()) {
+            Cane_GiveSkill(0);
+        }
         return;
     }
     const uint16_t current = ExtInv_GetSlotItem(slot);
@@ -46,6 +56,21 @@ void NeiInv_PlaceItem(uint8_t logicalId) {
         return;
     }
     ExtInv_SetSlotItem(slot, logicalId);
+}
+
+/* Cada get-item do registro (callback `received`). É o RG_CANE_OF_SOMARIA do randomizer do fork: cada cópia
+ * recebida acende a próxima skill, alternando as duas canes (Statue, Flip, Block, Stone, Platform, Ultrahand). */
+void NeiInv_ReceiveItem(uint8_t logicalId) {
+    if (logicalId == ITEM_CANE_OF_SOMARIA) {
+        static const u8 kCaneOrder[6] = { 0, 3, 1, 4, 2, 5 };
+        for (int i = 0; i < 6; i++) {
+            if (Cane_GiveSkill(kCaneOrder[i])) {
+                break;
+            }
+        }
+        return;
+    }
+    NeiInv_PlaceItem(logicalId);
 }
 
 void NeiInv_RemoveItem(uint8_t logicalId) {
@@ -64,4 +89,16 @@ void NeiInv_ReadState(int32_t* pages, int32_t* currentPage, uint32_t* occupied) 
     *pages = ExtInv_GetMaxPages();
     *currentPage = ExtInv_GetCurrentPage();
     *occupied = NeiInv_OccupiedSlots();
+}
+
+/* Instrumento de prova das ondas de itens (NEI-008..011): os rods e vários itens do fork gastam magia, e o save de
+ * teste é de antes da Grande Fada. Só em memória, pelo mesmo caminho do RG_MAGIC_SINGLE do randomizer; o .sav não
+ * muda enquanto o jogo não salvar. */
+void NeiTest_GrantMagic(void) {
+    if (gPlayState == NULL) {
+        return;
+    }
+    gSaveContext.isMagicAcquired = true;
+    gSaveContext.magicFillTarget = MAGIC_NORMAL_METER;
+    Magic_Fill(gPlayState);
 }

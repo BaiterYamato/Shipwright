@@ -81,7 +81,7 @@ ShipNativeStatus SHIP_NATIVE_CALL IgnoreUse(void*, uint64_t, uint8_t) {
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Received(void* user, uint64_t) {
-    NeiInv_PlaceItem(static_cast<uint8_t>(reinterpret_cast<uintptr_t>(user)));
+    NeiInv_ReceiveItem(static_cast<uint8_t>(reinterpret_cast<uintptr_t>(user)));
     return SHIP_NATIVE_OK;
 }
 
