@@ -44,7 +44,8 @@ def host_data_macros(repo, symbols):
     data = set()
     for line in open(symbols, encoding="utf-8", errors="replace"):
         parts = line.rstrip("\n").split("\t")
-        if len(parts) == 4 and parts[2] == "[data]" and parts[1] == "-":
+        # "[data]" no LTCG, "[data]<arquivo>" nos fontes do host compilados fora dele (hookable_sources.txt).
+        if len(parts) == 4 and parts[2].startswith("[data]") and parts[1] == "-":
             data.add(parts[3])
     names = set()
     declaracoes = {}
@@ -207,33 +208,69 @@ def proteger_atores(out):
         return "".join(partes), total
 
     contagem = {"set": 0, "vivo": 0, "spawn": 0, "arquivos": 0}
-    raiz = os.path.join(out, "fork", "soh", "mods")
-    for pasta, _, arquivos in os.walk(raiz):
-        if os.path.relpath(pasta, raiz).replace("\\", "/").startswith("mm_sources"):
-            continue
-        for nome in arquivos:
-            if not nome.endswith((".c", ".h", ".inc")):
+    # As funções do host copiadas para a DLL (extracted/, overlay.py) só passam pela troca de update/draw/destroy,
+    # que registra quem aponta para a DLL. O teste de vida e o spawn delas são a lógica do próprio jogo
+    # (Actor_UpdateAll apaga o ator com update NULL): continuam como no host.
+    raizes = [(os.path.join(out, "fork", "soh", "mods"), True), (os.path.join(out, "extracted"), False)]
+    for raiz, completo in raizes:
+        for pasta, _, arquivos in os.walk(raiz):
+            if os.path.relpath(pasta, raiz).replace("\\", "/").startswith("mm_sources"):
                 continue
-            caminho = os.path.join(pasta, nome)
-            with open(caminho, encoding="utf-8", errors="surrogateescape", newline="") as f:
-                texto = f.read()
-            novo, n_set = ACTOR_SET.subn(campo, texto)
-            novo, n_vivo = ACTOR_ALIVE.subn(
-                lambda m: ("!" if m.group(2) == "==" else "") + "NeiActor_IsAlive(%s)" % m.group(1), novo)
-            novo, n_spawn = spawns(novo)
-            if novo != texto:
-                with open(caminho, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
-                    f.write(novo)
-                contagem["arquivos"] += 1
-                contagem["set"] += n_set
-                contagem["vivo"] += n_vivo
-                contagem["spawn"] += n_spawn
+            for nome in arquivos:
+                if not nome.endswith((".c", ".h", ".inc")):
+                    continue
+                caminho = os.path.join(pasta, nome)
+                with open(caminho, encoding="utf-8", errors="surrogateescape", newline="") as f:
+                    texto = f.read()
+                novo, n_set = ACTOR_SET.subn(campo, texto)
+                n_vivo = n_spawn = 0
+                if completo:
+                    novo, n_vivo = ACTOR_ALIVE.subn(
+                        lambda m: ("!" if m.group(2) == "==" else "") + "NeiActor_IsAlive(%s)" % m.group(1), novo)
+                    novo, n_spawn = spawns(novo)
+                if novo != texto:
+                    with open(caminho, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
+                        f.write(novo)
+                    contagem["arquivos"] += 1
+                    contagem["set"] += n_set
+                    contagem["vivo"] += n_vivo
+                    contagem["spawn"] += n_spawn
     return contagem
 
 
+# Campos que o fork acrescentou a structs de atores do host -> tipo do bloco lateral (fork/nei_ext.h).
+EXT_FIELDS = {"ivanFloating": "Player", "homingTarget": "EnMThunder", "isGerudoCone": "EnMThunder",
+              "coneArmed": "EnMThunder", "coneWait": "EnMThunder", "coneYaw": "EnMThunder", "netForced": "EnButte"}
+EXT_ACCESS = re.compile(r"(?<![\w.>])(\(\s*\(\s*\w+\s*\*\s*\)\s*\w+\s*\)|[A-Za-z_]\w*(?:(?:->|\.)\w+|\[[^\]\n]*\])*?)"
+                        r"\s*->\s*(" + "|".join(EXT_FIELDS) + r")\b")
+
+
+def campos_laterais(out):
+    """`x->ivanFloating` nas funções do host copiadas vira `NEI_EXT(Player, x)->ivanFloating` (fork/nei_ext.h):
+    o campo que o fork acrescentou à struct não existe no host."""
+    total = 0
+    for pasta, _, arquivos in os.walk(os.path.join(out, "extracted")):
+        for nome in arquivos:
+            if not nome.endswith(".c"):
+                continue
+            caminho = os.path.join(pasta, nome)
+            with open(caminho, encoding="utf-8", newline="") as f:
+                texto = f.read()
+            novo, n = EXT_ACCESS.subn(lambda m: "NEI_EXT(%s, %s)->%s" % (EXT_FIELDS[m.group(2)], m.group(1), m.group(2)),
+                                      texto)
+            if n:
+                with open(caminho, "w", encoding="utf-8", newline="") as f:
+                    f.write('#include "nei_ext.h"\n' + novo)
+                total += n
+    return total
+
+
 def extract(repo, out, symbols):
-    """Funções que o fork acrescentou em arquivos do host (extract.txt) -> <out>/extracted."""
-    count = 0
+    """Funções que o fork acrescentou em arquivos do host (extract.txt) e funções do host que ele mudou (overlay.py,
+    fontes de soh/hookable_sources.txt) -> <out>/extracted. Devolve (arquivos, sobrepostas, relatórios)."""
+    sys.path.insert(0, HERE)
+    import overlay
+    entradas = {}  # caminho -> [unit, fork_only, sementes, includes extras]
     for line in open(os.path.join(HERE, "extract.txt"), encoding="utf-8"):
         line = line.split("#")[0].strip()
         if not line:
@@ -241,20 +278,36 @@ def extract(repo, out, symbols):
         path, rest = line.split(":", 1)
         seeds, _, extra_includes = rest.partition("|")
         unit, fork_only = path.startswith("@"), path.startswith("+")
-        path = path.lstrip("@+").strip()
+        entradas[path.lstrip("@+").strip()] = [unit, fork_only, seeds.split(), extra_includes.split()]
+    excluir, sem_desvio = overlay.ler_excluir()
+    mesclados, relatorios = {}, []
+    for path in overlay.fontes_sobreponiveis(repo):
+        destino, sementes, rel = overlay.planejar(repo, FORK_COMMIT, FORK_BASE, path,
+                                                  os.path.join(out, "overlay-src"), excluir)
+        relatorios.append(rel)
+        if not sementes:
+            continue
+        mesclados[path] = destino
+        entrada = entradas.setdefault(path, [False, False, [], []])
+        entrada[2] = sorted(set(entrada[2]) | set(sementes))
+    count = 0
+    for path, (unit, fork_only, seeds, extra_includes) in entradas.items():
         name = os.path.splitext(os.path.basename(path))[0]
         target = os.path.join(out, "extracted", "unit" if unit else "", name + ".c")
         args = [sys.executable, os.path.join(HERE, "extract_additions.py"), "--repo", repo, "--fork", FORK_COMMIT,
                 "--file", path, "--out", target, "--report", os.path.join(out, "extracted", name + ".txt")]
         # Semente com > na frente é sobreposição: o host também tem a função, mas quem vale é a
-        # versão do fork, porque a DLL desvia a do host para ela (fork/kaleido_glue.cpp).
-        for seed in seeds.split():
+        # versão do fork, porque a DLL desvia a do host para ela (fork/overlay_glue.cpp, kaleido_glue.cpp).
+        for seed in seeds:
             args += ["--seed", seed.lstrip(">")]
             if seed.startswith(">"):
                 args += ["--sobrepoe", seed[1:]]
         args += ["--symbols", symbols]
+        if path in mesclados:
+            args += ["--fork-file", mesclados[path], "--tabela"]
+            args += [x for nome in sorted(sem_desvio) for x in ("--sem-desvio", nome)]
         # Header com - na frente é o contrário: um #include do fork que a saída não deve copiar.
-        for header in extra_includes.split():
+        for header in extra_includes:
             args += (["--exclui", header[1:]] if header.startswith("-") else ["--inclui", header])
         if unit:
             args.append("--sem-includes")
@@ -262,7 +315,34 @@ def extract(repo, out, symbols):
             args += ["--sem-host", "--de-cpp", "--sem-includes"]
         subprocess.run(args, check=True)
         count += 1
-    return count
+    # Um só ponto de entrada para as tabelas de desvio de cada arquivo (fork/overlay_glue.cpp).
+    stems = sorted(os.path.splitext(os.path.basename(p))[0] for p in mesclados)
+    linhas = ["/* Gerado por sync.py: tabelas de desvio das funções do host que o fork mudou (overlay.py). */",
+              '#include "overlay_table.h"', ""]
+    for stem in stems:
+        linhas += ["extern const NeiOverlayEntry nei_overlay_%s[];" % stem,
+                   "extern const unsigned nei_overlay_%s_count;" % stem]
+    linhas += ["", "typedef struct { const NeiOverlayEntry* entries; const unsigned* count; } NeiOverlayTable;",
+               "static const NeiOverlayTable kTables[] = {"]
+    linhas += ["    { nei_overlay_%s, &nei_overlay_%s_count }," % (s, s) for s in stems] or ["    { 0, 0 },"]
+    linhas += ["};", "",
+               "/* Entrada `index` de todas as tabelas, em sequência; 0 quando acabou. */",
+               "const NeiOverlayEntry* NeiOverlay_Entry(unsigned index) {",
+               "    for (unsigned t = 0; t < sizeof(kTables) / sizeof(kTables[0]); ++t) {",
+               "        if (kTables[t].count == 0) {", "            continue;", "        }",
+               "        if (index < *kTables[t].count) {", "            return &kTables[t].entries[index];", "        }",
+               "        index -= *kTables[t].count;", "    }", "    return 0;", "}", ""]
+    with open(os.path.join(out, "nei_overlays.c"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(linhas))
+    sobrepostas = sum(len(r["sobrepostas"]) for r in relatorios)
+    with open(os.path.join(out, "overlay-report.txt"), "w", encoding="utf-8", newline="\n") as f:
+        for r in relatorios:
+            f.write("%s\n" % r["arquivo"])
+            for campo in ("sobrepostas", "dados", "globais_do_host", "leitoras", "mescladas", "resolvidas", "adaptadas",
+                          "conflitos", "excluidas", "ausentes_no_host"):
+                if r.get(campo):
+                    f.write("  %s: %s\n" % (campo, " ".join(r[campo])))
+    return count, sobrepostas, relatorios
 
 
 def main():
@@ -271,13 +351,15 @@ def main():
     inputs = sorted(os.path.join(HERE, "patches", p) for p in os.listdir(os.path.join(HERE, "patches")))
     inputs += [os.path.join(HERE, f) for f in ("gen_compat.py", "extract_additions.py", "extract.txt", "gen_stubs.py",
                                                "stub-names.txt", "extracted-fixes.txt", "gen_item_models.py",
-                                               "cmodels.py")]
-    inputs += [os.path.abspath(__file__), symbols]
+                                               "cmodels.py", "overlay.py", "overlay-exclude.txt")]
+    for pasta in ("overlay-merges", "overlay-extra"):
+        inputs += sorted(os.path.join(HERE, pasta, p) for p in os.listdir(os.path.join(HERE, pasta)))
+    inputs += [os.path.abspath(__file__), symbols, os.path.join(repo, "soh", "hookable_sources.txt")]
     signature = FORK_COMMIT + "\n" + "\n".join(f"{p} {os.path.getmtime(p)}" for p in inputs)
     if os.path.exists(stamp) and open(stamp, encoding="utf-8").read() == signature:
         print("nei fork: em dia")
         return
-    for folder in ("fork", "compat", "extracted"):
+    for folder in ("fork", "compat", "extracted", "overlay-src"):
         shutil.rmtree(os.path.join(out, folder), ignore_errors=True)
 
     # Fonte do fork (soh/... -> fork/soh/...).
@@ -304,15 +386,27 @@ def main():
     macros, dados = host_data_macros(repo, symbols)
     with open(os.path.join(out, "compat", "nei_host_data.h"), "w", encoding="utf-8", newline="\n") as f:
         f.write(macros)
-    extracted = extract(repo, out, symbols)
+    extracted, sobrepostas, _ = extract(repo, out, symbols)
     substituicoes = aplicar_substituicoes(out)
+    laterais = campos_laterais(out)
     subprocess.run([sys.executable, os.path.join(HERE, "gen_item_models.py"), repo, FORK_COMMIT,
                     os.path.join(out, "nei_item_models.c"), os.path.join(out, "nei_item_models.txt")], check=True)
     modelos_c = converter_modelos_c(repo, out)
     atores = proteger_atores(out)
     redeclaracoes = sum(alinhar_redeclaracoes_de_array(os.path.join(out, pasta), dados)
                         for pasta in ("fork", "extracted"))
-    subprocess.run([sys.executable, os.path.join(HERE, "gen_stubs.py"), "--names", os.path.join(HERE, "stub-names.txt"),
+    # Nome que a extração passou a definir de verdade (função nova do fork puxada pelo overlay.py) deixa de ser stub.
+    definidos = set()
+    for pasta, _, arquivos in os.walk(os.path.join(out, "extracted")):
+        for nome in arquivos:
+            if nome.endswith(".c"):
+                with open(os.path.join(pasta, nome), encoding="utf-8", errors="replace") as f:
+                    definidos.update(re.findall(r"^[A-Za-z_][^;{}()]*?\b(\w+)\s*\([^;{}]*\)\s*\{", f.read(), re.M))
+    nomes_stub = os.path.join(out, "stub-names.efetivo.txt")
+    with open(os.path.join(HERE, "stub-names.txt"), encoding="utf-8") as f, \
+            open(nomes_stub, "w", encoding="utf-8", newline="\n") as g:
+        g.writelines(l for l in f if l.strip() not in definidos)
+    subprocess.run([sys.executable, os.path.join(HERE, "gen_stubs.py"), "--names", nomes_stub,
                     "--search", os.path.join(out, "fork", "soh"), "--search", os.path.join(out, "compat"),
                     "--out", os.path.join(out, "nei_stubs.c"), "--report", os.path.join(out, "nei_stubs.txt")],
                    check=True, stdout=subprocess.DEVNULL)
@@ -320,7 +414,8 @@ def main():
         f.write(signature)
     print(f"nei fork: {len(files)} arquivos do fork, {len(added)} headers novos, patches aplicados, "
           f"{len(dados)} variáveis do host por ponteiro, {redeclaracoes} redeclarações de array alinhadas, "
-          f"{extracted} arquivos do host extraídos, {substituicoes} substituições, "
+          f"{extracted} arquivos do host extraídos ({sobrepostas} funções do host sobrepostas), "
+          f"{substituicoes} substituições, {laterais} campos laterais, "
           f"modelos em C: {modelos_c[0]} arrays ({modelos_c[1]} convertidos, {modelos_c[2]} headers), "
           f"atores: {atores['set']} trocas, {atores['vivo']} testes de vida e {atores['spawn']} spawns em "
           f"{atores['arquivos']} arquivos, stubs gerados")

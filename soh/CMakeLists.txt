@@ -190,6 +190,15 @@ endif()
 file(GLOB_RECURSE src__ CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.c" "src/*.h")
 set_source_files_properties(${src__} PROPERTIES COMPILE_OPTIONS "${WARNING_OVERRIDE}")
 
+# Fontes que mods nativos sobrepõem função por função: sem inline e fora do LTCG (ver hookable_sources.txt).
+if(MSVC)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/hookable_sources.txt)
+    file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/hookable_sources.txt soh_hookable_sources REGEX "^[^#].*\\.c$")
+    set_source_files_properties(${soh_hookable_sources} PROPERTIES
+        VS_SETTINGS "WholeProgramOptimization=false;InlineFunctionExpansion=Disabled"
+    )
+endif()
+
 list(APPEND src__ ${CMAKE_CURRENT_SOURCE_DIR}/Resource.rc)
 list(FILTER src__ EXCLUDE REGEX "src/dmadata/")
 list(FILTER src__ EXCLUDE REGEX "src/elf_message/")

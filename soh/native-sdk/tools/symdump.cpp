@@ -7,7 +7,8 @@
 // flags: "-" ou "folded" quando outro nome ocupa o mesmo RVA (/OPT:ICF).
 // Entram funções com fonte em soh/src, soh/soh ou libultraship/src e as variáveis globais e estáticas do jogo
 // e do libultraship. O arquivo de uma variável é "[data]" no build com /GL, que não guarda a compiland; ela
-// resolve pelo nome, quando único. Templates e std ficam de fora.
+// resolve pelo nome, quando único. Fora do LTCG (soh/hookable_sources.txt) é "[data]<arquivo>", e o static
+// repetido resolve por "[data]<arquivo>!nome". Templates e std ficam de fora.
 #define NOMINMAX
 #include <windows.h>
 #include <bcrypt.h>
@@ -126,13 +127,15 @@ BOOL CALLBACK Collect(PSYMBOL_INFO symbol, ULONG, PVOID user) {
         }
         // Com /GL (LTCG) a compiland de uma variável do jogo e do libultraship é "* CIL *" (estática) ou
         // "* Linker *" (global), sem arquivo; bibliotecas de fora (SDL, glew) compilam sem /GL e ficam com o
-        // .obj delas. Sem LTCG, o .obj da variável diz o arquivo pelas funções dele.
+        // .obj delas. Sem LTCG, o .obj da variável diz o arquivo pelas funções dele; a coluna fica
+        // "[data]<arquivo>" para continuar separando dado de função, e "[data]<arquivo>!nome" resolve um
+        // static repetido (sCylinderInit) dos fontes compilados fora do LTCG (soh/hookable_sources.txt).
         const std::string compiland = Compiland(context.process, context.base, symbol->Index);
         const auto source = context.dataSources.find(Lower(compiland));
         if (compiland == "* CIL *" || compiland == "* Linker *") {
             context.entries.push_back({symbol->Address - context.base, "[data]", name});
         } else if (source != context.dataSources.end()) {
-            context.entries.push_back({symbol->Address - context.base, source->second, name});
+            context.entries.push_back({symbol->Address - context.base, "[data]" + source->second, name});
         }
         return TRUE;
     }

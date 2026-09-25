@@ -12,6 +12,7 @@
 #include "fork_items.h"
 #include "fork_models.h"
 #include "kaleido_glue.h"
+#include "overlay_glue.h"
 #include "registry.h"
 
 // actor_guard.c (NEI-006).
@@ -287,6 +288,9 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
         gFork.status = "desligado: desvio de Player_Update/Player_Draw recusado";
         return;
     }
+    // As funções do host que o fork mudou (Player_ActionToMeleeWeapon, Player_UseItem...) passam a entrar na
+    // versão do fork. Desvio recusado deixa aquela função com a versão do host; o status conta.
+    StartOverlays(runtime);
     gFork.active = true;
     // Só agora: a página de itens do kaleido do fork chama o host pelos mesmos thunks resolvidos
     // acima, e o menu pode abrir no primeiro frame. Se os desvios forem recusados, o fork continua —
@@ -294,7 +298,7 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     StartKaleido(runtime);
     gFork.status = "ativo (" + std::to_string(gFork.items.size()) + " itens" +
                    (gFork.withoutAssets ? ", " + std::to_string(gFork.withoutAssets) + " sem assets" : "") +
-                   ") | kaleido: " + KaleidoStatus();
+                   ") | kaleido: " + KaleidoStatus() + " | host: " + OverlayStatus();
 }
 
 void StopFork() {
@@ -304,6 +308,7 @@ void StopFork() {
         NeiActor_Unload(0);
     }
     StopKaleido();
+    StopOverlays();
     if (gFork.runtime && gFork.runtime->remove_patch) {
         if (gFork.drawPatch) {
             gFork.runtime->remove_patch(gFork.runtime->context, gFork.drawPatch);

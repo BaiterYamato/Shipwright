@@ -61,7 +61,35 @@ def mascarar(texto):
                 i += 1
         else:
             i += 1
-    return "".join(saida)
+    return apagar_if0("".join(saida))
+
+
+def apagar_if0(mask):
+    """Apaga (com espaços, mantendo as quebras) o ramo morto de `#if 0`, até o #else/#elif/#endif dele."""
+    linhas = mask.split("\n")
+    profundidade, morto_em = 0, None
+    for k, linha in enumerate(linhas):
+        diretiva = re.match(r"\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)", linha)
+        if diretiva:
+            nome = diretiva.group(1)
+            if nome in ("if", "ifdef", "ifndef"):
+                profundidade += 1
+                if morto_em is None and nome == "if" and diretiva.group(2).strip() == "0":
+                    morto_em = profundidade
+                    linhas[k] = " " * len(linha)
+                    continue
+            elif nome in ("elif", "else") and morto_em == profundidade:
+                morto_em = None
+            elif nome == "endif":
+                if morto_em == profundidade:
+                    morto_em = None
+                    linhas[k] = " " * len(linha)
+                    profundidade -= 1
+                    continue
+                profundidade -= 1
+        if morto_em is not None:
+            linhas[k] = " " * len(linha)
+    return "\n".join(linhas)
 
 
 def fim_linha(texto, pos):
@@ -121,14 +149,20 @@ def classificar(texto, mascara, inicio, fim):
     dm = DEFINE.match(mascara)
     if dm:
         return Declaracao(dm.group(1), "define", inicio, fim, texto, mascara)
+    # Outras diretivas (#include no meio do arquivo, #if) não declaram nada.
+    if limpo.startswith("#"):
+        return None
     # Um bloco que abre no topo e tem uma lista de parametros no prefixo e funcao.
     abre = mascara.find("{")
     if abre >= 0:
         nome = nome_funcao(mascara[:abre])
         if nome:
             return Declaracao(nome, "funcao", inicio, fim, texto, mascara)
-    # Prototipos tambem precisam estar no mapa: eles sao imports potenciais.
+    # Prototipos tambem precisam estar no mapa: eles sao imports potenciais. Nome todo em maiusculas sem tipo na
+    # frente e invocacao de macro no topo (SHIP_SAVESTATE_DEFINE(BossTw, ...)), nao prototipo.
     nome = nome_funcao(mascara.rstrip().rstrip(";"))
+    if nome and nome.isupper() and mascara.strip().startswith(nome):
+        return None
     if nome:
         return Declaracao(nome, "funcao", inicio, fim, texto, mascara)
     if re.match(r"\s*typedef\b", mascara):
@@ -165,6 +199,20 @@ def declaracoes_topo(texto):
             blocos -= 1
             pos = ini + 1
             continue
+        # Invocação de macro no topo sem ; (SHIP_SAVESTATE_DEFINE(BossTw, ...)): não declara nada que a extração
+        # use, e sem ; ela grudaria na declaração seguinte.
+        macro = re.match(r"[A-Z_][A-Z0-9_]*\s*\(", mask[ini:])
+        if macro:
+            nivel, j = 0, ini + macro.end() - 1
+            while j < n:
+                nivel += {"(": 1, ")": -1}.get(mask[j], 0)
+                j += 1
+                if nivel == 0:
+                    break
+            resto = mask[j:j + 200].lstrip(" \t")
+            if resto.startswith(("\n", "\r")):
+                pos = j
+                continue
         if mask[ini] == "#":
             fim = fim_linha(mask, ini)
             while fim > ini and mask[fim - 1] == "\\" and fim < n:
@@ -209,8 +257,26 @@ def declaracoes_topo(texto):
             tag = re.match(r"\s*(?:typedef\s+)?(?:struct|enum|union)\s+([A-Za-z_]\w*)", d.mascara)
             if d.tipo == "tipo" and tag and tag.group(1) != d.nome:
                 resultado.append(Declaracao(tag.group(1), "tipo", d.inicio, d.fim, d.texto, d.mascara))
+            # Cada enumerador (PLAYER_ITEM_CHG_MAX) leva ao enum inteiro, que é quem o define.
+            if d.tipo == "tipo" and re.match(r"\s*(?:typedef\s+)?enum\b", d.mascara) and "{" in d.mascara:
+                corpo = d.mascara[d.mascara.find("{") + 1:d.mascara.rfind("}")]
+                for item in corpo.split(","):
+                    m = re.match(r"\s*([A-Za-z_]\w*)", item)
+                    if m and m.group(1) != d.nome:
+                        resultado.append(Declaracao(m.group(1), "tipo", d.inicio, d.fim, d.texto, d.mascara))
         pos = max(fim, ini + 1)
     return resultado
+
+
+def mapa(declaracoes):
+    """Nome -> declaração. Função fica com a definição (o protótipo vem antes); o resto fica com a primeira, que
+    nos fontes do jogo é o ramo `#if defined(MODDING) || defined(_MSC_VER)` (sEyeTextures[2][8], não o do #else)."""
+    m = {}
+    for d in declaracoes:
+        atual = m.get(d.nome)
+        if atual is None or (d.tipo == "funcao" and "{" in d.mascara and "{" not in atual.mascara):
+            m[d.nome] = d
+    return m
 
 
 def remover_static(texto):
@@ -226,6 +292,29 @@ def cabecalho_funcao(d, sem_static=False):
     return cab + ";"
 
 
+def elementos_inicializador(mask):
+    """Quantos elementos tem o `{ ... }` de primeiro nível (texto já mascarado). None se não der para contar: sem
+    chaves, ou com diretiva de pré-processador no meio."""
+    abre = mask.find("{")
+    if abre < 0 or "#" in mask:
+        return None
+    nivel, n, tem = 0, 0, False
+    for c in mask[abre:]:
+        if c in "{(":
+            nivel += 1
+            if nivel == 1:
+                continue
+        elif c in "})":
+            nivel -= 1
+            if nivel == 0:
+                return n + (1 if tem else 0)
+        if nivel == 1 and c == ",":
+            n, tem = n + 1, False
+        elif not c.isspace():
+            tem = True
+    return None
+
+
 def declaracao_externa_variavel(d):
     """Converte definicao fork em extern, mantendo os sufixos de array."""
     mask = d.mascara
@@ -234,6 +323,13 @@ def declaracao_externa_variavel(d):
     base = d.texto[:limite].rstrip()
     base = re.sub(r"\bstatic\s+", "", base, count=1).strip()
     base = base.rstrip().rstrip(";").rstrip()
+    # `static u16 sItemButtons[] = { ... }` vira `extern u16 sItemButtons[N];`: sem o N o array fica incompleto, o
+    # ARRAY_COUNT dele dá 0 no MSVC (só aviso) e o laço dos botões do Player_ProcessItemButtons nunca rodava.
+    vazio = re.search(r"\[\s*\]", base)
+    if vazio and igual >= 0:
+        n = elementos_inicializador(mask[igual + 1:])
+        if n:
+            base = base[:vazio.start()] + "[%d]" % n + base[vazio.end():]
     # No fork a declaracao pode ja ser extern (variavel definida em outra unidade dele).
     if re.match(r"\bextern\b", base):
         return base + ";"
@@ -254,6 +350,22 @@ def ler_git(repo, *args):
     if p.returncode:
         raise RuntimeError(p.stderr.strip() or "git falhou")
     return p.stdout
+
+
+def embutir_dados(repo, arquivo, texto, ler):
+    """Troca o #include de um arquivo de dados do host (não .h) pelo texto dele, lido por `ler`."""
+    pasta = os.path.dirname(arquivo.replace("\\", "/"))
+
+    def troca(m):
+        inc = m.group(1)
+        if inc.endswith(".h"):
+            return m.group(0)
+        for alvo in (os.path.normpath(os.path.join(pasta, inc)), os.path.join("soh", "src", inc)):
+            alvo = alvo.replace("\\", "/")
+            if alvo.startswith("soh/src/") and os.path.isfile(os.path.join(repo, *alvo.split("/"))):
+                return "/* embutido de %s */\n%s\n" % (alvo, ler(alvo).rstrip("\n"))
+        return m.group(0)
+    return re.sub(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"[ \t]*$', troca, texto, flags=re.M)
 
 
 def main():
@@ -277,10 +389,19 @@ def main():
                     help="nome que o host tambem tem, mas cuja versao do fork deve ser copiada; a DLL desvia a do host")
     ap.add_argument("--symbols", help="soh.symbols do host: funcao ausente dele nao tem endereco para resolver, "
                                       "entao e copiada do fork em vez de virar import")
+    ap.add_argument("--fork-file", help="le a versao do fork deste arquivo em vez de git show (fonte ja mesclada "
+                                        "com o host pelo overlay.py)")
+    ap.add_argument("--tabela", action="store_true",
+                    help="fonte do host fora do LTCG (hookable_sources.txt): gera a tabela de desvios das "
+                         "sobrepostas, qualifica static repetido pelo arquivo e troca funcao do host usada como "
+                         "valor pelo endereco dela no host")
+    ap.add_argument("--sem-desvio", action="append", default=[],
+                    help="sobreposta que fica fora da tabela de desvios (o desvio é instalado em outro lugar)")
     a = ap.parse_args()
     repo = os.path.abspath(a.repo)
     sobrepoe = set(a.sobrepoe)
     resolviveis = None
+    repeticoes = {}
     if a.symbols:
         resolviveis = set()
         with open(a.symbols, encoding="utf-8", errors="replace") as f:
@@ -288,7 +409,15 @@ def main():
                 partes = linha.rstrip("\n").split("\t")
                 if len(partes) == 4:
                     resolviveis.add(partes[3])
+                    repeticoes[partes[3]] = repeticoes.get(partes[3], 0) + 1
     inlinadas = set()
+    stem = os.path.splitext(os.path.basename(a.file))[0]
+
+    def qualificado(nome):
+        """Static repetido no soh.symbols só resolve com o arquivo: gen_imports.py lê nei_q_<arquivo>__<nome>."""
+        if a.tabela and repeticoes.get(nome, 0) > 1:
+            return "nei_q_%s__%s" % (stem, nome)
+        return nome
 
     def e_import(nome, d):
         """O host ter o nome nao basta para ele virar import.
@@ -301,6 +430,12 @@ def main():
         if resolviveis is not None and d.tipo == "funcao" and nome not in resolviveis:
             inlinadas.add(nome)
             return False
+        # Static de dado que o compilador não deixou no soh.symbols (D_808987A0, só lido): a cópia da DLL tem o
+        # mesmo inicializador. Só nos fontes fora do LTCG, onde todo static com armazenamento tem símbolo.
+        if (a.tabela and resolviveis is not None and d.tipo == "variavel" and nome not in resolviveis
+                and nome in hmap and re.match(r"\s*static\b", hmap[nome].mascara)):
+            inlinadas.add(nome)
+            return False
         return True
     if a.sem_host:
         host = ""
@@ -308,10 +443,28 @@ def main():
         caminho_host = os.path.join(repo, *a.file.replace("/", "\\").split("\\"))
         with open(caminho_host, encoding="utf-8", errors="replace") as f:
             host = f.read()
-    fork = ler_git(repo, "show", "%s:%s" % (a.fork, a.file))
+    if a.fork_file:
+        with open(a.fork_file, encoding="utf-8", errors="replace") as f:
+            fork = f.read()
+    else:
+        fork = ler_git(repo, "show", "%s:%s" % (a.fork, a.file))
+    if a.tabela:
+        # O arquivo de dados que o fonte inclui (z_camera_data.inc, *_colchk.c) é da mesma unidade no host: as
+        # variáveis dele têm endereço no soh.symbols e seguem a regra de import como as do próprio fonte. Copiado
+        # como #include, a DLL ganharia outra câmera: D_8015BD7C nulo, gDbgCamEnabled definido como ponteiro nulo.
+        def ler_host(caminho):
+            with open(os.path.join(repo, *caminho.split("/")), encoding="utf-8", errors="replace") as f:
+                return f.read()
+
+        def ler_fork(caminho):
+            try:
+                return ler_git(repo, "show", "%s:%s" % (a.fork, caminho))
+            except Exception:
+                return ler_host(caminho)
+        host = embutir_dados(repo, a.file, host, ler_host)
+        fork = embutir_dados(repo, a.file, fork, ler_fork)
     fd, hd = declaracoes_topo(fork), declaracoes_topo(host)
-    fmap = {d.nome: d for d in fd}
-    hmap = {d.nome: d for d in hd}
+    fmap, hmap = mapa(fd), mapa(hd)
     ausentes = []
     fila = list(a.seed)
     escolhidas, imports_func, imports_var, tipos = set(), set(), set(), set()
@@ -337,14 +490,22 @@ def main():
             escolhidas.add(nome)
         elif d.tipo in ("tipo", "define"):
             tipos.add(nome)
-        for ident in ids(d.texto):
+        # Variável importada só precisa dos tipos da declaração; o inicializador fica no host.
+        texto_deps = d.texto
+        if d.tipo == "variavel" and nome in imports_var and d.mascara.find("=") >= 0:
+            texto_deps = d.texto[:d.mascara.find("=")]
+        for ident in ids(texto_deps):
             if ident == nome:
                 continue
-            outro = fmap.get(ident)
+            # O nome só do host (sPlayerFocusOffsetFromHead, que o upstream renomeou e a mescla usa) é import.
+            outro = fmap.get(ident) or (hmap.get(ident) if hmap.get(ident) and hmap[ident].tipo in ("funcao", "variavel")
+                                        else None)
             if outro:
                 if ident in hmap and e_import(ident, outro):
                     if outro.tipo == "funcao": imports_func.add(ident)
-                    elif outro.tipo == "variavel": imports_var.add(ident)
+                    elif outro.tipo == "variavel":
+                        imports_var.add(ident)
+                        fila.append(ident)  # pelos tipos da declaração (ItemChangeInfo, PLAYER_ITEM_CHG_MAX)
                     elif outro.tipo in ("tipo", "define"):
                         tipos.add(ident)
                         fila.append(ident)
@@ -364,7 +525,14 @@ def main():
             tipos_d.append(d)
             vistos_trechos.add((d.inicio, d.fim))
     impf_d = [hmap[n] for n in imports_func if n in hmap and hmap[n].tipo == "funcao"]
-    impv_d = [fmap[n] for n in imports_var if n in fmap and fmap[n].tipo == "variavel"]
+    # A declaração do import é a do host: é o armazenamento que existe (o fork pode ter outra forma, ou duas
+    # num #if, como o sEyeTextures).
+    def decl_var(n):
+        for d in (hmap.get(n), fmap.get(n)):
+            if d is not None and d.tipo == "variavel":
+                return d
+        return None
+    impv_d = [decl_var(n) for n in imports_var if decl_var(n) is not None]
     divergencias = []
     for d in tipos_d:
         if d.nome in hmap and d.texto.strip() != hmap[d.nome].texto.strip():
@@ -377,8 +545,17 @@ def main():
     # A saida nao fica ao lado do fonte: include curto ("z_ator.h") vira caminho a partir de soh/src.
     pasta = os.path.dirname(a.file.replace("\\", "/"))
     if pasta.startswith("soh/src/"):
-        includes = [re.sub(r'#\s*include\s*"([^"/]+)"', lambda m: '#include "%s/%s"' % (pasta[len("soh/src/"):], m.group(1)),
-                           linha) for linha in includes]
+        def relocar(m):
+            # Só o header que existe mesmo ao lado do fonte (no host) vira caminho a partir de soh/src; global.h e
+            # vt.h vêm do include path. Relativo que sai para a árvore do fork (../../../../mods/...) vira caminho a
+            # partir de soh/, que a DLL tem no include path (nei-fork/fork/soh).
+            alvo = os.path.normpath(os.path.join(pasta, m.group(1))).replace("\\", "/")
+            if os.path.isfile(os.path.join(repo, *alvo.split("/"))) and alvo.startswith("soh/src/"):
+                return '#include "%s"' % alvo[len("soh/src/"):]
+            if alvo.startswith(("soh/mods/", "soh/expansions/")):
+                return '#include "%s"' % alvo[len("soh/"):]
+            return m.group(0)
+        includes = [re.sub(r'#\s*include\s*"([^"]+)"', relocar, linha) for linha in includes]
     includes += ['#include "%s"' % h for h in a.inclui]
     linhas = ["/* Gerado por extract_additions.py; fonte: %s; fork: %s. */" % (a.file, a.fork), ""]
     linhas += includes + ([""] if includes else [])
@@ -386,17 +563,65 @@ def main():
         linhas += [d.texto.rstrip() for d in tipos_d] + [""]
     if impf_d or impv_d:
         linhas.append("/* Imports do executavel host. */")
-        linhas += [cabecalho_funcao(d, sem_static=True) for d in impf_d]
+        for d in impf_d:
+            if qualificado(d.nome) != d.nome:
+                linhas.append("#define %s %s" % (d.nome, qualificado(d.nome)))
+            linhas.append(cabecalho_funcao(d, sem_static=True))
         for d in impv_d:
-            linhas.append("#define %s (*nei_host_%s)" % (d.nome, d.nome))
+            linhas.append("#define %s (*nei_host_%s)" % (d.nome, qualificado(d.nome)))
             linhas.append(declaracao_externa_variavel(d))
         linhas.append("")
     funcoes = [d for d in selecionadas if d.tipo == "funcao"]
+    enderecos = set()
+    if a.tabela:
+        # Função do host usada como valor (actionFunc, comparação, callback) precisa do endereço do host: o jogo
+        # compara `this->actionFunc == Player_Action_X` com o endereço dele, e a cópia da DLL ou o thunk do import
+        # dariam outro. A chamada direta continua indo para a cópia ou para o thunk.
+        do_host = {n for n, d in hmap.items() if d.tipo == "funcao"}
+        valor = re.compile(r"(&\s*)?\b([A-Za-z_]\w*)\b(?!\s*\()")
+        for d in funcoes:
+            abre = d.mascara.find("{")
+            if abre < 0:
+                continue
+            corpo_m, corpo = d.mascara[abre:], d.texto[abre:]
+            partes, pos = [], 0
+            for m in valor.finditer(corpo_m):
+                nome = m.group(2)
+                if nome not in do_host or nome == d.nome:
+                    continue
+                if corpo_m[:m.start()].rstrip().endswith(("->", ".")):
+                    continue
+                simbolo = "nei_fnaddr_" + qualificado(nome)
+                enderecos.add(simbolo)
+                # `&Func` é o endereço; em `a && Func` o & é do operador e fica.
+                inicio = m.start(2) if m.group(1) and corpo_m[m.start() - 1:m.start()] == "&" else m.start()
+                partes.append(corpo[pos:inicio])
+                partes.append(simbolo)
+                pos = m.end()
+            if partes:
+                partes.append(corpo[pos:])
+                d.texto = d.texto[:abre] + "".join(partes)
+    if enderecos:
+        linhas.append("/* Endereços no host das funções usadas como valor (gen_imports.py, nei_fnaddr_). */")
+        linhas += ["extern void* %s;" % s for s in sorted(enderecos)]
+        linhas.append("")
     if funcoes:
         linhas.append("/* Prototipos locais para permitir qualquer ordem de definicao. */")
         linhas += [cabecalho_funcao(d) for d in funcoes]
         linhas.append("")
-    linhas += [d.texto.rstrip() for d in selecionadas] + [""]
+    # Tabela do fork sobreposta (sItemActions...) fica visível às outras unidades da DLL, que a declaram extern.
+    linhas += [(remover_static(d.texto) if a.tabela and d.tipo == "variavel" and d.nome in sobrepoe else d.texto).rstrip()
+               for d in selecionadas] + [""]
+    desvios = [d for d in funcoes if d.nome in sobrepoe and "{" in d.mascara and d.nome not in a.sem_desvio]
+    if a.tabela:
+        linhas.append("/* Desvios: a função do host passa a entrar na cópia do fork (fork/overlay_glue.cpp). */")
+        linhas.append('#include "overlay_table.h"')
+        linhas.append("const NeiOverlayEntry nei_overlay_%s[] = {" % stem)
+        linhas += ['    { "%s", (void*)&%s },' % ("%s.c!%s" % (stem, d.nome) if qualificado(d.nome) != d.nome
+                                                  else d.nome, d.nome) for d in desvios] or ["    { 0, 0 },"]
+        linhas.append("};")
+        linhas.append("const unsigned nei_overlay_%s_count = %d;" % (stem, len(desvios)))
+        linhas.append("")
     saida = "\n".join(linhas)
     if a.de_cpp:
         # extern vale em definicao de funcao C e mantem declaracoes de variavel como declaracoes.

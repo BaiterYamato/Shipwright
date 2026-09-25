@@ -76,3 +76,7 @@ ship.hotkeys.register("test_magic", { default = "", label = "NEI: medidor de mag
     local text, failure = ship.native.call("magic", "")
     ship.log.info("nei-core: " .. (text or ("magic falhou: " .. tostring(failure))))
 end)
+-- Instrumento das ondas: o stats na hora, sem esperar o próximo segundo (shiplua_fire_hotkey linkspan.nei stats_now).
+ship.hotkeys.register("stats_now", { default = "", label = "NEI: stats agora (teste)" }, function()
+    ship.log.info("nei-core: agora: " .. (ship.native.call("stats", "") or "?"))
+end)

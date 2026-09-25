@@ -154,6 +154,60 @@ void NeiActor_SetDestroy(Actor* actor, ActorFunc fn) {
     NeiActor_Set(actor, 2, fn);
 }
 
+/* Campos que o fork acrescentou a structs de atores do host (nei_ext.h): um bloco lateral por ator, com o id
+ * para não herdar o bloco de um ator liberado no mesmo endereço. */
+#define NEI_EXT_SLOTS 128
+#define NEI_EXT_SIZE 32
+
+typedef struct {
+    const Actor* actor;
+    s16 id;
+    u8 used;
+    u64 data[NEI_EXT_SIZE / sizeof(u64)];
+} NeiExtSlot;
+
+static NeiExtSlot sExt[NEI_EXT_SLOTS];
+static u64 sExtScratch[NEI_EXT_SIZE / sizeof(u64)];
+static u32 sExtDropped;
+
+void* NeiExt_Get(const void* ptr, unsigned size) {
+    const Actor* actor = (const Actor*)ptr;
+    NeiExtSlot* free = NULL;
+    if (actor == NULL || size > NEI_EXT_SIZE) {
+        memset(sExtScratch, 0, sizeof(sExtScratch));
+        return sExtScratch;
+    }
+    for (u32 i = 0; i < NEI_EXT_SLOTS; i++) {
+        if (sExt[i].used && sExt[i].actor == actor) {
+            if (sExt[i].id == actor->id) {
+                return sExt[i].data;
+            }
+            sExt[i].used = 0; /* outro ator no mesmo endereço */
+        }
+        if (!sExt[i].used && free == NULL) {
+            free = &sExt[i];
+        }
+    }
+    if (free == NULL) {
+        sExtDropped++;
+        memset(sExtScratch, 0, sizeof(sExtScratch));
+        return sExtScratch;
+    }
+    free->actor = actor;
+    free->id = actor->id;
+    free->used = 1;
+    memset(free->data, 0, sizeof(free->data));
+    return free->data;
+}
+
+static void NeiExt_Prune(int all) {
+    for (u32 i = 0; i < NEI_EXT_SLOTS; i++) {
+        if (sExt[i].used && (all || !NeiActor_InLists(sExt[i].actor) || sExt[i].actor->id != sExt[i].id)) {
+            sExt[i].used = 0;
+        }
+    }
+}
+
 static void NeiActor_Clear(void) {
     for (u32 i = 0; i < NEI_ACTOR_TABLE; i++) {
         if (sTable[i].used) {
@@ -162,6 +216,7 @@ static void NeiActor_Clear(void) {
         }
     }
     sCount = 0;
+    NeiExt_Prune(1);
 }
 
 /* Chamado a cada frame de gameplay, antes do update do fork. */
@@ -184,6 +239,7 @@ void NeiActor_Frame(void) {
             sReleased++;
         }
     }
+    NeiExt_Prune(0);
 }
 
 /* Descarregamento da DLL: nenhum ator do jogo pode continuar apontando para ela. Com `dryRun`, só conta o que

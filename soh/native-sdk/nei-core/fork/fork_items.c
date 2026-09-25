@@ -36,6 +36,14 @@ u8 NeiFork_ToLogicalItem(u8 runtimeId) {
     return runtimeId;
 }
 
+// Id lógico de um item do fork registrado nesta sessão. O z_player da DLL lê o botão já traduzido (player_unit.c) e
+// usa isto para tirar o item do fork dos hooks do linkspan.oot.items, que tratam a faixa 0xA0-0xEF como item de mod:
+// o host bloqueia o uso vanilla (VB_CHANGE_HELD_ITEM_AND_USE_ITEM) e zera a ação (VB_ITEM_ACTION_BE_NONE), e o fork
+// precisa do Player_UseItem dele para montar a ação do item (PLAYER_IA_ROD_FIRE golpeia com B).
+u8 NeiFork_IsForkItem(s32 item) {
+    return item >= 0 && item < 256 && sRuntimeByLogical[item] != 0;
+}
+
 // O contrário, para o kaleido do fork gravar no botão C o id que o host entende. Item vanilla passa direto; item
 // do fork sem registro (não definido nesta sessão) vira ITEM_NONE em vez de um id que o host não conhece.
 u8 NeiFork_ToRuntimeItem(u8 logicalId) {

@@ -64,5 +64,35 @@ s32 Player_PutAwayHeldItem(PlayState* play, Player* this);
 #include "mods/extended_equipment.h"
 #include "mods/extended_equipment.c"
 
-// Funções que o fork acrescentou ao z_player.c do host (fork/extract.txt), extraídas pelo sync.py.
+// EnPartner (spawn_boomerang_ivan do fork) e SW97_MEDALLIONS_ENABLED() do Player_UseItem do fork.
+#include "overlays/actors/ovl_En_Partner/z_en_partner.h"
+#include "expansions/sw97/sw97_config.h"
+
+// Formas do MM (custom_forms.cpp, C++ fora da DLL; stub em nei_stubs.c): o Player_DrawImpl do fork passa o
+// callback de membro das formas para o desenho do esqueleto.
+s32 CustomForms_OverrideLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot, void* arg);
+
+// O botão guarda o id runtime do linkspan.oot.items (o host desenha o ícone por ele); o z_player do fork usa o item
+// do botão como id lógico dele: Player_UseItem(ITEM_ROD_FIRE) monta o PLAYER_IA_ROD_FIRE que golpeia com B. Sem a
+// troca, o item do NEI chegava cru ao Player_UseItem e o Link só ganhava o visual do item (NEI-HOST-001). Só aqui: o
+// custom_items.c e o extended_player.c de cima já traduzem com o patch 0002, e traduzir duas vezes erra, porque a
+// faixa runtime (0xA0-0xEF) cruza os ids lógicos do fork.
+#undef B_BTN_ITEM
+#undef C_BTN_ITEM
+#undef DPAD_ITEM
+#define B_BTN_ITEM                                                                                  \
+    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[0] == ITEM_NONE)                    ? ITEM_NONE      \
+                          : (gSaveContext.equips.buttonItems[0] == ITEM_SWORD_KNIFE) ? ITEM_SWORD_BGS \
+                                                                                     : gSaveContext.equips.buttonItems[0])
+#define C_BTN_ITEM(button)                                                                                  \
+    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[(button) + 1] != BTN_DISABLED)                        \
+                              ? gSaveContext.equips.buttonItems[(button) + 1]                              \
+                              : ITEM_NONE)
+#define DPAD_ITEM(button)                                                                                   \
+    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[(button) + 5] != BTN_DISABLED)                        \
+                              ? gSaveContext.equips.buttonItems[(button) + 4]                              \
+                              : ITEM_NONE)
+
+// Funções que o fork acrescentou ao z_player.c do host (fork/extract.txt) e as que ele mudou (overlay.py),
+// extraídas pelo sync.py.
 #include "extracted/unit/z_player.c"

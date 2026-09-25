@@ -1,0 +1,24 @@
+# Funções que o fork NEI mudou no host e que a DLL não sobrepõe (overlay.py). Uma por linha: `nome  # motivo`.
+# Com ~ na frente, a função é copiada para a DLL, mas o desvio é instalado em outro lugar.
+
+SDL_main              # ponto de entrada: já está rodando quando a DLL carrega
+Player_Update         # fork_glue.cpp desvia e chama CustomItems_Update depois, no ponto em que o fork chama
+Player_Draw           # fork_glue.cpp desvia e chama CustomItems_OverrideDraw depois, idem
+
+~KaleidoScope_DrawItemSelect    # kaleido_glue.cpp (NEI-003)
+~KaleidoScope_UpdateItemEquip   # kaleido_glue.cpp (NEI-003)
+~KaleidoScope_SetupItemEquip    # kaleido_glue.cpp (NEI-003)
+AudioLoad_SyncInitSeqPlayerInternal  # lê SequenceData.resolvedFont, campo das músicas em streaming do fork que o host não tem
+AudioLoad_Init        # roda uma vez na inicialização, antes de a DLL carregar: o desvio não teria efeito
+
+# Modo combo OoT x MM (FleetShipCombo, rede): fora do NEI de itens.
+arquivo z_file_choose.c   # tela de arquivos: linha "Load Combo Seed" e quest OOTXMM do FleetShipCombo
+Sram_InitSave             # cria o save COMBO pareado com o slot do MM (FleetComboFS_OnCreateSave)
+FrameAdvance_Update       # congela o OoT inativo do combo (FleetShipCombo_IsGameSuspended)
+FrameAdvance_IsEnabled    # idem, nota do combo
+
+# Músicas do MM na ocarina: as tabelas do fork usam o OCARINA_SONG_MAX dele, maior que o do host. Vão com as
+# formas do MM (NEI-015).
+arquivo code_800EC960.c   # AudioOcarina_* e as tabelas de notas/botões das músicas novas
+Message_StartOcarina      # lê sOcarinaSongBitFlags estendido para as músicas do MM
+sOcarinaSongBitFlags      # idem

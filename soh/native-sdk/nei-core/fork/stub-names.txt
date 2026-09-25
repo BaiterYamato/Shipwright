@@ -9,7 +9,6 @@ FourSword_TotemGrabAllowed
 GaroForm_HasPassiveLens
 GaroForm_WalksOnWater
 MmForm_RitoAirRocsAllowed
-MmMaskWear_GetCurrent
 Nei_TrirodNotify
 Picto_SyncClear
 Picto_SyncReadColor
@@ -52,8 +51,8 @@ Bottle_WheelStep
 
 # soh/mods/transformation_masks/custom_forms.cpp (máscara Rito divide a célula do Farore's Wind)
 RitoItem_CanCycle
-RitoItem_OtherItem
 RitoItem_SyncCell
+CustomForms_OverrideLimbDraw
 
 # soh/mods/transformation_masks/kafei_form.cpp
 KafeiForm_ReplacesBombchu
@@ -83,13 +82,11 @@ MmSfx_PlayAtPos
 MmSfx_Stop
 
 # soh/mods/transformation_masks/mm_player_form.cpp
-MmForm_GetCurrentForm
 MmForm_HandleMaskUse
 
 # soh/mods/transformation_masks/transformation_masks.c
 MmMasks_GetIconPath
 MmMasks_GetNamePath
-MmPlayer_GetForm
 TransformMasks_DragonScaleEnterSwim
 TransformMasks_IsEnabled
 TransformMasks_IsFDSkinMode
@@ -103,10 +100,8 @@ TransformMasks_IsTransformedAny
 TransformMasks_IsZoraSwimEnabled
 TransformMasks_LoadMmDL
 TransformMasks_TryPlayMmVoice
-TransformMasks_WearGetCurrent
 
 # soh/mods/transformation_masks/transformation_masks.h
-ExtPlayer_GetMeleeAnim
 ExtPlayer_SetMeleeAnim
 
 # soh/soh/Enhancements/randomizer/draw.cpp
@@ -172,3 +167,172 @@ HarpoonPropHunt_IsActive
 
 # soh/mods/items/objects/object_net.c (estado: a DLL guarda a própria cópia zerada)
 gNetCatchPts
+
+# Chamadas pelas funções do host que a DLL sobrepõe (NEI-HOST-001, overlay.py). Formas do MM, SM64, SW97,
+# pak/o2r loader, rede e combo ficam fora da DLL (NEI-015); o stub devolve o estado "desligado".
+# soh/expansions/sm64/Sm64CapsHud.cpp
+# soh/expansions/sm64/sm64_mario.c
+# soh/expansions/sm64/sm64_mario_surfaces.c
+# soh/expansions/sw97/player/sw97_player_behavior.inc.c
+Sw97_IsBlinded
+Sw97_IsMedallionItem
+Sw97_ShadowStealthActive
+Sw97_TrySpawnMagicSpell
+# soh/mods/boss_remains/boss_remains.cpp
+BossRemains_DrawOdolwaShield
+BossRemains_DrawOdolwaSword
+BossRemains_DrawWornMask
+BossRemains_GetOdolwaIdleAnim
+BossRemains_IsGohtCharging
+BossRemains_IsGohtWorn
+BossRemains_IsOdolwaFlying
+BossRemains_IsOdolwaWorn
+BossRemains_OdolwaSwordMoth
+BossRemains_TryEquipAtCursor
+# soh/mods/items/custom_bottles.cpp
+Bottle_CatchIntoEmpty
+Bottle_GiveBottle
+Bottle_HasFreeSlot
+Bottle_SetBottomlessOwned
+Bottle_SetNetOwned
+# soh/mods/items/mm_bottles_behavior.cpp
+# soh/mods/o2r_loader/o2r_loader.cpp
+O2rLoader_GetForcedName
+O2rLoader_HasActiveModel
+# soh/mods/pak_loader/pak_loader.cpp
+PakLoader_GetEquipDL
+PakLoader_GetEyeTexture
+PakLoader_GetMouthTexture
+PakLoader_GetSelectedIndex
+PakLoader_HasActiveModel
+PakLoader_RestoreSkeleton
+PakLoader_SwapSkeleton
+# soh/mods/quartz_of_motion/quartz_kaleido.cpp
+Quartz_TryOpenAtCursor
+Quartz_UpdateModal
+# soh/mods/season_scene.cpp
+SeasonBean_Path
+# soh/mods/sound_translator/mm_bgm_loader.cpp
+MmBgm_PlayFanfare
+MmBgm_RegisterSequences
+# soh/mods/spiritual_stones/spiritual_stones.cpp
+SpiritualStone_GoronClimbActive
+SpiritualStone_IsPassiveActive
+SpiritualStone_KokiriWalkActive
+SpiritualStone_TryEquipAtCursor
+SpiritualStone_TryToggleAtCursor
+SpiritualStone_ZoraSwimActive
+# soh/mods/transformation_masks/assets/mm_asset_loader.cpp
+MmAssets_LoadHookshotChainDL
+MmAssets_LoadHookshotReticleDL
+MmAssets_LoadHookshotTipDL
+MmDirectAudio_MixInto
+# soh/mods/transformation_masks/custom_forms.cpp
+CustomForms_ResolveVanillaResource
+CustomForms_ResolveVanillaTexture
+CustomForms_SetChainedOverride
+CustomForms_WantsPathSwap
+# soh/mods/transformation_masks/form_song_jingle.inc.c
+FormJingle_Start
+# soh/mods/transformation_masks/garo_post_limb.cpp
+GaroForm_DrawNullBody
+# soh/mods/transformation_masks/gerudo_form.cpp
+GerudoForm_IsActive
+GerudoForm_ResolveLimbDL
+# soh/mods/transformation_masks/gerudo_mhr_combat.inc.c
+GerudoMhr_AddChargeRage
+GerudoMhr_ChargeSummonFrame
+GerudoMhr_ForcesFighter
+GerudoMhr_GetGuardAnim
+GerudoMhr_GetItemChangeAnim
+GerudoMhr_HoldsChargeWindow
+GerudoMhr_InterceptUseItem
+GerudoMhr_MeleeWeaponIndex
+GerudoMhr_RageActive
+GerudoMhr_RageFill
+GerudoMhr_RageReady
+GerudoMhr_RollCommits
+GerudoMhr_ScanBladeHits
+GerudoMhr_TickJumpSlash
+GerudoMhr_UsesBladeGuard
+GerudoMhr_UsesConeBurst
+GerudoMhr_WantsLongRoll
+# soh/mods/transformation_masks/gerudo_voice.cpp
+GerudoVoice_MixInto
+# soh/mods/transformation_masks/kafei_form.cpp
+KafeiForm_ReplacesJumpslash
+KafeiForm_ShieldIsPassive
+KafeiForm_StartMovingSlash
+# soh/mods/transformation_masks/kafei_landmine.cpp
+KafeiLandmine_Draw
+# soh/mods/transformation_masks/keaton_form.cpp
+KeatonForm_ScanBlock
+# soh/mods/transformation_masks/mm_mask_wear.cpp
+MmMaskWear_ActivateChateauRomani
+MmMaskWear_DrawOverlay
+MmMaskWear_GreatFairyWarpUpdate
+MmMaskWear_IsGiantMaskActive
+MmMaskWear_IsGreatFairyWarpActive
+MmMaskWear_IsStoneMaskActive
+MmMaskWear_MakesRedeadsFriendly
+MmMaskWear_ShouldForceNightGS
+# soh/mods/transformation_masks/mm_player_form.cpp
+MmForm_FireDekuBubble
+MmForm_GetOcarinaPlaybackInstrument
+MmForm_GetSongFanfareInstrument
+MmForm_GetZoraBoomerangAnim
+MmForm_KafeiWhistleHandDL
+MmForm_RitoShieldIsDrawn
+TransformMasks_HandleFormItemUse
+# soh/mods/transformation_masks/pikachu_form.cpp
+PikaMode_HudStyle
+PikaMode_IsActive
+PikaSfx_MixInto
+# soh/mods/transformation_masks/pikachu_hud.cpp
+GerudoHud_DrawImGui
+PikachuHud_DrawImGui
+# soh/mods/transformation_masks/rito_bow.inc.c
+MmForm_RitoBowClaimArrow
+# soh/mods/transformation_masks/rito_flight.inc.c
+MmForm_RitoTryAirThrow
+MmForm_RitoTryHop
+# soh/mods/transformation_masks/transformation_masks.c
+BossSuperDamage_DrawElectricSparks
+BossSuperDamage_DrawGlowFromSpheres
+BossSuperDamage_FormAttackRange
+BossSuperDamage_FormAttackReaches
+BossSuperDamage_FormDamage
+BossSuperDamage_IsActive
+BossSuperDamage_IsFormActive
+BossSuperDamage_StartElectricSparks
+TransformMasks_GetFDSwordBeamDL
+TransformMasks_GetFormHeight
+TransformMasks_GetShieldMode
+TransformMasks_GetWaterMode
+TransformMasks_HasFireResistance
+TransformMasks_HasWaterBreathing
+TransformMasks_Init
+TransformMasks_OnDeath
+TransformMasks_OnWaterSwimAttempt
+TransformMasks_TryFormFromItem
+TransformMasks_TryPlayMmStepSfx
+TransformMasks_WearClear
+TransformMasks_WearDraw
+TransformMasks_WearToggle
+# soh/mods/transformation_masks/wolf_link_form.cpp
+WolfLinkForm_IsSelected
+# soh/mods/voice_pack/voice_pack.cpp
+VoicePack_MixInto
+VoicePack_PlayIfMatch
+# soh/soh/Enhancements/CaneWheelHud.cpp
+# soh/soh/Enhancements/custom-message/PauseItemDescriptions.cpp
+PauseItemDesc_GetTextId
+# soh/soh/Enhancements/randomizer/ShuffleFairies.cpp
+# soh/soh/Enhancements/randomizer/draw.cpp
+Randomizer_DrawChateauRomani
+# soh/soh/FleetShipCombo/FleetSync.cpp
+FleetSync_OnHoleFall
+# soh/soh/Network/Harpoon/Harpoon.cpp
+Harpoon_NotifyVfxSpawn
+# soh/soh/Network/Harpoon/HarpoonSkinSync.cpp
+HarpoonSkinSync_ResolvePlayerLimbDL

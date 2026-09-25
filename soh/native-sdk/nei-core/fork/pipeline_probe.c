@@ -20,6 +20,41 @@
 
 #include <stdio.h>
 
+static int32_t sProbeButton = -1, sProbeButtonItem = -1, sProbeButtons = 0;
+static int32_t sProbeUseItem = -1, sProbeUseAction = -1, sProbeUses = 0;
+static int32_t sProbeAttackCalls = 0, sProbeAttackUse = 0, sProbeAttackHits = 0, sProbeAttackUpperSword = 0;
+
+// Chamados do z_player da DLL (extracted-fixes.txt): só o botão com item, não o ITEM_NONE de todo frame.
+void NeiProbe_Button(s32 button, s32 item) {
+    if (item < ITEM_NONE_FE) {
+        sProbeButton = button;
+        sProbeButtonItem = item;
+        sProbeButtons++;
+    }
+}
+
+void NeiProbe_Use(s32 item, s32 itemAction) {
+    sProbeUseItem = item;
+    sProbeUseAction = itemAction;
+    sProbeUses++;
+}
+
+// Chamado do Player_ActionHandler_7 da DLL: quantas vezes o gatilho do golpe rodou, com o sUseHeldItem ligado e
+// com o golpe aceito, e se a ação de cima era a do fork nesse momento.
+s32 NeiProbe_Attack(s32 result, s32 useHeldItem, s32 upperIsSword) {
+    sProbeAttackCalls++;
+    if (useHeldItem) {
+        sProbeAttackUse++;
+    }
+    if (result) {
+        sProbeAttackHits++;
+    }
+    if (upperIsSword) {
+        sProbeAttackUpperSword++;
+    }
+    return result;
+}
+
 uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
     CustomItemVisualSync sync;
     uint32_t ativos = 0;
@@ -29,6 +64,8 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
     int32_t at = -1;
     int32_t camera = -1;
     int32_t bloqueado = -1;
+    int32_t item = -1;
+    int32_t arma = -1;
     Player* player = NULL;
     PlayState* play = gPlayState;
 
@@ -42,6 +79,8 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
         acao = player->itemAction;
         segurando = player->heldItemAction;
         grupo = player->modelGroup;
+        item = player->heldItemId;
+        arma = Player_GetMeleeWeaponHeld(player);
         at = 0;
         for (int32_t i = 0; i < (int32_t)ARRAY_COUNT(player->meleeWeaponQuads); ++i) {
             if (player->meleeWeaponQuads[i].base.atFlags & AT_ON) {
@@ -53,8 +92,12 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
             camera = play->cameraPtrs[play->activeCamera]->setting;
         }
     }
-    int escrito = snprintf(out, capacity, "pipeline: visual=0x%X acao=%d segurando=%d grupo=%d at=%d camera=%d bloq=%d",
-                           ativos, acao, segurando, grupo, at, camera, bloqueado);
+    int escrito = snprintf(out, capacity, "pipeline: visual=0x%X acao=%d segurando=%d item=%d arma=%d grupo=%d at=%d camera=%d bloq=%d "
+                           "botao=%d:0x%X(%d) uso=0x%X->%d(%d) cesq=0x%X/%d ataque=%d/%d/%d/%d mws=%d",
+                           ativos, acao, segurando, item, arma, grupo, at, camera, bloqueado, sProbeButton,
+                           sProbeButtonItem, sProbeButtons, sProbeUseItem, sProbeUseAction, sProbeUses,
+                           gSaveContext.equips.buttonItems[1], gSaveContext.buttonStatus[1], sProbeAttackCalls, sProbeAttackUse,
+                           sProbeAttackHits, sProbeAttackUpperSword, player != NULL ? player->meleeWeaponState : -1);
     if (escrito < 0 || (uint32_t)escrito >= capacity) {
         return 0;
     }

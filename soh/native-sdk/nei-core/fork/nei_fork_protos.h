@@ -1,0 +1,96 @@
+// Protótipos do fork para as funções que o código copiado para a DLL chama sem declaração. No fork a declaração
+// vem de um header que a DLL não inclui ou de um extern solto entre funções, que a extração não leva. Sem ela o C
+// assume retorno int: ponteiro chega truncado em 32 bits (PikaMode_ButtonIcon derrubava o desenho dos botões), f32
+// é lido de EAX em vez de XMM0 e u8 vem com lixo nos bits altos. O CMakeLists trata o C4013 como erro no nei_fork,
+// então um nome novo sem protótipo para o build em vez de chegar ao jogo. Incluído por /FI depois do
+// nei_host_overrides.h. Os tipos de ator ficam como struct, porque o global.h não traz os headers de overlay.
+#pragma once
+
+s32 BgCheck_PosErrorCheck(Vec3f* pos, char* file, s32 line);
+void BossRemains_DrawOdolwaShield(PlayState* play, Player* player);
+void BossRemains_DrawOdolwaSword(PlayState* play, Player* player);
+void BossRemains_DrawWornMask(PlayState* play, Player* player);
+LinkAnimationHeader* BossRemains_GetOdolwaIdleAnim(void);
+s32 BossRemains_IsGohtCharging(void);
+s32 BossRemains_IsGohtWorn(void);
+s32 BossRemains_IsOdolwaFlying(void);
+s32 BossRemains_IsOdolwaWorn(void);
+void BossRemains_OdolwaSwordMoth(PlayState* play, Player* player);
+f32 BossRemains_RunSpeedMul(void);
+void BoxMenu_Draw(PlayState* play);
+u8 BoxMenu_IsOpen(void);
+void BoxMenu_Update(PlayState* play);
+void Breastplate_OnHealthChangeBefore(PlayState* play, int16_t* amount);
+void CaneWheelHud_DrawImGui(void);
+void Champion_NoteIncomingAttacks(PlayState* play);
+void CustomForms_SetChainedOverride(void* fn);
+u8 CustomForms_WantsPathSwap(void);
+void EnButte_NetForceTransform(Actor* actor);
+void ExtInv_KeepMmMaskOrSell(PlayState* play, uint16_t maskItem);
+u8 GerudoForm_IsActive(void);
+void GerudoHud_DrawImGui(void);
+void GerudoVoice_MixInto(s16* outBuf, u32 numSamples);
+s32 HGrace_WantsNoClip(void);
+void* HarpoonSkinSync_ResolvePlayerLimbDL(const char* otrPath);
+void HourglassSfx_MixInto(s16* outBuf, u32 numSamples);
+void ItemEquip_CaptureHandMatrix(void);
+u8 ItemEquip_HoldsClosedFist(void);
+u8 ItemEquip_HoldsEmptyHand(void);
+u8 KafeiForm_ReplacesJumpslash(void);
+f32 KafeiForm_RunAnimRateMul(void);
+f32 KafeiForm_RunSpeedMul(void);
+u8 KafeiForm_StartMovingSlash(Player* player);
+void KafeiLandmine_Draw(PlayState* play, Actor* actor, f32 colorIntensity);
+u8 KafeiLandmine_Settle(struct EnBomChu* chu, PlayState* play);
+void KiteSurf_AdjustLimb(s32 limbIndex, Vec3s* rot);
+u8 MasterCycle_IsRiding(void);
+void MmBgm_RegisterSequences(void);
+void MmDirectAudio_MixInto(s16* outBuf, u32 numSamples);
+void* MmForm_KafeiWhistleHandDL(const char* otrPath);
+s32 MmMaskWear_GetCurrent(void);
+s32 MmMaskWear_MakesRedeadsFriendly(void);
+const char* O2rLoader_GetForcedName(void);
+u8 O2rLoader_HasActiveModel(void);
+void Picto_SetOnLensActive(u8 on);
+void* PikaMode_ButtonIcon(s32 button, void* orig);
+s32 PikaMode_HudStyle(void);
+u8 PikaMode_IsActive(void);
+void PikaSfx_MixInto(s16* outBuf, u32 numSamples);
+void PikachuHud_DrawImGui(void);
+void Player_UseItem(PlayState* play, Player* this, s32 item);
+void PowerKeg_SetOnBombActive(u8 on);
+Path* SeasonBean_Path(PlayState* play);
+s32 ShuffleFairies_SpawnStoneFairyOnTalk(struct EnGs* gossipStone);
+void Sm64Audio_MixInto(int16_t* outBuf, uint32_t numSamples);
+void Sm64CapsHud_DrawImGui(void);
+u8 Sm64Kaleido_DrawForm(PlayState* play);
+void Sm64Mario_InitAttackCollider(PlayState* play, Player* player);
+u8 Sm64Mario_IsReady(void);
+u8 Sm64Mario_IsVanishActive(void);
+void Sm64Mario_OnPlayerInit(PlayState* play, Player* player);
+void Sm64Mario_QueueOotHeal(s16 healthChangeQuarters);
+void Sm64Surfaces_RefreshActorColliders(PlayState* play);
+s32 SpiritualStone_GoronClimbActive(void);
+s32 SpiritualStone_KokiriWalkActive(void);
+s32 SpiritualStone_ZoraSwimActive(void);
+void StasisSfx_MixInto(s16* outBuf, u32 numSamples);
+s32 Sw97_IsBlinded(Actor* actor);
+s32 Sw97_IsMedallionItem(s32 item);
+s32 Sw97_ShadowStealthActive(void);
+Actor* Sw97_TrySpawnMagicSpell(PlayState* play, Player* player, s32 spell);
+void SwitchHook_CaptureSwapColliders(PlayState* play, s32 slot, Actor* actor);
+void SwitchHook_ClearSwapColliders(void);
+s32 SwitchHook_PlayerNoClip(void);
+void SwitchHook_ReanchorSwapColliders(PlayState* play);
+s32 TimeCtl_GetStutterFrames(void);
+s32 TimeCtl_IsActorExempt(Actor* actor);
+void TimeCtl_NoteAcCollider(Collider* collider);
+void TradeAdult_FoldCurrent(u8 item);
+u8 TradeAdult_ItemId(s32 index);
+u8 TradeAdult_NextItem(u8 cur);
+s32 TradeAdult_OwnedAt(s32 ordinal);
+s32 TradeAdult_OwnedCount(void);
+u8 TradeAdult_PrevItem(u8 cur);
+u8 TransformMasks_IsTransformed(void);
+void Trirod_NotifyEnemyDown(PlayState* play, Actor* actor);
+void VoicePack_MixInto(s16* outBuf, u32 numSamples);

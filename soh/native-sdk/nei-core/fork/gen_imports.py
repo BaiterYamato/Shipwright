@@ -124,6 +124,19 @@ def read_symbols(path):
     return sha_parts[1], by_name
 
 
+QUALIFIED = "nei_q_"
+FNADDR = "nei_fnaddr_"
+
+
+def qualified(name):
+    """nei_q_<arquivo sem .c>__<nome> -> ("<arquivo>.c", "<nome>"): static do host com nome repetido em
+    soh.symbols (sCylinderInit, func_ de dois atores), que só resolve com o arquivo (Resolve "arquivo!nome")."""
+    if not name.startswith(QUALIFIED) or "__" not in name[len(QUALIFIED):]:
+        return None
+    stem, short = name[len(QUALIFIED):].split("__", 1)
+    return stem + ".c", short
+
+
 def ignored_name(name):
     return (name.startswith("__imp_") or "@" in name or "?" in name or "$" in name
             or name.startswith(("__", "_RTC", "_guard", "_CRT", "__security")))
@@ -136,7 +149,7 @@ def c_string(value):
 
 def write_asm(path, functions):
     lines = ["; Gerado por gen_imports.py. Não editar.", "EXTERN nei_host_functions:QWORD", "_TEXT SEGMENT"]
-    for index, name in enumerate(functions):
+    for index, (name, _) in enumerate(functions):
         lines += [f"PUBLIC {name}", f"{name} PROC", f"    jmp QWORD PTR [nei_host_functions + {8 * index}]",
                   f"{name} ENDP"]
     lines += ["_TEXT ENDS", "END", ""]
@@ -148,22 +161,24 @@ def array_initializer(values):
     return ", ".join(values) if values else "NULL"
 
 
-def write_c(path, sha256, functions, data_names, data_prefix):
+def write_c(path, sha256, functions, data, data_prefix):
+    """functions e data: pares (identificador C, nome pedido ao Resolve)."""
     function_size = max(1, len(functions))
-    data_size = max(1, len(data_names))
+    data_size = max(1, len(data))
     lines = [
         f"// Gerado por gen_imports.py a partir de soh.symbols {sha256}. Não editar.",
         "#include <stddef.h>", "#include <stdint.h>",
         "typedef int (*NeiHostResolveFn)(void* context, const char* name, uintptr_t* address); /* 0 = ok */",
         f"void* nei_host_functions[{function_size}];",
-        f"static const char* const kFunctionNames[{function_size}] = {{{array_initializer([c_string(name) for name in functions])}}};",
+        f"static const char* const kFunctionNames[{function_size}] = {{{array_initializer([c_string(lookup) for _, lookup in functions])}}};",
         f"static const size_t kFunctionCount = {len(functions)};",
     ]
-    lines += [f"void* {data_prefix}{name};" for name in data_names]
-    slots = [f"&{data_prefix}{name}" for name in data_names]
+    data_names = [name for name, _ in data]
+    lines += [f"void* {name};" for name in data_names]
+    slots = [f"&{name}" for name in data_names]
     lines += [
         f"static void** const kDataSlots[{data_size}] = {{{array_initializer(slots)}}};",
-        f"static const char* const kDataNames[{data_size}] = {{{array_initializer([c_string(name) for name in data_names])}}};",
+        f"static const char* const kDataNames[{data_size}] = {{{array_initializer([c_string(lookup) for _, lookup in data])}}};",
         f"static const size_t kDataCount = {len(data_names)};",
         f"const char nei_host_symbols_sha256[] = {c_string(sha256)};", "",
         "/* Resolve tudo; devolve 0 ou o índice+1 do primeiro nome que falhou, e *failed aponta o nome. */",
@@ -207,28 +222,50 @@ def main():
         parser.error(str(exc))
 
     functions, data_names, ignored, errors = [], [], [], []
+    # Dado é "[data]" (LTCG) ou "[data]<arquivo>" (fonte fora do LTCG, soh/hookable_sources.txt).
+    is_data = lambda entry: entry[1].startswith("[data]")
     for name in sorted(requested - defined):
         entries = symbols.get(name)
         if name.startswith(args.data_prefix):
             short_name = name[len(args.data_prefix):]
-            entries = symbols.get(short_name)
-            if (len(entries or []) == 1 and entries[0][0] != "folded" and entries[0][1] == "[data]"):
-                data_names.append(short_name)
+            lookup = short_name
+            q = qualified(short_name)
+            if q:
+                lookup = "[data]%s!%s" % q
+                entries = [e for e in symbols.get(q[1], []) if e[1] == "[data]" + q[0]]
+            else:
+                entries = symbols.get(short_name)
+            if (len(entries or []) == 1 and entries[0][0] != "folded" and is_data(entries[0])):
+                data_names.append((name, lookup))
             else:
                 errors.append((name, "dado ausente, repetido, folded ou não marcado [data]"))
             continue
         if ignored_name(name):
             ignored.append(name)
             continue
-        function_entries = [entry for entry in (entries or []) if entry[1] != "[data]"]
+        # nei_fnaddr_X: endereço da função X no host, para a cópia da DLL que usa X como valor
+        # (extract_additions.py --tabela). Resolvido como a função, guardado como ponteiro.
+        address_of = name.startswith(FNADDR)
+        target = name[len(FNADDR):] if address_of else name
+        lookup = target
+        q = qualified(target)
+        if not q:
+            entries = symbols.get(target)
+        if q:
+            lookup = "%s!%s" % q
+            entries = [e for e in symbols.get(q[1], []) if e[1] == q[0]]
+        function_entries = [entry for entry in (entries or []) if not is_data(entry)]
         if not function_entries:
-            ignored.append(name)
+            if q or address_of:
+                errors.append((name, "função do host ausente em soh.symbols"))
+            else:
+                ignored.append(name)
         elif len(entries) != 1:
             errors.append((name, "nome repetido em soh.symbols"))
         elif function_entries[0][0] == "folded":
             errors.append((name, "símbolo folded em soh.symbols"))
         else:
-            functions.append(name)
+            (data_names if address_of else functions).append((name, lookup))
 
     write_asm(args.out_asm, functions)
     write_c(args.out_c, sha256, functions, data_names, args.data_prefix)
