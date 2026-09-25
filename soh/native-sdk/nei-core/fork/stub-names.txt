@@ -63,24 +63,6 @@ KafeiForm_ReplacesBombchu
 Nei_CaneNextType
 Nei_CaneTypeCount
 
-# soh/mods/items/objects/ball_and_chainDL/model.inc.c
-gBallDL
-
-# soh/mods/items/objects/beetle_giveDL/model.inc.c
-g_beetle_body_dl
-g_beetle_wings_dl
-
-# soh/mods/items/objects/fire_rodDL/model.inc.c
-Cylinder_001_opaque_dl
-
-# soh/mods/items/objects/ice_rodDL/model.inc.c
-ice_rod_opaque_dl
-ice_rod_transparent_dl
-
-# soh/mods/items/objects/light_rodDL/Cylinder_002.c
-Cylinder_002_opaque_dl
-Cylinder_002_transparent_dl
-
 # soh/mods/items/objects/object_tornado.cpp
 Tornado_AdvanceScroll
 Tornado_Draw

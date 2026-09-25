@@ -15,6 +15,8 @@ extern PlayState* gPlayState;
 
 // fork_items.c: id runtime do linkspan.oot.items no botão -> id do item no fork (patch 0002).
 u8 NeiFork_ToLogicalItem(u8 runtimeId);
+// fork_items.c: o contrário, para o kaleido do fork gravar no botão C o id que o host entende (extracted-fixes.txt).
+u8 NeiFork_ToRuntimeItem(u8 logicalId);
 
 // Statics do z_player.c do host que o extended_player.c do fork declara extern (no fork ele é incluído no
 // z_player.c). Só leitura e dentro do tamanho vanilla; lidos pelo endereço resolvido no init da DLL.

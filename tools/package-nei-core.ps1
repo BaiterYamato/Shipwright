@@ -11,6 +11,9 @@ param(
 # no nome. O coremod leva o header público para quem compila mods de conteúdo. Desde a fase F o coremod traz o
 # código de itens do fork NEI, que chama o soh.exe pelo escape hatch (ABI 1.3): o manifesto lista o SHA-256 do
 # executável alvo, e em outro executável só o registro de itens funciona.
+# Os assets do fork (modelos, ícones, texturas) não vão no pacote: não têm licença. Quem joga gera
+# <jogo>/nei-assets/nei-assets-<componente>.o2r com tools/build-nei-assets.py (NEI-007); sem eles o coremod
+# define só o Feather e o Cape, com ícone e modelo provisórios.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

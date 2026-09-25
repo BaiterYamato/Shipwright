@@ -1,23 +1,27 @@
-// Itens do fork NEI que a DLL já liga ao host, com o id lógico do fork (nei_compat.h) e o id namespaced no
-// registro linkspan.nei.items. O código do fork compara botões com o id lógico; o host guarda nos botões o
-// id runtime que o linkspan.oot.items alocou. NeiFork_ToLogicalItem faz a ponte (patch 0002 no equip_helper).
-#include "fork_items.h"
-#include "oot_items.h"
+// Itens do fork NEI que a DLL liga ao host. O registro linkspan.nei.items guarda cada um com um id namespaced
+// e o linkspan.oot.items aloca o id runtime que fica no botão C; o código do fork compara botões com o id lógico
+// dele. NeiFork_ToLogicalItem e NeiFork_ToRuntimeItem fazem a ponte (patch 0002 e extracted-fixes.txt).
+//
+// A descrição de cada item (slot, idade, ícone, texto do get-item) sai da linha dele em sNeiItems[], que é a
+// fonte única do fork; o modelo do get-item sai de gNeiItemModels[], gerado do draw.cpp do fork.
+#include <string.h>
 
-const NeiForkItem gNeiForkItems[] = {
-    { ITEM_ROCS_FEATHER_SKIJER, "skijer.nei.rocs_feather", "Roc's Feather" },
-    { ITEM_ROCS_CAPE, "skijer.nei.rocs_cape", "Roc's Cape" },
-};
-const u32 gNeiForkItemCount = ARRAY_COUNT(gNeiForkItems);
+#include "fork_items.h"
+#include "fork_models.h"
+#include "oot_items.h"
+#include "mods/extended_inventory.h"
 
 static u8 sLogicalByRuntime[256];
+static u8 sRuntimeByLogical[256];
 
 void NeiFork_MapItem(u8 runtimeId, u8 logicalId) {
     sLogicalByRuntime[runtimeId] = logicalId;
+    sRuntimeByLogical[logicalId] = runtimeId;
 }
 
 void NeiFork_ClearItems(void) {
     memset(sLogicalByRuntime, 0, sizeof(sLogicalByRuntime));
+    memset(sRuntimeByLogical, 0, sizeof(sRuntimeByLogical));
 }
 
 // Um id runtime da faixa de itens de mod que não é deste fork vira ITEM_NONE: a faixa do linkspan.oot.items
@@ -30,4 +34,84 @@ u8 NeiFork_ToLogicalItem(u8 runtimeId) {
         return ITEM_NONE;
     }
     return runtimeId;
+}
+
+// O contrário, para o kaleido do fork gravar no botão C o id que o host entende. Item vanilla passa direto; item
+// do fork sem registro (não definido nesta sessão) vira ITEM_NONE em vez de um id que o host não conhece.
+u8 NeiFork_ToRuntimeItem(u8 logicalId) {
+    if (sRuntimeByLogical[logicalId] != 0) {
+        return sRuntimeByLogical[logicalId];
+    }
+    if (Nei_FindByItem(logicalId) != NULL) {
+        return ITEM_NONE;
+    }
+    return logicalId;
+}
+
+// Itens que não são célula da página do NEI mas entram no registro.
+static const u8 sExtraItems[] = { ITEM_ROCS_CAPE };
+
+u32 NeiFork_ListItems(u8* out, u32 capacity) {
+    u32 count = 0;
+    for (u32 i = 0; i < ARRAY_COUNT(gPage2Items) && count < capacity; i++) {
+        if (gPage2Items[i] != ITEM_NONE) {
+            out[count++] = gPage2Items[i];
+        }
+    }
+    for (u32 i = 0; i < ARRAY_COUNT(sExtraItems) && count < capacity; i++) {
+        out[count++] = sExtraItems[i];
+    }
+    return count;
+}
+
+static const char* StripOtr(const void* path) {
+    const char* text = (const char*)path;
+    if (text == NULL) {
+        return NULL;
+    }
+    return strncmp(text, "__OTR__", 7) == 0 ? text + 7 : text;
+}
+
+static const char* ComponentOf(u8 item) {
+    switch (item) {
+        case ITEM_POKEBALL:
+            return "expansion.ssbb";
+        case ITEM_MARIO_MASK:
+            return "expansion.sm64";
+        default:
+            return "core";
+    }
+}
+
+int NeiFork_DescribeItem(u8 logicalId, NeiForkItemInfo* info) {
+    const NeiItem* row = Nei_FindByItem(logicalId);
+    if (row == NULL || info == NULL) {
+        return 0;
+    }
+    memset(info, 0, sizeof(*info));
+    info->logicalId = logicalId;
+    info->slot = row->slot;
+    info->age = row->ageReq == AGE_REQ_ADULT   ? LINKSPAN_OOT_ITEM_AGE_ADULT
+                : row->ageReq == AGE_REQ_CHILD ? LINKSPAN_OOT_ITEM_AGE_CHILD
+                                               : LINKSPAN_OOT_ITEM_AGE_ANY;
+    info->icon = StripOtr(row->iconTex);
+    info->message = row->nameEn;
+    info->component = ComponentOf(logicalId);
+    for (u32 i = 0; i < gNeiItemModelCount; i++) {
+        if (gNeiItemModels[i].item == logicalId) {
+            info->modelPath = gNeiItemModels[i].path;
+            info->modelScale = gNeiItemModels[i].scale;
+            info->modelLayer = gNeiItemModels[i].layer;
+            break;
+        }
+    }
+    return 1;
+}
+
+int NeiFork_NeedsAssets(u8 logicalId) {
+    return logicalId != ITEM_ROCS_FEATHER_SKIJER && logicalId != ITEM_ROCS_CAPE;
+}
+
+const char* NeiFork_FallbackName(u8 logicalId) {
+    return logicalId == ITEM_ROCS_FEATHER_SKIJER ? "Roc's Feather" : NULL;
 }

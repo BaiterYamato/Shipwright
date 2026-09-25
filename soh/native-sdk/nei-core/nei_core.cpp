@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 
+#include "assets.h"
 #include "fork/fork_glue.h"
 #include "fork/kaleido_glue.h"
 
@@ -157,7 +158,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, Shi
     }
     try {
         std::string text = registry->Stats() + " | fork: " + LinkSpanNei::ForkStatus() + " | " +
-                           LinkSpanNei::InventoryStatus() + " | arquivo=" + std::to_string(gCore->loadedSlot);
+                           LinkSpanNei::InventoryStatus() + " | arquivo=" + std::to_string(gCore->loadedSlot) +
+                           " | assets: " + LinkSpanNei::AssetsStatus();
         // Estado do pipeline de Player (NEI-005). Só faz sentido com o fork ligado: sem escape hatch
         // as funções do fork não rodam e o Player não é o desta DLL.
         if (LinkSpanNei::ForkActive()) {
@@ -195,6 +197,26 @@ ShipNativeStatus SHIP_NATIVE_CALL InvFill(void*, const char* args, uint32_t leng
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
+// Aquisição de um item do fork pelo get-item do registro (NEI-008): "give deku_leaf". Sem argumento, lista os
+// itens do fork no registro com o id runtime, a posse e se já estão na página do NEI.
+ShipNativeStatus SHIP_NATIVE_CALL Give(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                       void* writer) {
+    if (!Owned() || !write) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    try {
+        std::string text;
+        ShipNativeStatus status = SHIP_NATIVE_OK;
+        if (!args || length == 0) {
+            text = LinkSpanNei::ListForkItems();
+        } else {
+            status = LinkSpanNei::ReceiveForkItem(std::string(args, length), text);
+        }
+        write(writer, text.data(), static_cast<uint32_t>(text.size()));
+        return status;
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
 ShipNativeStatus Observe(const ShipNativeRuntime* runtime, const char* point, ShipNativeHookFn callback) {
     const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), point, LINKSPAN_OOT_HOOKS_VERSION,
                                    sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE,
@@ -206,6 +228,7 @@ ShipNativeStatus Observe(const ShipNativeRuntime* runtime, const char* point, Sh
 void Release() {
     if (gCore) {
         LinkSpanNei::StopFork();
+        LinkSpanNei::UnmountAssets();
         gCore->registry.Detach();
         gCore->forkSave.Detach();
         delete gCore;
@@ -263,6 +286,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         status = runtime->register_function(runtime->context, "inv_fill", InvFill, nullptr);
     }
     if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "give", Give, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
         status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,
                                            sizeof(NeiItemsV1), &kService);
     }
@@ -270,6 +296,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         Release();
         return status;
     }
+    // Antes do fork: os itens que desenham modelo do fork só são definidos com o núcleo dos assets montado.
+    LinkSpanNei::MountAssets(runtime);
     // O código de itens do fork NEI é opcional: sem escape hatch para este soh.exe o registro segue sem ele.
     LinkSpanNei::StartFork(runtime, &gCore->registry);
     *instance = gCore;

@@ -30,3 +30,24 @@ end)
 ship.hotkeys.register("inv_clear", { default = "M", label = "NEI: esvaziar a página do inventário" }, function()
     inv("clear", "inv_clear")
 end)
+
+-- Instrumento de teste do NEI-007: cada toque faz o get-item do próximo item do fork (texto, ícone e
+-- modelo do nei-assets-core.o2r). Sai junto com os de cima no NEI-016.
+local giveList = nil
+local giveNext = 0
+ship.hotkeys.register("give_next", { default = "N", label = "NEI: get-item do próximo item do fork" }, function()
+    if not giveList then
+        local list = ship.native.call("give", "") or ""
+        ship.log.info("nei-core: itens do fork: " .. list)
+        giveList = {}
+        for name in list:gmatch("([%w_]+)%(0x") do
+            giveList[#giveList + 1] = name
+        end
+    end
+    if #giveList == 0 then
+        return
+    end
+    giveNext = giveNext % #giveList + 1
+    local text, failure = ship.native.call("give", giveList[giveNext])
+    ship.log.info("nei-core: give " .. giveList[giveNext] .. ": " .. (text or ("falhou: " .. tostring(failure))))
+end)

@@ -1,0 +1,7 @@
+# Trocas exatas no código extraído por extract_additions.py (sync.py, aplicar_substituicoes).
+# Formato: arquivo em extracted/ ::: texto original ::: texto novo. O original precisa aparecer uma vez só.
+#
+# Botão C guarda o id runtime do linkspan.oot.items, não o id lógico do fork: o host desenha o ícone e dispara o
+# item por ele, e o fork lê de volta com NeiFork_ToLogicalItem (patch 0002). Sem isto, equipar pela página do NEI
+# gravava o id lógico, que o host não conhece e que pode ser o id runtime de outro item (NEI-008).
+z_kaleido_item.c ::: gSaveContext.equips.buttonItems[targetButtonIndex] = pauseCtx->equipTargetItem; ::: gSaveContext.equips.buttonItems[targetButtonIndex] = NeiFork_ToRuntimeItem(pauseCtx->equipTargetItem);

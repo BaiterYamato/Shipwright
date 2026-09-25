@@ -99,6 +99,74 @@ def alinhar_redeclaracoes_de_array(raiz, declaracoes):
     return total
 
 
+def aplicar_substituicoes(out):
+    """extracted-fixes.txt: troca exata de texto no código extraído (que não passa pelos patches, porque sai do
+    commit do fork direto para <out>/extracted). Cada linha é `arquivo ::: original ::: novo`, e o original precisa
+    aparecer exatamente uma vez; senão o sync falha, em vez de compilar a versão sem a troca."""
+    total = 0
+    for line in open(os.path.join(HERE, "extracted-fixes.txt"), encoding="utf-8"):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        name, original, novo = (part.strip() for part in line.split(" ::: "))
+        path = os.path.join(out, "extracted", name)
+        with open(path, encoding="utf-8", newline="") as f:
+            texto = f.read()
+        if texto.count(original) != 1:
+            sys.exit(f"extracted-fixes: '{original}' aparece {texto.count(original)} vezes em {name}")
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write(texto.replace(original, novo))
+        total += 1
+    return total
+
+
+def converter_modelos_c(repo, out):
+    """Os modelos que o fork escreveu em C (cmodels.MODEL_FILES) viram caminhos de recurso: <out>/nei_cmodels.c
+    define cada array como `const char x[] = "__OTR__..."`, o arquivo do modelo passa a só declarar os nomes e os
+    headers da pasta trocam `extern Gfx x[]` por `extern const char x[]`. Os recursos saem do build-nei-assets.py,
+    com o mesmo mapeamento (mesmo commit, mesma lista de assets)."""
+    sys.path.insert(0, HERE)
+    import cmodels
+    mods = os.path.join(out, "fork", "soh", "mods")
+    texts = {}
+    for model_file in cmodels.MODEL_FILES:
+        with open(os.path.join(mods, model_file), encoding="utf-8") as f:
+            texts[model_file] = f.read()
+    mapping, convert = cmodels.plan(texts, cmodels.fork_asset_paths(repo, FORK_BASE, FORK_COMMIT))
+    with open(os.path.join(out, "nei_cmodels.c"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(cmodels.c_definitions(texts, mapping))
+    names = set()
+    for model_file, text in texts.items():
+        declared = [name for _, name, _ in cmodels.parse_arrays(text)]
+        names.update(declared)
+        with open(os.path.join(mods, model_file), "w", encoding="utf-8", newline="\n") as f:
+            f.write("/* cmodels.py (sync.py): os arrays deste modelo viraram recursos do nei-assets-core.o2r e os\n"
+                    "   caminhos ficam em nei_cmodels.c. */\n")
+            f.write("".join("extern const char %s[];\n" % name for name in declared))
+    headers = 0
+    for folder in {os.path.dirname(p) for p in cmodels.MODEL_FILES}:
+        for name in os.listdir(os.path.join(mods, folder)):
+            if not name.endswith(".h"):
+                continue
+            path = os.path.join(mods, folder, name)
+            with open(path, encoding="utf-8", newline="") as f:
+                text = f.read()
+            novo = cmodels.header_declarations(text, names)
+            if novo != text:
+                with open(path, "w", encoding="utf-8", newline="") as f:
+                    f.write(novo)
+                headers += 1
+    # object_shovel.c guarda o endereço da display list num Gfx*; agora é o caminho, então precisa do cast.
+    path = os.path.join(mods, "items", "objects", "object_shovel.c")
+    with open(path, encoding="utf-8", newline="") as f:
+        text = f.read()
+    original = "Gfx* gShovelGiveDL = gDampeShovelDL_mesh_001_opaque_dl;"
+    if text.count(original) != 1:
+        sys.exit("cmodels: object_shovel.c mudou; revise o cast de gShovelGiveDL")
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text.replace(original, "Gfx* gShovelGiveDL = (Gfx*)gDampeShovelDL_mesh_001_opaque_dl;"))
+    return len(names), len(convert), headers
+
+
 def extract(repo, out, symbols):
     """Funções que o fork acrescentou em arquivos do host (extract.txt) -> <out>/extracted."""
     count = 0
@@ -138,7 +206,8 @@ def main():
     stamp = os.path.join(out, "sync.stamp")
     inputs = sorted(os.path.join(HERE, "patches", p) for p in os.listdir(os.path.join(HERE, "patches")))
     inputs += [os.path.join(HERE, f) for f in ("gen_compat.py", "extract_additions.py", "extract.txt", "gen_stubs.py",
-                                               "stub-names.txt")]
+                                               "stub-names.txt", "extracted-fixes.txt", "gen_item_models.py",
+                                               "cmodels.py")]
     inputs += [os.path.abspath(__file__), symbols]
     signature = FORK_COMMIT + "\n" + "\n".join(f"{p} {os.path.getmtime(p)}" for p in inputs)
     if os.path.exists(stamp) and open(stamp, encoding="utf-8").read() == signature:
@@ -172,6 +241,10 @@ def main():
     with open(os.path.join(out, "compat", "nei_host_data.h"), "w", encoding="utf-8", newline="\n") as f:
         f.write(macros)
     extracted = extract(repo, out, symbols)
+    substituicoes = aplicar_substituicoes(out)
+    subprocess.run([sys.executable, os.path.join(HERE, "gen_item_models.py"), repo, FORK_COMMIT,
+                    os.path.join(out, "nei_item_models.c"), os.path.join(out, "nei_item_models.txt")], check=True)
+    modelos_c = converter_modelos_c(repo, out)
     redeclaracoes = sum(alinhar_redeclaracoes_de_array(os.path.join(out, pasta), dados)
                         for pasta in ("fork", "extracted"))
     subprocess.run([sys.executable, os.path.join(HERE, "gen_stubs.py"), "--names", os.path.join(HERE, "stub-names.txt"),
@@ -182,7 +255,8 @@ def main():
         f.write(signature)
     print(f"nei fork: {len(files)} arquivos do fork, {len(added)} headers novos, patches aplicados, "
           f"{len(dados)} variáveis do host por ponteiro, {redeclaracoes} redeclarações de array alinhadas, "
-          f"{extracted} arquivos do host extraídos, stubs gerados")
+          f"{extracted} arquivos do host extraídos, {substituicoes} substituições, "
+          f"modelos em C: {modelos_c[0]} arrays ({modelos_c[1]} convertidos, {modelos_c[2]} headers), stubs gerados")
 
 
 main()

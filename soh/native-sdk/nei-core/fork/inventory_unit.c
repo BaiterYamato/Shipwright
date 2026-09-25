@@ -33,6 +33,33 @@ uint32_t NeiInv_OccupiedSlots(void) {
     return total;
 }
 
+/* Posse na página do NEI, pelo mesmo caminho que o Item_Give do fork usa (ExtInv_SetItemById). A célula do Roc's
+ * Feather é progressiva: o Cape a toma, e o Feather dado depois do Cape não volta para ela. Item sem célula
+ * própria (0xFF) não tem o que pôr aqui. */
+void NeiInv_PlaceItem(uint8_t logicalId) {
+    const uint8_t slot = ExtInv_GetItemSlot(logicalId);
+    if (slot == 0xFF || slot < 24) {
+        return;
+    }
+    const uint16_t current = ExtInv_GetSlotItem(slot);
+    if (current == logicalId || (current == ITEM_ROCS_CAPE && logicalId == ITEM_ROCS_FEATHER_SKIJER)) {
+        return;
+    }
+    ExtInv_SetSlotItem(slot, logicalId);
+}
+
+void NeiInv_RemoveItem(uint8_t logicalId) {
+    const uint8_t slot = ExtInv_GetItemSlot(logicalId);
+    if (slot != 0xFF && slot >= 24 && ExtInv_GetSlotItem(slot) == logicalId) {
+        ExtInv_SetSlotItem(slot, ITEM_NONE);
+    }
+}
+
+int NeiInv_HasItem(uint8_t logicalId) {
+    const uint8_t slot = ExtInv_GetItemSlot(logicalId);
+    return slot != 0xFF && slot >= 24 && ExtInv_GetSlotItem(slot) == logicalId;
+}
+
 void NeiInv_ReadState(int32_t* pages, int32_t* currentPage, uint32_t* occupied) {
     *pages = ExtInv_GetMaxPages();
     *currentPage = ExtInv_GetCurrentPage();
