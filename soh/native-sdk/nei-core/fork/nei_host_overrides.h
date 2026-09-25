@@ -14,6 +14,10 @@ extern PlayState* gPlayState;
 #define Camera_ChangeMode Camera_RequestMode
 #define EffectBlure_ChangeType EffectBlureShip_ChangeType
 
+// resource_guard.c: o fork pôs guarda de nulo nesta função no host dele e testa existência de recurso com ela; a do
+// host derruba o jogo quando o recurso falta.
+#define ResourceMgr_LoadTexOrDListByName NeiResource_LoadTexOrDListByName
+
 // fork_items.c: id runtime do linkspan.oot.items no botão -> id do item no fork (patch 0002).
 u8 NeiFork_ToLogicalItem(u8 runtimeId);
 // fork_items.c: o contrário, para o kaleido do fork gravar no botão C o id que o host entende (extracted-fixes.txt).

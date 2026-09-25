@@ -2,8 +2,11 @@
 #include "assets.h"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
+#include <string>
 #include <system_error>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _WIN32
@@ -31,6 +34,8 @@ struct AssetsState {
     const ShipOotResourcesV2* resources = nullptr;
     std::vector<Mounted> mounted;
     std::string status = "ausentes";
+    // Caminhos que o has_file já confirmou: o kaleido do fork pergunta pelo mesmo recurso a cada frame.
+    std::unordered_set<std::string> exists;
 };
 
 AssetsState gAssets;
@@ -68,6 +73,7 @@ std::string ComponentOf(const fs::path& file) {
 
 void MountAssets(const ShipNativeRuntime* runtime) {
     UnmountAssets();
+    gAssets.exists.clear();
     gAssets.resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
         sizeof(ShipOotResourcesV2)));
@@ -119,6 +125,7 @@ void UnmountAssets() {
         }
     }
     gAssets.mounted.clear();
+    gAssets.exists.clear();
     gAssets.status = "ausentes";
 }
 
@@ -141,4 +148,30 @@ extern "C" int NeiAssets_CoreMounted(void) {
 
 extern "C" int NeiAssets_ComponentMounted(const char* component) {
     return component && LinkSpanNei::AssetComponentMounted(component) ? 1 : 0;
+}
+
+// Para o resource_guard.c: 1 quando o arquivo existe no VFS, contando os archives que o NEI montou. O
+// ResourceMgr_FileExists do host lê um cache feito no boot e não vê o que foi montado depois. Sem o serviço de
+// recursos, responde 1 e deixa o host decidir, como antes.
+extern "C" int NeiAssets_HasFile(const char* path) {
+    using LinkSpanNei::gAssets;
+    if (!path) {
+        return 0;
+    }
+    if (std::strncmp(path, "__OTR__", 7) == 0) {
+        path += 7;
+    }
+    if (!gAssets.resources || !gAssets.resources->has_file) {
+        return 1;
+    }
+    if (gAssets.exists.count(path)) {
+        return 1;
+    }
+    // Só o "existe" fica guardado: fora da thread do jogo o has_file responde 0, e a ausência é barata de
+    // perguntar de novo (busca de hash no ArchiveManager).
+    if (!gAssets.resources->has_file(path)) {
+        return 0;
+    }
+    gAssets.exists.emplace(path);
+    return 1;
 }

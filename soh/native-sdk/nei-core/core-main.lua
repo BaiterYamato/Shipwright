@@ -61,14 +61,19 @@ for _, action in ipairs({ "spawn", "kill", "probe" }) do
     end)
 end
 
--- Instrumento de teste das ondas de itens (NEI-008..011): uma hotkey sem tecla por item do fork, que dá a posse
--- e equipa no C esquerdo (shiplua_fire_hotkey linkspan.nei eq_shovel).
+-- Instrumento de teste das ondas de itens (NEI-008..011): duas hotkeys sem tecla por item do fork. eq_ dá a posse
+-- e equipa no C esquerdo (shiplua_fire_hotkey linkspan.nei eq_shovel); give_ faz o get-item com modelo e texto.
 local forkItems = ship.native.call("give", "")
 if forkItems then
     for name in forkItems:gmatch("([%w_]+)%(0x") do
         ship.hotkeys.register("eq_" .. name, { default = "", label = "NEI: equipar " .. name }, function()
             local text, failure = ship.native.call("equip", name)
             ship.log.info("nei-core: equip " .. (text or ("falhou: " .. tostring(failure))))
+        end)
+        ship.hotkeys.register("give_" .. name, { default = "", label = "NEI: get-item " .. name }, function()
+            local text, failure = ship.native.call("give", name)
+            local motivo = failure and (tostring(failure.code) .. " " .. tostring(failure.message)) or "?"
+            ship.log.info("nei-core: give " .. name .. ": " .. (text or ("falhou: " .. motivo)))
         end)
     end
 end
