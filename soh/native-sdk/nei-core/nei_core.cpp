@@ -18,6 +18,7 @@ extern "C" int NeiActor_TestSomaria(int spawn);
 extern "C" void NeiActor_Unload(int dryRun);
 extern "C" void NeiTest_GrantMagic(void);
 extern "C" int NeiTest_SpawnEnemy(int kind);
+extern "C" int NeiTest_EquipExt(int which);
 extern "C" void WeaponUpgrade_SetRazor(unsigned char on);
 extern "C" void WeaponUpgrade_SetGilded(unsigned char on);
 extern "C" int NeiActor_UnloadStats(char* out, int capacity);
@@ -27,6 +28,7 @@ extern "C" int NeiActor_UnloadStats(char* out, int capacity);
 #include "oot_hooks.h"
 #include "oot_layout_id.h"
 #include "registry.h"
+#include "text.h"
 
 namespace {
 
@@ -286,6 +288,31 @@ ShipNativeStatus SHIP_NATIVE_CALL EnemyTest(void*, const char* args, uint32_t le
     return write(writer, text, static_cast<uint32_t>(size));
 }
 
+// Prova da onda D (NEI-011): os itens de id u16 do fork no C esquerdo ("eqx slate", "eqx hourglass", "eqx crystal",
+// "eqx seasons"), fora do registro de ids u8.
+ShipNativeStatus SHIP_NATIVE_CALL EquipExtTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                               void* writer) {
+    if (!write || !LinkSpanNei::ForkActive()) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    static const char* const kNames[] = { "slate", "hourglass", "crystal", "seasons" };
+    const std::string name = args ? std::string(args, length) : std::string();
+    int which = -1;
+    for (int i = 0; i < 4; ++i) {
+        if (name == kNames[i]) {
+            which = i;
+        }
+    }
+    if (which < 0) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const int result = NeiTest_EquipExt(which);
+    char text[64];
+    const int size = std::snprintf(text, sizeof(text), "eqx %s: %s (%d)", kNames[which],
+                                   result == 0 ? "no C esquerdo" : "falhou", result);
+    return write(writer, text, static_cast<uint32_t>(size));
+}
+
 // Prova da onda B (NEI-009): nível da Kokiri Sword pelos upgrades do fork ("upgrade razor", "upgrade gilded";
 // sem argumento volta à Kokiri). Só em memória até o jogo salvar.
 ShipNativeStatus SHIP_NATIVE_CALL UpgradeTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
@@ -334,6 +361,7 @@ void Release() {
         LinkSpanNei::UnmountAssets();
         gCore->registry.Detach();
         gCore->forkSave.Detach();
+        LinkSpanNei::BindText(nullptr);
         delete gCore;
         gCore = nullptr;
     }
@@ -370,6 +398,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         return SHIP_NATIVE_FAILURE;
     }
     gCore->owner = std::this_thread::get_id();
+    // Opcional: sem ele os textos próprios do fork (Time Gate, Lantern, Pictobox) ficam sem caixa.
+    LinkSpanNei::BindText(static_cast<const ShipOotTextV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION, sizeof(ShipOotTextV1))));
     gCore->registry.Attach(items, save, saveHandle);
     gCore->forkSave.Attach(save, forkSaveHandle);
     status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_LOADED, OnLoaded);
@@ -405,6 +436,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "upgrade", UpgradeTest, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "eqx", EquipExtTest, nullptr);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,

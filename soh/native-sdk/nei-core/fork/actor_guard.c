@@ -58,6 +58,15 @@ static ActorFunc* NeiActor_Field(Actor* actor, int slot) {
     return slot == 0 ? &actor->update : slot == 1 ? &actor->draw : &actor->destroy;
 }
 
+static int NeiActor_PointsIntoModule(Actor* actor) {
+    for (int slot = 0; slot < NEI_ACTOR_SLOTS; slot++) {
+        if (NeiActor_InModule((const void*)*NeiActor_Field(actor, slot))) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int NeiActor_InLists(const Actor* actor) {
     if (actor == NULL || gPlayState == NULL) {
         return 0;
@@ -234,6 +243,12 @@ void NeiActor_Frame(void) {
     for (u32 i = 0; i < NEI_ACTOR_TABLE; i++) {
         NeiTrackedActor* entry = &sTable[i];
         if (entry->used && (!NeiActor_InLists(entry->actor) || entry->actor->id != entry->id)) {
+            entry->used = 0;
+            sCount--;
+            sReleased++;
+        } else if (entry->used && !entry->spawned && !NeiActor_PointsIntoModule(entry->actor)) {
+            /* Ator de outro dono sem nenhuma função na DLL: a troca foi desfeita, ou o jogo recriou o ator no
+             * mesmo endereço (o Link depois de uma troca de cena, NEI-011). Não há o que restaurar. */
             entry->used = 0;
             sCount--;
             sReleased++;

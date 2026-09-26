@@ -91,6 +91,12 @@ for _, level in ipairs({ "", "razor", "gilded" }) do
         ship.log.info("nei-core: " .. (text or ("upgrade falhou: " .. tostring(failure and failure.message))))
     end)
 end
+for _, name in ipairs({ "slate", "hourglass", "crystal", "seasons" }) do
+    ship.hotkeys.register("eqx_" .. name, { default = "", label = "NEI: equipar item u16 (teste) " .. name }, function()
+        local text, failure = ship.native.call("eqx", name)
+        ship.log.info("nei-core: " .. (text or ("eqx falhou: " .. tostring(failure and failure.message))))
+    end)
+end
 ship.hotkeys.register("test_magic", { default = "", label = "NEI: medidor de magia cheio (teste)" }, function()
     local text, failure = ship.native.call("magic", "")
     ship.log.info("nei-core: " .. (text or ("magic falhou: " .. tostring(failure))))

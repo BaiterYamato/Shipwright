@@ -163,3 +163,33 @@ Actor* NeiTest_Target(void) {
     sNeiTestTarget = NULL;
     return NULL;
 }
+
+/* Instrumento da onda D (NEI-011): os quatro itens de id u16 do fork (Sheikah Slate, Phantom Hourglass, Shadow
+ * Crystal, Rod of Seasons) não entram no registro do linkspan.oot.items, que só conhece ids u8. O fork os equipa
+ * pelo marcador ITEM_EXT_BUTTON no botão e pela tabela do kaleido_shim.c; aqui a posse vai pelo mesmo caminho do
+ * get-item do fork (a runa ou estação 0 entrega o item) e o id vai para o C esquerdo. Só em memória. */
+void ExtButton_SetItem(s32 btn, u16 extId);
+
+int NeiTest_EquipExt(int which) {
+    static const u16 kIds[] = { EXT_ITEM_SHEIKAH_SLATE, EXT_ITEM_PHANTOM_HOURGLASS, EXT_ITEM_SHADOW_CRYSTAL,
+                                EXT_ITEM_ROD_OF_SEASONS };
+    static const u8 kSlots[] = { SLOT_SHEIKAH_SLATE, SLOT_PHANTOM_HOURGLASS, SLOT_SHADOW_CRYSTAL,
+                                 SLOT_ROD_OF_SEASONS };
+
+    if (gPlayState == NULL) {
+        return -1;
+    }
+    if (which < 0 || which >= (int)ARRAY_COUNT(kIds)) {
+        return -4;
+    }
+    if (which == 0) {
+        Slate_GrantRune(0);
+    } else if (which == 3) {
+        Seasons_GrantSeason(0);
+    } else {
+        ExtInv_GiveItem(kSlots[which], kIds[which]);
+    }
+    ExtButton_SetItem(1, kIds[which]);
+    Interface_LoadItemIcon1(gPlayState, 1);
+    return 0;
+}

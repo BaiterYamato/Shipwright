@@ -18,6 +18,14 @@ extern PlayState* gPlayState;
 // host derruba o jogo quando o recurso falta.
 #define ResourceMgr_LoadTexOrDListByName NeiResource_LoadTexOrDListByName
 
+// resource_guard.c + text.cpp: o fork monta alguns textos por hook C++ na hora de abrir a caixa (Time Gate, Lantern,
+// Pictobox); o desvio grava o texto do id no host antes de abrir.
+#define Message_StartTextbox NeiMessage_StartTextbox
+#define Message_ContinueTextbox NeiMessage_ContinueTextbox
+struct Actor;
+void NeiMessage_StartTextbox(PlayState* play, u16 textId, struct Actor* actor);
+void NeiMessage_ContinueTextbox(PlayState* play, u16 textId);
+
 // fork_items.c: id runtime do linkspan.oot.items no botão -> id do item no fork (patch 0002).
 u8 NeiFork_ToLogicalItem(u8 runtimeId);
 // fork_items.c: o contrário, para o kaleido do fork gravar no botão C o id que o host entende (extracted-fixes.txt).
