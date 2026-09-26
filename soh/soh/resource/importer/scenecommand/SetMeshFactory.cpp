@@ -32,7 +32,9 @@ std::shared_ptr<Ship::IResource> SetMeshFactory::ReadResource(std::shared_ptr<Sh
     if (setMesh->meshHeader.base.type == 2) {
         setMesh->dlists2.reserve(polyNum);
     } else {
-        setMesh->dlists.reserve(setMesh->meshHeader.polygon0.num);
+        // SOH [Link-Span] (Unbound 0.8) polyNum, não polygon0.num: numa malha tipo 1 esse membro da union cai em
+        // campos não lidos, e com num u32 um valor não inicializado pede até 4G entradas
+        setMesh->dlists.reserve(polyNum);
     }
 
     for (int32_t i = 0; i < polyNum; i++) {
@@ -129,7 +131,11 @@ std::shared_ptr<Ship::IResource> SetMeshFactory::ReadResource(std::shared_ptr<Sh
     } else if (setMesh->meshHeader.base.type == 0) {
         setMesh->meshHeader.polygon0.start = setMesh->dlists.data();
     } else if (setMesh->meshHeader.base.type == 1) {
-        setMesh->meshHeader.polygon1.multi.list = setMesh->images.data();
+        // SOH [Link-Span] (Unbound 0.8) só no multi: o single divide esses bytes, e o ponteiro sobrescrevia
+        // single.unk_0C
+        if (setMesh->meshHeader.polygon1.format != 1) {
+            setMesh->meshHeader.polygon1.multi.list = setMesh->images.data();
+        }
         setMesh->meshHeader.polygon1.dlist = (Gfx*)setMesh->dlists.data();
     } else {
         SPDLOG_ERROR("Tried to load mesh in SetMesh scene header with type that doesn't exist: {}",
@@ -170,7 +176,9 @@ std::shared_ptr<Ship::IResource> SetMeshFactoryXML::ReadResource(std::shared_ptr
     if (setMesh->meshHeader.base.type == 2) {
         setMesh->dlists2.reserve(polyNum);
     } else {
-        setMesh->dlists.reserve(setMesh->meshHeader.polygon0.num);
+        // SOH [Link-Span] (Unbound 0.8) polyNum, não polygon0.num: numa malha tipo 1 esse membro da union cai em
+        // campos não lidos, e com num u32 um valor não inicializado pede até 4G entradas
+        setMesh->dlists.reserve(polyNum);
     }
 
     auto child = reader->FirstChildElement();
@@ -281,7 +289,11 @@ std::shared_ptr<Ship::IResource> SetMeshFactoryXML::ReadResource(std::shared_ptr
     } else if (setMesh->meshHeader.base.type == 0) {
         setMesh->meshHeader.polygon0.start = setMesh->dlists.data();
     } else if (setMesh->meshHeader.base.type == 1) {
-        setMesh->meshHeader.polygon1.multi.list = setMesh->images.data();
+        // SOH [Link-Span] (Unbound 0.8) só no multi: o single divide esses bytes, e o ponteiro sobrescrevia
+        // single.unk_0C
+        if (setMesh->meshHeader.polygon1.format != 1) {
+            setMesh->meshHeader.polygon1.multi.list = setMesh->images.data();
+        }
         setMesh->meshHeader.polygon1.dlist = (Gfx*)setMesh->dlists.data();
     } else {
         SPDLOG_ERROR("Tried to load mesh in SetMesh scene header with type that doesn't exist: {}",

@@ -21,6 +21,12 @@ constexpr int32_t ENTRANCE_LAYERS = LINKSPAN_OOT_SCENES_ENTRANCE_LAYERS;
 constexpr size_t MAX_ENTRANCE_NAME = LINKSPAN_OOT_SCENES_MAX_NAME * 2 + 1;
 constexpr uint8_t MAX_END_TRANSITION = ENTRANCE_INFO_END_TRANS_TYPE_MASK >> ENTRANCE_INFO_END_TRANS_TYPE_SHIFT;
 constexpr uint8_t MAX_START_TRANSITION = ENTRANCE_INFO_START_TRANS_TYPE_MASK >> ENTRANCE_INFO_START_TRANS_TYPE_SHIFT;
+// Unbound 0.8: o último grupo termina antes das entradas de retorno dinâmico (0x7FF9..0x7FFF), que o jogo resolve
+// sem ler a tabela; um grupo em 0x7FF8 ou 0x7FFC ficaria inalcançável. O teto do oot_scenes.h (32764) entra no
+// layout id e fica; o limite vale aqui.
+constexpr int32_t LAST_ENTRANCE_GROUP =
+    (ENTR_RETURN_YOUSEI_IZUMI_YOKO - ENTRANCE_LAYERS) / ENTRANCE_LAYERS * ENTRANCE_LAYERS;
+static_assert(LAST_ENTRANCE_GROUP == 0x7FF4 && LAST_ENTRANCE_GROUP <= LINKSPAN_OOT_SCENES_MAX_ENTRANCE_INDEX);
 
 struct SceneRecord {
     int32_t id = 0;
@@ -283,10 +289,10 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterEntrance(uint64_t sceneHandle, const S
         }
         if (index == LINKSPAN_OOT_SCENES_AUTO) {
             index = std::max(state.nextEntranceIndex, first);
-            if (index > LINKSPAN_OOT_SCENES_MAX_ENTRANCE_INDEX) {
+            if (index > LAST_ENTRANCE_GROUP) {
                 return SHIP_NATIVE_LIMIT;
             }
-        } else if (index < first || index > LINKSPAN_OOT_SCENES_MAX_ENTRANCE_INDEX || index % ENTRANCE_LAYERS != 0) {
+        } else if (index < first || index > LAST_ENTRANCE_GROUP || index % ENTRANCE_LAYERS != 0) {
             return SHIP_NATIVE_INVALID_ARGUMENT;
         }
         if (state.groups.contains(index)) {
@@ -665,6 +671,42 @@ bool OotSceneIdFromStableName(const std::string& name, int32_t& sceneId) {
         return true;
     }
     return false;
+}
+
+// Entradas de mod no save (Unbound 0.8). O número de cada uma sai na ordem do registro e muda com os mods
+// montados; o save guarda o nome do grupo e a camada dentro dele. Declaradas em quem usa, fora do header, para
+// não mexer no layout id. Na thread do jogo, a mesma que escreve o registro.
+bool OotEntranceStableName(int32_t entranceIndex, std::string& name, int32_t& layer) {
+    if (entranceIndex < FirstCustomEntranceIndex()) {
+        return false;
+    }
+    const int32_t group = entranceIndex - entranceIndex % ENTRANCE_LAYERS;
+    const auto& state = State();
+    if (!state.groups.contains(group)) {
+        return false;
+    }
+    for (const auto& [entranceName, index] : state.entrances) {
+        if (index == group) {
+            try {
+                name = entranceName;
+            } catch (...) {
+                return false;
+            }
+            layer = entranceIndex - group;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool OotEntranceGroupFromStableName(const std::string& name, int32_t& group) {
+    const auto& entrances = State().entrances;
+    const auto found = entrances.find(name);
+    if (found == entrances.end()) {
+        return false;
+    }
+    group = found->second;
+    return true;
 }
 
 SavedSceneFlags* OotCustomSceneFlags(int32_t sceneId) {

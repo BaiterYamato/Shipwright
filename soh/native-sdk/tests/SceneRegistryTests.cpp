@@ -4,6 +4,12 @@
 #include <string>
 #include <thread>
 
+namespace ShipLuaHost {
+// OotNativeScenes.cpp, declaradas fora do header para não mexer no layout id.
+bool OotEntranceStableName(int32_t entranceIndex, std::string& name, int32_t& layer);
+bool OotEntranceGroupFromStableName(const std::string& name, int32_t& group);
+} // namespace ShipLuaHost
+
 namespace {
 
 int failures = 0;
@@ -181,6 +187,11 @@ int main() {
     entrance = Entrance("taken", 8);
     Check(scenes.register_entrance(cave, &entrance, &rejectedIndex) == SHIP_NATIVE_INVALID_ARGUMENT,
           "grupo ocupado deve ser recusado");
+    for (const int32_t overReturns : { 0x7FF8, 0x7FFC }) {
+        entrance = Entrance("returns", overReturns);
+        Check(scenes.register_entrance(cave, &entrance, &rejectedIndex) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "grupo que cobre as entradas de retorno dinâmico deve ser recusado");
+    }
     entrance = Entrance("spawn");
     entrance.spawn = 128;
     Check(scenes.register_entrance(field, &entrance, &rejectedIndex) == SHIP_NATIVE_INVALID_ARGUMENT,
@@ -214,6 +225,19 @@ int main() {
     Check(scenes.find_entrance("demo/field/none", &found) == SHIP_NATIVE_UNSUPPORTED,
           "entrada desconhecida não existe");
 
+    std::string entranceName;
+    int32_t layer = -1;
+    Check(ShipLuaHost::OotEntranceStableName(10, entranceName, layer) && entranceName == "demo/field/main" &&
+              layer == 2,
+          "entrada de mod deve dar o nome do grupo e a camada, para o save");
+    Check(!ShipLuaHost::OotEntranceStableName(4, entranceName, layer), "entrada vanilla fica com o número");
+    Check(!ShipLuaHost::OotEntranceStableName(12, entranceName, layer), "grupo livre não tem nome");
+    int32_t group = 0;
+    Check(ShipLuaHost::OotEntranceGroupFromStableName("demo/cave/deep", group) && group == 16,
+          "nome de entrada de mod deve voltar ao grupo");
+    Check(!ShipLuaHost::OotEntranceGroupFromStableName("ENTR_A_0", group), "nome vanilla não é grupo de mod");
+    Check(!ShipLuaHost::OotEntranceGroupFromStableName("demo/field/none", group), "nome sem registro não resolve");
+
     ShipLuaHost::OotCustomScene custom;
     Check(ShipLuaHost::FindOotCustomScene(200, custom) && custom.path == "scenes/demo/cave" && custom.drawConfig == 3,
           "jogo deve resolver caminho e draw config da cena de mod");
@@ -240,6 +264,9 @@ int main() {
     Check(scenes.find_entrance("demo/field/main", &found) == SHIP_NATIVE_UNSUPPORTED &&
               scenes.travel_to_entrance(8) == SHIP_NATIVE_INVALID_ARGUMENT && !ShipLuaHost::FindOotCustomScene(128, custom),
           "cena removida deve sumir com as entradas");
+    Check(!ShipLuaHost::OotEntranceStableName(8, entranceName, layer) &&
+              !ShipLuaHost::OotEntranceGroupFromStableName("demo/field/main", group),
+          "grupo de cena removida perde o nome");
     Check(scenes.unregister_scene(field) == SHIP_NATIVE_INVALID_ARGUMENT, "remoção repetida deve ser recusada");
     scene = Scene("demo/field", "scenes/shared/spot00_scene/spot00_scene");
     uint64_t fieldAgain = 0;
@@ -247,6 +274,13 @@ int main() {
     Check(scenes.register_scene(&scene, &fieldAgain, &fieldAgainId) == SHIP_NATIVE_OK && fieldAgainId == 202 &&
               ShipLuaHost::OotCustomSceneFlags(202)->chest == 0x10,
           "novo registro da mesma cena deve manter as flags da sessão");
+    int32_t lastIndex = 0;
+    entrance = Entrance("last", 0x7FF4);
+    Check(scenes.register_entrance(fieldAgain, &entrance, &lastIndex) == SHIP_NATIVE_OK && lastIndex == 0x7FF4,
+          "o último grupo antes das entradas de retorno deve ser aceito");
+    entrance = Entrance("after");
+    Check(scenes.register_entrance(fieldAgain, &entrance, &rejectedIndex) == SHIP_NATIVE_LIMIT,
+          "índice automático depois do último grupo deve esgotar");
 
     ShipNativeStatus workerStatus = SHIP_NATIVE_OK;
     std::thread worker([&scenes, &workerStatus] {

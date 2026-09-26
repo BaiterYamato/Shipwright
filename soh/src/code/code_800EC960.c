@@ -5546,6 +5546,13 @@ void Audio_PlayNatureAmbienceSequence(u8 natureAmbienceId) {
     u8 port;
     u8 val;
 
+    // SOH [Link-Span] (Unbound 0.8) uma cena de mod pode trazer qualquer byte aqui; depois da tabela os dados de IO
+    // são lixo e a sequência de ambiência pula por eles, derrubando a thread de áudio. Não toca nada, como os
+    // chamadores fazem com NATURE_ID_NONE.
+    if (natureAmbienceId >= ARRAY_COUNT(sNatureAmbienceDataIO)) {
+        return;
+    }
+
     if ((gActiveSeqs[SEQ_PLAYER_BGM_MAIN].seqId == NA_BGM_DISABLED) ||
         !(Audio_GetSeqFlags(((u8)gActiveSeqs[SEQ_PLAYER_BGM_MAIN].seqId) & 0xFF) & 0x80)) {
 

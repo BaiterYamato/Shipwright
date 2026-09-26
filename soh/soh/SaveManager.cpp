@@ -509,23 +509,38 @@ void SaveManager::Init() {
         std::ifstream input(sGlobalPath);
 
         nlohmann::json globalBlock;
-        input >> globalBlock;
-
-        if (!globalBlock.contains("version")) {
-            SPDLOG_WARN("Global save does not contain a version. We are reconstructing it.");
-            CreateDefaultGlobal();
-            return;
+        // SOH [Link-Span] (Unbound 0.8) um global.sav ilegível (gravação interrompida) derrubava o boot com a
+        // exceção do parser; agora é reconstruído, como o sem versão.
+        int version = 0;
+        try {
+            input >> globalBlock;
+            if (globalBlock.is_object() && globalBlock.contains("version") &&
+                globalBlock["version"].is_number_integer()) {
+                version = globalBlock["version"].get<int>();
+            }
+        } catch (const std::exception& e) {
+            SPDLOG_WARN("Global save could not be read: {}", e.what());
+            globalBlock = nlohmann::json::object();
         }
 
-        switch (globalBlock["version"].get<int>()) {
+        // SOH [Link-Span] (Unbound 0.8) sem return antecipado: reconstruir o global.sav não é motivo para pular
+        // os slots abaixo, que ficavam vazios até o próximo boot.
+        switch (version) {
             case 1:
-                currentJsonContext = &globalBlock;
-                LoadData("audioSetting", gSaveContext.audioSetting);
-                LoadData("zTargetSetting", gSaveContext.zTargetSetting);
-                LoadData("language", gSaveContext.language);
+                // SOH [Link-Span] um JSON válido com campo de tipo errado também reconstrói, em vez de derrubar o
+                // boot na exceção do LoadData.
+                try {
+                    currentJsonContext = &globalBlock;
+                    LoadData("audioSetting", gSaveContext.audioSetting);
+                    LoadData("zTargetSetting", gSaveContext.zTargetSetting);
+                    LoadData("language", gSaveContext.language);
+                } catch (const std::exception& e) {
+                    SPDLOG_WARN("Global save could not be read: {}. We are reconstructing it.", e.what());
+                    CreateDefaultGlobal();
+                }
                 break;
             default:
-                SPDLOG_WARN("Global save has a unrecognized version. We are reconstructing it.");
+                SPDLOG_WARN("Global save has no version or an unrecognized one. We are reconstructing it.");
                 CreateDefaultGlobal();
                 break;
         }

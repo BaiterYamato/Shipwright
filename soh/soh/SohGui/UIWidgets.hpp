@@ -116,6 +116,9 @@ bool Combobox(std::string label, T* value, const std::map<T, const char*>& combo
                     static_cast<int32_t>(*value));
         T fallback = static_cast<T>(options.defaultIndex);
         *value = comboMap.contains(fallback) ? fallback : comboMap.begin()->first;
+        // SOH [Link-Span] (Unbound 0.8) dirty grava o valor corrigido: quem chama só guarda o valor, salva a
+        // config e roda os callbacks quando isto devolve true. Sem isso o aviso acima se repetia a cada quadro.
+        dirty = true;
     }
 
     float startX = ImGui::GetCursorPosX();
@@ -202,6 +205,13 @@ bool Combobox(std::string label, T* value, const std::vector<const char*>& combo
               const ComboboxOptions& options = {}) {
     bool dirty = false;
     size_t currentValueIndex = static_cast<size_t>(*value);
+    // SOH [Link-Span] (Unbound 0.8) mesma trava da sobrecarga com map: um índice de config antiga (ou gravado por
+    // mod) pode passar do fim do vetor, e o at() abaixo derrubava o jogo ao abrir o menu.
+    if (!comboVector.empty() && currentValueIndex >= comboVector.size()) {
+        currentValueIndex = 0;
+        *value = static_cast<T>(0);
+        dirty = true;
+    }
     std::string invisibleLabelStr = "##" + std::string(label);
     const char* invisibleLabel = invisibleLabelStr.c_str();
     std::string trueLabel = label.substr(0, label.find("#"));
@@ -240,8 +250,9 @@ bool Combobox(std::string label, T* value, const std::vector<const char*>& combo
         }
     }
 
+    const char* preview = comboVector.empty() ? "" : comboVector.at(currentValueIndex);
     ImGui::SetNextItemWidth(comboWidth);
-    if (ImGui::BeginCombo(invisibleLabel, comboVector.at(currentValueIndex), options.flags)) {
+    if (!comboVector.empty() && ImGui::BeginCombo(invisibleLabel, preview, options.flags)) {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.0f, 10.0f));
         for (size_t i = 0; i < comboVector.size(); ++i) {
             auto newValue = static_cast<T>(i);
@@ -262,7 +273,7 @@ bool Combobox(std::string label, T* value, const std::vector<const char*>& combo
                 ImGui::SameLine();
                 ImGui::Text("%s", trueLabel.c_str());
             } else if (options.labelPosition == LabelPositions::Far) {
-                float width = ImGui::CalcTextSize(comboVector.at(*value)).x + ImGui::GetStyle().FramePadding.x * 2;
+                float width = ImGui::CalcTextSize(preview).x + ImGui::GetStyle().FramePadding.x * 2;
                 ImGui::SameLine(ImGui::GetContentRegionAvail().x - width);
                 ImGui::Text("%s", trueLabel.c_str());
             }
@@ -287,6 +298,13 @@ bool Combobox(std::string label, T* value, const std::vector<std::string>& combo
               const ComboboxOptions& options = {}) {
     bool dirty = false;
     size_t currentValueIndex = static_cast<size_t>(*value);
+    // SOH [Link-Span] (Unbound 0.8) mesma trava da sobrecarga com map: um índice de config antiga (ou gravado por
+    // mod) pode passar do fim do vetor, e o at() abaixo derrubava o jogo ao abrir o menu.
+    if (!comboVector.empty() && currentValueIndex >= comboVector.size()) {
+        currentValueIndex = 0;
+        *value = static_cast<T>(0);
+        dirty = true;
+    }
     std::string invisibleLabelStr = "##" + std::string(label);
     const char* invisibleLabel = invisibleLabelStr.c_str();
     std::string trueLabel = label.substr(0, label.find("#"));
@@ -325,8 +343,9 @@ bool Combobox(std::string label, T* value, const std::vector<std::string>& combo
         }
     }
 
+    const char* preview = comboVector.empty() ? "" : comboVector.at(currentValueIndex).c_str();
     ImGui::SetNextItemWidth(comboWidth);
-    if (ImGui::BeginCombo(invisibleLabel, comboVector.at(currentValueIndex).c_str(), options.flags)) {
+    if (!comboVector.empty() && ImGui::BeginCombo(invisibleLabel, preview, options.flags)) {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.0f, 10.0f));
         for (size_t i = 0; i < comboVector.size(); ++i) {
             auto newValue = static_cast<T>(i);
@@ -347,8 +366,7 @@ bool Combobox(std::string label, T* value, const std::vector<std::string>& combo
                 ImGui::SameLine();
                 ImGui::Text("%s", trueLabel.c_str());
             } else if (options.labelPosition == LabelPositions::Far) {
-                float width =
-                    ImGui::CalcTextSize(comboVector.at(*value).c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
+                float width = ImGui::CalcTextSize(preview).x + ImGui::GetStyle().FramePadding.x * 2;
                 ImGui::SameLine(ImGui::GetContentRegionAvail().x - width);
                 ImGui::Text("%s", trueLabel.c_str());
             }
@@ -372,8 +390,12 @@ template <typename T = size_t, size_t N>
 bool Combobox(std::string label, T* value, const char* (&comboArray)[N], const ComboboxOptions& options = {}) {
     bool dirty = false;
     size_t currentValueIndex = static_cast<size_t>(*value);
+    // SOH [Link-Span] (Unbound 0.8) esta já limitava o índice, mas deixava o valor antigo para o rótulo "Far"
+    // abaixo indexar fora do array.
     if (currentValueIndex >= N) {
         currentValueIndex = 0;
+        *value = static_cast<T>(0);
+        dirty = true;
     }
     std::string invisibleLabelStr = "##" + std::string(label);
     const char* invisibleLabel = invisibleLabelStr.c_str();
@@ -435,7 +457,8 @@ bool Combobox(std::string label, T* value, const char* (&comboArray)[N], const C
                 ImGui::SameLine();
                 ImGui::Text("%s", trueLabel.c_str());
             } else if (options.labelPosition == LabelPositions::Far) {
-                float width = ImGui::CalcTextSize(comboArray[*value]).x + ImGui::GetStyle().FramePadding.x * 2;
+                float width =
+                    ImGui::CalcTextSize(comboArray[currentValueIndex]).x + ImGui::GetStyle().FramePadding.x * 2;
                 ImGui::SameLine(ImGui::GetContentRegionAvail().x - width);
                 ImGui::Text("%s", trueLabel.c_str());
             }
