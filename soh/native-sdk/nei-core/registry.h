@@ -38,6 +38,8 @@ class Registry {
     ShipNativeStatus List(NeiItemVisitFn visit, void* user) const;
     ShipNativeStatus GetState(uint64_t handle, NeiItemStateV1* state) const;
     ShipNativeStatus Give(uint64_t handle);
+    // Get-item pronto no linkspan.oot.items sem entregar: quem entrega é outro (check do randomizer).
+    ShipNativeStatus ArmGetItem(uint64_t handle);
     ShipNativeStatus Grant(uint64_t handle);
     ShipNativeStatus Revoke(uint64_t handle);
     ShipNativeStatus SetCount(uint64_t handle, uint16_t count);

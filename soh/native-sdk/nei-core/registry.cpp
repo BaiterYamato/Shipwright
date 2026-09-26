@@ -364,6 +364,11 @@ ShipNativeStatus Registry::GetState(uint64_t handle, NeiItemStateV1* out) const 
 }
 
 ShipNativeStatus Registry::Give(uint64_t handle) {
+    const ShipNativeStatus status = ArmGetItem(handle);
+    return status == SHIP_NATIVE_OK ? mItems->give_item(Lookup(handle)->runtime) : status;
+}
+
+ShipNativeStatus Registry::ArmGetItem(uint64_t handle) {
     Item* item = Lookup(handle);
     if (!item) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -382,8 +387,7 @@ ShipNativeStatus Registry::Give(uint64_t handle) {
                                      item->messages[language].c_str(),
                                      ReceiveTrampoline,
                                      item };
-    const ShipNativeStatus status = mItems->set_get_item(item->runtime, &spec);
-    return status == SHIP_NATIVE_OK ? mItems->give_item(item->runtime) : status;
+    return mItems->set_get_item(item->runtime, &spec);
 }
 
 ShipNativeStatus Registry::Grant(uint64_t handle) {

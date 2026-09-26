@@ -12,6 +12,7 @@
 #include "fork_items.h"
 #include "fork_models.h"
 #include "kaleido_glue.h"
+#include "oot_randomizer.h"
 #include "overlay_glue.h"
 #include "registry.h"
 
@@ -28,6 +29,8 @@ struct ForkItem {
     uint64_t handle = 0;
     uint8_t logical = 0;
     std::string id;
+    uint8_t runtime = 0xFF;
+    bool randomizer = false; // oferecido ao linkspan.oot.randomizer
 };
 
 struct ForkState {
@@ -38,6 +41,8 @@ struct ForkState {
     uint64_t updatePatch = 0;
     uint64_t drawPatch = 0;
     std::vector<ForkItem> items;
+    const ShipOotRandomizerV1* randomizer = nullptr;
+    uint32_t randomized = 0;
     uint32_t withoutAssets = 0; // itens do fork deixados de fora por falta do componente de assets
     bool active = false;
     std::string status = "desligado";
@@ -187,6 +192,22 @@ std::string GetItemMessage(const std::string& full, const std::string& name) {
     return text.empty() ? "You got the " + name + "!" : text;
 }
 
+// Itens que o randomizer pode sortear (NEI-013): os da base "core" que funcionam no jogo. Ficam de fora as
+// expansões (NEI-015) e os que o fork deixou adiados ou que dependem de uma expansão.
+bool RandomizerEligible(const std::string& id, const NeiForkItemInfo& info) {
+    static const char* const kExcluded[] = { "skijer.nei.shadow_crystal", "skijer.nei.net",
+                                             "skijer.nei.bottomless_bottle", "skijer.nei.bomb_arrows" };
+    if (!info.component || std::string(info.component) != "core") {
+        return false;
+    }
+    for (const char* excluded : kExcluded) {
+        if (id == excluded) {
+            return false;
+        }
+    }
+    return true;
+}
+
 ShipNativeStatus DefineItems() {
     uint8_t logical[64];
     const uint32_t count = NeiFork_ListItems(logical, sizeof(logical));
@@ -240,15 +261,37 @@ ShipNativeStatus DefineItems() {
             gFork.status = "define " + id + " falhou";
             return status;
         }
-        gFork.items.push_back({ item, logical[i], id });
         NeiItemStateV1 state{ sizeof(state) };
         status = gFork.registry->GetState(item, &state);
         if (status != SHIP_NATIVE_OK) {
+            gFork.registry->Remove(item);
             return status;
         }
+        gFork.items.push_back({ item, logical[i], id, state.runtime_id, RandomizerEligible(id, info) });
         NeiFork_MapItem(state.runtime_id, logical[i]);
     }
     return SHIP_NATIVE_OK;
+}
+
+// Com o randomizer do host (linkspan.oot.randomizer), os itens entram nas seeds geradas com a opção "Link-Span
+// Mod Items". Host sem o serviço: o NEI segue igual, só fora do randomizer.
+void OfferToRandomizer() {
+    gFork.randomized = 0;
+    if (!gFork.randomizer) {
+        return;
+    }
+    for (ForkItem& item : gFork.items) {
+        if (!item.randomizer) {
+            continue;
+        }
+        const ShipOotRandomizerItemSpecV1 spec{ sizeof(spec), item.runtime, 1, {} };
+        if (gFork.registry->ArmGetItem(item.handle) == SHIP_NATIVE_OK &&
+            gFork.randomizer->add_item(&spec) == SHIP_NATIVE_OK) {
+            ++gFork.randomized;
+        } else {
+            item.randomizer = false;
+        }
+    }
 }
 
 // "skijer.nei.deku_leaf", "deku_leaf" ou "Deku Leaf" -> item do fork.
@@ -282,6 +325,12 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
         StopFork();
         return;
     }
+    if (runtime->get_service) {
+        gFork.randomizer = static_cast<const ShipOotRandomizerV1*>(
+            runtime->get_service(runtime->context, LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION,
+                                 sizeof(ShipOotRandomizerV1)));
+    }
+    OfferToRandomizer();
     if (Patch("Player_Update", PlayerUpdate, &gFork.originalUpdate, &gFork.updatePatch) != SHIP_NATIVE_OK ||
         Patch("Player_Draw", PlayerDraw, &gFork.originalDraw, &gFork.drawPatch) != SHIP_NATIVE_OK) {
         StopFork();
@@ -298,7 +347,9 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     StartKaleido(runtime);
     gFork.status = "ativo (" + std::to_string(gFork.items.size()) + " itens" +
                    (gFork.withoutAssets ? ", " + std::to_string(gFork.withoutAssets) + " sem assets" : "") +
-                   ") | kaleido: " + KaleidoStatus() + " | host: " + OverlayStatus();
+                   ") | randomizer: " +
+                   (gFork.randomizer ? std::to_string(gFork.randomized) + " itens" : std::string("sem serviço")) +
+                   " | kaleido: " + KaleidoStatus() + " | host: " + OverlayStatus();
 }
 
 void StopFork() {
@@ -320,6 +371,9 @@ void StopFork() {
     gFork.drawPatch = gFork.updatePatch = 0;
     if (gFork.registry) {
         for (const ForkItem& item : gFork.items) {
+            if (item.randomizer && gFork.randomizer) {
+                gFork.randomizer->remove_item(item.runtime);
+            }
             gFork.registry->Remove(item.handle);
         }
     }

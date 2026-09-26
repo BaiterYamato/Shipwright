@@ -284,6 +284,12 @@ void TestGiveUseAndLevels() {
     FakeItems::buttons[1] = runtime;
     CHECK(FakeItems::Press(1) == SHIP_NATIVE_OK && gUses == 0);
 
+    // Armar para o randomizer grava o get-item sem entregar.
+    FakeItems::lastGiven = 0xFF;
+    CHECK(registry.ArmGetItem(handle) == SHIP_NATIVE_OK && FakeItems::lastGiven == 0xFF &&
+          FakeItems::items.at(runtime).message == "You got seeds!");
+    CHECK(registry.ArmGetItem(0) == SHIP_NATIVE_INVALID_ARGUMENT);
+
     FakeItems::language = LINKSPAN_OOT_LANGUAGE_GERMAN;
     CHECK(registry.Give(handle) == SHIP_NATIVE_OK && FakeItems::lastGiven == runtime);
     CHECK(FakeItems::items.at(runtime).message == "Samen!");
