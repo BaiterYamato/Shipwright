@@ -385,6 +385,43 @@ void SetOotHostSaveBlock(const std::string& name, uint32_t version, nlohmann::js
     block.hasData = true;
 }
 
+bool GetOotSaveNamespace(uint64_t handle, std::string& name, uint32_t& version) {
+    auto& state = State();
+    std::lock_guard lock(state.mutex);
+    const auto found = state.handles.find(handle);
+    if (found == state.handles.end()) {
+        return false;
+    }
+    name = found->second.name;
+    version = found->second.version;
+    return true;
+}
+
+bool ExportOotSaveNamespace(const std::string& name, nlohmann::json& data, uint32_t& version) {
+    auto& state = State();
+    std::lock_guard lock(state.mutex);
+    const auto block = state.blocks.find(name);
+    if (IsHostName(name) || block == state.blocks.end() || !block->second.hasData) {
+        return false;
+    }
+    data = block->second.data;
+    version = block->second.storedVersion;
+    return true;
+}
+
+bool ReplaceOotSaveNamespace(const std::string& name, uint32_t version, nlohmann::json data) {
+    if (IsHostName(name) || !ValidName(name) || !version) {
+        return false;
+    }
+    auto& state = State();
+    std::lock_guard lock(state.mutex);
+    auto& block = state.blocks[name];
+    block.data = std::move(data);
+    block.storedVersion = version;
+    block.hasData = true;
+    return true;
+}
+
 bool GetOotHostSaveBlock(const std::string& name, nlohmann::json& data, uint32_t& version) {
     auto& state = State();
     std::lock_guard lock(state.mutex);

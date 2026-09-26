@@ -28,6 +28,8 @@ extern "C" {
 #include "src/overlays/actors/ovl_Obj_Bombiwa/z_obj_bombiwa.h"
 #include "src/overlays/actors/ovl_Obj_Hamishi/z_obj_hamishi.h"
 #include "src/overlays/actors/ovl_Bg_Hidan_Dalm/z_bg_hidan_dalm.h"
+// Link-Span: get-item de itens sintéticos (OotNativeItemsGame.cpp).
+s32 LinkSpan_IsSyntheticGetItem(u16 modIndex);
 #include "src/overlays/actors/ovl_Bg_Hidan_Kowarerukabe/z_bg_hidan_kowarerukabe.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 extern PlayState* gPlayState;
@@ -164,6 +166,12 @@ void Anchor::RegisterHooks() {
         if (itemEntry.modIndex == MOD_NONE &&
             (itemEntry.itemId >= ITEM_KEY_BOSS && itemEntry.itemId <= ITEM_KEY_SMALL)) {
             SendPacket_UpdateDungeonItems();
+            return;
+        }
+
+        // Link-Span: item sintético segue com o id do registro, que o SendPacket_GiveItem troca pelo nome.
+        if (LinkSpan_IsSyntheticGetItem(itemEntry.modIndex)) {
+            SendPacket_GiveItem(itemEntry.modIndex, static_cast<s16>(itemEntry.itemId));
             return;
         }
 

@@ -18,6 +18,8 @@ namespace ShipLuaHost {
 // OotNativeRandoGame.cpp
 void StoreOotRandoSeed();
 void RestoreOotRandoSeedFromSave();
+// OotNativeAnchorGame.cpp
+void RegisterOotAnchorGameHooks();
 } // namespace ShipLuaHost
 
 namespace {
@@ -117,6 +119,7 @@ void RegisterOotSaveSection() {
         return;
     }
     registered = true;
+    RegisterOotAnchorGameHooks();
     SaveManager::Instance->AddInitFunction(InitFile);
     SaveManager::Instance->AddLoadFunction(kSectionName, kSectionVersion, LoadSection);
     SaveManager::Instance->AddSaveFunction(kSectionName, kSectionVersion, SaveSection, true, SECTION_PARENT_NONE);

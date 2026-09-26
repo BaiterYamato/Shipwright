@@ -26,6 +26,7 @@ struct OotHookPoints {
     uint64_t renderSkyClouds = 0;
     uint64_t renderFileSelectSky = 0;
     uint64_t pointLightColor = 0;
+    uint64_t anchorState = 0;
 };
 void SetOotHookLogger(void (*logger)(const std::string& message));
 // Cria um registro novo com os pontos do host declarados. Chamar na thread do jogo.

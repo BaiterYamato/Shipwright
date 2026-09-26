@@ -9,7 +9,13 @@
 extern "C" {
 #include "functions.h"
 extern PlayState* gPlayState;
+// Link-Span: get-item de itens sintéticos (OotNativeItemsGame.cpp).
+s32 LinkSpan_IsSyntheticGetItem(u16 modIndex);
 }
+
+// Link-Span: item sintético pelo nome do registro (OotNativeAnchorGame.cpp).
+bool LinkSpan_AnchorWriteGiveItem(uint16_t item, nlohmann::json& payload);
+void LinkSpan_AnchorReadGiveItem(const nlohmann::json& payload, const std::string& from);
 
 /**
  * GIVE_ITEM
@@ -38,6 +44,10 @@ void Anchor::SendPacket_GiveItem(u16 modId, s16 getItemId) {
     payload["addToQueue"] = true;
     payload["modId"] = modId;
     payload["getItemId"] = getItemId;
+    // Link-Span: para item sintético, getItemId é o id runtime; o parceiro recebe pelo nome.
+    if (LinkSpan_IsSyntheticGetItem(modId) && !LinkSpan_AnchorWriteGiveItem(static_cast<u16>(getItemId), payload)) {
+        return;
+    }
 
     SendJsonToRemote(payload);
 }
@@ -51,6 +61,11 @@ void Anchor::HandlePacket_GiveItem(nlohmann::json payload) {
     AnchorClient& client = clients[clientId];
     u16 modId = payload.at("modId").get<u16>();
     u16 getItemId = payload.at("getItemId").get<u16>();
+
+    if (LinkSpan_IsSyntheticGetItem(modId)) {
+        LinkSpan_AnchorReadGiveItem(payload, client.name);
+        return;
+    }
 
     GetItemEntry getItemEntry;
     if (modId == MOD_NONE) {

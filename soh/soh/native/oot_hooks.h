@@ -21,6 +21,8 @@
  * oot.save.saving v1: antes do jogo gravar; última chance de escrever blocos.
  * oot.save.deleted v1: arquivo `slot` apagado.
  * oot.save.copied v1: arquivo `other_slot` copiado para `slot`.
+ * oot.anchor.state v1: o estado do time do Anchor substituiu namespaces compartilhados (linkspan.oot.anchor) do
+ *   arquivo `slot`; releia o que o mod guarda neles.
  *
  * oot.player.limb_draw v1: só OBSERVE, payload ShipOotPlayerLimbHookV1. Um limb do
  *   Link (ou do Dark Link, que usa o mesmo desenho) acabou de ser desenhado; a
@@ -41,6 +43,7 @@
 #define LINKSPAN_OOT_HOOK_SAVE_SAVING "oot.save.saving"
 #define LINKSPAN_OOT_HOOK_SAVE_DELETED "oot.save.deleted"
 #define LINKSPAN_OOT_HOOK_SAVE_COPIED "oot.save.copied"
+#define LINKSPAN_OOT_HOOK_ANCHOR_STATE "oot.anchor.state"
 #define LINKSPAN_OOT_HOOK_PLAYER_LIMB_DRAW "oot.player.limb_draw"
 #define LINKSPAN_OOT_HOOK_ROOM_ACTORS "oot.room.actors"
 #define LINKSPAN_OOT_HOOK_RENDER_ACTOR_DRAW "oot.render.actor_draw"

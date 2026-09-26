@@ -48,6 +48,7 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
         Declare(LINKSPAN_OOT_HOOK_RENDER_SKY_CLOUDS, sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.renderFileSelectSky = Declare(LINKSPAN_OOT_HOOK_RENDER_FILE_SELECT_SKY,
                                          sizeof(ShipOotRenderFileSelectSkyHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.anchorState = Declare(LINKSPAN_OOT_HOOK_ANCHOR_STATE, sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.pointLightColor = Declare(LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR, sizeof(ShipOotPointLightColorHookV1),
                                      SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM);
     return registry;

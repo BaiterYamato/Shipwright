@@ -4,6 +4,7 @@
 #include "OotNativeItems.h"
 #include "OotNativeJsonTypes.h"
 #include "OotNativeRando.h"
+#include "OotNativeAnchor.h"
 #include "OotNativeRegistry.h"
 #include "OotNativeSave.h"
 #include "OotNativeScenes.h"
@@ -571,6 +572,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeSkeletons(gameThread);
     InitializeOotNativeText(gameThread);
     InitializeOotNativeRando(gameThread);
+    InitializeOotNativeAnchor(gameThread);
     InitializeOotNativeJsonTypes(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
@@ -632,6 +634,9 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& randomizer = GetOotNativeRandomizerService();
     policy.services.push_back(
         {LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION, sizeof(randomizer), &randomizer});
+    // NEI-HOST-003: Anchor.
+    const auto& anchor = GetOotNativeAnchorService();
+    policy.services.push_back({LINKSPAN_OOT_ANCHOR_SERVICE, LINKSPAN_OOT_ANCHOR_VERSION, sizeof(anchor), &anchor});
     policy.hooks = CreateOotHookRegistry();
     policy.onProviderUnload = [](std::string_view owner) { ReleaseOotRenderOwner(owner); };
     policy.escapeHatch = CreateOotEscapeHatch();

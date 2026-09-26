@@ -31,6 +31,14 @@ std::vector<std::string> MissingRequiredOotNamespaces();
 void SetOotHostSaveBlock(const std::string& name, uint32_t version, nlohmann::json data);
 bool GetOotHostSaveBlock(const std::string& name, nlohmann::json& data, uint32_t& version);
 
+// Estado do time do Anchor (OotNativeAnchor*.cpp), qualquer thread. Só namespaces de mod.
+// Nome e versão de schema de um handle aberto.
+bool GetOotSaveNamespace(uint64_t handle, std::string& name, uint32_t& version);
+// Conteúdo gravado e a versão com que foi gravado; false sem dados.
+bool ExportOotSaveNamespace(const std::string& name, nlohmann::json& data, uint32_t& version);
+// Substitui o conteúdo, como um write do mod com essa versão.
+bool ReplaceOotSaveNamespace(const std::string& name, uint32_t version, nlohmann::json data);
+
 // Integração com o SaveManager (OotNativeSaveGame.cpp, só no jogo).
 void RegisterOotSaveSection();
 void OotBeforeSave(int32_t fileNum, int32_t sectionId);

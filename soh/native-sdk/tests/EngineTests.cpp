@@ -23,6 +23,8 @@
 #include "OotNativeText.h"
 #include "oot_randomizer.h"
 #include "OotNativeRando.h"
+#include "oot_anchor.h"
+#include "OotNativeAnchor.h"
 #include "oot_resources.h"
 #include "OotNativeJsonTypes.h"
 #include <shiplua/manifest/ManifestParser.h>
@@ -571,7 +573,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 24 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 25 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -629,10 +631,13 @@ int main(int argc, char** argv) {
           policy.services[22].size == sizeof(ShipOotScenesV3) &&
           std::string(policy.services[23].name) == LINKSPAN_OOT_RANDOMIZER_SERVICE &&
           policy.services[23].version == LINKSPAN_OOT_RANDOMIZER_VERSION &&
-          policy.services[23].size == sizeof(ShipOotRandomizerV1) && policy.onProviderUnload,
+          policy.services[23].size == sizeof(ShipOotRandomizerV1) &&
+          std::string(policy.services[24].name) == LINKSPAN_OOT_ANCHOR_SERVICE &&
+          policy.services[24].version == LINKSPAN_OOT_ANCHOR_VERSION &&
+          policy.services[24].size == sizeof(ShipOotAnchorV1) && policy.onProviderUnload,
           "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1, ocarina V1, scenes V1/V2/V3, "
           "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1, "
-          "text V1 e randomizer V1, com as versões novas no fim");
+          "text V1, randomizer V1 e anchor V1, com as versões novas no fim");
     {
         using namespace FakeSkeletons;
         const auto* skeletons = static_cast<const ShipOotSkeletonsV1*>(policy.services[16].table);
@@ -1295,7 +1300,8 @@ int main(int argc, char** argv) {
     }
     {
         for (const char* point : {LINKSPAN_OOT_HOOK_SAVE_LOADED, LINKSPAN_OOT_HOOK_SAVE_SAVING,
-                                  LINKSPAN_OOT_HOOK_SAVE_DELETED, LINKSPAN_OOT_HOOK_SAVE_COPIED}) {
+                                  LINKSPAN_OOT_HOOK_SAVE_DELETED, LINKSPAN_OOT_HOOK_SAVE_COPIED,
+                                  LINKSPAN_OOT_HOOK_ANCHOR_STATE}) {
             Check(policy.hooks->FindPoint(point, LINKSPAN_OOT_HOOKS_VERSION) != 0, point);
         }
         const auto* save = static_cast<const ShipOotSaveV1*>(policy.services[8].table);
@@ -1363,6 +1369,62 @@ int main(int argc, char** argv) {
         std::thread([&] {
             Check(save->open_namespace("autor.outro", 1, &bad) == SHIP_NATIVE_FAILURE, "save só na thread do jogo");
         }).join();
+
+        // NEI-HOST-003: namespaces no estado do time do Anchor.
+        const auto* anchor = static_cast<const ShipOotAnchorV1*>(policy.services[24].table);
+        ShipLuaHost::ClearOotSaveData();
+        Check(anchor->connected() == 0, "sem ponte o Anchor não está conectado");
+        ShipLuaHost::SetOotAnchorBridge({[] { return true; }});
+        Check(anchor->connected() == 1, "conectado pela ponte");
+        Check(anchor->share_namespace(0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  anchor->share_namespace(mod + 999) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "share de handle inválido");
+        Check(anchor->share_namespace(mod) == SHIP_NATIVE_OK && anchor->share_namespace(mod) == SHIP_NATIVE_OK,
+              "share idempotente");
+        Check(ShipLuaHost::ExportOotAnchorTeamState().is_null(), "namespace sem dados não vai no estado");
+        Check(save->write(mod, "{\"n\":1}", 7) == SHIP_NATIVE_OK, "dados do mod");
+        auto team = ShipLuaHost::ExportOotAnchorTeamState();
+        Check(team["version"] == 1 && team["namespaces"]["autor.mod"]["version"] == 2 &&
+                  team["namespaces"]["autor.mod"]["data"]["n"] == 1,
+              "estado do time leva o namespace compartilhado");
+        team["namespaces"]["autor.mod"]["data"]["n"] = 5;
+        team["namespaces"]["outro.mod"] = {{"version", 1}, {"data", 3}};
+        auto imported = ShipLuaHost::ImportOotAnchorTeamState(team);
+        Check(imported.replaced.size() == 1 && imported.refused.empty() &&
+                  save->read(mod, text.data(), static_cast<uint32_t>(text.size()), &size) == SHIP_NATIVE_OK &&
+                  nlohmann::json::parse(text.substr(0, size))["n"] == 5,
+              "import substitui só o que este cliente compartilha");
+        uint64_t other = 0;
+        Check(save->open_namespace("outro.mod", 1, &other) == SHIP_NATIVE_OK &&
+                  save->read(other, nullptr, 0, &size) == SHIP_NATIVE_UNSUPPORTED,
+              "namespace não compartilhado fica de fora");
+        team["namespaces"]["autor.mod"]["version"] = 3;
+        imported = ShipLuaHost::ImportOotAnchorTeamState(team);
+        Check(imported.replaced.empty() && imported.refused.size() == 1 && imported.refused[0] == "autor.mod" &&
+                  save->read(mod, text.data(), static_cast<uint32_t>(text.size()), &size) == SHIP_NATIVE_OK &&
+                  nlohmann::json::parse(text.substr(0, size))["n"] == 5,
+              "versão de schema diferente é recusada sem mexer no local");
+        team["version"] = 2;
+        Check(ShipLuaHost::ImportOotAnchorTeamState(team).replaced.empty(), "estado de outra versão ignorado");
+        Check(anchor->unshare_namespace(other) == SHIP_NATIVE_FAILURE && anchor->unshare_namespace(mod) == SHIP_NATIVE_OK &&
+                  ShipLuaHost::ExportOotAnchorTeamState().is_null(),
+              "unshare");
+        for (uint32_t i = 0; i < LINKSPAN_OOT_ANCHOR_MAX_SHARED; ++i) {
+            uint64_t handle = 0;
+            const std::string name = "limite.mod" + std::to_string(i);
+            Check(save->open_namespace(name.c_str(), 1, &handle) == SHIP_NATIVE_OK &&
+                      anchor->share_namespace(handle) == SHIP_NATIVE_OK,
+                  "share até o limite");
+        }
+        Check(anchor->share_namespace(other) == SHIP_NATIVE_LIMIT, "LIMIT além do máximo");
+        std::thread([&] {
+            Check(anchor->share_namespace(mod) == SHIP_NATIVE_INVALID_ARGUMENT && anchor->connected() == 0,
+                  "anchor só na thread do jogo");
+        }).join();
+        ShipLuaHost::ResetOotNativeAnchor();
+        Check(anchor->share_namespace(other) == SHIP_NATIVE_OK, "reset esquece os compartilhados");
+        ShipLuaHost::ResetOotNativeAnchor();
+        ShipLuaHost::SetOotAnchorBridge({});
         ShipLuaHost::ClearOotSaveData();
     }
     Check(policy.hooks && policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_PLAY_UPDATE, LINKSPAN_OOT_HOOKS_VERSION) &&
