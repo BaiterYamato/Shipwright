@@ -24,6 +24,7 @@ extern "C" void WeaponUpgrade_SetGilded(unsigned char on);
 extern "C" int NeiActor_UnloadStats(char* out, int capacity);
 #include "fork_save.h"
 #include "include/linkspan/nei/nei_items.h"
+#include "oot_anchor.h"
 #include "oot_engine.h"
 #include "oot_hooks.h"
 #include "oot_layout_id.h"
@@ -39,6 +40,10 @@ struct Core {
     // Arquivo cujo estado está na memória. Um arquivo novo não passa por oot.save.loaded: o jogo chama
     // Save_InitFile e grava, então sem isto o primeiro save do arquivo novo levaria os itens do anterior.
     int32_t loadedSlot = -1;
+    // Anchor (NEI-014): opcional. Com ele os blocos "nei.items" e "nei.state" entram no estado do time.
+    const ShipOotAnchorV1* anchor = nullptr;
+    bool anchorShared = false;
+    uint32_t teamLoads = 0;
 };
 
 // A tabela do serviço não leva contexto: uma instância do coremod por processo.
@@ -154,6 +159,20 @@ ShipNativeStatus SHIP_NATIVE_CALL OnSaving(void*, const ShipNativeHookCall* call
     return SHIP_NATIVE_OK;
 }
 
+// O estado do time do Anchor substituiu os blocos: relê como num load, sem mexer no vínculo do arquivo.
+ShipNativeStatus SHIP_NATIVE_CALL OnAnchorState(void*, const ShipNativeHookCall*) {
+    if (gCore && gCore->owner == std::this_thread::get_id()) {
+        try {
+            gCore->forkSave.OnSaveLoaded();
+            gCore->registry.OnSaveLoaded();
+            ++gCore->teamLoads;
+        } catch (...) {
+            return SHIP_NATIVE_FAILURE;
+        }
+    }
+    return SHIP_NATIVE_OK;
+}
+
 // Apagar ou sobrescrever por cópia o arquivo carregado desliga o vínculo: o próximo save dele recomeça.
 ShipNativeStatus SHIP_NATIVE_CALL OnSlotReplaced(void*, const ShipNativeHookCall* call) {
     if (gCore && gCore->owner == std::this_thread::get_id() && HookSlot(call) == gCore->loadedSlot) {
@@ -171,6 +190,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, Shi
         std::string text = registry->Stats() + " | fork: " + LinkSpanNei::ForkStatus() + " | " +
                            LinkSpanNei::InventoryStatus() + " | arquivo=" + std::to_string(gCore->loadedSlot) +
                            " | assets: " + LinkSpanNei::AssetsStatus();
+        if (gCore->anchorShared) {
+            text += " | anchor: " + std::string(gCore->anchor->connected() ? "conectado" : "desconectado") +
+                    " estados=" + std::to_string(gCore->teamLoads);
+        }
         // Estado do pipeline de Player (NEI-005). Só faz sentido com o fork ligado: sem escape hatch
         // as funções do fork não rodam e o Player não é o desta DLL.
         if (LinkSpanNei::ForkActive()) {
@@ -403,6 +426,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->context, LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION, sizeof(ShipOotTextV1))));
     gCore->registry.Attach(items, save, saveHandle);
     gCore->forkSave.Attach(save, forkSaveHandle);
+    // Host sem Anchor (ou mais antigo): os itens seguem só locais. Os dois blocos vão juntos, como o gSaveContext
+    // inteiro que o Anchor sincroniza: o do fork também guarda posse (ownedItems, upgrades).
+    gCore->anchor = static_cast<const ShipOotAnchorV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_ANCHOR_SERVICE, LINKSPAN_OOT_ANCHOR_VERSION, sizeof(ShipOotAnchorV1)));
+    gCore->anchorShared = gCore->anchor && gCore->anchor->share_namespace(saveHandle) == SHIP_NATIVE_OK &&
+                          gCore->anchor->share_namespace(forkSaveHandle) == SHIP_NATIVE_OK;
     status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_LOADED, OnLoaded);
     if (status == SHIP_NATIVE_OK) {
         status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_SAVING, OnSaving);
@@ -412,6 +441,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = Observe(runtime, LINKSPAN_OOT_HOOK_SAVE_COPIED, OnSlotReplaced);
+    }
+    if (status == SHIP_NATIVE_OK && gCore->anchorShared) {
+        status = Observe(runtime, LINKSPAN_OOT_HOOK_ANCHOR_STATE, OnAnchorState);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "stats", Stats, nullptr);
