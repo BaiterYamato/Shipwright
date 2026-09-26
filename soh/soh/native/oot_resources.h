@@ -71,8 +71,10 @@ typedef struct ShipOotResourcesV2 {
 #define LINKSPAN_OOT_RESOURCES_VERSION_3 3u
 #define LINKSPAN_OOT_RESOURCES_MAX_JSON_TYPE 128u
 
-/* Transcodifica um documento JSON para um recurso XML do SoH. Na thread do jogo,
- * dentro do carregamento do recurso. `path` é o caminho pedido ao resource
+/* Transcodifica um documento JSON para um recurso XML do SoH, dentro do
+ * carregamento do recurso e na thread que o carrega: o resource manager usa um
+ * pool de threads, então o callback não chama serviços restritos à thread do jogo
+ * e protege o próprio estado. `path` é o caminho pedido ao resource
  * manager; o provider lê as camadas que quiser (read_file_layers) e aplica a regra
  * de merge dele. `version` é o número depois da última barra do "$schema" da
  * camada de maior prioridade que o traz. O XML escrito por `write` (pode chegar

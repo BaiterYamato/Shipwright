@@ -9,7 +9,8 @@
 #define LINKSPAN_OOT_SCENES_FIRST_CUSTOM_ID 128
 #define LINKSPAN_OOT_SCENES_MAX_ID 32767
 #define LINKSPAN_OOT_SCENES_ENTRANCE_LAYERS 4
-#define LINKSPAN_OOT_SCENES_MAX_ENTRANCE_INDEX 32764
+/* Início do último grupo: 0x7FF8 e acima são entradas de retorno dinâmico, resolvidas sem ler a tabela. */
+#define LINKSPAN_OOT_SCENES_MAX_ENTRANCE_INDEX 32756
 #define LINKSPAN_OOT_SCENES_MAX_NAME 255u
 #define LINKSPAN_OOT_SCENES_MAX_PATH 1024u
 #define LINKSPAN_OOT_SCENES_MAX_SPAWN 127u
@@ -32,7 +33,7 @@ typedef struct ShipOotSceneDefinitionV1 {
 typedef struct ShipOotEntranceDefinitionV1 {
     uint32_t size;
     const char* key;
-    int32_t requested_index; /* LINKSPAN_OOT_SCENES_AUTO ou >= contagem vanilla, <= 32764 e múltiplo de 4 */
+    int32_t requested_index; /* LINKSPAN_OOT_SCENES_AUTO ou >= contagem vanilla, <= 32756 e múltiplo de 4 */
     uint8_t spawn;           /* índice na lista de spawns da cena, 0..127 */
     uint8_t continue_bgm;
     uint8_t show_title_card;

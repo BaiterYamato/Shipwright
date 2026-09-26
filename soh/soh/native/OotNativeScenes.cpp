@@ -22,11 +22,10 @@ constexpr size_t MAX_ENTRANCE_NAME = LINKSPAN_OOT_SCENES_MAX_NAME * 2 + 1;
 constexpr uint8_t MAX_END_TRANSITION = ENTRANCE_INFO_END_TRANS_TYPE_MASK >> ENTRANCE_INFO_END_TRANS_TYPE_SHIFT;
 constexpr uint8_t MAX_START_TRANSITION = ENTRANCE_INFO_START_TRANS_TYPE_MASK >> ENTRANCE_INFO_START_TRANS_TYPE_SHIFT;
 // Unbound 0.8: o último grupo termina antes das entradas de retorno dinâmico (0x7FF9..0x7FFF), que o jogo resolve
-// sem ler a tabela; um grupo em 0x7FF8 ou 0x7FFC ficaria inalcançável. O teto do oot_scenes.h (32764) entra no
-// layout id e fica; o limite vale aqui.
+// sem ler a tabela; um grupo em 0x7FF8 ou 0x7FFC ficaria inalcançável.
 constexpr int32_t LAST_ENTRANCE_GROUP =
     (ENTR_RETURN_YOUSEI_IZUMI_YOKO - ENTRANCE_LAYERS) / ENTRANCE_LAYERS * ENTRANCE_LAYERS;
-static_assert(LAST_ENTRANCE_GROUP == 0x7FF4 && LAST_ENTRANCE_GROUP <= LINKSPAN_OOT_SCENES_MAX_ENTRANCE_INDEX);
+static_assert(LAST_ENTRANCE_GROUP == 0x7FF4 && LAST_ENTRANCE_GROUP == LINKSPAN_OOT_SCENES_MAX_ENTRANCE_INDEX);
 
 struct SceneRecord {
     int32_t id = 0;
