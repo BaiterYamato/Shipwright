@@ -109,15 +109,16 @@ void NeiTest_GrantMagic(void) {
  * do save de teste não têm nenhum. Carrega o objeto do inimigo se a cena não o tiver e o põe 120 unidades à frente
  * do Link, virado para ele. kind 0 é a Deku Baba (cabeça alta, para golpe e arremesso), 1 o Tektite vermelho e 2 o
  * Baby Dodongo, rentes ao chão, na altura dos projéteis dos rods; 3 o Wolfos (vida 8: a Kokiri tira 1, a Master 2 e a
- * Biggoron 4, para os upgrades de espada). O pipeline_probe.c lê a vida no stats. */
+ * Biggoron 4, para os upgrades de espada); 4 a estátua de Armos, que o Dominion Rod possui. O pipeline_probe.c lê a
+ * vida e a distância ao Link no stats. */
 s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId);
 
 static Actor* sNeiTestTarget = NULL;
 
 int NeiTest_SpawnEnemy(int kind) {
-    static const s16 kActors[] = { ACTOR_EN_DEKUBABA, ACTOR_EN_TITE, ACTOR_EN_DODOJR, ACTOR_EN_WF };
-    static const s16 kObjects[] = { OBJECT_DEKUBABA, OBJECT_TITE, OBJECT_DODOJR, OBJECT_WF };
-    static const s16 kParams[] = { 0, -1 /* TEKTITE_RED */, 0, 0 /* WOLFOS_NORMAL */ };
+    static const s16 kActors[] = { ACTOR_EN_DEKUBABA, ACTOR_EN_TITE, ACTOR_EN_DODOJR, ACTOR_EN_WF, ACTOR_EN_AM };
+    static const s16 kObjects[] = { OBJECT_DEKUBABA, OBJECT_TITE, OBJECT_DODOJR, OBJECT_WF, OBJECT_AM };
+    static const s16 kParams[] = { 0, -1 /* TEKTITE_RED */, 0, 0 /* WOLFOS_NORMAL */, 0 /* ARMOS_STATUE */ };
     Player* player;
     s32 bank;
     f32 x;
@@ -151,9 +152,12 @@ Actor* NeiTest_Target(void) {
     if (gPlayState == NULL || sNeiTestTarget == NULL) {
         return NULL;
     }
-    for (actor = gPlayState->actorCtx.actorLists[ACTORCAT_ENEMY].head; actor != NULL; actor = actor->next) {
-        if (actor == sNeiTestTarget) {
-            return actor;
+    // A estátua de Armos não fica na categoria de inimigo: procura em todas.
+    for (s32 category = 0; category < ACTORCAT_MAX; category++) {
+        for (actor = gPlayState->actorCtx.actorLists[category].head; actor != NULL; actor = actor->next) {
+            if (actor == sNeiTestTarget) {
+                return actor;
+            }
         }
     }
     sNeiTestTarget = NULL;

@@ -72,6 +72,7 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
     PlayState* play = gPlayState;
 
     Actor* alvo = NeiTest_Target();
+    int32_t distancia = -1;
 
     CustomItems_BuildVisualSync(&sync);
     ativos = sync.activeFlags;
@@ -92,17 +93,20 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
             }
         }
         bloqueado = CustomItems_IsBlocked(player, play) ? 1 : 0;
+        if (alvo != NULL) {
+            distancia = (int32_t)Math_Vec3f_DistXZ(&alvo->world.pos, &player->actor.world.pos);
+        }
         if (play->activeCamera >= 0 && play->activeCamera < NUM_CAMS && play->cameraPtrs[play->activeCamera] != NULL) {
             camera = play->cameraPtrs[play->activeCamera]->setting;
         }
     }
     int escrito = snprintf(out, capacity, "pipeline: visual=0x%X acao=%d segurando=%d item=%d arma=%d grupo=%d at=%d camera=%d bloq=%d "
-                           "botao=%d:0x%X(%d) uso=0x%X->%d(%d) cesq=0x%X/%d ataque=%d/%d/%d/%d mws=%d magia=%d alvo=%d",
+                           "botao=%d:0x%X(%d) uso=0x%X->%d(%d) cesq=0x%X/%d ataque=%d/%d/%d/%d mws=%d magia=%d alvo=%d@%d",
                            ativos, acao, segurando, item, arma, grupo, at, camera, bloqueado, sProbeButton,
                            sProbeButtonItem, sProbeButtons, sProbeUseItem, sProbeUseAction, sProbeUses,
                            gSaveContext.equips.buttonItems[1], gSaveContext.buttonStatus[1], sProbeAttackCalls, sProbeAttackUse,
                            sProbeAttackHits, sProbeAttackUpperSword, player != NULL ? player->meleeWeaponState : -1,
-                           gSaveContext.magic, alvo != NULL ? alvo->colChkInfo.health : -1);
+                           gSaveContext.magic, alvo != NULL ? alvo->colChkInfo.health : -1, distancia);
     if (escrito < 0 || (uint32_t)escrito >= capacity) {
         return 0;
     }

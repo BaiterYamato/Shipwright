@@ -270,15 +270,15 @@ ShipNativeStatus SHIP_NATIVE_CALL MagicTest(void*, const char*, uint32_t, ShipNa
 }
 
 // Prova da onda B (NEI-009): um inimigo à frente do Link, para dano e collider ("enemy", "enemy tektite",
-// "enemy dodojr", "enemy wolfos"). O stats mostra a vida dele.
+// "enemy dodojr", "enemy wolfos", "enemy armos"). O stats mostra a vida dele.
 ShipNativeStatus SHIP_NATIVE_CALL EnemyTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
                                             void* writer) {
     if (!write || !LinkSpanNei::ForkActive()) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    static const char* const kNames[] = { "deku baba", "tektite", "dodojr", "wolfos" };
+    static const char* const kNames[] = { "deku baba", "tektite", "dodojr", "wolfos", "armos" };
     const std::string name = args ? std::string(args, length) : std::string();
-    const int kind = name == "tektite" ? 1 : name == "dodojr" ? 2 : name == "wolfos" ? 3 : 0;
+    const int kind = name == "tektite" ? 1 : name == "dodojr" ? 2 : name == "wolfos" ? 3 : name == "armos" ? 4 : 0;
     const int result = NeiTest_SpawnEnemy(kind);
     char text[64];
     const int size = std::snprintf(text, sizeof(text), "inimigo: %s %s (%d)", kNames[kind],

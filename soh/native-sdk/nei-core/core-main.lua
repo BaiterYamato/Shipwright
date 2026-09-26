@@ -77,7 +77,7 @@ if forkItems then
         end)
     end
 end
-for _, kind in ipairs({ "", "tektite", "dodojr", "wolfos" }) do
+for _, kind in ipairs({ "", "tektite", "dodojr", "wolfos", "armos" }) do
     local hotkey = kind == "" and "test_enemy" or ("test_enemy_" .. kind)
     ship.hotkeys.register(hotkey, { default = "", label = "NEI: inimigo à frente (teste) " .. kind }, function()
         local text, failure = ship.native.call("enemy", kind)
