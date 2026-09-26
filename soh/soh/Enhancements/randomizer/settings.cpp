@@ -1399,6 +1399,8 @@ void Settings::CreateOptions() {
     OPT_BOOL(RSK_BUNNY_HOOD, CVAR_RANDOMIZER_SETTING("BunnyHood"));
     OPT_BOOL(RSK_MASKS_AS_ADULT, CVAR_RANDOMIZER_SETTING("MasksAsAdult"));
     OPT_BOOL(RSK_ROCS_FEATHER, CVAR_RANDOMIZER_SETTING("RocsFeather"));
+    // Link-Span: itens que os mods oferecem pelo linkspan.oot.randomizer (OotNativeRandoGame.cpp).
+    OPT_BOOL(RSK_LINKSPAN_MOD_ITEMS, CVAR_RANDOMIZER_SETTING("LinkSpanModItems"));
     OPT_U8(RSK_INFINITE_UPGRADES, {"Off", "Progressive", "Condensed Progressive"}, OptionCategory::Setting, CVAR_RANDOMIZER_SETTING("InfiniteUpgrades"));
     OPT_BOOL(RSK_SKELETON_KEY, CVAR_RANDOMIZER_SETTING("SkeletonKey"));
     OPT_BOOL(RSK_SLINGBOW_BREAK_BEEHIVES, CVAR_RANDOMIZER_SETTING("SlingBowBeehives"));
@@ -2099,6 +2101,7 @@ void Settings::CreateOptions() {
                                                                                  &mOptions[RSK_SHUFFLE_OPEN_CHEST],
                                                                                  &mOptions[RSK_SHUFFLE_BEAN_SOULS],
                                                                                  &mOptions[RSK_ROCS_FEATHER],
+                                                                                 &mOptions[RSK_LINKSPAN_MOD_ITEMS],
                                                                                  &mOptions[RSK_BOMBCHU_BAG],
                                                                                  &mOptions[RSK_ENABLE_BOMBCHU_DROPS],
                                                                                  &mOptions[RSK_PROGRESSIVE_GORON_SWORD],
@@ -2293,6 +2296,7 @@ void Settings::CreateOptions() {
                                             &mOptions[RSK_SHUFFLE_100_GS_REWARD],
                                             &mOptions[RSK_SHUFFLE_BEAN_SOULS],
                                             &mOptions[RSK_ROCS_FEATHER],
+                                            &mOptions[RSK_LINKSPAN_MOD_ITEMS],
                                             &mOptions[RSK_PROGRESSIVE_GORON_SWORD],
                                             &mOptions[RSK_SHUFFLE_BOSS_SOULS],
                                             &mOptions[RSK_SHUFFLE_DEKU_STICK_BAG],

@@ -8,6 +8,9 @@
 #include "../rng.h"
 #include "soh/Enhancements/randomizer/Traps.h"
 
+// Link-Span: itens de mod oferecidos pelo linkspan.oot.randomizer (OotNativeRandoGame.cpp).
+std::vector<std::pair<RandomizerGet, int>> LinkSpan_PrepareRandoModItems(bool enabled);
+
 std::vector<RandomizerGet> itemPool = {};
 std::vector<RandomizerGet> lesserPool = {};
 std::vector<RandomizerGet> plentifulPool = {};
@@ -428,6 +431,12 @@ void GenerateItemPool() {
 
     if (ctx->GetOption(RSK_ROCS_FEATHER)) {
         AddItemToPool(RG_ROCS_FEATHER, 2, 1, 1, 1);
+    }
+
+    // Link-Span: sem peso de lógica; ocupam o lugar de junk.
+    const bool modItems = static_cast<bool>(ctx->GetOption(RSK_LINKSPAN_MOD_ITEMS));
+    for (const auto& [item, copies] : LinkSpan_PrepareRandoModItems(modItems)) {
+        AddFixedItemToPool(item, copies, false);
     }
 
     int bronzeScale = ctx->GetOption(RSK_SHUFFLE_SWIM) ? 1 : 0;

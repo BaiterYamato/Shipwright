@@ -10,6 +10,7 @@
 #include "soh/ActorDB.h"
 #include "soh/Enhancements/custom-message/CustomMessageManager.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/item-tables/ItemTableTypes.h"
 #include "soh/ResourceManagerHelpers.h"
 
@@ -20,6 +21,10 @@ extern "C" {
 #include "functions.h"
 #include "variables.h"
 extern PlayState* gPlayState;
+}
+
+namespace ShipLuaHost {
+GetItemEntry BuildOotSyntheticGetItemEntry(uint8_t item);
 }
 
 namespace {
@@ -205,10 +210,9 @@ ShipNativeStatus ItemsGiveItem(uint8_t item) {
         gPlayState->csCtx.state != CS_STATE_IDLE) {
         return SHIP_NATIVE_LIMIT;
     }
-    GetItemEntry entry = GET_ITEM(item, OBJECT_GI_HEART, 0, kGetItemTextId, 0x80, CHEST_ANIM_LONG,
-                                  ITEM_CATEGORY_MAJOR, kGetItemModIndex, GI_HEART_PIECE);
-    entry.drawFunc = DrawGetItemModel;
-    return GiveItemEntryWithoutActor(gPlayState, entry) ? SHIP_NATIVE_OK : SHIP_NATIVE_LIMIT;
+    return GiveItemEntryWithoutActor(gPlayState, ShipLuaHost::BuildOotSyntheticGetItemEntry(item))
+               ? SHIP_NATIVE_OK
+               : SHIP_NATIVE_LIMIT;
 }
 
 void BuildGetItemMessage(uint16_t*, bool* loadFromMessageTable) {
@@ -237,6 +241,14 @@ s32 VaItem(va_list original) {
 } // namespace
 
 namespace ShipLuaHost {
+
+// Get-item de um item sintético: give_item e as checks do randomizer (OotNativeRandoGame.cpp).
+GetItemEntry BuildOotSyntheticGetItemEntry(uint8_t item) {
+    GetItemEntry entry = GET_ITEM(item, OBJECT_GI_HEART, 0, kGetItemTextId, 0x80, CHEST_ANIM_LONG,
+                                  ITEM_CATEGORY_MAJOR, kGetItemModIndex, GI_HEART_PIECE);
+    entry.drawFunc = DrawGetItemModel;
+    return entry;
+}
 
 void RegisterOotItemGameHooks() {
     static bool registered = false;
@@ -346,13 +358,14 @@ extern "C" s32 LinkSpan_GetSyntheticItemAmmo(s32 item, s16* ammo, s32* full) {
     return 1;
 }
 
-// Caixa de texto do get-item aberta: entrega ao mod.
+// Caixa de texto do get-item aberta: entrega ao mod. Depois, como o Item_Give, avisa o OnItemReceive: é por ele que
+// a fila do randomizer dá a check como entregue (sem isso ela entrega de novo a cada frame livre).
 extern "C" void LinkSpan_ReceiveSyntheticItem(PlayState*, u16 item) {
     const auto* record = ShipLuaHost::FindOotItem(static_cast<uint8_t>(item));
-    if (!record || !record->receive) {
-        return;
+    if (record && record->receive) {
+        const auto receive = record->receive;
+        const auto user = record->receiveUser;
+        receive(user, static_cast<uint8_t>(item));
     }
-    const auto receive = record->receive;
-    const auto user = record->receiveUser;
-    receive(user, static_cast<uint8_t>(item));
+    GameInteractor_ExecuteOnItemReceiveHooks(ShipLuaHost::BuildOotSyntheticGetItemEntry(static_cast<uint8_t>(item)));
 }

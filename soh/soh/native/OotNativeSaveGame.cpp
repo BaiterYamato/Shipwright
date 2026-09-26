@@ -14,6 +14,12 @@ extern "C" {
 #include "variables.h"
 }
 
+namespace ShipLuaHost {
+// OotNativeRandoGame.cpp
+void StoreOotRandoSeed();
+void RestoreOotRandoSeedFromSave();
+} // namespace ShipLuaHost
+
 namespace {
 
 constexpr const char* kSectionName = "linkspan";
@@ -119,6 +125,7 @@ void RegisterOotSaveSection() {
         RestoreSceneFlags();
         RestoreHorseScene();
         RestoreOotItemButtonsFromSave();
+        RestoreOotRandoSeedFromSave();
         for (const auto& name : MissingRequiredOotNamespaces()) {
             SPDLOG_WARN("Link-Span save: o arquivo {} depende de '{}', que nenhum mod carregado abriu", fileNum + 1,
                         name);
@@ -139,6 +146,7 @@ void OotBeforeSave(int32_t fileNum, int32_t sectionId) {
     StoreSceneFlags();
     StoreHorseScene();
     StoreOotItemButtons();
+    StoreOotRandoSeed();
 }
 
 void OotAfterCopy(int32_t from, int32_t to) {

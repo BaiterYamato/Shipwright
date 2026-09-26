@@ -3,6 +3,7 @@
 #include "OotNativeHooks.h"
 #include "OotNativeItems.h"
 #include "OotNativeJsonTypes.h"
+#include "OotNativeRando.h"
 #include "OotNativeRegistry.h"
 #include "OotNativeSave.h"
 #include "OotNativeScenes.h"
@@ -569,6 +570,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeWorld(gameThread);
     InitializeOotNativeSkeletons(gameThread);
     InitializeOotNativeText(gameThread);
+    InitializeOotNativeRando(gameThread);
     InitializeOotNativeJsonTypes(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
@@ -626,6 +628,10 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
         {LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_2, sizeof(renderV2), &renderV2});
     const auto& scenesV3 = GetOotNativeScenesServiceV3();
     policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_3, sizeof(scenesV3), &scenesV3});
+    // NEI-HOST-002: itens de mod no randomizer.
+    const auto& randomizer = GetOotNativeRandomizerService();
+    policy.services.push_back(
+        {LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION, sizeof(randomizer), &randomizer});
     policy.hooks = CreateOotHookRegistry();
     policy.onProviderUnload = [](std::string_view owner) { ReleaseOotRenderOwner(owner); };
     policy.escapeHatch = CreateOotEscapeHatch();

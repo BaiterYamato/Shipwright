@@ -1481,6 +1481,14 @@
                     "Item placement logic will respect this option, so it might be required to use this to progress."
                 ]
             },
+            "linkspan_mod_items": {
+                "name": "Link-Span Mod Items",
+                "description": [
+                    "Adds the items that installed Link-Span mods offer to the randomizer to the item pool, replacing junk. ",
+                    "The seed records each mod item by name; loading the seed without that mod gives a blue rupee instead. ",
+                    "Mod items are not considered by logic."
+                ]
+            },
             "rocs_feather": {
                 "name": "Roc's Feather",
                 "description": [

@@ -82,6 +82,9 @@ extern void EnGe1_Wait_Archery(EnGe1* enGe1, PlayState* play);
 extern void EnGe1_SetAnimationIdle(EnGe1* enGe1);
 extern void EnGe1_SetAnimationIdle(EnGe1* enGe1);
 extern void EnGe2_SetupCapturePlayer(EnGe2* enGe2, PlayState* play);
+// Link-Span: get-item de itens sintéticos (OotNativeItemsGame.cpp).
+s32 LinkSpan_IsSyntheticGetItem(u16 modIndex);
+void LinkSpan_ReceiveSyntheticItem(PlayState* play, u16 item);
 }
 
 bool LocMatchesQuest(Rando::Location loc) {
@@ -1319,6 +1322,8 @@ void RandomizerOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_l
                     } else {
                         Randomizer_Item_Give(gPlayState, item00->itemEntry);
                     }
+                } else if (LinkSpan_IsSyntheticGetItem(item00->itemEntry.modIndex)) {
+                    LinkSpan_ReceiveSyntheticItem(gPlayState, item00->itemEntry.itemId);
                 }
 
                 if (item00->itemEntry.modIndex == MOD_NONE) {

@@ -21,6 +21,8 @@
 #include "OotNativeHooks.h"
 #include "oot_text.h"
 #include "OotNativeText.h"
+#include "oot_randomizer.h"
+#include "OotNativeRando.h"
 #include "oot_resources.h"
 #include "OotNativeJsonTypes.h"
 #include <shiplua/manifest/ManifestParser.h>
@@ -569,7 +571,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 23 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 24 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -624,10 +626,13 @@ int main(int argc, char** argv) {
           policy.services[21].size == sizeof(ShipOotRenderV2) &&
           std::string(policy.services[22].name) == LINKSPAN_OOT_SCENES_SERVICE &&
           policy.services[22].version == LINKSPAN_OOT_SCENES_VERSION_3 &&
-          policy.services[22].size == sizeof(ShipOotScenesV3) && policy.onProviderUnload,
+          policy.services[22].size == sizeof(ShipOotScenesV3) &&
+          std::string(policy.services[23].name) == LINKSPAN_OOT_RANDOMIZER_SERVICE &&
+          policy.services[23].version == LINKSPAN_OOT_RANDOMIZER_VERSION &&
+          policy.services[23].size == sizeof(ShipOotRandomizerV1) && policy.onProviderUnload,
           "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1, ocarina V1, scenes V1/V2/V3, "
-          "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1 e "
-          "text V1, com as versões novas no fim");
+          "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1, "
+          "text V1 e randomizer V1, com as versões novas no fim");
     {
         using namespace FakeSkeletons;
         const auto* skeletons = static_cast<const ShipOotSkeletonsV1*>(policy.services[16].table);
@@ -742,6 +747,69 @@ int main(int argc, char** argv) {
               "id reaproveitado sem get-item antigo");
         Check(items->unregister_item(again) == SHIP_NATIVE_OK, "limpeza");
         ShipLuaHost::SetOotItemsBridge({});
+    }
+    {
+        using namespace FakeGetItem;
+        const auto* items = static_cast<const ShipOotItemsV2*>(policy.services[15].table);
+        const auto* rando = static_cast<const ShipOotRandomizerV1*>(policy.services[23].table);
+        uint8_t plain = 0;
+        uint8_t zeta = 0;
+        uint8_t alfa = 0;
+        const ShipOotItemSpecV1 plainSpec{sizeof(plainSpec), "autor.pedra", "textures/icon_item_static/gItemIconBowTex",
+                                          LINKSPAN_OOT_ITEM_AGE_ANY, nullptr, nullptr};
+        ShipOotItemSpecV1 zetaSpec = plainSpec;
+        zetaSpec.name = "autor.zeta";
+        ShipOotItemSpecV1 alfaSpec = plainSpec;
+        alfaSpec.name = "autor.alfa";
+        const ShipOotGetItemSpecV1 get{sizeof(get), "objects/gameplay_keep/gHeartPieceInteriorDL",
+                                       LINKSPAN_OOT_ITEMS_LAYER_OPAQUE, 1.0f, "Voce ganhou!", Receive, &received};
+        Check(items->register_item(&plainSpec, &plain) == SHIP_NATIVE_OK &&
+                  items->register_item(&zetaSpec, &zeta) == SHIP_NATIVE_OK &&
+                  items->register_item(&alfaSpec, &alfa) == SHIP_NATIVE_OK &&
+                  items->set_get_item(zeta, &get) == SHIP_NATIVE_OK && items->set_get_item(alfa, &get) == SHIP_NATIVE_OK,
+              "itens para o randomizer");
+        ShipOotRandomizerItemSpecV1 offer{sizeof(offer), plain, 1, {}};
+        Check(rando->add_item(&offer) == SHIP_NATIVE_INVALID_ARGUMENT, "oferta sem get-item");
+        offer.item = zeta;
+        offer.copies = 0;
+        Check(rando->add_item(&offer) == SHIP_NATIVE_INVALID_ARGUMENT, "zero cópias");
+        offer.copies = LINKSPAN_OOT_RANDOMIZER_MAX_COPIES + 1;
+        Check(rando->add_item(&offer) == SHIP_NATIVE_INVALID_ARGUMENT, "cópias demais");
+        offer.copies = 2;
+        Check(rando->add_item(&offer) == SHIP_NATIVE_OK, "oferta");
+        offer.item = alfa;
+        offer.copies = 1;
+        Check(rando->add_item(&offer) == SHIP_NATIVE_OK, "segunda oferta");
+        auto offers = ShipLuaHost::GetOotRandoOffers();
+        Check(offers.size() == 2 && offers[0].name == "autor.alfa" && offers[0].copies == 1 &&
+                  offers[1].name == "autor.zeta" && offers[1].copies == 2,
+              "ofertas em ordem de nome");
+        Check(rando->remove_item(plain) == SHIP_NATIVE_FAILURE, "remove sem oferta");
+        Check(items->unregister_item(alfa) == SHIP_NATIVE_OK && ShipLuaHost::GetOotRandoOffers().size() == 1,
+              "item removido do registro sai do pool");
+        Check(rando->remove_item(zeta) == SHIP_NATIVE_OK && ShipLuaHost::GetOotRandoOffers().empty(), "remove");
+
+        Check(rando->seed_item_count() == 0, "sem seed");
+        ShipLuaHost::SetOotRandoSeedItems({ "autor.zeta", "outro.item" });
+        Check(ShipLuaHost::AddOotRandoSeedItem("outro.item") == 1 && ShipLuaHost::AddOotRandoSeedItem("mais.um") == 2,
+              "nome da seed tem índice fixo");
+        char name[16] = {};
+        char tiny[4] = {};
+        Check(rando->seed_item_count() == 3 && rando->seed_item_name(0, name, sizeof(name)) == SHIP_NATIVE_OK &&
+                  std::string(name) == "autor.zeta" &&
+                  rando->seed_item_name(1, tiny, sizeof(tiny)) == SHIP_NATIVE_LIMIT &&
+                  rando->seed_item_name(3, name, sizeof(name)) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "itens da seed");
+        std::thread worker([&] {
+            ShipOotRandomizerItemSpecV1 other{sizeof(other), zeta, 1, {}};
+            Check(rando->add_item(&other) == SHIP_NATIVE_INVALID_ARGUMENT && rando->seed_item_count() == 0,
+                  "outra thread");
+        });
+        worker.join();
+        ShipLuaHost::ResetOotNativeRando();
+        Check(rando->seed_item_count() == 0, "reset limpa a seed");
+        Check(items->unregister_item(plain) == SHIP_NATIVE_OK && items->unregister_item(zeta) == SHIP_NATIVE_OK,
+              "limpeza");
     }
     {
         using namespace FakeItems;

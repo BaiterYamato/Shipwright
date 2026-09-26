@@ -508,6 +508,15 @@ void Rando::StaticData::InitItemTable() {
     itemTable[RG_TRIFORCE_PIECE] =                      Item(RG_TRIFORCE_PIECE,                   Text{ "Triforce Piece", "Morceau de Triforce", "Triforce-Fragment" },                                                                ITEMTYPE_ITEM,              0xDF,                 true,  LOGIC_NONE,                         RHT_TRIFORCE_PIECE,                    RG_TRIFORCE_PIECE,                    OBJECT_GI_BOMB_2,       GID_TRIFORCE_PIECE,   TEXT_RANDOMIZER_CUSTOM_ITEM, 0x80, CHEST_ANIM_LONG,  ITEM_CATEGORY_MAJOR,  MOD_RANDOMIZER, {"a ", "un ", "ein "}).CustomIcon(gTriforcePieceTex);
     itemTable[RG_ROCS_FEATHER] =                        Item(RG_ROCS_FEATHER,                     Text{ "Roc's Feather", "Plume de Roc", "Grefenfeider" },                                                                             ITEMTYPE_ITEM,              0xE0,                 true,  LOGIC_ROCS_FEATHER,                 RHT_ROCS_FEATHER,                      RG_ROCS_FEATHER,                      OBJECT_GI_BOMB_2,       GID_STONE_OF_AGONY,   TEXT_RANDOMIZER_CUSTOM_ITEM, 0x80, CHEST_ANIM_LONG,  ITEM_CATEGORY_MAJOR,  MOD_RANDOMIZER, {"a ", "la ", "ein "}).CustomIcon(gRocsFeatherTex);
     itemTable[RG_ROCS_FEATHER].SetCustomDrawFunc(Randomizer_DrawRocsFeather);
+    // Link-Span: faixa dos itens de mod (linkspan.oot.randomizer). O nome e a entrega vêm do item do registro que
+    // a seed põe em cada posição (OotNativeRandoGame.cpp); sem ele, a posição é uma rupia azul.
+    for (int i = 0; i < RG_LINKSPAN_ITEM_63 - RG_LINKSPAN_ITEM_0 + 1; i++) {
+        const RandomizerGet rg = static_cast<RandomizerGet>(RG_LINKSPAN_ITEM_0 + i);
+        const std::string name = "Link-Span Item " + std::to_string(i);
+        itemTable[rg] = Item(rg, Text{ name, name, name }, ITEMTYPE_ITEM, GI_RUPEE_BLUE, false, LOGIC_NONE, RHT_NONE,
+                             ITEM_RUPEE_BLUE, OBJECT_GI_RUPY, GID_RUPEE_BLUE, 0xCC, 0x01, CHEST_ANIM_SHORT,
+                             ITEM_CATEGORY_JUNK, MOD_NONE);
+    }
 
     // clang-format on
 

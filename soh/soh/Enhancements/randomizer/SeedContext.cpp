@@ -27,6 +27,9 @@ extern "C" {
 #include <variables.h>
 }
 
+// Link-Span: dá posição RG_LINKSPAN_ITEM_* aos itens de mod do spoiler (OotNativeRandoGame.cpp).
+void LinkSpan_ParseRandoSpoilerItems(const nlohmann::json& locations);
+
 namespace Rando {
 std::weak_ptr<Context> Context::mContext;
 
@@ -434,6 +437,7 @@ void Context::ParseHashIconIndexesJson(const nlohmann::json& spoilerFileJson) {
 
 void Context::ParseItemLocationsJson(const nlohmann::json& spoilerFileJson) {
     nlohmann::json locationsJson = spoilerFileJson.value("locations", nlohmann::json());
+    LinkSpan_ParseRandoSpoilerItems(locationsJson);
     for (auto it = locationsJson.begin(); it != locationsJson.end(); ++it) {
         RandomizerCheck rc = StaticData::locationNameToEnum[it.key()];
         if (it->is_structured()) {
