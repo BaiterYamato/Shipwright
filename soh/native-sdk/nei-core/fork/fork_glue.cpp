@@ -389,48 +389,4 @@ const std::string& ForkStatus() {
     return gFork.status;
 }
 
-ShipNativeStatus GiveForkItem(const char* id) {
-    if (!gFork.active || !gFork.registry) {
-        return SHIP_NATIVE_UNSUPPORTED;
-    }
-    uint64_t item = 0;
-    ShipNativeStatus status = gFork.registry->Find(id, &item);
-    if (status == SHIP_NATIVE_OK) {
-        status = gFork.registry->Grant(item);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = gFork.registry->Equip(item, LINKSPAN_OOT_ITEMS_BUTTON_C_LEFT);
-    }
-    return status;
-}
-
-ShipNativeStatus ReceiveForkItem(const std::string& query, std::string& result) {
-    if (!gFork.active || !gFork.registry) {
-        result = "fork desligado";
-        return SHIP_NATIVE_UNSUPPORTED;
-    }
-    const ForkItem* item = FindItem(query);
-    if (!item) {
-        result = "item desconhecido: " + query;
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    const ShipNativeStatus status = gFork.registry->Give(item->handle);
-    result = item->id + (status == SHIP_NATIVE_OK ? ": get-item" : ": recusado");
-    return status;
-}
-
-std::string ListForkItems() {
-    std::string text;
-    for (const ForkItem& item : gFork.items) {
-        NeiItemStateV1 state{ sizeof(state) };
-        gFork.registry->GetState(item.handle, &state);
-        char line[160];
-        std::snprintf(line, sizeof(line), "%s%s(0x%02X->0x%02X%s%s)", text.empty() ? "" : " ",
-                      item.id.c_str() + 11, item.logical, state.runtime_id, state.owned ? ",posse" : "",
-                      NeiInv_HasItem(item.logical) ? ",pagina" : "");
-        text += line;
-    }
-    return text;
-}
-
 } // namespace LinkSpanNei

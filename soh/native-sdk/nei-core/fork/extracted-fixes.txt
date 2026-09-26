@@ -11,7 +11,3 @@ z_kaleido_item.c ::: gSaveContext.equips.buttonItems[targetButtonIndex] = pauseC
 unit/z_player.c ::: if (GameInteractor_Should(VB_ITEM_ACTION_BE_NONE, item >= ITEM_NONE_FE, item)) { ::: if (NeiFork_IsForkItem(item) ? (item >= ITEM_NONE_FE) : GameInteractor_Should(VB_ITEM_ACTION_BE_NONE, item >= ITEM_NONE_FE, item)) {
 unit/z_player.c ::: } else if (GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) { ::: } else if (NeiFork_IsForkItem(item) || GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) {
 
-# Instrumento do NEI-HOST-001 (pipeline_probe.c): último botão lido e último Player_UseItem, para o stats.
-unit/z_player.c ::: GameInteractor_Should(VB_OVERRIDE_BUTTON_ITEM_USED, true, &i, this, &item); ::: GameInteractor_Should(VB_OVERRIDE_BUTTON_ITEM_USED, true, &i, this, &item); NeiProbe_Button(i, item);
-unit/z_player.c ::: MmForm_RitoTryAirThrow(this, play, itemAction); ::: MmForm_RitoTryAirThrow(this, play, itemAction); NeiProbe_Use(item, itemAction);
-unit/z_player.c :::         if (func_8083BB20(this) != 0) { :::         if (NeiProbe_Attack(func_8083BB20(this), sUseHeldItem, this->upperActionFunc == Player_UpperAction_Sword) != 0) {

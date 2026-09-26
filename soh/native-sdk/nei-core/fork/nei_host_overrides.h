@@ -32,10 +32,6 @@ u8 NeiFork_ToLogicalItem(u8 runtimeId);
 u8 NeiFork_ToRuntimeItem(u8 logicalId);
 // fork_items.c: id lógico de item do fork registrado (fica fora dos hooks de item de mod do host).
 u8 NeiFork_IsForkItem(s32 item);
-// pipeline_probe.c: instrumento do NEI-HOST-001 (último botão lido e último Player_UseItem).
-void NeiProbe_Button(s32 button, s32 item);
-void NeiProbe_Use(s32 item, s32 itemAction);
-s32 NeiProbe_Attack(s32 result, s32 useHeldItem, s32 upperIsSword);
 
 // sItemActions, sItemActionUpdateFuncs e sItemActionInitFuncs, que o extended_player.c do fork declara extern, são
 // as tabelas do próprio fork copiadas para a DLL (overlay.py, NEI-HOST-001): no host são static, e as funções do host

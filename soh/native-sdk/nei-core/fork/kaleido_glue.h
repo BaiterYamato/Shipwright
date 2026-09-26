@@ -14,9 +14,7 @@ void StartKaleido(const ShipNativeRuntime* runtime);
 void StopKaleido();
 const std::string& KaleidoStatus();
 
-// Prova em jogo do inventário: enche ou esvazia a página do NEI e lê o estado das páginas.
-// Sem escape hatch as funções copiadas do fork não rodam, e as duas devolvem UNSUPPORTED.
-ShipNativeStatus FillInventory(bool clear);
+// Estado das páginas do inventário, para o stats.
 std::string InventoryStatus();
 
 } // namespace LinkSpanNei

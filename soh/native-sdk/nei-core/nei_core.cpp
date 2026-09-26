@@ -14,14 +14,6 @@
 // fork/pipeline_probe.c: estado do pipeline de Player do fork, lido no frame corrente (NEI-005).
 extern "C" uint32_t NeiPipeline_Describe(char* out, uint32_t capacity);
 extern "C" int NeiActor_Stats(char* out, int capacity);
-extern "C" int NeiActor_TestSomaria(int spawn);
-extern "C" void NeiActor_Unload(int dryRun);
-extern "C" void NeiTest_GrantMagic(void);
-extern "C" int NeiTest_SpawnEnemy(int kind);
-extern "C" int NeiTest_EquipExt(int which);
-extern "C" void WeaponUpgrade_SetRazor(unsigned char on);
-extern "C" void WeaponUpgrade_SetGilded(unsigned char on);
-extern "C" int NeiActor_UnloadStats(char* out, int capacity);
 #include "fork_save.h"
 #include "include/linkspan/nei/nei_items.h"
 #include "oot_anchor.h"
@@ -217,159 +209,6 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void*, const char*, uint32_t length, Shi
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
-// Prova do NEI-003 em jogo: "inv_fill" enche a página do NEI com os itens que o fork declara para
-// ela e "inv_fill clear" a esvazia. É instrumento de teste, não aquisição: a aquisição de verdade
-// é o get-item do fork, que entra no NEI-008.
-ShipNativeStatus SHIP_NATIVE_CALL InvFill(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
-                                          void* writer) {
-    if (!write) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    const bool clear = args && length == 5 && std::strncmp(args, "clear", 5) == 0;
-    try {
-        const ShipNativeStatus status = LinkSpanNei::FillInventory(clear);
-        const std::string text = status == SHIP_NATIVE_OK
-                                     ? (clear ? "página do NEI esvaziada | " : "página do NEI preenchida | ") +
-                                           LinkSpanNei::InventoryStatus()
-                                     : std::string("recusado: o kaleido do NEI não está ativo");
-        return write(writer, text.data(), static_cast<uint32_t>(text.size()));
-    } catch (...) { return SHIP_NATIVE_FAILURE; }
-}
-
-// Prova do NEI-006 em jogo: "actors spawn" cria uma de cada invocação da Cane of Somaria na frente do Link e
-// "actors kill" mata todas, pelas funções do fork; o stats mostra criados, vivos e liberados.
-ShipNativeStatus SHIP_NATIVE_CALL Actors(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
-                                         void* writer) {
-    if (!write || !LinkSpanNei::ForkActive()) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    const bool spawn = args && length == 5 && std::strncmp(args, "spawn", 5) == 0;
-    const bool kill = args && length == 4 && std::strncmp(args, "kill", 4) == 0;
-    const bool probe = args && length == 5 && std::strncmp(args, "probe", 5) == 0;
-    if (!spawn && !kill && !probe) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    char text[256];
-    int size = 0;
-    if (probe) {
-        // Ensaio do descarregamento: quantos atores apontam para a DLL agora e o que aconteceria com eles.
-        NeiActor_Unload(1);
-        char unload[96];
-        const int count = NeiActor_UnloadStats(unload, sizeof(unload));
-        size = std::snprintf(text, sizeof(text), "descarregamento (ensaio): %.*s", count > 0 ? count : 0, unload);
-    } else {
-        const int result = NeiActor_TestSomaria(spawn ? 1 : 0);
-        char stats[128];
-        const int count = NeiActor_Stats(stats, sizeof(stats));
-        size = std::snprintf(text, sizeof(text), "%s -> %d | %.*s", spawn ? "spawn" : "kill", result,
-                             count > 0 ? count : 0, stats);
-    }
-    return write(writer, text, static_cast<uint32_t>(size));
-}
-
-// Prova das ondas de itens (NEI-008..011): "equip shovel" dá a posse do item do fork e o põe no C esquerdo, sem
-// get-item, para o teste usar o item logo em seguida.
-ShipNativeStatus SHIP_NATIVE_CALL EquipTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
-                                            void* writer) {
-    if (!write || !args || length == 0 || length > 64) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    std::string id(args, length);
-    if (id.rfind("skijer.nei.", 0) != 0) {
-        id = "skijer.nei." + id;
-    }
-    const ShipNativeStatus status = LinkSpanNei::GiveForkItem(id.c_str());
-    const std::string text = id + (status == SHIP_NATIVE_OK ? ": no C esquerdo" : ": recusado");
-    write(writer, text.data(), static_cast<uint32_t>(text.size()));
-    return status;
-}
-
-// Prova das ondas de itens: medidor de magia cheio, só em memória (o save de teste é de antes da Grande Fada).
-ShipNativeStatus SHIP_NATIVE_CALL MagicTest(void*, const char*, uint32_t, ShipNativeWriteFn write, void* writer) {
-    if (!write || !LinkSpanNei::ForkActive()) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    NeiTest_GrantMagic();
-    static const char text[] = "magia e vida cheias (so em memoria)";
-    return write(writer, text, sizeof(text) - 1);
-}
-
-// Prova da onda B (NEI-009): um inimigo à frente do Link, para dano e collider ("enemy", "enemy tektite",
-// "enemy dodojr", "enemy wolfos", "enemy armos"). O stats mostra a vida dele.
-ShipNativeStatus SHIP_NATIVE_CALL EnemyTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
-                                            void* writer) {
-    if (!write || !LinkSpanNei::ForkActive()) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    static const char* const kNames[] = { "deku baba", "tektite", "dodojr", "wolfos", "armos" };
-    const std::string name = args ? std::string(args, length) : std::string();
-    const int kind = name == "tektite" ? 1 : name == "dodojr" ? 2 : name == "wolfos" ? 3 : name == "armos" ? 4 : 0;
-    const int result = NeiTest_SpawnEnemy(kind);
-    char text[64];
-    const int size = std::snprintf(text, sizeof(text), "inimigo: %s %s (%d)", kNames[kind],
-                                   result == 0 ? "criado" : "falhou", result);
-    return write(writer, text, static_cast<uint32_t>(size));
-}
-
-// Prova da onda D (NEI-011): os itens de id u16 do fork no C esquerdo ("eqx slate", "eqx hourglass", "eqx crystal",
-// "eqx seasons"), fora do registro de ids u8.
-ShipNativeStatus SHIP_NATIVE_CALL EquipExtTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
-                                               void* writer) {
-    if (!write || !LinkSpanNei::ForkActive()) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    static const char* const kNames[] = { "slate", "hourglass", "crystal", "seasons" };
-    const std::string name = args ? std::string(args, length) : std::string();
-    int which = -1;
-    for (int i = 0; i < 4; ++i) {
-        if (name == kNames[i]) {
-            which = i;
-        }
-    }
-    if (which < 0) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    const int result = NeiTest_EquipExt(which);
-    char text[64];
-    const int size = std::snprintf(text, sizeof(text), "eqx %s: %s (%d)", kNames[which],
-                                   result == 0 ? "no C esquerdo" : "falhou", result);
-    return write(writer, text, static_cast<uint32_t>(size));
-}
-
-// Prova da onda B (NEI-009): nível da Kokiri Sword pelos upgrades do fork ("upgrade razor", "upgrade gilded";
-// sem argumento volta à Kokiri). Só em memória até o jogo salvar.
-ShipNativeStatus SHIP_NATIVE_CALL UpgradeTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
-                                              void* writer) {
-    if (!write || !LinkSpanNei::ForkActive()) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    const std::string level = args ? std::string(args, length) : std::string();
-    WeaponUpgrade_SetRazor(level == "razor" || level == "gilded");
-    WeaponUpgrade_SetGilded(level == "gilded");
-    const std::string text = "kokiri sword: " + (level.empty() ? std::string("kokiri") : level);
-    return write(writer, text.data(), static_cast<uint32_t>(text.size()));
-}
-
-// Aquisição de um item do fork pelo get-item do registro (NEI-008): "give deku_leaf". Sem argumento, lista os
-// itens do fork no registro com o id runtime, a posse e se já estão na página do NEI.
-ShipNativeStatus SHIP_NATIVE_CALL Give(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
-                                       void* writer) {
-    if (!Owned() || !write) {
-        return SHIP_NATIVE_INVALID_ARGUMENT;
-    }
-    try {
-        std::string text;
-        ShipNativeStatus status = SHIP_NATIVE_OK;
-        if (!args || length == 0) {
-            text = LinkSpanNei::ListForkItems();
-        } else {
-            status = LinkSpanNei::ReceiveForkItem(std::string(args, length), text);
-        }
-        write(writer, text.data(), static_cast<uint32_t>(text.size()));
-        return status;
-    } catch (...) { return SHIP_NATIVE_FAILURE; }
-}
-
 ShipNativeStatus Observe(const ShipNativeRuntime* runtime, const char* point, ShipNativeHookFn callback) {
     const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), point, LINKSPAN_OOT_HOOKS_VERSION,
                                    sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE,
@@ -447,30 +286,6 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "stats", Stats, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "inv_fill", InvFill, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "give", Give, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "actors", Actors, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "equip", EquipTest, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "magic", MagicTest, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "enemy", EnemyTest, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "upgrade", UpgradeTest, nullptr);
-    }
-    if (status == SHIP_NATIVE_OK) {
-        status = runtime->register_function(runtime->context, "eqx", EquipExtTest, nullptr);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,

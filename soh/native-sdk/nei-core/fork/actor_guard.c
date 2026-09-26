@@ -312,33 +312,3 @@ int NeiActor_Stats(char* out, int capacity) {
     return snprintf(out, (size_t)capacity, "vivos=%u criados=%u liberados=%u sobrepostos=%u%s", sCount, sSpawned,
                     sReleased, sOverrides, sDropped ? " TABELA-CHEIA" : "");
 }
-
-int NeiActor_UnloadStats(char* out, int capacity) {
-    return snprintf(out, (size_t)capacity, "restaurados=%u mortos=%u", sUnloadRestored, sUnloadKilled);
-}
-
-/* Instrumento de prova do NEI-006: cria uma de cada invocação da Cane of Somaria na frente do Link, ou mata
- * todas, pelas mesmas funções do fork que o item usa. */
-#include "mods/actors/somaria_cubes.h"
-
-int NeiActor_TestSomaria(int spawn) {
-    if (gPlayState == NULL || GET_PLAYER(gPlayState) == NULL) {
-        return -1;
-    }
-    Player* player = GET_PLAYER(gPlayState);
-    if (!spawn) {
-        CaneSummon_KillAll(gPlayState);
-        return 0;
-    }
-    int created = 0;
-    for (int kind = 0; kind < CANE_SUMMON_MAX; kind++) {
-        Vec3f pos = player->actor.world.pos;
-        const f32 distance = 90.0f + 70.0f * kind;
-        pos.x += Math_SinS(player->actor.shape.rot.y) * distance;
-        pos.z += Math_CosS(player->actor.shape.rot.y) * distance;
-        if (CaneSummon_Spawn(gPlayState, (CaneSummonKind)kind, &pos, player->actor.shape.rot.y) != NULL) {
-            created++;
-        }
-    }
-    return created;
-}

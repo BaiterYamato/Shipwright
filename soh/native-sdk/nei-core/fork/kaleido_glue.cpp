@@ -22,8 +22,6 @@ void KaleidoScope_DrawItemSelect(void* play);
 void KaleidoScope_UpdateItemEquip(void* play);
 void KaleidoScope_SetupItemEquip(void* play, uint16_t item, uint16_t slot, int16_t animX, int16_t animY);
 // fork/inventory_unit.c
-void NeiInv_FillNeiPage(void);
-void NeiInv_ClearNeiPage(void);
 void NeiInv_ReadState(int32_t* pages, int32_t* currentPage, uint32_t* occupied);
 }
 
@@ -93,18 +91,6 @@ void StopKaleido() {
 
 const std::string& KaleidoStatus() {
     return gKaleido.status;
-}
-
-ShipNativeStatus FillInventory(bool clear) {
-    if (gKaleido.patches.empty()) {
-        return SHIP_NATIVE_UNSUPPORTED;
-    }
-    if (clear) {
-        NeiInv_ClearNeiPage();
-    } else {
-        NeiInv_FillNeiPage();
-    }
-    return SHIP_NATIVE_OK;
 }
 
 std::string InventoryStatus() {
