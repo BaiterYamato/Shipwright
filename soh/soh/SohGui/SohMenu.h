@@ -43,6 +43,7 @@ class SohMenu : public Ship::Menu {
     void AddMenuDevTools();
     void AddMenuRandomizer();
     void AddMenuNetwork();
+    void AddMenuMods();
     static void UpdateLanguageMap(std::map<int32_t, const char*>& languageMap);
 
   private:

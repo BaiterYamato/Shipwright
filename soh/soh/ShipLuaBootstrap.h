@@ -16,6 +16,12 @@ ShipLua::ModHost* GetModHost();
 OotActorProvider* ActorProvider();
 OotHotkeyRegistry* Hotkeys();
 OotWorldAdapter* WorldAdapter();
+} // namespace ShipLuaHost
+
+namespace SohGui { class SohMenuModRegistry; }
+
+namespace ShipLuaHost {
+SohGui::SohMenuModRegistry* ModMenuRegistry();
 void OpenLogWindow();
 
 } // namespace ShipLuaHost

@@ -13,6 +13,7 @@
 #include "OotActorProvider.h"
 #include "OotHotkeyRegistry.h"
 #include "OotWorldAdapter.h"
+#include "SohGui/SohMenuModRegistry.h"
 #include "ShipLuaPuppet.h"
 #include "mmform/MmGoronForm.h"
 #include "soh/Enhancements/item-tables/ItemTableTypes.h"
@@ -105,6 +106,7 @@ LinkAnimationHeader* Player_GetIdleAnim(Player* player);
 void func_8083FB7C(Player* player, PlayState* play);
 void Player_Action_80845EF8(Player* player, PlayState* play);
 void FileChoose_LoadGame(GameState* gameState);
+u32 Save_Exist(int fileNum);
 
 static void ShipLuaEmitDisplayList(PlayState* play, const char* path) {
     OPEN_DISPS(play->state.gfxCtx);
@@ -131,6 +133,7 @@ std::unique_ptr<ShipLua::ModHost> gModHost;
 std::shared_ptr<OotActorProvider> gActorProvider;
 std::shared_ptr<ShipLua::CapabilityRegistry> gCapabilityRegistry;
 std::shared_ptr<OotHotkeyRegistry> gHotkeys;
+std::shared_ptr<SohGui::SohMenuModRegistry> gMenuRegistry;
 std::map<uint64_t, std::shared_ptr<Ship::Archive>> gNativeResourceArchives;
 uint64_t gNextNativeResourceArchive = 1;
 
@@ -898,6 +901,16 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
         context.capabilities.push_back("core.storage");
         registered = RegisterHostCapability(
             "core.storage", "Per-mod key-value storage persisted to disk across sessions.");
+        if (!registered.isOk()) {
+            return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
+        }
+    }
+
+    if (gMenuRegistry != nullptr && context.storage != nullptr) {
+        context.menu = gMenuRegistry;
+        context.capabilities.push_back("core.menu");
+        registered = RegisterHostCapability(
+            "core.menu", "Declarative per-mod menu pages backed exclusively by ship.storage.");
         if (!registered.isOk()) {
             return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
         }
@@ -6480,6 +6493,7 @@ void Initialize() {
     }
 
     gHotkeys = std::make_shared<OotHotkeyRegistry>();
+    gMenuRegistry = std::make_shared<SohGui::SohMenuModRegistry>();
     // Comandos de diagnóstico determinísticos. A automação de janela envia
     // eventos Win32 que o ImGui recebe, mas que podem escapar da amostragem do
     // SDL/N64; estes comandos exercitam o mesmo carregamento de arquivo e o
@@ -6527,6 +6541,12 @@ void Initialize() {
              if (slot < 0 || slot > 2) {
                  if (output != nullptr) {
                      *output = "slot deve ser 0, 1 ou 2";
+                 }
+                 return 1;
+             }
+             if (Save_Exist(slot) == 0) {
+                 if (output != nullptr) {
+                     *output = "slot vazio; nenhum arquivo foi aberto";
                  }
                  return 1;
              }
@@ -6749,6 +6769,11 @@ void Initialize() {
             // Avança os timers de mod uma vez por frame. Sem isto, ship.timer
             // nunca dispara e qualquer mod que sequencie ações (animação e
             // depois efeito) trava no primeiro passo.
+            // ImGui apenas enfileira input; persistencia e callbacks Lua rodam
+            // aqui, na thread proprietaria do ModHost.
+            if (gModHost != nullptr) {
+                gModHost->PumpMenu();
+            }
             if (gTimers != nullptr) {
                 const auto ticked = gTimers->Tick();
                 if (ticked.isOk()) {
@@ -7157,6 +7182,7 @@ void Shutdown() {
     gActorProvider.reset();
     gCapabilityRegistry.reset();
     gWorldAdapter.reset();
+    gMenuRegistry.reset();
     gHotkeys.reset();
     gTimers.reset();
     SPDLOG_INFO("ShipLua finalizado");
@@ -7176,6 +7202,10 @@ OotHotkeyRegistry* Hotkeys() {
 
 OotWorldAdapter* WorldAdapter() {
     return gWorldAdapter.get();
+}
+
+SohGui::SohMenuModRegistry* ModMenuRegistry() {
+    return gMenuRegistry.get();
 }
 
 void OpenLogWindow() {

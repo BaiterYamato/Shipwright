@@ -2,6 +2,8 @@
 #include <ship/Context.h>
 
 #include "SohMenu.h"
+#include "SohMenuModRegistry.h"
+#include "soh/ShipLuaBootstrap.h"
 
 extern "C" {
 extern PlayState* gPlayState;
@@ -88,6 +90,7 @@ void SohMenu::AddMenuElements() {
     AddMenuEnhancements();
     AddMenuRandomizer();
     AddMenuNetwork();
+    AddMenuMods();
     AddMenuDevTools();
 
     if (CVarGetInteger(CVAR_SETTING("Menu.SidebarSearch"), 0)) {
@@ -99,6 +102,15 @@ void SohMenu::AddMenuElements() {
     }
 
     mMenuElementsInitialized = true;
+}
+
+void SohMenu::AddMenuMods() {
+    AddMenuEntry("Mods", CVAR_SETTING("Menu.ModsSidebarSection"));
+    WidgetPath path{"Mods", "Installed Mods", SECTION_COLUMN_1};
+    AddSidebarEntry("Mods", path.sidebarName, 1);
+    AddWidget(path, "Mod menus", WIDGET_CUSTOM).CustomFunction([](WidgetInfo&) {
+        if (auto* registry = ShipLuaHost::ModMenuRegistry(); registry != nullptr) registry->Draw();
+    }).HideInSearch(true);
 }
 
 void SohMenu::InitElement() {
