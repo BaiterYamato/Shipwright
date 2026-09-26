@@ -3,6 +3,7 @@
 #include "OotNativeHooks.h"
 #include "OotNativeItems.h"
 #include "OotNativeJsonTypes.h"
+#include "OotNativeLights.h"
 #include "OotNativeRando.h"
 #include "OotNativeAnchor.h"
 #include "OotNativeRegistry.h"
@@ -568,6 +569,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeSave(gameThread);
     InitializeOotNativeItems(gameThread);
     InitializeOotNativeView(gameThread);
+    InitializeOotNativeLights(gameThread);
     InitializeOotNativeWorld(gameThread);
     InitializeOotNativeSkeletons(gameThread);
     InitializeOotNativeText(gameThread);
@@ -637,8 +639,17 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     // NEI-HOST-003: Anchor.
     const auto& anchor = GetOotNativeAnchorService();
     policy.services.push_back({LINKSPAN_OOT_ANCHOR_SERVICE, LINKSPAN_OOT_ANCHOR_VERSION, sizeof(anchor), &anchor});
+    // CEL-004: geometria própria do Wind Waker Style e luz do Deku Stick.
+    const auto& renderV3 = GetOotNativeRenderServiceV3();
+    policy.services.push_back(
+        {LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_3, sizeof(renderV3), &renderV3});
+    const auto& lights = GetOotNativeLightsService();
+    policy.services.push_back({LINKSPAN_OOT_LIGHTS_SERVICE, LINKSPAN_OOT_LIGHTS_VERSION, sizeof(lights), &lights});
     policy.hooks = CreateOotHookRegistry();
-    policy.onProviderUnload = [](std::string_view owner) { ReleaseOotRenderOwner(owner); };
+    policy.onProviderUnload = [](std::string_view owner) {
+        ReleaseOotRenderOwner(owner);
+        ReleaseOotLightOwner(owner);
+    };
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;
 }

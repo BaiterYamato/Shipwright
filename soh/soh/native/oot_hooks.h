@@ -53,6 +53,10 @@
 #define LINKSPAN_OOT_HOOK_RENDER_SKY_CLOUDS "oot.render.sky_clouds"
 #define LINKSPAN_OOT_HOOK_RENDER_FILE_SELECT_SKY "oot.render.file_select_sky"
 #define LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR "oot.light.point_color"
+/* v2 (CEL-004): o campo `light` identifica a luz. A v1, sem identidade, saiu antes do release. */
+#define LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR_VERSION 2u
+#define LINKSPAN_OOT_HOOK_LIGHT_FAIRY "oot.light.fairy"
+#define LINKSPAN_OOT_HOOK_LIGHT_FAIRY_VERSION 1u
 /* v2: posições f32 (mundo amplo do OOT-CORE-007). A v1, com posições s16, saiu antes do release. */
 #define LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION 2u
 /* Máximo de entradas por sala depois do TRANSFORM (teto de atores vivos). */
@@ -109,8 +113,10 @@ typedef struct ShipOotRenderFileSelectSkyHookV1 {
 } ShipOotRenderFileSelectSkyHookV1;
 
 /* TRANSFORM: r/g/b são o resultado que Lights_PointSetColorAndRadius grava.
- * A posição e o raio identificam a luz sem expor LightInfo ao mod. */
-typedef struct ShipOotPointLightColorHookV1 {
+ * `light` é a identidade da luz: o LightInfo do jogo, o mesmo ponteiro de node->info na lista play->lightCtx,
+ * estável enquanto a luz existir (chave de estado por luz, como o flicker de chama). Só compare; posição, raio e
+ * tipo são de leitura. */
+typedef struct ShipOotPointLightColorHookV2 {
     uint32_t size;
     float x;
     float y;
@@ -120,7 +126,47 @@ typedef struct ShipOotPointLightColorHookV1 {
     uint8_t r;
     uint8_t g;
     uint8_t b;
-} ShipOotPointLightColorHookV1;
+    const void* light;
+} ShipOotPointLightColorHookV2;
+
+/* oot.light.fairy v1: TRANSFORM ou OBSERVE, no fim de EnElf_Update (toda fada: Navi, fadas de cura, da floresta
+ * Kokiri, de garrafa). Cada fada tem duas luzes pontuais, sem brilho e com brilho. O host copia as duas para o
+ * payload, chama os hooks e grava de volta posição, raio e cor; `light` e `type` são de leitura (compare `light`
+ * com node->info da lista play->lightCtx). A cor pode trazer o que um hook gravou num frame anterior, porque o
+ * ator só a refaz quando atualiza as luzes: grave valores absolutos. */
+#define LINKSPAN_OOT_FAIRY_NAVI 0
+#define LINKSPAN_OOT_FAIRY_REVIVE_BOTTLE 1
+#define LINKSPAN_OOT_FAIRY_HEAL_TIMED 2
+#define LINKSPAN_OOT_FAIRY_KOKIRI 3
+#define LINKSPAN_OOT_FAIRY_SPAWNER 4
+#define LINKSPAN_OOT_FAIRY_REVIVE_DEATH 5
+#define LINKSPAN_OOT_FAIRY_HEAL 6
+#define LINKSPAN_OOT_FAIRY_HEAL_BIG 7
+/* Bit de fairy_flags da fada grande (FAIRY_FLAG_BIG de z_en_elf.c). */
+#define LINKSPAN_OOT_FAIRY_FLAG_BIG 0x0200u
+
+typedef struct ShipOotFairyLightV1 {
+    const void* light;
+    float position[3];
+    int16_t radius;
+    uint8_t color[3];
+    uint8_t type;
+} ShipOotFairyLightV1;
+
+typedef struct ShipOotFairyLightHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* actor;
+    int16_t actor_id;
+    /* Tipo da fada (LINKSPAN_OOT_FAIRY_*), o params do ator. */
+    int16_t params;
+    uint16_t fairy_flags;
+    uint16_t reserved;
+    /* Cor da aura e da mira (EnElf::outerColor), 0..255. */
+    float outer_color[3];
+    ShipOotFairyLightV1 no_glow;
+    ShipOotFairyLightV1 glow;
+} ShipOotFairyLightHookV1;
 
 /* Igual ao ActorEntry do jogo: `pos` em unidades do mundo (f32), `rot` em unidade
  * binária de ângulo e `params` no formato do tipo de ator. */

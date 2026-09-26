@@ -128,7 +128,7 @@ void LinkSpanActorDraw(Actor* actor, PlayState* play) {
     const auto spec = type->spec;
     CallbackScope scope;
     ShipLuaHost::SetOotActorDrawActive(true);
-    ShipLuaHost::EnterOotRenderScope();
+    ShipLuaHost::EnterOotRenderScope(play->state.gfxCtx);
     spec.draw(spec.user, actor, play);
     ShipLuaHost::LeaveOotRenderScope();
     ShipLuaHost::SetOotActorDrawActive(false);

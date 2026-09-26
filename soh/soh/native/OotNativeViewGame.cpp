@@ -11,6 +11,7 @@
 #include "oot_hooks.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/frame_interpolation.h"
 
 #include "z64.h"
 #include "macros.h"
@@ -19,6 +20,8 @@ extern "C" {
 #include "functions.h"
 #include "variables.h"
 extern PlayState* gPlayState;
+// OTRGlobals.h só a declara para C.
+float OTRGetAspectRatio(void);
 }
 
 namespace {
@@ -184,6 +187,50 @@ void ResetToonLook() {
     SetToonShadowParams(0.5f, 0.6f, 40.0f, 10.0f, 1, false);
 }
 
+void MatrixTranslateNew(float x, float y, float z) {
+    Matrix_Translate(x, y, z, MTXMODE_NEW);
+}
+
+void MatrixRotateAxisApply(float radians, float x, float y, float z) {
+    Vec3f axis{ x, y, z };
+    Matrix_RotateAxis(radians, &axis, MTXMODE_APPLY);
+}
+
+const void* ExportMatrix(void* gfx) {
+    static char kFile[] = "linkspan.oot.render";
+    return Matrix_NewMtx(static_cast<GraphicsContext*>(gfx), kFile, 0);
+}
+
+// Sem gSPDisplayList: a função do jogo procura um caminho OTR no ponteiro, e a lista do mod é memória crua.
+void DrawNative(void* gfx, const void* displayList, uint8_t layer) {
+    auto* gfxCtx = static_cast<GraphicsContext*>(gfx);
+    Gfx** head = layer == LINKSPAN_OOT_RENDER_TRANSLUCENT ? &gfxCtx->polyXlu.p : &gfxCtx->polyOpa.p;
+    __gSPDisplayList((*head)++, static_cast<Gfx*>(const_cast<void*>(displayList)));
+}
+
+void SetToon(void* gfx, bool enabled) {
+    auto* gfxCtx = static_cast<GraphicsContext*>(gfx);
+    gSPToon(gfxCtx->polyOpa.p++, enabled);
+    gSPToon(gfxCtx->polyXlu.p++, enabled);
+}
+
+ShipNativeStatus FrameInfo(ShipOotRenderFrameInfoV1* info) {
+    if (!gGameState) return SHIP_NATIVE_UNSUPPORTED;
+    info->frame = gGameState->frames;
+    info->camera_epoch = static_cast<uint32_t>(FrameInterpolation_GetCameraEpoch());
+    info->delta_seconds = (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 3) / 60.0f;
+    info->aspect_ratio = OTRGetAspectRatio();
+    return SHIP_NATIVE_OK;
+}
+
+void InterpolationOpen(const void* key, int32_t child) {
+    FrameInterpolation_RecordOpenChild(key, child);
+}
+
+void InterpolationClose() {
+    FrameInterpolation_RecordCloseChild();
+}
+
 } // namespace
 
 namespace ShipLuaHost {
@@ -213,6 +260,14 @@ void RegisterOotViewGameHooks() {
     bridge.setToonRamp = SetToonRamp;
     bridge.setToonShadowParams = SetToonShadowParams;
     bridge.resetToonLook = ResetToonLook;
+    bridge.matrixTranslateNew = MatrixTranslateNew;
+    bridge.matrixRotateAxis = MatrixRotateAxisApply;
+    bridge.exportMatrix = ExportMatrix;
+    bridge.drawNative = DrawNative;
+    bridge.setToon = SetToon;
+    bridge.frameInfo = FrameInfo;
+    bridge.interpolationOpen = InterpolationOpen;
+    bridge.interpolationClose = InterpolationClose;
     SetOotViewBridge(bridge);
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnCameraState>(
         [](PlayState*) { ShipLuaHost::UpdateOotCamera(); });
@@ -229,7 +284,7 @@ extern "C" void LinkSpan_PlayerLimbDraw(PlayState* play, s32 limbIndex, Actor* a
     }
     ShipOotPlayerLimbHookV1 payload{ sizeof(ShipOotPlayerLimbHookV1), play, actor, limbIndex };
     Matrix_Push();
-    ShipLuaHost::EnterOotRenderScope();
+    ShipLuaHost::EnterOotRenderScope(play->state.gfxCtx);
     ShipLuaHost::GetOotHookRegistry()->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
     ShipLuaHost::LeaveOotRenderScope();
     Matrix_Pop();

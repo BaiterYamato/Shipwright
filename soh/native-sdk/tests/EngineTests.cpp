@@ -13,6 +13,8 @@
 #include "oot_camera.h"
 #include "oot_render.h"
 #include "OotNativeView.h"
+#include "oot_lights.h"
+#include "OotNativeLights.h"
 #include "oot_world.h"
 #include "oot_colliders.h"
 #include "OotNativeWorld.h"
@@ -372,6 +374,84 @@ void Rotate(int16_t, int16_t, int16_t) {
 }
 } // namespace FakeView
 
+namespace FakeRenderV3 {
+std::vector<std::string> ops;
+int depth = 0;
+int children = 0;
+int gfxTag = 0;
+int mtxTag = 0;
+float lastAxis[3]{};
+void Push() {
+    ++depth;
+}
+void Pop() {
+    --depth;
+}
+void TranslateNew(float x, float, float) {
+    ops.push_back("new:" + std::to_string(static_cast<int>(x)));
+}
+void RotateAxis(float, float x, float y, float z) {
+    lastAxis[0] = x;
+    lastAxis[1] = y;
+    lastAxis[2] = z;
+    ops.push_back("axis");
+}
+const void* Export(void* gfx) {
+    return gfx == &gfxTag ? &mtxTag : nullptr;
+}
+void DrawNative(void* gfx, const void*, uint8_t layer) {
+    ops.push_back(std::string(gfx == &gfxTag ? "native:" : "native?:") + std::to_string(layer));
+}
+void SetToon(void*, bool enabled) {
+    ops.push_back(enabled ? "toon:1" : "toon:0");
+}
+ShipNativeStatus Frame(ShipOotRenderFrameInfoV1* info) {
+    info->frame = 42;
+    info->camera_epoch = 3;
+    info->delta_seconds = 0.05f;
+    info->aspect_ratio = 2.0f;
+    return SHIP_NATIVE_OK;
+}
+void Open(const void*, int32_t) {
+    ++children;
+}
+void Close() {
+    --children;
+}
+size_t Count(const std::string& op) {
+    return static_cast<size_t>(std::count(ops.begin(), ops.end(), op));
+}
+} // namespace FakeRenderV3
+
+namespace FakeLights {
+int playTag = 0;
+int otherPlay = 0;
+void* current = &playTag;
+bool full = false;
+std::vector<std::string> ops;
+ShipOotPointLightV1 lastLight{};
+int infos[LINKSPAN_OOT_LIGHTS_MAX]{};
+void* Gameplay() {
+    return current;
+}
+bool Insert(void*, uint32_t slot, const ShipOotPointLightV1& light) {
+    if (full) return false;
+    ops.push_back("insert:" + std::to_string(slot));
+    lastLight = light;
+    return true;
+}
+void Update(uint32_t slot, const ShipOotPointLightV1& light) {
+    ops.push_back("update:" + std::to_string(slot));
+    lastLight = light;
+}
+void Remove(void* play, uint32_t slot) {
+    ops.push_back("remove:" + std::to_string(slot) + (play == &playTag ? ":a" : ":b"));
+}
+const void* Info(uint32_t slot) {
+    return &infos[slot];
+}
+} // namespace FakeLights
+
 namespace FakeWorld {
 int playTag = 0;
 bool inGameplay = true;
@@ -573,7 +653,7 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 25 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 27 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -634,7 +714,13 @@ int main(int argc, char** argv) {
           policy.services[23].size == sizeof(ShipOotRandomizerV1) &&
           std::string(policy.services[24].name) == LINKSPAN_OOT_ANCHOR_SERVICE &&
           policy.services[24].version == LINKSPAN_OOT_ANCHOR_VERSION &&
-          policy.services[24].size == sizeof(ShipOotAnchorV1) && policy.onProviderUnload,
+          policy.services[24].size == sizeof(ShipOotAnchorV1) &&
+          std::string(policy.services[25].name) == LINKSPAN_OOT_RENDER_SERVICE &&
+          policy.services[25].version == LINKSPAN_OOT_RENDER_VERSION_3 &&
+          policy.services[25].size == sizeof(ShipOotRenderV3) &&
+          std::string(policy.services[26].name) == LINKSPAN_OOT_LIGHTS_SERVICE &&
+          policy.services[26].version == LINKSPAN_OOT_LIGHTS_VERSION &&
+          policy.services[26].size == sizeof(ShipOotLightsV1) && policy.onProviderUnload,
           "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1, ocarina V1, scenes V1/V2/V3, "
           "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1, "
           "text V1, randomizer V1 e anchor V1, com as versões novas no fim");
@@ -1139,6 +1225,208 @@ int main(int argc, char** argv) {
         ShipLuaHost::ResetOotNativeView();
         Check(camera->is_owned(token) == 0 && destroyed == 3, "reset libera a câmera");
         ShipLuaHost::SetOotViewBridge({});
+    }
+    {
+        // CEL-004: render V3.
+        using namespace FakeRenderV3;
+        Check(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR,
+                                      LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR_VERSION) != 0 &&
+                  policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR, 1) == 0 &&
+                  policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_LIGHT_FAIRY, LINKSPAN_OOT_HOOK_LIGHT_FAIRY_VERSION) != 0,
+              "pontos oot.light.point_color v2 e oot.light.fairy");
+        const auto* render = static_cast<const ShipOotRenderV3*>(policy.services[25].table);
+        Check(render->matrix_push == static_cast<const ShipOotRenderV2*>(policy.services[21].table)->matrix_push &&
+                  render->set_toon_shadow_params ==
+                      static_cast<const ShipOotRenderV2*>(policy.services[21].table)->set_toon_shadow_params,
+              "V3 conserva V2 no início");
+        ShipLuaHost::OotViewBridge bridge;
+        bridge.matrixPush = Push;
+        bridge.matrixPop = Pop;
+        bridge.matrixTranslateNew = TranslateNew;
+        bridge.matrixRotateAxis = RotateAxis;
+        bridge.exportMatrix = Export;
+        bridge.drawNative = DrawNative;
+        bridge.setToon = SetToon;
+        bridge.frameInfo = Frame;
+        bridge.interpolationOpen = Open;
+        bridge.interpolationClose = Close;
+        ShipLuaHost::SetOotViewBridge(bridge);
+
+        int dl = 0;
+        const void* mtx = &dl;
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_UNSUPPORTED &&
+                  render->matrix_translate_new(1.0f, 0.0f, 0.0f) == SHIP_NATIVE_UNSUPPORTED &&
+                  render->matrix_rotate_axis(1.0f, 0.0f, 1.0f, 0.0f) == SHIP_NATIVE_UNSUPPORTED &&
+                  render->export_current_matrix(&mtx) == SHIP_NATIVE_UNSUPPORTED && mtx == nullptr &&
+                  render->draw_native_display_list(&dl, 0) == SHIP_NATIVE_UNSUPPORTED &&
+                  render->interpolation_begin(&dl, 0) == SHIP_NATIVE_UNSUPPORTED && ops.empty(),
+              "V3 fora de escopo");
+        ShipOotRenderFrameInfoV1 info{sizeof(info)};
+        Check(render->get_frame_info(&info) == SHIP_NATIVE_OK && info.frame == 42 && info.camera_epoch == 3 &&
+                  info.delta_seconds == 0.05f && info.aspect_ratio == 2.0f && info.size == sizeof(info),
+              "get_frame_info fora de escopo");
+        ShipOotRenderFrameInfoV1 small{sizeof(small) - 1};
+        Check(render->get_frame_info(&small) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  render->get_frame_info(nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "frame info inválido");
+
+        ShipLuaHost::EnterOotRenderScope(&gfxTag);
+        Check(render->matrix_translate_new(1.0f, 0.0f, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT && ops.empty(),
+              "translate_new exige push do mod");
+        Check(render->matrix_push() == SHIP_NATIVE_OK && render->matrix_translate_new(7.0f, 0.0f, 0.0f) == SHIP_NATIVE_OK &&
+                  ops.back() == "new:7" && render->matrix_translate_new(std::nan(""), 0.0f, 0.0f) ==
+                                               SHIP_NATIVE_INVALID_ARGUMENT,
+              "translate_new depois do push");
+        Check(render->matrix_rotate_axis(1.0f, 0.0f, 2.0f, 0.0f) == SHIP_NATIVE_OK && lastAxis[0] == 0.0f &&
+                  lastAxis[1] == 1.0f && lastAxis[2] == 0.0f,
+              "rotate_axis normaliza o eixo");
+        Check(render->matrix_rotate_axis(1.0f, 0.0f, 0.0f, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  render->matrix_rotate_axis(std::nan(""), 0.0f, 1.0f, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "eixo nulo ou ângulo inválido");
+        Check(render->export_current_matrix(&mtx) == SHIP_NATIVE_OK && mtx == &mtxTag &&
+                  render->export_current_matrix(nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "export_current_matrix no escopo");
+        Check(render->draw_native_display_list(&dl, 1) == SHIP_NATIVE_OK && ops.back() == "native:1" &&
+                  render->draw_native_display_list(&dl, 2) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  render->draw_native_display_list(nullptr, 0) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "draw_native_display_list no escopo do GraphicsContext");
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_UNSUPPORTED, "toon por ator só no hook de ator");
+        Check(render->interpolation_end() == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  render->interpolation_begin(nullptr, 3) == SHIP_NATIVE_OK &&
+                  render->interpolation_begin(&dl, 0) == SHIP_NATIVE_OK && children == 2 &&
+                  render->interpolation_end() == SHIP_NATIVE_OK && children == 1,
+              "filhos de interpolação");
+        ShipLuaHost::LeaveOotRenderScope();
+        Check(children == 0 && depth == 0, "fim do escopo fecha filhos e desfaz push");
+
+        ShipLuaHost::EnterOotRenderScope();
+        Check(render->export_current_matrix(&mtx) == SHIP_NATIVE_UNSUPPORTED &&
+                  render->draw_native_display_list(&dl, 0) == SHIP_NATIVE_UNSUPPORTED,
+              "sem GraphicsContext não há desenho próprio");
+        uint32_t opened = 0;
+        while (render->interpolation_begin(&dl, static_cast<int32_t>(opened)) == SHIP_NATIVE_OK) ++opened;
+        Check(opened == LINKSPAN_OOT_RENDER_MAX_INTERPOLATION, "limite de filhos por escopo");
+        ShipLuaHost::LeaveOotRenderScope();
+        Check(children == 0, "limite também fecha no fim do escopo");
+
+        // Colchete toon por ator: desliga no hook, religa antes do próximo ator.
+        ops.clear();
+        ShipLuaHost::BeginOotActorDrawFrame(false);
+        ShipLuaHost::EnterOotRenderScope(&gfxTag, ShipLuaHost::OotRenderScopeKind::ActorDraw);
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK && ops.empty(), "sem colchete no frame, nada muda");
+        ShipLuaHost::LeaveOotRenderScope();
+        ShipLuaHost::RestoreOotActorToon(&gfxTag);
+        Check(ops.empty(), "sem colchete não religa");
+        ShipLuaHost::BeginOotActorDrawFrame(true);
+        ShipLuaHost::EnterOotRenderScope(&gfxTag, ShipLuaHost::OotRenderScopeKind::ActorDraw);
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK && render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK &&
+                  ops.size() == 1 && ops.back() == "toon:0",
+              "desliga o colchete uma vez");
+        ShipLuaHost::LeaveOotRenderScope();
+        ShipLuaHost::RestoreOotActorToon(&gfxTag);
+        ShipLuaHost::RestoreOotActorToon(&gfxTag);
+        Check(ops.size() == 2 && ops.back() == "toon:1", "religa antes do próximo ator, uma vez");
+        ShipLuaHost::EnterOotRenderScope(&gfxTag, ShipLuaHost::OotRenderScopeKind::ActorDraw);
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK && render->set_actor_toon_enabled(1) == SHIP_NATIVE_OK &&
+                  ops.size() == 4 && ops.back() == "toon:1",
+              "o próprio hook pode desfazer");
+        ShipLuaHost::LeaveOotRenderScope();
+        ShipLuaHost::RestoreOotActorToon(&gfxTag);
+        Check(ops.size() == 4, "nada a religar depois de desfazer");
+        ShipLuaHost::EnterOotRenderScope(&gfxTag, ShipLuaHost::OotRenderScopeKind::ActorDraw);
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK && ops.size() == 5, "último ator do frame desliga");
+        ShipLuaHost::LeaveOotRenderScope();
+        ShipLuaHost::BeginOotActorDrawFrame(true);
+        ShipLuaHost::RestoreOotActorToon(&gfxTag);
+        Check(ops.size() == 5 && Count("toon:0") == 3 && Count("toon:1") == 2,
+              "frame novo começa com o colchete aberto pelo laço");
+        ShipLuaHost::ResetOotNativeView();
+        ShipLuaHost::SetOotViewBridge({});
+    }
+    {
+        // CEL-004: linkspan.oot.lights.
+        using namespace FakeLights;
+        const auto* lights = static_cast<const ShipOotLightsV1*>(policy.services[26].table);
+        ShipOotPointLightV1 light{sizeof(light), {10.0f, 20.0f, 30.0f}, 200, {255, 200, 0}, 0};
+        uint64_t handle = 99;
+        Check(lights->create_point_light("autor.mod", &light, &handle) == SHIP_NATIVE_UNSUPPORTED && handle == 0,
+              "sem ponte não há luz");
+        ShipLuaHost::OotLightsBridge bridge;
+        bridge.gameplay = Gameplay;
+        bridge.insert = Insert;
+        bridge.update = Update;
+        bridge.remove = Remove;
+        bridge.info = Info;
+        ShipLuaHost::SetOotLightsBridge(bridge);
+        ShipOotPointLightV1 bad = light;
+        bad.size = sizeof(bad) - 1;
+        Check(lights->create_point_light("autor.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "size curto");
+        bad = light;
+        bad.position[1] = std::nan("");
+        Check(lights->create_point_light("autor.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "posição NaN");
+        bad = light;
+        bad.glow = 2;
+        Check(lights->create_point_light("autor.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  lights->create_point_light("", &light, &handle) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  lights->create_point_light("autor.mod", &light, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "glow, dono e handle inválidos");
+        current = nullptr;
+        Check(lights->create_point_light("autor.mod", &light, &handle) == SHIP_NATIVE_UNSUPPORTED, "fora de gameplay");
+        current = &playTag;
+        Check(lights->create_point_light("autor.mod", &light, &handle) == SHIP_NATIVE_OK && handle &&
+                  ops.back() == "insert:0" && lastLight.radius == 200,
+              "create");
+        const void* identity = nullptr;
+        Check(lights->get_point_light_info(handle, &identity) == SHIP_NATIVE_OK && identity == &infos[0], "identidade");
+        light.radius = 150;
+        Check(lights->update_point_light(handle, &light) == SHIP_NATIVE_OK && ops.back() == "update:0" &&
+                  lastLight.radius == 150,
+              "update");
+        Check(lights->destroy_point_light(handle) == SHIP_NATIVE_OK && ops.back() == "remove:0:a", "destroy");
+        Check(lights->update_point_light(handle, &light) == SHIP_NATIVE_UNSUPPORTED &&
+                  lights->get_point_light_info(handle, &identity) == SHIP_NATIVE_UNSUPPORTED && identity == nullptr &&
+                  lights->destroy_point_light(handle) == SHIP_NATIVE_OK,
+              "handle apagado");
+        Check(lights->update_point_light(uint64_t{1} << 40, &light) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  lights->destroy_point_light(uint64_t{1} << 40) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "handle que nunca existiu");
+        uint64_t handles[LINKSPAN_OOT_LIGHTS_MAX]{};
+        bool created = true;
+        for (uint32_t i = 0; i < LINKSPAN_OOT_LIGHTS_MAX; ++i) {
+            created = created && lights->create_point_light(i % 2 ? "b.mod" : "a.mod", &light, &handles[i]) ==
+                                     SHIP_NATIVE_OK;
+        }
+        uint64_t extra = 0;
+        Check(created && ShipLuaHost::OotLightCount() == LINKSPAN_OOT_LIGHTS_MAX &&
+                  lights->create_point_light("a.mod", &light, &extra) == SHIP_NATIVE_LIMIT && extra == 0,
+              "teto do host");
+        Check(handles[0] != handle, "vaga reusada tem handle novo");
+        ShipLuaHost::ReleaseOotLightOwner("a.mod");
+        Check(ShipLuaHost::OotLightCount() == LINKSPAN_OOT_LIGHTS_MAX / 2 &&
+                  lights->update_point_light(handles[0], &light) == SHIP_NATIVE_UNSUPPORTED &&
+                  lights->update_point_light(handles[1], &light) == SHIP_NATIVE_OK,
+              "unload tira só as luzes do dono");
+        full = true;
+        Check(lights->create_point_light("a.mod", &light, &extra) == SHIP_NATIVE_LIMIT, "buffer do jogo cheio");
+        full = false;
+        ops.clear();
+        ShipLuaHost::ReleaseOotSceneLights();
+        Check(ShipLuaHost::OotLightCount() == 0 && ops.size() == LINKSPAN_OOT_LIGHTS_MAX / 2 &&
+                  std::all_of(ops.begin(), ops.end(), [](const std::string& op) { return op.back() == 'a'; }),
+              "fim da cena tira as luzes da lista dela");
+        Check(lights->create_point_light("a.mod", &light, &handle) == SHIP_NATIVE_OK, "luz da cena nova");
+        ops.clear();
+        current = &otherPlay;
+        Check(lights->update_point_light(handle, &light) == SHIP_NATIVE_UNSUPPORTED && ops.empty() &&
+                  ShipLuaHost::OotLightCount() == 0,
+              "luz de outra PlayState cai sem mexer na lista nova");
+        current = &playTag;
+        std::thread([&] {
+            uint64_t other = 0;
+            Check(lights->create_point_light("a.mod", &light, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "outra thread");
+        }).join();
+        ShipLuaHost::ResetOotNativeLights();
+        ShipLuaHost::SetOotLightsBridge({});
     }
     {
         using namespace FakeItems;

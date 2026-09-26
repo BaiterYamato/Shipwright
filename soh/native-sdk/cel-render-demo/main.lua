@@ -17,7 +17,7 @@ ship.hotkeys.register("toggle_cel_render_demo", { default = "Y", label = "CEL de
     ship.log.info("cel-render-demo: " .. (result or ("falhou: " .. tostring(failure))))
 end)
 
-ship.hotkeys.register("mode_cel_render_demo", { default = "U", label = "CEL demo: modo (tudo/toon/sombra)" }, function()
+ship.hotkeys.register("mode_cel_render_demo", { default = "U", label = "CEL demo: modo (tudo/toon/sombra/Link sem toon)" }, function()
     local result, failure = ship.native.call("mode", "")
     ship.log.info("cel-render-demo: " .. (result or ("falhou: " .. tostring(failure))))
 end)

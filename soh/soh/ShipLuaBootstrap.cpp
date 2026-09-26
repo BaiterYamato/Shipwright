@@ -5,6 +5,7 @@
 #include "native/OotNativeHooks.h"
 #include "native/OotNativeItems.h"
 #include "native/OotNativeView.h"
+#include "native/OotNativeLights.h"
 #include "native/OotNativeWorld.h"
 #include "native/OotNativeSkeletons.h"
 #include "native/OotNativeJsonTypes.h"
@@ -7134,6 +7135,7 @@ void Shutdown() {
     ResetOotNativeSave();
     ResetOotNativeItems();
     ResetOotNativeView();
+    ResetOotNativeLights();
     ResetOotNativeWorld();
     ResetOotNativeSkeletons();
     InitializeOotNativeJsonTypes(std::thread::id{});

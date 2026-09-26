@@ -14,6 +14,10 @@
 #define FAIRY_FLAG_TIMED (1 << 8)
 #define FAIRY_FLAG_BIG (1 << 9)
 
+// SOH [Link-Span] CEL-004: hook oot.light.fairy (OotNativeHooksGame.cpp).
+void LinkSpan_FairyLights(PlayState* play, Actor* actor, u16 fairyFlags, const Color_RGBAf* outerColor,
+                          LightInfo* noGlow, LightInfo* glow);
+
 void EnElf_Init(Actor* thisx, PlayState* play);
 void EnElf_Destroy(Actor* thisx, PlayState* play);
 void EnElf_Update(Actor* thisx, PlayState* play);
@@ -1460,6 +1464,11 @@ void EnElf_Update(Actor* thisx, PlayState* play) {
     if (this->fairyFlags & FAIRY_FLAG_BIG) {
         func_80A04D90(this, play);
     }
+
+    // SOH [Link-Span] CEL-004: depois da action function, em todo estado da fada, como o Wind Waker Style fazia.
+    // Sem hook registrado a função só consulta o ponto.
+    LinkSpan_FairyLights(play, &this->actor, this->fairyFlags, &this->outerColor, &this->lightInfoNoGlow,
+                         &this->lightInfoGlow);
 }
 
 s32 EnElf_OverrideLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot, void* thisx,

@@ -49,8 +49,12 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
     points.renderFileSelectSky = Declare(LINKSPAN_OOT_HOOK_RENDER_FILE_SELECT_SKY,
                                          sizeof(ShipOotRenderFileSelectSkyHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.anchorState = Declare(LINKSPAN_OOT_HOOK_ANCHOR_STATE, sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE);
-    points.pointLightColor = Declare(LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR, sizeof(ShipOotPointLightColorHookV1),
-                                     SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM);
+    points.pointLightColor = Declare(LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR, sizeof(ShipOotPointLightColorHookV2),
+                                     SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM,
+                                     LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR_VERSION);
+    points.fairyLights = Declare(LINKSPAN_OOT_HOOK_LIGHT_FAIRY, sizeof(ShipOotFairyLightHookV1),
+                                 SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM,
+                                 LINKSPAN_OOT_HOOK_LIGHT_FAIRY_VERSION);
     return registry;
 }
 
@@ -87,7 +91,7 @@ uint32_t DispatchOotRoomActors(void* play, int32_t sceneId, int32_t room, int32_
     return payload.count;
 }
 
-void DispatchOotPointLightColor(ShipOotPointLightColorHookV1* payload) {
+void DispatchOotPointLightColor(ShipOotPointLightColorHookV2* payload) {
     if (!payload || !registry || !registry->HasHooks(points.pointLightColor)) return;
     registry->Dispatch(points.pointLightColor, payload, sizeof(*payload), nullptr, nullptr);
 }

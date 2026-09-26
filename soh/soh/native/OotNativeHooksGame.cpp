@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <vector>
@@ -63,7 +64,7 @@ void DispatchRenderPlay(uint64_t point, PlayState* play) {
     auto* registry = ShipLuaHost::GetOotHookRegistry();
     if (!registry || !registry->HasHooks(point)) return;
     ShipOotRenderPlayHookV1 payload{sizeof(ShipOotRenderPlayHookV1), play};
-    ShipLuaHost::EnterOotRenderScope();
+    ShipLuaHost::EnterOotRenderScope(play->state.gfxCtx);
     registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
     ShipLuaHost::LeaveOotRenderScope();
 }
@@ -99,16 +100,18 @@ extern "C" void LinkSpan_ActorDraw(Actor* actor, PlayState* play) {
         return;
     }
     // Replace e observe desenham com linkspan.oot.render sobre a matriz do ator.
-    ShipLuaHost::EnterOotRenderScope();
+    ShipLuaHost::EnterOotRenderScope(play->state.gfxCtx);
     DispatchActor(point, actor, play, ActorDrawOriginal);
     ShipLuaHost::LeaveOotRenderScope();
 }
 
 extern "C" void LinkSpan_RenderActorDraw(Actor* actor, PlayState* play) {
+    // CEL-004: o ator anterior saiu do colchete toon (set_actor_toon_enabled); religa antes deste, como o fork.
+    ShipLuaHost::RestoreOotActorToon(play->state.gfxCtx);
     const auto* registry = ShipLuaHost::GetOotHookRegistry();
     const auto point = ShipLuaHost::GetOotHookPoints().renderActorDraw;
     if (!registry || !registry->HasHooks(point)) return;
-    ShipLuaHost::EnterOotRenderScope();
+    ShipLuaHost::EnterOotRenderScope(play->state.gfxCtx, ShipLuaHost::OotRenderScopeKind::ActorDraw);
     DispatchRenderActorDraw(actor, play);
     ShipLuaHost::LeaveOotRenderScope();
 }
@@ -134,20 +137,65 @@ extern "C" void LinkSpan_RenderFileSelectSky(void* gameState, void* graphicsCont
     const auto point = ShipLuaHost::GetOotHookPoints().renderFileSelectSky;
     if (!registry || !registry->HasHooks(point)) return;
     ShipOotRenderFileSelectSkyHookV1 payload{sizeof(ShipOotRenderFileSelectSkyHookV1), gameState, graphicsContext, view};
-    ShipLuaHost::EnterOotRenderScope();
+    ShipLuaHost::EnterOotRenderScope(graphicsContext);
     registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
     ShipLuaHost::LeaveOotRenderScope();
 }
 
 extern "C" void LinkSpan_PointLightColor(LightInfo* info, u8* r, u8* g, u8* b, s16 radius) {
     if (!info || !r || !g || !b || !ShipLuaHost::HasOotPointLightColorHooks()) return;
-    ShipOotPointLightColorHookV1 payload{sizeof(ShipOotPointLightColorHookV1), info->params.point.x,
+    ShipOotPointLightColorHookV2 payload{sizeof(ShipOotPointLightColorHookV2), info->params.point.x,
                                          info->params.point.y, info->params.point.z, radius, info->type,
-                                         *r, *g, *b};
+                                         *r, *g, *b, info};
     ShipLuaHost::DispatchOotPointLightColor(&payload);
     *r = payload.r;
     *g = payload.g;
     *b = payload.b;
+}
+
+namespace {
+void CopyFairyLight(ShipOotFairyLightV1& out, const LightInfo* info) {
+    const LightPoint& point = info->params.point;
+    out = ShipOotFairyLightV1{info, {point.x, point.y, point.z}, point.radius,
+                              {point.color[0], point.color[1], point.color[2]}, info->type};
+}
+
+// Só posição, raio e cor voltam; tipo e identidade são do ator.
+void ApplyFairyLight(const ShipOotFairyLightV1& in, LightInfo* info) {
+    LightPoint& point = info->params.point;
+    if (std::isfinite(in.position[0]) && std::isfinite(in.position[1]) && std::isfinite(in.position[2])) {
+        point.x = in.position[0];
+        point.y = in.position[1];
+        point.z = in.position[2];
+    }
+    point.radius = in.radius;
+    point.color[0] = in.color[0];
+    point.color[1] = in.color[1];
+    point.color[2] = in.color[2];
+}
+} // namespace
+
+// Chamada no fim de EnElf_Update (z_en_elf.c), na thread do jogo: oot.light.fairy sobre as duas luzes da fada.
+extern "C" void LinkSpan_FairyLights(PlayState* play, Actor* actor, u16 fairyFlags, const Color_RGBAf* outerColor,
+                                     LightInfo* noGlow, LightInfo* glow) {
+    auto* registry = ShipLuaHost::GetOotHookRegistry();
+    const auto point = ShipLuaHost::GetOotHookPoints().fairyLights;
+    if (!registry || !registry->HasHooks(point) || !actor || !outerColor || !noGlow || !glow) return;
+    ShipOotFairyLightHookV1 payload{};
+    payload.size = sizeof(payload);
+    payload.play_state = play;
+    payload.actor = actor;
+    payload.actor_id = actor->id;
+    payload.params = actor->params;
+    payload.fairy_flags = fairyFlags;
+    payload.outer_color[0] = outerColor->r;
+    payload.outer_color[1] = outerColor->g;
+    payload.outer_color[2] = outerColor->b;
+    CopyFairyLight(payload.no_glow, noGlow);
+    CopyFairyLight(payload.glow, glow);
+    registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
+    ApplyFairyLight(payload.no_glow, noGlow);
+    ApplyFairyLight(payload.glow, glow);
 }
 
 static_assert(sizeof(ShipOotActorEntryV2) == sizeof(ActorEntry) &&

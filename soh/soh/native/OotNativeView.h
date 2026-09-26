@@ -37,6 +37,17 @@ struct OotViewBridge {
                                 int32_t edgeSoftness, bool showVolume) = nullptr;
     // Devolve rampa e sombra aos valores padrão do renderer.
     void (*resetToonLook)() = nullptr;
+    // V3. `gfx` é o GraphicsContext do escopo de draw.
+    void (*matrixTranslateNew)(float x, float y, float z) = nullptr;
+    // Eixo já normalizado.
+    void (*matrixRotateAxis)(float radians, float x, float y, float z) = nullptr;
+    const void* (*exportMatrix)(void* gfx) = nullptr;
+    void (*drawNative)(void* gfx, const void* displayList, uint8_t layer) = nullptr;
+    // gSPToon nas duas camadas.
+    void (*setToon)(void* gfx, bool enabled) = nullptr;
+    ShipNativeStatus (*frameInfo)(ShipOotRenderFrameInfoV1* info) = nullptr;
+    void (*interpolationOpen)(const void* key, int32_t child) = nullptr;
+    void (*interpolationClose)() = nullptr;
 };
 
 void SetOotViewBridge(const OotViewBridge& bridge);
@@ -46,18 +57,29 @@ void ResetOotNativeView();
 const ShipOotCameraV1& GetOotNativeCameraService();
 const ShipOotRenderV1& GetOotNativeRenderService();
 const ShipOotRenderV2& GetOotNativeRenderServiceV2();
+const ShipOotRenderV3& GetOotNativeRenderServiceV3();
 void ReleaseOotRenderOwner(std::string_view owner);
 
 // Uma vez por frame, antes do update das câmeras: perde a posse se a câmera mudou,
 // senão reaplica a vista.
 void UpdateOotCamera();
 
-// Escopo de draw em que linkspan.oot.render vale. Aninhável; o Leave desfaz os push
-// sem pop feitos dentro dele.
-void EnterOotRenderScope();
+enum class OotRenderScopeKind : uint8_t {
+    Draw,
+    // Hook oot.render.actor_draw: vale também set_actor_toon_enabled.
+    ActorDraw,
+};
+
+// Escopo de draw em que linkspan.oot.render vale. Aninhável; o Leave desfaz os push e fecha os filhos de
+// interpolação deixados abertos dentro dele. `gfx` é o GraphicsContext do desenho (nulo nos testes).
+void EnterOotRenderScope(void* gfx = nullptr, OotRenderScopeKind kind = OotRenderScopeKind::Draw);
 void LeaveOotRenderScope();
 // Há um escopo de draw aberto (linkspan.oot.skeletons desenha só dentro dele).
 bool InOotRenderScope();
+// Início do laço de atores (LinkSpan_RenderToonActorsEnabled): guarda se o colchete toon abre neste frame.
+void BeginOotActorDrawFrame(bool toonBracket);
+// Antes do hook de cada ator: religa o colchete que o ator anterior desligou (set_actor_toon_enabled).
+void RestoreOotActorToon(void* gfx);
 bool OotRenderToonActorsEnabled();
 bool OotRenderVanillaShadowsSuppressed();
 bool OotRenderVanillaPointGlowHidden();

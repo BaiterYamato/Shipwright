@@ -121,6 +121,7 @@
 #include "soh/native/OotNativeSave.h"
 #include "soh/native/OotNativeItems.h"
 #include "soh/native/OotNativeView.h"
+#include "soh/native/OotNativeLights.h"
 #include "soh/native/OotNativeWorld.h"
 #include "soh/native/OotNativeSkeletons.h"
 #include "soh/OotHotkeyRegistry.h"
@@ -1572,6 +1573,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     // SOH [Link-Span] itens sintéticos e tipos de ator de mods; antes da carga dos mods.
     ShipLuaHost::RegisterOotItemGameHooks();
     ShipLuaHost::RegisterOotViewGameHooks();
+    ShipLuaHost::RegisterOotLightsGameHooks();
     ShipLuaHost::RegisterOotWorldGameHooks();
     ShipLuaHost::RegisterOotSkeletonsGameBridge();
     // SOH [Link-Span] mods registram tipos de ator no init, durante ShipLuaHost::Initialize.

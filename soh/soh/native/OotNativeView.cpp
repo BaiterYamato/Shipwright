@@ -23,8 +23,17 @@ struct ViewState {
     void* play = nullptr;
     bool hasView = false;
     ShipOotCameraViewV1 view{};
-    // Push feitos pelo mod em cada escopo de draw aberto.
-    std::vector<uint32_t> scopes;
+    struct Scope {
+        // Push e filhos de interpolação abertos pelo mod neste escopo.
+        uint32_t pushed = 0;
+        uint32_t children = 0;
+        void* gfx = nullptr;
+        OotRenderScopeKind kind = OotRenderScopeKind::Draw;
+    };
+    std::vector<Scope> scopes;
+    // Colchete toon do laço de atores neste frame, e o ator anterior que saiu dele.
+    bool frameToonBracket = false;
+    bool actorToonOff = false;
     std::set<std::string, std::less<>> paths;
     struct RenderState {
         uint64_t token = 0;
@@ -229,11 +238,11 @@ ShipNativeStatus SHIP_NATIVE_CALL MatrixPush() {
     if (!OnOwnerThread() || !InScope() || !state.bridge.matrixPush) {
         return SHIP_NATIVE_UNSUPPORTED;
     }
-    if (state.scopes.back() >= LINKSPAN_OOT_RENDER_MAX_DEPTH) {
+    if (state.scopes.back().pushed >= LINKSPAN_OOT_RENDER_MAX_DEPTH) {
         return SHIP_NATIVE_LIMIT;
     }
     state.bridge.matrixPush();
-    ++state.scopes.back();
+    ++state.scopes.back().pushed;
     return SHIP_NATIVE_OK;
 }
 
@@ -242,11 +251,11 @@ ShipNativeStatus SHIP_NATIVE_CALL MatrixPop() {
     if (!OnOwnerThread() || !InScope() || !state.bridge.matrixPop) {
         return SHIP_NATIVE_UNSUPPORTED;
     }
-    if (!state.scopes.back()) {
+    if (!state.scopes.back().pushed) {
         return SHIP_NATIVE_INVALID_ARGUMENT; // pop da matriz do host
     }
     state.bridge.matrixPop();
-    --state.scopes.back();
+    --state.scopes.back().pushed;
     return SHIP_NATIVE_OK;
 }
 
@@ -383,6 +392,89 @@ ShipNativeStatus SHIP_NATIVE_CALL FlushToonShadows(uint8_t layer) {
     return bridge.flushToonShadows(layer);
 }
 
+// Escopo de draw aberto com GraphicsContext conhecido.
+ViewState::Scope* GfxScope() {
+    auto& state = State();
+    return OnOwnerThread() && !state.scopes.empty() && state.scopes.back().gfx ? &state.scopes.back() : nullptr;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SetActorToonEnabled(uint8_t enabled) {
+    auto& state = State();
+    auto* scope = GfxScope();
+    if (!scope || scope->kind != OotRenderScopeKind::ActorDraw || !state.bridge.setToon) return SHIP_NATIVE_UNSUPPORTED;
+    // Sem colchete neste frame o ator já desenha com a luz vanilla.
+    if (!state.frameToonBracket || state.actorToonOff == !enabled) return SHIP_NATIVE_OK;
+    state.bridge.setToon(scope->gfx, enabled != 0);
+    state.actorToonOff = !enabled;
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL MatrixTranslateNew(float x, float y, float z) {
+    const auto& bridge = State().bridge;
+    if (!OnOwnerThread() || !InScope() || !bridge.matrixTranslateNew) return SHIP_NATIVE_UNSUPPORTED;
+    // Sem push do mod a matriz trocada seria a do host, que o fim do escopo não devolve.
+    if (!Finite3(x, y, z) || !State().scopes.back().pushed) return SHIP_NATIVE_INVALID_ARGUMENT;
+    bridge.matrixTranslateNew(x, y, z);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL MatrixRotateAxis(float radians, float x, float y, float z) {
+    const auto& bridge = State().bridge;
+    if (!OnOwnerThread() || !InScope() || !bridge.matrixRotateAxis) return SHIP_NATIVE_UNSUPPORTED;
+    if (!std::isfinite(radians) || !Finite3(x, y, z)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    const float length = std::sqrt(x * x + y * y + z * z);
+    if (!std::isfinite(length) || length < 1e-6f) return SHIP_NATIVE_INVALID_ARGUMENT;
+    bridge.matrixRotateAxis(radians, x / length, y / length, z / length);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL ExportCurrentMatrix(const void** mtx) {
+    if (!mtx) return SHIP_NATIVE_INVALID_ARGUMENT;
+    *mtx = nullptr;
+    const auto& bridge = State().bridge;
+    auto* scope = GfxScope();
+    if (!scope || !bridge.exportMatrix) return SHIP_NATIVE_UNSUPPORTED;
+    *mtx = bridge.exportMatrix(scope->gfx);
+    return *mtx ? SHIP_NATIVE_OK : SHIP_NATIVE_FAILURE;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL DrawNativeDisplayList(const void* displayList, uint8_t layer) {
+    if (!displayList || !ValidRenderLayer(layer)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    const auto& bridge = State().bridge;
+    auto* scope = GfxScope();
+    if (!scope || !bridge.drawNative) return SHIP_NATIVE_UNSUPPORTED;
+    bridge.drawNative(scope->gfx, displayList, layer);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL GetFrameInfo(ShipOotRenderFrameInfoV1* info) {
+    if (!OnOwnerThread() || !info || info->size < sizeof(ShipOotRenderFrameInfoV1)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    const auto& bridge = State().bridge;
+    if (!bridge.frameInfo) return SHIP_NATIVE_UNSUPPORTED;
+    *info = ShipOotRenderFrameInfoV1{};
+    info->size = sizeof(ShipOotRenderFrameInfoV1);
+    return bridge.frameInfo(info);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL InterpolationBegin(const void* key, int32_t child) {
+    auto& state = State();
+    if (!OnOwnerThread() || !InScope() || !state.bridge.interpolationOpen || !state.bridge.interpolationClose)
+        return SHIP_NATIVE_UNSUPPORTED;
+    if (state.scopes.back().children >= LINKSPAN_OOT_RENDER_MAX_INTERPOLATION) return SHIP_NATIVE_LIMIT;
+    state.bridge.interpolationOpen(key, child);
+    ++state.scopes.back().children;
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL InterpolationEnd() {
+    auto& state = State();
+    if (!OnOwnerThread() || !InScope() || !state.bridge.interpolationClose) return SHIP_NATIVE_UNSUPPORTED;
+    if (!state.scopes.back().children) return SHIP_NATIVE_INVALID_ARGUMENT; // filho aberto pelo host
+    state.bridge.interpolationClose();
+    --state.scopes.back().children;
+    return SHIP_NATIVE_OK;
+}
+
 const ShipOotCameraV1 cameraV1{ sizeof(ShipOotCameraV1), Acquire, Release, SetView, GetView, IsOwned };
 const ShipOotRenderV1 renderV1{ sizeof(ShipOotRenderV1), DrawDisplayList, MatrixPush,     MatrixPop,
                                 MatrixTranslate,         MatrixScale,     MatrixRotateZYX };
@@ -390,6 +482,12 @@ const ShipOotRenderV2 renderV2{ sizeof(ShipOotRenderV2), DrawDisplayList, Matrix
                                 MatrixTranslate, MatrixScale, MatrixRotateZYX, AcquireRenderState,
                                 ReleaseRenderState, SetRenderState, EmitToonKey, EmitStencil,
                                 EmitToonShadow, FlushToonShadows, SetToonRamp, SetToonShadowParams };
+const ShipOotRenderV3 renderV3{ sizeof(ShipOotRenderV3), DrawDisplayList, MatrixPush, MatrixPop,
+                                MatrixTranslate, MatrixScale, MatrixRotateZYX, AcquireRenderState,
+                                ReleaseRenderState, SetRenderState, EmitToonKey, EmitStencil,
+                                EmitToonShadow, FlushToonShadows, SetToonRamp, SetToonShadowParams,
+                                SetActorToonEnabled, MatrixTranslateNew, MatrixRotateAxis, ExportCurrentMatrix,
+                                DrawNativeDisplayList, GetFrameInfo, InterpolationBegin, InterpolationEnd };
 
 } // namespace
 
@@ -408,6 +506,8 @@ void ResetOotNativeView() {
         DropCamera(true);
     }
     state.scopes.clear();
+    state.frameToonBracket = false;
+    state.actorToonOff = false;
     state.renderStates.clear();
     RebuildRenderFeatures();
 }
@@ -422,6 +522,10 @@ const ShipOotRenderV1& GetOotNativeRenderService() {
 
 const ShipOotRenderV2& GetOotNativeRenderServiceV2() {
     return renderV2;
+}
+
+const ShipOotRenderV3& GetOotNativeRenderServiceV3() {
+    return renderV3;
 }
 
 void ReleaseOotRenderOwner(std::string_view owner) {
@@ -472,8 +576,8 @@ bool OotRenderIsShadowReceiver(int16_t actorId) {
     return false;
 }
 
-void EnterOotRenderScope() {
-    State().scopes.push_back(0);
+void EnterOotRenderScope(void* gfx, OotRenderScopeKind kind) {
+    State().scopes.push_back({0, 0, gfx, kind});
 }
 
 void LeaveOotRenderScope() {
@@ -481,7 +585,12 @@ void LeaveOotRenderScope() {
     if (state.scopes.empty()) {
         return;
     }
-    for (uint32_t pushed = state.scopes.back(); pushed; --pushed) {
+    for (uint32_t children = state.scopes.back().children; children; --children) {
+        if (state.bridge.interpolationClose) {
+            state.bridge.interpolationClose();
+        }
+    }
+    for (uint32_t pushed = state.scopes.back().pushed; pushed; --pushed) {
         if (state.bridge.matrixPop) {
             state.bridge.matrixPop();
         }
@@ -489,10 +598,30 @@ void LeaveOotRenderScope() {
     state.scopes.pop_back();
 }
 
+void BeginOotActorDrawFrame(bool toonBracket) {
+    auto& state = State();
+    state.frameToonBracket = toonBracket;
+    state.actorToonOff = false;
+}
+
+void RestoreOotActorToon(void* gfx) {
+    auto& state = State();
+    if (!state.actorToonOff) {
+        return;
+    }
+    state.actorToonOff = false;
+    if (state.frameToonBracket && gfx && state.bridge.setToon) {
+        state.bridge.setToon(gfx, true);
+    }
+}
+
 } // namespace ShipLuaHost
 
+// Chamada uma vez por frame, no início de Actor_DrawAll (z_actor.c), que abre o colchete toon com o resultado.
 extern "C" int32_t LinkSpan_RenderToonActorsEnabled(void) {
-    return ShipLuaHost::OotRenderToonActorsEnabled() ? 1 : 0;
+    const bool enabled = ShipLuaHost::OotRenderToonActorsEnabled();
+    ShipLuaHost::BeginOotActorDrawFrame(enabled);
+    return enabled ? 1 : 0;
 }
 
 extern "C" int32_t LinkSpan_RenderSuppressVanillaShadows(void) {

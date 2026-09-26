@@ -27,6 +27,7 @@ struct OotHookPoints {
     uint64_t renderFileSelectSky = 0;
     uint64_t pointLightColor = 0;
     uint64_t anchorState = 0;
+    uint64_t fairyLights = 0;
 };
 void SetOotHookLogger(void (*logger)(const std::string& message));
 // Cria um registro novo com os pontos do host declarados. Chamar na thread do jogo.
@@ -41,6 +42,6 @@ void DispatchOotSaveHook(uint64_t point, int32_t slot, int32_t otherSlot);
 // buffer ou capacidade trocados) mantém `count` e registra no log.
 uint32_t DispatchOotRoomActors(void* play, int32_t sceneId, int32_t room, int32_t layer, const char* roomPath,
                                ShipOotActorEntryV2* entries, uint32_t count, uint32_t capacity);
-void DispatchOotPointLightColor(ShipOotPointLightColorHookV1* payload);
+void DispatchOotPointLightColor(ShipOotPointLightColorHookV2* payload);
 bool HasOotPointLightColorHooks();
 } // namespace ShipLuaHost
