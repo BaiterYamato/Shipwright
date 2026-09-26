@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -59,21 +60,27 @@ int main() {
           "null deve remover a cena e a camada de baixo deve sobreviver ao patch");
     LinkSpanUnbound::SceneRegistryDocument registry;
     Check(LinkSpanUnbound::ParseSceneRegistry(result.json, registry, error), "registro mesclado deve ser lido");
-    Check(registry.scenes.size() == 2 && registry.scenes[0].name == "mod/a" && registry.scenes[1].name == "mod/b",
+    // Unbound 0.8: sceneId e index não recusam nem fixam nada; a cena com sceneId 10 agora carrega.
+    Check(registry.scenes.size() == 3 && registry.scenes[0].name == "mod/a" && registry.scenes[1].name == "mod/b" &&
+              registry.scenes[2].name == "mod/bad",
           "cenas válidas devem sair em ordem de chave");
     const auto& sceneA = registry.scenes[0];
-    Check(sceneA.displayName == "Cena A" && sceneA.path == "scenes/a" && sceneA.sceneId == 200 &&
-               sceneA.drawConfig == 3 && sceneA.entrances.size() == 1 && sceneA.entrances[0].key == "north" &&
-              sceneA.entrances[0].index == 1560 && sceneA.entrances[0].showTitleCard &&
-              sceneA.entrances[0].endTransition == 5 && sceneA.entrances[0].startTransition == 2 &&
-               sceneA.titleCard == "textures/a_title" && sceneA.horse && sceneA.horseHasSpawn &&
-               sceneA.horseX == 1.5f && sceneA.horseAngle == -16384,
-           "campos da cena e da entrada devem vir do documento com os padrões do SPEC");
+    Check(sceneA.displayName == "Cena A" && sceneA.path == "scenes/a" && sceneA.drawConfig == 3 &&
+              sceneA.entrances.size() == 1 && sceneA.entrances[0].key == "north" &&
+              sceneA.entrances[0].showTitleCard && sceneA.entrances[0].endTransition == 5 &&
+              sceneA.entrances[0].startTransition == 2 && sceneA.titleCard == "textures/a_title" && sceneA.horse &&
+              sceneA.horseHasSpawn && sceneA.horseX == 1.5f && sceneA.horseAngle == -16384,
+          "campos da cena e da entrada devem vir do documento com os padrões do SPEC");
     const auto& sceneB = registry.scenes[1];
-    Check(sceneB.displayName == "mod/b" && sceneB.sceneId == -1 && sceneB.entrances.size() == 1 &&
-              sceneB.entrances[0].spawn == 1 && sceneB.entrances[0].index == -1,
-          "sem id e sem índice a cena e a entrada devem pedir o próximo livre");
-    Check(registry.notes.size() == 3, "sceneId fora do intervalo, cena sem caminho e layers devem virar notas");
+    Check(sceneB.displayName == "mod/b" && sceneB.entrances.size() == 1 && sceneB.entrances[0].spawn == 1,
+          "cena e entrada sem número devem ser lidas como antes");
+    const auto noted = [&](const std::string& text) {
+        return std::any_of(registry.notes.begin(), registry.notes.end(),
+                           [&](const std::string& note) { return note.starts_with(text); });
+    };
+    Check(registry.notes.size() == 5 && noted("mod/a: sceneId é obsoleto") && noted("mod/a/north: index é obsoleto") &&
+              noted("mod/bad: sceneId é obsoleto") && noted("mod/nopath: recusada") && noted("mod/a/north: layers"),
+          "sceneId e index obsoletos, cena sem caminho e layers devem virar notas");
     Check(!LinkSpanUnbound::ParseSceneRegistry("[]", registry, error) && !error.empty(),
           "raiz que não é objeto deve ser recusada");
     Check(LinkSpanUnbound::ParseSceneRegistry(R"({"mod/horse":{"scene":"x","horse":{"pos":[0,1],"angle":0}}})",

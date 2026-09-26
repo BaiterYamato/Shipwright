@@ -207,6 +207,59 @@ void TestScene() {
         TranscodeContext c = Context();
         CHECK(Rejects([&] { TranscodeScene(bad, false, c); }));
     }
+    // Unbound 0.8: número no intervalo das entradas de mod recusa o documento (a entrada só vale pelo nome); as
+    // vanilla e as de retorno dinâmico seguem valendo como número, e as de retorno também pelo nome.
+    for (const char* exit : { "1556", "1560", R"("0x0618")", "32760", R"("0x7FF8")", "70000" }) {
+        Json bad = Json::parse(R"({"setups":{"0":{"exits":{"0":0}}}})");
+        bad["setups"]["0"]["exits"]["0"] = Json::parse(exit);
+        TranscodeContext numbered = Context();
+        CHECK(Rejects([&] { TranscodeScene(bad, false, numbered); }));
+    }
+    {
+        TranscodeContext returns = Context();
+        const std::string text = TranscodeScene(
+            Json::parse(R"({"setups":{"0":{"exits":{"0":1555,"1":32767,"2":"ENTR_RETURN_GROTTO",
+                                                   "3":"ENTR_RETURN_YOUSEI_IZUMI_YOKO","4":32761,
+                                                   "5":"0x7FF9"}}}})"),
+            false, returns);
+        CHECK(Contains(text, "<ExitEntry Id=\"1555\"/><ExitEntry Id=\"32767\"/><ExitEntry Id=\"32767\"/>"
+                             "<ExitEntry Id=\"32761\"/><ExitEntry Id=\"32761\"/><ExitEntry Id=\"32761\"/>"));
+        CHECK(returns.notes.empty());
+    }
+
+    // Unbound 0.8: sound fora da faixa vira "nenhum" com nota, sem recusar o documento (§4.2).
+    {
+        TranscodeContext sound = Context();
+        const std::string text = TranscodeScene(
+            Json::parse(R"({"setups":{"0":{"sound":{"seq":255,"natureAmbience":255,"reverb":3}}}})"), false, sound);
+        CHECK(Contains(text, "<SetSoundSettings Reverb=\"3\" NatureAmbienceId=\"19\" SeqId=\"127\"/>"));
+        CHECK(sound.notes.size() == 2 && Contains(sound.notes[0], "seq 255") &&
+              Contains(sound.notes[1], "natureAmbience 255"));
+    }
+    {
+        TranscodeContext sound = Context();
+        const std::string text = TranscodeScene(
+            Json::parse(R"({"setups":{"0":{"sound":{"seq":109,"natureAmbience":19}},
+                                         "1":{"sound":{"seq":127,"natureAmbience":0,"song":"custom/music/X"}},
+                                         "2":{"sound":{"seq":-1,"natureAmbience":20}}}})"),
+            false, sound);
+        CHECK(Contains(text, "NatureAmbienceId=\"19\" SeqId=\"109\""));
+        CHECK(Contains(text, "NatureAmbienceId=\"0\" SeqId=\"127\" Song=\"custom/music/X\""));
+        CHECK(sound.notes.size() == 3 && Contains(sound.notes[0], "song custom/music/X") &&
+              Contains(sound.notes[1], "seq -1") && Contains(sound.notes[2], "natureAmbience 20"));
+    }
+    // Número em string passa pela mesma faixa (§2), e campo ausente é 0, que está dentro dela.
+    {
+        TranscodeContext sound = Context();
+        const std::string text = TranscodeScene(
+            Json::parse(R"({"setups":{"0":{"sound":{"seq":"255","natureAmbience":"20"}},"1":{"sound":{}}}})"),
+            false, sound);
+        CHECK(Contains(text, "<SetSoundSettings Reverb=\"0\" NatureAmbienceId=\"19\" SeqId=\"127\"/>"));
+        CHECK(Contains(text, "<SetSoundSettings Reverb=\"0\" NatureAmbienceId=\"0\" SeqId=\"0\"/>"));
+        CHECK(sound.notes.size() == 2 && Contains(sound.notes[0], "seq 255") &&
+              Contains(sound.notes[1], "natureAmbience 20"));
+    }
+
     TranscodeContext c = Context();
     CHECK(Rejects([&] { TranscodeScene(Json::parse(R"({"setups":{"1":{}}})"), false, c); }));
     CHECK(Rejects([&] { TranscodeScene(Json::parse(R"({"setups":{"0":{"lights":{"0":{"type":3}}}}})"), true, c); }));

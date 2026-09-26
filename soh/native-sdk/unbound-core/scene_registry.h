@@ -6,9 +6,10 @@
 
 namespace LinkSpanUnbound {
 
+// Cena e entrada não trazem número: o jogo numera na ordem do registro, e o número de cada uma depende dos mods
+// montados (Unbound 0.8, SPEC §7). Tudo é endereçado pelo nome.
 struct RegistryEntrance {
     std::string key;
-    int32_t index = -1; // -1: próximo grupo livre
     uint8_t spawn = 0;
     bool continueBgm = false;
     bool showTitleCard = false;
@@ -20,7 +21,6 @@ struct RegistryScene {
     std::string name;
     std::string displayName;
     std::string path;
-    int32_t sceneId = -1; // -1: próximo id livre
     uint8_t drawConfig = 0;
     std::string titleCard; // textura I8 144x24 no VFS; vazio = sem título
     bool horse = false;

@@ -69,7 +69,7 @@ foreach ($directory in @(
 Write-Utf8NoBom (Join-Path $coreStage 'manifest.toml') @'
 id = "linkspan.unbound.framework"
 name = "Link-Span Unbound Framework"
-version = "0.4.0"
+version = "0.5.0"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -88,7 +88,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\unbound\json_fac
 Write-Utf8NoBom (Join-Path $demoStage 'manifest.toml') @'
 id = "linkspan.unbound.scene-demo"
 name = "Link-Span Unbound Scene Demo"
-version = "0.1.1"
+version = "0.1.2"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -98,7 +98,7 @@ abi_version = "1.0"
 win64 = "provider/linkspan_unbound_scene_demo.dll"
 
 [dependencies]
-"linkspan.unbound.framework" = ">=0.2.0 <0.5.0"
+"linkspan.unbound.framework" = ">=0.2.0 <0.6.0"
 '@
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'scene-demo\main.lua') -Destination (Join-Path $demoStage 'main.lua')
 Copy-Item -LiteralPath $demoDll -Destination (Join-Path $demoStage 'provider\linkspan_unbound_scene_demo.dll')
@@ -108,7 +108,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'scene-demo\assets\unbound\scenes.
 Write-Utf8NoBom (Join-Path $fieldStage 'manifest.toml') @'
 id = "linkspan.unbound.field-demo"
 name = "Link-Span Unbound Field Demo"
-version = "0.1.0"
+version = "0.1.1"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -118,7 +118,7 @@ abi_version = "1.0"
 win64 = "provider/linkspan_unbound_field_demo.dll"
 
 [dependencies]
-"linkspan.unbound.framework" = ">=0.3.0 <0.5.0"
+"linkspan.unbound.framework" = ">=0.3.0 <0.6.0"
 '@
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'field-demo\main.lua') -Destination (Join-Path $fieldStage 'main.lua')
 Copy-Item -LiteralPath $fieldDll -Destination (Join-Path $fieldStage 'provider\linkspan_unbound_field_demo.dll')
@@ -126,9 +126,9 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'field-demo\assets\scenes\spot00\r
     -Destination (Join-Path $fieldStage 'assets\scenes\spot00\rooms\0.json')
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$coreZip = Join-Path $packageRoot "LinkSpan-Unbound-Framework-0.4.0-layout-$layout.$Extension"
-$demoZip = Join-Path $packageRoot "LinkSpan-Unbound-Scene-Demo-0.1.1-layout-$layout.$Extension"
-$fieldZip = Join-Path $packageRoot "LinkSpan-Unbound-Field-Demo-0.1.0-layout-$layout.$Extension"
+$coreZip = Join-Path $packageRoot "LinkSpan-Unbound-Framework-0.5.0-layout-$layout.$Extension"
+$demoZip = Join-Path $packageRoot "LinkSpan-Unbound-Scene-Demo-0.1.2-layout-$layout.$Extension"
+$fieldZip = Join-Path $packageRoot "LinkSpan-Unbound-Field-Demo-0.1.1-layout-$layout.$Extension"
 New-DeterministicZip $coreStage $coreZip
 New-DeterministicZip $demoStage $demoZip
 New-DeterministicZip $fieldStage $fieldZip

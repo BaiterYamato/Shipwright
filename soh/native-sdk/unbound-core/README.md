@@ -4,7 +4,7 @@
 `roborich/Shipwright`, `unbound-docs/SPEC.md`) sobre o host Link-Span do Shipwright 9.2.3. Não linka
 `soh.exe`: usa só os serviços `linkspan.oot.*`.
 
-## O que a versão 0.4.0 faz
+## O que a versão 0.5.0 faz
 
 - **Base convertida (UNBOUND-006).** No init, antes de o SoH montar os mods, converte as cenas vanilla dos
   archives do jogo para o formato 2 e grava `oot-unbound.o2r` ao lado do `oot.o2r`, com a proveniência em
@@ -22,13 +22,32 @@
   traz mudam. Com a base ativa o patch de atores da 0.3.0 (hook `oot.room.actors`) sai de cena; o mesmo
   documento agora mescla direto na sala.
 - **Registro (§7).** `unbound/scenes.json` registra cenas e entradas (`linkspan.oot.scenes` v2, com
-  `titleCardTexture`), na ordem de chave da §3.5. Exits por nome (`ENTR_*` ou `"<cena>/<entrada>"`) são
-  resolvidos quando a cena carrega.
+  `titleCardTexture`), na ordem de chave da §3.5. O jogo numera cena e entrada nessa ordem; `sceneId` e
+  `entrances.*.index` são obsoletos e ignorados com nota. Exits por nome (`ENTR_*`, `ENTR_RETURN_*` ou
+  `"<cena>/<entrada>"`) são resolvidos quando a cena carrega.
 - **Texto (§5).** `text/<lang>/messages.json` (eng, ger, fra, jpn, staff) mescla por mensagem sobre a
   tabela do jogo (`linkspan.oot.text`): acrescenta, troca e `null` remove. `$replace` em `messages`
   esvazia a tabela antes. Mensagem acima de 8 192 bytes é truncada com aviso.
 
-## Diferenças conhecidas em relação ao Unbound 0.6
+## Unbound 0.8 (novo na 0.5.0)
+
+O formato continua na versão 2 e mod antigo continua carregando. O que mudou (SPEC §4.2 e §7,
+`prelude-handoff.md` de 2026-09-19 e 2026-09-20):
+
+- **Número de cena e de entrada.** O número depende dos mods montados, então dois mods que fixavam o mesmo
+  colidiam e o segundo sumia. `sceneId` e `entrances.*.index` agora são ignorados, com nota.
+- **Saídas.** Número entre `ENTR_MAX` (1556) e `0x7FF8`, o intervalo das entradas de mod, recusa o documento:
+  entrada de mod só pelo nome, `"<cena>/<entrada>"`. Continuam valendo como número as vanilla e as de
+  retorno dinâmico, `0x7FF9`–`0x7FFF` (grutas, fontes, galeria de tiro e bazar), que também aceitam o nome
+  `ENTR_RETURN_*`.
+- **`sound`.** `seq` vale de 0 a 109 ou 127 (sem música); `natureAmbience` vale de 0 a 19, com 19 = nenhuma.
+  Fora disso vira "nenhum", com nota: o motor indexa tabelas com esses bytes, e o 255 que exportadores usavam
+  como "nenhum" derrubava a thread de áudio no primeiro pôr do sol. `song` com `seq` 127 não toca, também
+  com nota.
+- **Save.** O host grava pelo nome a entrada, a cena salva e o Farore's Wind. Acrescentar ou tirar um mod não
+  leva mais o save para a cena de outro mod.
+
+## Diferenças conhecidas em relação ao Unbound 0.8
 
 - A base não exporta texto: a tabela vanilla faz o papel da camada de baixo. Para um mod, o efeito é o da
   SPEC. Só muda a precedência de `override/`: o JSON é aplicado depois dele.

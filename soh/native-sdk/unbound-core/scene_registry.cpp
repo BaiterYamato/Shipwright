@@ -9,9 +9,6 @@
 namespace LinkSpanUnbound {
 namespace {
 
-constexpr int64_t FIRST_CUSTOM_SCENE_ID = 128;
-constexpr int64_t MAX_SCENE_ID = 32767;
-constexpr int64_t MAX_ENTRANCE_INDEX = 32764;
 constexpr int64_t MAX_SPAWN = 127;
 constexpr int64_t MAX_TRANSITION = 127;
 constexpr int64_t MAX_DRAW_CONFIG = 255;
@@ -57,6 +54,16 @@ bool ReadFlag(const Json& object, const char* key, bool& output) {
     return false;
 }
 
+// Unbound 0.8 (SPEC §7): número fixado por um mod deixou de ser lido. Dois mods que fixavam o mesmo colidiam e o
+// segundo sumia; o jogo numera cena e entrada na ordem do registro e tudo as endereça pelo nome. Mods antigos
+// ainda trazem as chaves, então a nota diz que elas não fazem nada.
+void NoteNumberIgnored(const Json& definition, const char* key, const std::string& owner,
+                       std::vector<std::string>& notes) {
+    if (definition.contains(key)) {
+        notes.push_back(owner + ": " + key + " é obsoleto e foi ignorado; o jogo numera e tudo usa o nome (SPEC §7)");
+    }
+}
+
 // Ordem de registro (§3.5): $order, depois chaves inteiras em ordem numérica, depois o resto.
 std::vector<std::pair<std::string, const Json*>> OrderedEntries(const Json& object) {
     std::vector<std::pair<std::string, const Json*>> ordered;
@@ -70,12 +77,8 @@ bool ReadEntrance(const std::string& scene, const std::string& key, const Json& 
                   std::vector<std::string>& notes) {
     const std::string label = scene + "/" + key;
     entrance.key = key;
+    NoteNumberIgnored(definition, "index", label, notes);
     int64_t number = 0;
-    if (!ReadInteger(definition, "index", -1, 0, MAX_ENTRANCE_INDEX, number)) {
-        notes.push_back(label + ": index fora de 0-32764");
-        return false;
-    }
-    entrance.index = static_cast<int32_t>(number);
     if (!ReadInteger(definition, "spawn", 0, 0, MAX_SPAWN, number)) {
         notes.push_back(label + ": spawn fora de 0-127");
         return false;
@@ -160,12 +163,8 @@ bool ParseSceneRegistry(const std::string& json, SceneRegistryDocument& output, 
                 continue;
             }
             scene.path = path->get<std::string>();
+            NoteNumberIgnored(*value, "sceneId", key, output.notes);
             int64_t number = 0;
-            if (!ReadInteger(*value, "sceneId", -1, FIRST_CUSTOM_SCENE_ID, MAX_SCENE_ID, number)) {
-                output.notes.push_back(key + ": recusada, sceneId fora de 128-32767");
-                continue;
-            }
-            scene.sceneId = static_cast<int32_t>(number);
             if (!ReadInteger(*value, "drawConfig", 0, 0, MAX_DRAW_CONFIG, number)) {
                 output.notes.push_back(key + ": recusada, drawConfig inválido");
                 continue;

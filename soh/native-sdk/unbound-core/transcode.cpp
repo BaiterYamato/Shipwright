@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 
 namespace LinkSpanUnbound {
 namespace {
@@ -162,6 +163,29 @@ void ActorAttrs(Xml& xml, const Json& actor) {
 
 std::string Where(const TranscodeContext& context, const std::string& what) {
     return context.path + " " + what;
+}
+
+// Faixas do `sound` (SPEC §4.2, Unbound 0.8). O motor indexa tabelas com esses bytes sem conferir, e o 255
+// que exportadores usavam como "nenhum" derrubava a thread de áudio no primeiro pôr do sol. Aqui o §2 não
+// embrulha: fora da faixa vira o "nenhum" do próprio jogo, com nota, e o resto do `sound` continua valendo.
+constexpr int64_t kLastVanillaSeq = 0x6D; // NA_BGM_VARIOUS_SFX
+constexpr int64_t kNoMusicSeq = 0x7F;     // NA_BGM_NO_MUSIC
+constexpr int64_t kNoNatureAmbience = 0x13; // NATURE_ID_NONE, último da tabela de 20
+
+// Saídas (SPEC §4.2, Unbound 0.8). Só vale como número uma entrada com o mesmo número para todo jogador: as
+// vanilla abaixo de ENTR_MAX e as de retorno dinâmico (z64scene.h, ReturnEntranceIndex), que o z_player.c
+// resolve antes de indexar a tabela. O intervalo entre elas é onde o jogo numera as entradas de mod, e o
+// número de cada uma depende dos mods montados: essas só pelo nome.
+constexpr int64_t kVanillaEntranceCount = 1556; // ENTR_MAX do SoH 9.2.3
+constexpr int64_t kFirstReturnEntrance = 0x7FF9;
+const char* const kReturnEntranceNames[] = {
+    "ENTR_RETURN_YOUSEI_IZUMI_YOKO", "ENTR_RETURN_SYATEKIJYOU",      "ENTR_RETURN_2",      "ENTR_RETURN_SHOP1",
+    "ENTR_RETURN_4",                 "ENTR_RETURN_DAIYOUSEI_IZUMI", "ENTR_RETURN_GROTTO",
+};
+constexpr int64_t kLastReturnEntrance = kFirstReturnEntrance + std::size(kReturnEntranceNames) - 1;
+
+bool IsStableEntranceIndex(int64_t index) {
+    return index < kVanillaEntranceCount || (index >= kFirstReturnEntrance && index <= kLastReturnEntrance);
 }
 
 void Lighting(Xml& xml, const Json& list, TranscodeContext& context) {
@@ -323,24 +347,38 @@ void MaterialAnims(Xml& xml, const Json& list, TranscodeContext& context) {
 }
 
 int32_t ResolveExit(const Json& value, const std::string& key, TranscodeContext& context) {
+    const std::string where = Where(context, "exits/" + key);
+    const auto fromNumber = [&](int64_t index) {
+        if (!IsStableEntranceIndex(index)) {
+            throw DocumentError(where + ": a saída " + std::to_string(index) +
+                                " está no intervalo que o jogo usa para entradas de mod; use o nome "
+                                "\"<cena>/<entrada>\"");
+        }
+        return U16(index);
+    };
     if (value.is_number_integer() && !value.is_number_float()) {
         const int64_t index = ToInt(value, -1);
         if (index >= 0) {
-            return U16(index);
+            return fromNumber(index);
         }
     } else if (value.is_string()) {
         const std::string name = value.get<std::string>();
+        for (size_t i = 0; i < std::size(kReturnEntranceNames); ++i) {
+            if (name == kReturnEntranceNames[i]) {
+                return U16(kFirstReturnEntrance + static_cast<int64_t>(i));
+            }
+        }
         const int32_t index = context.resolveEntrance ? context.resolveEntrance(name) : -1;
         if (index >= 0) {
             return U16(index);
         }
         int64_t parsed = 0;
-        if (ParseIntString(name, parsed) && parsed >= 0) {
-            return U16(parsed);
+        if (ParseIntString(name, parsed) && parsed >= 0) { // "0x0211" ainda é índice, não nome
+            return fromNumber(parsed);
         }
-        throw DocumentError(Where(context, "exits/" + key) + ": entrada desconhecida '" + name + "'");
+        throw DocumentError(where + ": entrada desconhecida '" + name + "'");
     }
-    throw DocumentError(Where(context, "exits/" + key) + ": uma saída é um índice ou um nome de entrada");
+    throw DocumentError(where + ": uma saída é um índice ou um nome de entrada");
 }
 
 void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
@@ -478,13 +516,32 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     }
     if (has("sound")) {
         const Json& s = setup["sound"];
+        int64_t seq = Field(s, "seq");
+        if (seq < 0 || (seq > kLastVanillaSeq && seq != kNoMusicSeq)) {
+            context.notes.push_back(Where(context, "sound") + ": seq " + std::to_string(seq) +
+                                    " não é uma sequência vanilla; usando sem música (" + std::to_string(kNoMusicSeq) +
+                                    ")");
+            seq = kNoMusicSeq;
+        }
+        int64_t nature = Field(s, "natureAmbience");
+        if (nature < 0 || nature > kNoNatureAmbience) {
+            context.notes.push_back(Where(context, "sound") + ": natureAmbience " + std::to_string(nature) +
+                                    " não é uma ambiência; usando nenhuma (" + std::to_string(kNoNatureAmbience) +
+                                    ")");
+            nature = kNoNatureAmbience;
+        }
         xml.Leaf("SetSoundSettings")
             .Attr("Reverb", U8(Field(s, "reverb")))
-            .Attr("NatureAmbienceId", U8(Field(s, "natureAmbience")))
-            .Attr("SeqId", U8(Field(s, "seq")));
+            .Attr("NatureAmbienceId", U8(nature))
+            .Attr("SeqId", U8(seq));
         const std::string song = PathField(s, "song");
         if (!song.empty()) {
             xml.Attr("Song", song);
+            if (seq == kNoMusicSeq) {
+                // A música toca no lugar do tema, e uma cena sem música nunca pede tema.
+                context.notes.push_back(Where(context, "sound") + ": song " + song + " não toca com seq " +
+                                        std::to_string(kNoMusicSeq) + " (sem música)");
+            }
         }
         xml.Close();
     }

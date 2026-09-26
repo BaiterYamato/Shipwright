@@ -342,7 +342,7 @@ std::string ApplySceneRegistry(State& state) {
             definition.name = scene.name.c_str();
             definition.display_name = scene.displayName.c_str();
             definition.scene_path = scene.path.c_str();
-            definition.requested_id = scene.sceneId;
+            definition.requested_id = LINKSPAN_OOT_SCENES_AUTO;
             definition.draw_config = scene.drawConfig;
             definition.title_card_texture = scene.titleCard.c_str();
             definition.horse_enabled = scene.horse ? 1 : 0;
@@ -358,7 +358,7 @@ std::string ApplySceneRegistry(State& state) {
             definition.name = scene.name.c_str();
             definition.display_name = scene.displayName.c_str();
             definition.scene_path = scene.path.c_str();
-            definition.requested_id = scene.sceneId;
+            definition.requested_id = LINKSPAN_OOT_SCENES_AUTO;
             definition.draw_config = scene.drawConfig;
             definition.title_card_texture = scene.titleCard.c_str();
             sceneStatus = state.scenesV2->register_scene_v2(&definition, &handle, &sceneId);
@@ -368,7 +368,7 @@ std::string ApplySceneRegistry(State& state) {
             definition.name = scene.name.c_str();
             definition.display_name = scene.displayName.c_str();
             definition.scene_path = scene.path.c_str();
-            definition.requested_id = scene.sceneId;
+            definition.requested_id = LINKSPAN_OOT_SCENES_AUTO;
             definition.draw_config = scene.drawConfig;
             sceneStatus = state.scenes->register_scene(&definition, &handle, &sceneId);
             if (sceneStatus == SHIP_NATIVE_OK && !scene.titleCard.empty()) {
@@ -388,7 +388,7 @@ std::string ApplySceneRegistry(State& state) {
             ShipOotEntranceDefinitionV1 entranceDefinition{};
             entranceDefinition.size = sizeof(entranceDefinition);
             entranceDefinition.key = entrance.key.c_str();
-            entranceDefinition.requested_index = entrance.index;
+            entranceDefinition.requested_index = LINKSPAN_OOT_SCENES_AUTO;
             entranceDefinition.spawn = entrance.spawn;
             entranceDefinition.continue_bgm = entrance.continueBgm ? 1 : 0;
             entranceDefinition.show_title_card = entrance.showTitleCard ? 1 : 0;
