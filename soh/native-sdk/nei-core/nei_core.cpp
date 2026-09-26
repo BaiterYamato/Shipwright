@@ -17,6 +17,9 @@ extern "C" int NeiActor_Stats(char* out, int capacity);
 extern "C" int NeiActor_TestSomaria(int spawn);
 extern "C" void NeiActor_Unload(int dryRun);
 extern "C" void NeiTest_GrantMagic(void);
+extern "C" int NeiTest_SpawnEnemy(int kind);
+extern "C" void WeaponUpgrade_SetRazor(unsigned char on);
+extern "C" void WeaponUpgrade_SetGilded(unsigned char on);
 extern "C" int NeiActor_UnloadStats(char* out, int capacity);
 #include "fork_save.h"
 #include "include/linkspan/nei/nei_items.h"
@@ -262,8 +265,39 @@ ShipNativeStatus SHIP_NATIVE_CALL MagicTest(void*, const char*, uint32_t, ShipNa
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     NeiTest_GrantMagic();
-    static const char text[] = "magia: medidor cheio (so em memoria)";
+    static const char text[] = "magia e vida cheias (so em memoria)";
     return write(writer, text, sizeof(text) - 1);
+}
+
+// Prova da onda B (NEI-009): um inimigo à frente do Link, para dano e collider ("enemy", "enemy tektite",
+// "enemy dodojr", "enemy wolfos"). O stats mostra a vida dele.
+ShipNativeStatus SHIP_NATIVE_CALL EnemyTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                            void* writer) {
+    if (!write || !LinkSpanNei::ForkActive()) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    static const char* const kNames[] = { "deku baba", "tektite", "dodojr", "wolfos" };
+    const std::string name = args ? std::string(args, length) : std::string();
+    const int kind = name == "tektite" ? 1 : name == "dodojr" ? 2 : name == "wolfos" ? 3 : 0;
+    const int result = NeiTest_SpawnEnemy(kind);
+    char text[64];
+    const int size = std::snprintf(text, sizeof(text), "inimigo: %s %s (%d)", kNames[kind],
+                                   result == 0 ? "criado" : "falhou", result);
+    return write(writer, text, static_cast<uint32_t>(size));
+}
+
+// Prova da onda B (NEI-009): nível da Kokiri Sword pelos upgrades do fork ("upgrade razor", "upgrade gilded";
+// sem argumento volta à Kokiri). Só em memória até o jogo salvar.
+ShipNativeStatus SHIP_NATIVE_CALL UpgradeTest(void*, const char* args, uint32_t length, ShipNativeWriteFn write,
+                                              void* writer) {
+    if (!write || !LinkSpanNei::ForkActive()) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const std::string level = args ? std::string(args, length) : std::string();
+    WeaponUpgrade_SetRazor(level == "razor" || level == "gilded");
+    WeaponUpgrade_SetGilded(level == "gilded");
+    const std::string text = "kokiri sword: " + (level.empty() ? std::string("kokiri") : level);
+    return write(writer, text.data(), static_cast<uint32_t>(text.size()));
 }
 
 // Aquisição de um item do fork pelo get-item do registro (NEI-008): "give deku_leaf". Sem argumento, lista os
@@ -365,6 +399,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_function(runtime->context, "magic", MagicTest, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "enemy", EnemyTest, nullptr);
+    }
+    if (status == SHIP_NATIVE_OK) {
+        status = runtime->register_function(runtime->context, "upgrade", UpgradeTest, nullptr);
     }
     if (status == SHIP_NATIVE_OK) {
         status = runtime->register_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION,

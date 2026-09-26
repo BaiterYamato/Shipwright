@@ -93,12 +93,69 @@ void NeiInv_ReadState(int32_t* pages, int32_t* currentPage, uint32_t* occupied) 
 
 /* Instrumento de prova das ondas de itens (NEI-008..011): os rods e vários itens do fork gastam magia, e o save de
  * teste é de antes da Grande Fada. Só em memória, pelo mesmo caminho do RG_MAGIC_SINGLE do randomizer; o .sav não
- * muda enquanto o jogo não salvar. */
+ * muda enquanto o jogo não salvar. Enche também a vida: os inimigos da prova de dano (NeiTest_SpawnEnemy) revidam,
+ * e o save de teste tem poucos corações. */
 void NeiTest_GrantMagic(void) {
     if (gPlayState == NULL) {
         return;
     }
+    gSaveContext.health = gSaveContext.healthCapacity;
     gSaveContext.isMagicAcquired = true;
     gSaveContext.magicFillTarget = MAGIC_NORMAL_METER;
     Magic_Fill(gPlayState);
+}
+
+/* Instrumento de prova da onda B (NEI-009): dano, collider e magia precisam de um inimigo perto do Link, e as cenas
+ * do save de teste não têm nenhum. Carrega o objeto do inimigo se a cena não o tiver e o põe 120 unidades à frente
+ * do Link, virado para ele. kind 0 é a Deku Baba (cabeça alta, para golpe e arremesso), 1 o Tektite vermelho e 2 o
+ * Baby Dodongo, rentes ao chão, na altura dos projéteis dos rods; 3 o Wolfos (vida 8: a Kokiri tira 1, a Master 2 e a
+ * Biggoron 4, para os upgrades de espada). O pipeline_probe.c lê a vida no stats. */
+s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId);
+
+static Actor* sNeiTestTarget = NULL;
+
+int NeiTest_SpawnEnemy(int kind) {
+    static const s16 kActors[] = { ACTOR_EN_DEKUBABA, ACTOR_EN_TITE, ACTOR_EN_DODOJR, ACTOR_EN_WF };
+    static const s16 kObjects[] = { OBJECT_DEKUBABA, OBJECT_TITE, OBJECT_DODOJR, OBJECT_WF };
+    static const s16 kParams[] = { 0, -1 /* TEKTITE_RED */, 0, 0 /* WOLFOS_NORMAL */ };
+    Player* player;
+    s32 bank;
+    f32 x;
+    f32 z;
+
+    if (gPlayState == NULL) {
+        return -1;
+    }
+    if (kind < 0 || kind >= (int)ARRAY_COUNT(kActors)) {
+        return -4;
+    }
+    player = GET_PLAYER(gPlayState);
+    bank = Object_GetIndex(&gPlayState->objectCtx, kObjects[kind]);
+    if (bank < 0) {
+        bank = Object_Spawn(&gPlayState->objectCtx, kObjects[kind]);
+    }
+    if (bank < 0) {
+        return -2;
+    }
+    x = player->actor.world.pos.x + Math_SinS(player->actor.shape.rot.y) * 120.0f;
+    z = player->actor.world.pos.z + Math_CosS(player->actor.shape.rot.y) * 120.0f;
+    sNeiTestTarget = Actor_Spawn(&gPlayState->actorCtx, gPlayState, kActors[kind], x, player->actor.world.pos.y, z, 0,
+                                 (s16)(player->actor.shape.rot.y + 0x8000), 0, kParams[kind]);
+    return sNeiTestTarget != NULL ? 0 : -3;
+}
+
+/* O alvo, se ainda estiver na lista de inimigos do actorCtx; NULL depois que morre e é liberado. */
+Actor* NeiTest_Target(void) {
+    Actor* actor;
+
+    if (gPlayState == NULL || sNeiTestTarget == NULL) {
+        return NULL;
+    }
+    for (actor = gPlayState->actorCtx.actorLists[ACTORCAT_ENEMY].head; actor != NULL; actor = actor->next) {
+        if (actor == sNeiTestTarget) {
+            return actor;
+        }
+    }
+    sNeiTestTarget = NULL;
+    return NULL;
 }

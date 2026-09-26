@@ -22,6 +22,8 @@
 
 static int32_t sProbeButton = -1, sProbeButtonItem = -1, sProbeButtons = 0;
 static int32_t sProbeUseItem = -1, sProbeUseAction = -1, sProbeUses = 0;
+Actor* NeiTest_Target(void);
+
 static int32_t sProbeAttackCalls = 0, sProbeAttackUse = 0, sProbeAttackHits = 0, sProbeAttackUpperSword = 0;
 
 // Chamados do z_player da DLL (extracted-fixes.txt): só o botão com item, não o ITEM_NONE de todo frame.
@@ -69,6 +71,8 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
     Player* player = NULL;
     PlayState* play = gPlayState;
 
+    Actor* alvo = NeiTest_Target();
+
     CustomItems_BuildVisualSync(&sync);
     ativos = sync.activeFlags;
 
@@ -93,11 +97,12 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
         }
     }
     int escrito = snprintf(out, capacity, "pipeline: visual=0x%X acao=%d segurando=%d item=%d arma=%d grupo=%d at=%d camera=%d bloq=%d "
-                           "botao=%d:0x%X(%d) uso=0x%X->%d(%d) cesq=0x%X/%d ataque=%d/%d/%d/%d mws=%d",
+                           "botao=%d:0x%X(%d) uso=0x%X->%d(%d) cesq=0x%X/%d ataque=%d/%d/%d/%d mws=%d magia=%d alvo=%d",
                            ativos, acao, segurando, item, arma, grupo, at, camera, bloqueado, sProbeButton,
                            sProbeButtonItem, sProbeButtons, sProbeUseItem, sProbeUseAction, sProbeUses,
                            gSaveContext.equips.buttonItems[1], gSaveContext.buttonStatus[1], sProbeAttackCalls, sProbeAttackUse,
-                           sProbeAttackHits, sProbeAttackUpperSword, player != NULL ? player->meleeWeaponState : -1);
+                           sProbeAttackHits, sProbeAttackUpperSword, player != NULL ? player->meleeWeaponState : -1,
+                           gSaveContext.magic, alvo != NULL ? alvo->colChkInfo.health : -1);
     if (escrito < 0 || (uint32_t)escrito >= capacity) {
         return 0;
     }

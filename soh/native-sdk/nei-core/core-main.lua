@@ -77,6 +77,20 @@ if forkItems then
         end)
     end
 end
+for _, kind in ipairs({ "", "tektite", "dodojr", "wolfos" }) do
+    local hotkey = kind == "" and "test_enemy" or ("test_enemy_" .. kind)
+    ship.hotkeys.register(hotkey, { default = "", label = "NEI: inimigo à frente (teste) " .. kind }, function()
+        local text, failure = ship.native.call("enemy", kind)
+        ship.log.info("nei-core: " .. (text or ("enemy falhou: " .. tostring(failure and failure.message))))
+    end)
+end
+for _, level in ipairs({ "", "razor", "gilded" }) do
+    local hotkey = level == "" and "test_upgrade" or ("test_upgrade_" .. level)
+    ship.hotkeys.register(hotkey, { default = "", label = "NEI: nível da Kokiri Sword (teste) " .. level }, function()
+        local text, failure = ship.native.call("upgrade", level)
+        ship.log.info("nei-core: " .. (text or ("upgrade falhou: " .. tostring(failure and failure.message))))
+    end)
+end
 ship.hotkeys.register("test_magic", { default = "", label = "NEI: medidor de magia cheio (teste)" }, function()
     local text, failure = ship.native.call("magic", "")
     ship.log.info("nei-core: " .. (text or ("magic falhou: " .. tostring(failure))))
