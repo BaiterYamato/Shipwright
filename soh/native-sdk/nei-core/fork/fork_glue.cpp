@@ -45,6 +45,8 @@ struct ForkState {
     uint32_t randomized = 0;
     uint32_t withoutAssets = 0; // itens do fork deixados de fora por falta do componente de assets
     bool active = false;
+    // Os imports do fork (gPlayState e cia.) só valem depois do nei_host_resolve; antes disso são ponteiros nulos.
+    bool resolved = false;
     std::string status = "desligado";
 };
 
@@ -321,6 +323,7 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
         gFork.status = std::string("desligado: símbolo ") + (failed ? failed : "?") + " não resolvido";
         return;
     }
+    gFork.resolved = true;
     if (DefineItems() != SHIP_NATIVE_OK) {
         StopFork();
         return;
@@ -354,8 +357,10 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
 
 void StopFork() {
     gFork.active = false;
-    // Antes de tirar os desvios: nenhum ator do jogo pode continuar com update/draw/destroy dentro da DLL.
-    if (gFork.runtime) {
+    // Antes de tirar os desvios: nenhum ator do jogo pode continuar com update/draw/destroy dentro da DLL. Sem os
+    // imports resolvidos (host fora do host_fingerprints) o fork nunca tocou num ator, e ler o gPlayState importado
+    // derrubava o fechamento do jogo.
+    if (gFork.runtime && gFork.resolved) {
         NeiActor_Unload(0);
     }
     StopKaleido();
