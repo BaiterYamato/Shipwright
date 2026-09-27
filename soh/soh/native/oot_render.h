@@ -47,7 +47,9 @@ typedef struct ShipOotRenderV1 {
 /* V2 conserva V1 no início. Um estado pertence a um mod, é removido no unload
  * pelo host e pode ligar três chaves genéricas. `receiver_actor_ids` é uma lista
  * de ids de ator, sem whitelist do jogo: o host faz a união dos estados ativos.
- * Todas as emissões exigem um escopo de draw ativo e `layer` OPA ou XLU. */
+ * Todas as emissões exigem um escopo de draw ativo e `layer` OPA ou XLU.
+ * `emit_toon_shadow` com `size` > 0 arma a sombra do ator seguinte naquele tamanho;
+ * com `size` <= 0 desarma a captura, como o gSPToonShadow(0, 0, 0, 0) do fork. */
 typedef struct ShipOotRenderV2 {
     uint32_t size;
     ShipNativeStatus(SHIP_NATIVE_CALL* draw_display_list)(void* play_state, const char* path, uint8_t layer);
@@ -108,7 +110,9 @@ typedef struct ShipOotRenderFrameInfoV1 {
  * - `interpolation_begin`/`interpolation_end` abrem e fecham um filho de interpolação de frame
  *   (FrameInterpolation_RecordOpenChild/CloseChild). `key` só identifica o filho entre frames: o endereço de um
  *   objeto do mod, ou nulo com `child` = camera_epoch para uma geometria presa à câmera. O host fecha no fim do
- *   escopo o que o mod deixar aberto.
+ *   escopo o que o mod deixar aberto. A dupla (`key`, `child`) precisa ser única entre irmãos e estável de um frame
+ *   para o outro: duplas repetidas são pareadas pela ordem de chamada, e uma ordem que muda interpola uma
+ *   geometria com a outra.
  *
  * Tudo exige escopo de draw, exceto `get_frame_info`. */
 typedef struct ShipOotRenderV3 {

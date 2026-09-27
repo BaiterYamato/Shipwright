@@ -129,11 +129,12 @@ typedef struct ShipOotPointLightColorHookV2 {
     const void* light;
 } ShipOotPointLightColorHookV2;
 
-/* oot.light.fairy v1: TRANSFORM ou OBSERVE, no fim de EnElf_Update (toda fada: Navi, fadas de cura, da floresta
- * Kokiri, de garrafa). Cada fada tem duas luzes pontuais, sem brilho e com brilho. O host copia as duas para o
- * payload, chama os hooks e grava de volta posição, raio e cor; `light` e `type` são de leitura (compare `light`
- * com node->info da lista play->lightCtx). A cor pode trazer o que um hook gravou num frame anterior, porque o
- * ator só a refaz quando atualiza as luzes: grave valores absolutos. */
+/* oot.light.fairy v1: TRANSFORM ou OBSERVE, uma vez por update de toda fada (Navi, fadas de cura, da floresta
+ * Kokiri, de garrafa). A Navi despacha no fim de EnElf_UpdateLights, porque o update dela não é o EnElf_Update
+ * (func_80A053F0 e vizinhos); as outras, no fim de EnElf_Update. Cada fada tem duas luzes pontuais, sem brilho e
+ * com brilho. O host copia as duas para o payload, chama os hooks e grava de volta posição, raio e cor; `light` e
+ * `type` são de leitura (compare `light` com node->info da lista play->lightCtx). A cor pode trazer o que um hook
+ * gravou num frame anterior, porque o ator só a refaz quando atualiza as luzes: grave valores absolutos. */
 #define LINKSPAN_OOT_FAIRY_NAVI 0
 #define LINKSPAN_OOT_FAIRY_REVIVE_BOTTLE 1
 #define LINKSPAN_OOT_FAIRY_HEAL_TIMED 2
