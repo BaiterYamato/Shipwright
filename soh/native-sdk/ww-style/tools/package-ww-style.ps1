@@ -3,7 +3,7 @@
     [string] $OutputDirectory
 )
 
-# Wind Waker Style: .shipmod com manifesto, Lua e a DLL. As entradas vão com '/', como o loader espera: no
+# Wind Waker Style: .shipmod com manifesto, Lua, docs e a DLL. As entradas vão com '/', como o loader espera: no
 # PowerShell 5.1 tanto o Compress-Archive quanto o ZipFile.CreateFromDirectory gravam '\'. O padrão da saída
 # fica no corpo: no 5.1 o $PSScriptRoot ainda está vazio quando o default de um parâmetro é avaliado.
 $ErrorActionPreference = 'Stop'
@@ -18,6 +18,9 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 New-Item -ItemType Directory -Force -Path (Join-Path $stage 'provider') | Out-Null
 Copy-Item -LiteralPath (Join-Path $source 'manifest.toml') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $source 'main.lua') -Destination $stage
+foreach ($doc in 'README.md', 'README.pt-BR.md', 'NOTICE.md') {
+    Copy-Item -LiteralPath (Join-Path $source $doc) -Destination $stage
+}
 Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'provider\linkspan_ww_style.dll')
 $version = (Select-String -LiteralPath (Join-Path $source 'manifest.toml') -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 $shipmod = Join-Path $OutputDirectory "LinkSpan-WindWakerStyle-$version.shipmod"
