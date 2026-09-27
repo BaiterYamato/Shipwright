@@ -573,34 +573,41 @@ def main():
         linhas.append("")
     funcoes = [d for d in selecionadas if d.tipo == "funcao"]
     enderecos = set()
-    if a.tabela:
-        # Função do host usada como valor (actionFunc, comparação, callback) precisa do endereço do host: o jogo
-        # compara `this->actionFunc == Player_Action_X` com o endereço dele, e a cópia da DLL ou o thunk do import
-        # dariam outro. A chamada direta continua indo para a cópia ou para o thunk.
-        do_host = {n for n, d in hmap.items() if d.tipo == "funcao"}
-        valor = re.compile(r"(&\s*)?\b([A-Za-z_]\w*)\b(?!\s*\()")
-        for d in funcoes:
-            abre = d.mascara.find("{")
-            if abre < 0:
+    # Função do host usada como valor (actionFunc, comparação, callback) precisa do endereço do host: o jogo
+    # compara `this->actionFunc == Player_Action_X` com o endereço dele, e a cópia da DLL ou o thunk do import
+    # dariam outro. A chamada direta continua indo para a cópia ou para o thunk. Com --tabela vale para as funções do
+    # próprio fonte; em qualquer modo, para o init do próximo game state: Graph_GetNextGameState compara
+    # `gameState->init` com FileChoose_Init, Opening_Init... do host, e o thunk da DLL encerra o jogo (o START da
+    # tela de título com o NEI caía assim).
+    do_host = {n for n, d in hmap.items() if d.tipo == "funcao"} if a.tabela else set()
+    proximo_estado = re.compile(r"\bSET_NEXT_GAMESTATE\s*\(\s*[^,]+,\s*([A-Za-z_]\w*)\s*,")
+    valor = re.compile(r"(&\s*)?\b([A-Za-z_]\w*)\b(?!\s*\()")
+    for d in funcoes:
+        abre = d.mascara.find("{")
+        if abre < 0:
+            continue
+        corpo_m, corpo = d.mascara[abre:], d.texto[abre:]
+        host_local = do_host | {m.group(1) for m in proximo_estado.finditer(corpo_m)
+                                if resolviveis is not None and m.group(1) in resolviveis}
+        if not host_local:
+            continue
+        partes, pos = [], 0
+        for m in valor.finditer(corpo_m):
+            nome = m.group(2)
+            if nome not in host_local or nome == d.nome:
                 continue
-            corpo_m, corpo = d.mascara[abre:], d.texto[abre:]
-            partes, pos = [], 0
-            for m in valor.finditer(corpo_m):
-                nome = m.group(2)
-                if nome not in do_host or nome == d.nome:
-                    continue
-                if corpo_m[:m.start()].rstrip().endswith(("->", ".")):
-                    continue
-                simbolo = "nei_fnaddr_" + qualificado(nome)
-                enderecos.add(simbolo)
-                # `&Func` é o endereço; em `a && Func` o & é do operador e fica.
-                inicio = m.start(2) if m.group(1) and corpo_m[m.start() - 1:m.start()] == "&" else m.start()
-                partes.append(corpo[pos:inicio])
-                partes.append(simbolo)
-                pos = m.end()
-            if partes:
-                partes.append(corpo[pos:])
-                d.texto = d.texto[:abre] + "".join(partes)
+            if corpo_m[:m.start()].rstrip().endswith(("->", ".")):
+                continue
+            simbolo = "nei_fnaddr_" + qualificado(nome)
+            enderecos.add(simbolo)
+            # `&Func` é o endereço; em `a && Func` o & é do operador e fica.
+            inicio = m.start(2) if m.group(1) and corpo_m[m.start() - 1:m.start()] == "&" else m.start()
+            partes.append(corpo[pos:inicio])
+            partes.append(simbolo)
+            pos = m.end()
+        if partes:
+            partes.append(corpo[pos:])
+            d.texto = d.texto[:abre] + "".join(partes)
     if enderecos:
         linhas.append("/* Endereços no host das funções usadas como valor (gen_imports.py, nei_fnaddr_). */")
         linhas += ["extern void* %s;" % s for s in sorted(enderecos)]
