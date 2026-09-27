@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <deque>
 #include <map>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -23,17 +25,18 @@ class SohMenuModRegistry final : public ShipLua::MenuRegistry {
 
   private:
     // Valor de um slider em edição. A página publicada só alcança o valor no próximo quadro do jogo; até lá a UI
-    // mostra o valor local, senão o slider volta ao antigo por alguns quadros e treme. Só a thread da UI usa.
+    // mostra o valor local, senão o slider volta ao antigo por alguns quadros e treme.
     struct Editing {
         ShipLua::MenuValue value;
         int framesLeft = 0;
     };
 
     using Key = std::pair<std::string, std::string>;
+    using EditingKey = std::tuple<std::string, std::string, std::string, std::uint64_t>;
     mutable std::mutex mMutex;
     std::map<Key, ShipLua::MenuPage> mPages;
     std::deque<ShipLua::MenuInput> mInputs;
-    std::map<std::string, Editing> mEditing;
+    std::map<EditingKey, Editing> mEditing;
 };
 
 } // namespace SohGui

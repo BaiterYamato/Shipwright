@@ -33,6 +33,27 @@ std::int64_t IntegerOf(const ShipLua::MenuValue& value) {
     return 0;
 }
 
+std::int64_t AddIntegerOffset(std::int64_t minimum, std::uint64_t offset) {
+    if (minimum >= 0) return minimum + static_cast<std::int64_t>(offset);
+    const auto magnitude = static_cast<std::uint64_t>(-(minimum + 1)) + 1;
+    if (offset >= magnitude) return static_cast<std::int64_t>(offset - magnitude);
+    const auto remaining = magnitude - offset;
+    return -static_cast<std::int64_t>(remaining - 1) - 1;
+}
+
+std::int64_t QuantizeInteger(std::int64_t current, std::int64_t minimum,
+                             std::int64_t maximum, std::uint64_t step) {
+    current = std::clamp(current, minimum, maximum);
+    // A subtração sem sinal preserva a distância mesmo quando a faixa cruza todo o domínio de int64_t.
+    const auto offset = static_cast<std::uint64_t>(current) - static_cast<std::uint64_t>(minimum);
+    const auto maximumOffset = static_cast<std::uint64_t>(maximum) - static_cast<std::uint64_t>(minimum);
+    auto steps = offset / step;
+    const auto remainder = offset % step;
+    if (remainder >= step - step / 2) ++steps;
+    if (steps > maximumOffset / step) return maximum;
+    return AddIntegerOffset(minimum, steps * step);
+}
+
 double NumberOf(const ShipLua::MenuValue& value) {
     if (const auto* real = std::get_if<double>(&value)) return *real;
     if (const auto* integer = std::get_if<std::int64_t>(&value)) return static_cast<double>(*integer);
@@ -94,8 +115,7 @@ void SohMenuModRegistry::Enqueue(ShipLua::MenuInput input) {
                    queued.pageId == input.pageId && queued.widgetId == input.widgetId;
         });
         if (pending != mInputs.end()) {
-            *pending = std::move(input);
-            return;
+            mInputs.erase(pending);
         }
     }
     if (mInputs.size() < 1024) mInputs.push_back(std::move(input));
@@ -113,8 +133,20 @@ std::vector<ShipLua::MenuInput> SohMenuModRegistry::DrainInputs(const std::strin
 
 void SohMenuModRegistry::Draw() {
     const auto pages = Snapshot();
+    for (auto editing = mEditing.begin(); editing != mEditing.end();) {
+        const auto& [owner, pageId, widgetId, generation] = editing->first;
+        const bool present = std::any_of(pages.begin(), pages.end(), [&](const ShipLua::MenuPage& page) {
+            if (page.owner != owner || page.id != pageId || page.generation != generation) return false;
+            return std::any_of(page.widgets.begin(), page.widgets.end(), [&](const ShipLua::MenuWidget& widget) {
+                return widget.id == widgetId &&
+                       (widget.type == ShipLua::MenuWidgetType::SliderInteger ||
+                        widget.type == ShipLua::MenuWidgetType::SliderNumber);
+            });
+        });
+        if (!present || --editing->second.framesLeft <= 0) editing = mEditing.erase(editing);
+        else ++editing;
+    }
     if (pages.empty()) {
-        mEditing.clear();
         ImGui::TextDisabled("No loaded mod declared a menu page.");
         return;
     }
@@ -134,7 +166,7 @@ void SohMenuModRegistry::Draw() {
                     ShipLua::MenuValue value = widget.value;
                     const bool slider = widget.type == ShipLua::MenuWidgetType::SliderInteger ||
                                         widget.type == ShipLua::MenuWidgetType::SliderNumber;
-                    const std::string editingKey = page.owner + '\x1f' + page.id + '\x1f' + widget.id;
+                    const EditingKey editingKey{page.owner, page.id, widget.id, page.generation};
                     auto editing = slider ? mEditing.find(editingKey) : mEditing.end();
                     if (editing != mEditing.end()) value = editing->second.value;
                     switch (widget.type) {
@@ -151,9 +183,8 @@ void SohMenuModRegistry::Draw() {
                             changed = ImGui::SliderScalar(widget.label.c_str(), ImGuiDataType_S64, &current,
                                                           &minimum, &maximum, IntegerFormat(widget));
                             if (changed && widget.step > 1.0) {
-                                const auto step = static_cast<std::int64_t>(widget.step);
-                                current = minimum + ((current - minimum + step / 2) / step) * step;
-                                current = std::clamp(current, minimum, maximum);
+                                current = QuantizeInteger(current, minimum, maximum,
+                                                          static_cast<std::uint64_t>(widget.step));
                             }
                             value = current;
                             break;
@@ -205,8 +236,7 @@ void SohMenuModRegistry::Draw() {
                         if (changed || ImGui::IsItemActive()) {
                             mEditing.insert_or_assign(editingKey, Editing{value, kEditingHoldFrames});
                         } else if (editing != mEditing.end() &&
-                                   (NumberOf(widget.value) == NumberOf(editing->second.value) ||
-                                    --editing->second.framesLeft <= 0)) {
+                                   NumberOf(widget.value) == NumberOf(editing->second.value)) {
                             mEditing.erase(editing);
                         }
                     }
