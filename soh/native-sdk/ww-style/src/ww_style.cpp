@@ -116,13 +116,13 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void* user, const char*, uint32_t length
     const int count = std::snprintf(
         text, sizeof(text),
         "cfg=%u cel=%u shadows=%u | draws=%u excl=%u toonoff=%u point=%u env=%u keyfail=%u armed=%u off=%u ray=%u "
-        "states=%zu | fairy=%u navi=%u navi_skip=%u tint=%u wild=%u | flicker=%u/%zu pools=%u poolfail=%u "
-        "lights=%zu wildlive=%zu stick=%u | sky=%u domes=%u stars=%u bands=%u clouds=%u wisps=%u texpack=%u "
-        "skyfail=%u",
+        "states=%zu dbgrays=%u dbgskip=%u | fairy=%u navi=%u navi_skip=%u tint=%u wild=%u | flicker=%u/%zu "
+        "pools=%u poolfail=%u lights=%zu wildlive=%zu stick=%u | sky=%u domes=%u stars=%u bands=%u clouds=%u "
+        "wisps=%u texpack=%u skyfail=%u",
         s.configures, c.celEnabled ? 1u : 0u, c.shadowsEnabled ? 1u : 0u, s.actorDraws, s.excluded, s.toonOff,
         s.pointKeys, s.envKeys, s.keyFailures, s.shadowsArmed, s.shadowsOff, s.raycasts, mod.toon.keys.size(),
-        s.fairyCalls, s.naviSeen, s.naviSkipped, s.naviTinted, s.wildFairyLit, s.flickered,
-        mod.lighting.flicker.size(), s.pools, s.poolFailures, mod.lighting.lights.size(),
+        s.debugRays, s.debugSkipped, s.fairyCalls, s.naviSeen, s.naviSkipped, s.naviTinted, s.wildFairyLit,
+        s.flickered, mod.lighting.flicker.size(), s.pools, s.poolFailures, mod.lighting.lights.size(),
         mod.lighting.wildLights.size(), s.stickLights, c.skyEnabled ? 1u : 0u, s.skyDomes, s.skyStars, s.skyBands,
         s.skyClouds, s.skyWisps, s.skyTexOverrides, s.skyFailures);
     return Reply(write, writer, text, count, sizeof(text));

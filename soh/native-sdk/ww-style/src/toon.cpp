@@ -242,6 +242,172 @@ bool FloorUnder(Mod& mod, const Actor* actor, ToonKeyState& st, float* floorHeig
     return st.floorValid;
 }
 
+// Light Source Viewer (DrawDebugOverlay do fork): um espinho por luz candidata, na cor da luz e mais longo quanto
+// mais forte; um anel ciano no alcance de cada luz pontual, só na passada do Link; e a agulha magenta da chave
+// escolhida. Translúcido e sem teste de depth, para todo raio ficar visível.
+constexpr float kPi = 3.14159265f;
+constexpr size_t kDebugGfxCap = 4096;
+constexpr size_t kGfxPerRay = 7;
+
+// Espinho fino de 4 lados sobre +Y (base na origem, ponta em y=1) e anel de 12 segmentos no plano XZ com raio-base
+// 100 (vértices internos e externos alternados), os dois do fork.
+Vtx sRayVtx[5];
+Gfx sRayDL[5];
+Vtx sRingVtx[24];
+Gfx sRingDL[14];
+bool sDebugBuilt = false;
+
+void WriteDebugVert(Vtx& v, int16_t x, int16_t y, int16_t z) {
+    v = Vtx{};
+    v.v.ob[0] = x;
+    v.v.ob[1] = y;
+    v.v.ob[2] = z;
+    v.v.cn[0] = v.v.cn[1] = v.v.cn[2] = v.v.cn[3] = 0xFF;
+}
+
+void BuildDebugGeometry() {
+    const int16_t ray[5][3] = { { -1, 0, -1 }, { 1, 0, -1 }, { 1, 0, 1 }, { -1, 0, 1 }, { 0, 1, 0 } };
+    for (int i = 0; i < 5; ++i) WriteDebugVert(sRayVtx[i], ray[i][0], ray[i][1], ray[i][2]);
+    Gfx* g = sRayDL;
+    __gSPVertex(g++, reinterpret_cast<uintptr_t>(sRayVtx), 5, 0);
+    gSP2Triangles(g++, 0, 1, 4, 0, 1, 2, 4, 0);
+    gSP2Triangles(g++, 2, 3, 4, 0, 3, 0, 4, 0);
+    gSP2Triangles(g++, 0, 2, 1, 0, 0, 3, 2, 0);
+    gSPEndDisplayList(g++);
+
+    const int16_t ring[24][2] = { { 97, 0 },    { 103, 0 },   { 84, 48 },   { 89, 52 },   { 48, 84 },   { 52, 89 },
+                                  { 0, 97 },    { 0, 103 },   { -48, 84 },  { -52, 89 },  { -84, 48 },  { -89, 52 },
+                                  { -97, 0 },   { -103, 0 },  { -84, -48 }, { -89, -52 }, { -48, -84 }, { -52, -89 },
+                                  { 0, -97 },   { 0, -103 },  { 48, -84 },  { 52, -89 },  { 84, -48 },  { 89, -52 } };
+    for (int i = 0; i < 24; ++i) WriteDebugVert(sRingVtx[i], ring[i][0], 0, ring[i][1]);
+    g = sRingDL;
+    __gSPVertex(g++, reinterpret_cast<uintptr_t>(sRingVtx), 24, 0);
+    for (int i = 0; i < 24; i += 2) {
+        const int n = (i + 2) % 24;
+        gSP2Triangles(g++, i, i + 1, n + 1, 0, i, n + 1, n, 0);
+    }
+    gSPEndDisplayList(g++);
+    sDebugBuilt = true;
+}
+
+// Matriz corrente trocada pela translação (o MTXMODE_NEW do fork), exportada e devolvida ao host.
+template <typename Transform> const void* DebugMatrix(Mod& mod, const float at[3], Transform&& transform) {
+    const void* mtx = nullptr;
+    if (mod.render->matrix_push() != SHIP_NATIVE_OK) return nullptr;
+    ShipNativeStatus status = mod.render->matrix_translate_new(at[0], at[1], at[2]);
+    if (status == SHIP_NATIVE_OK) status = transform();
+    if (status == SHIP_NATIVE_OK) status = mod.render->export_current_matrix(&mtx);
+    mod.render->matrix_pop();
+    return status == SHIP_NATIVE_OK ? mtx : nullptr;
+}
+
+void DebugMaterial(Gfx*& g, uint8_t r, uint8_t gr, uint8_t b, uint8_t a, const void* mtx) {
+    gDPPipeSync(g++);
+    gSPClearGeometryMode(g++, G_LIGHTING | G_CULL_BACK | G_CULL_FRONT);
+    gDPSetCombineLERP(g++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE);
+    gDPSetRenderMode(g++, G_RM_AA_XLU_SURF, G_RM_AA_XLU_SURF2);
+    gDPSetPrimColor(g++, 0, 0, r, gr, b, a);
+    gSPMatrix(g++, const_cast<void*>(mtx), G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
+}
+
+// O espinho gira de +Y para `dir` em volta da perpendicular dos dois e escala para `length` × `thickness`.
+bool DebugRay(Mod& mod, Gfx*& g, const float base[3], const float dir[3], const uint8_t col[3], float length,
+              float thickness) {
+    const float horiz = std::sqrt((dir[0] * dir[0]) + (dir[2] * dir[2]));
+    const void* mtx = DebugMatrix(mod, base, [&] {
+        ShipNativeStatus status = SHIP_NATIVE_OK;
+        if (horiz > 0.001f) {
+            // cross((0,1,0), dir) normalizado = (dir.z, 0, -dir.x)
+            status = mod.render->matrix_rotate_axis(std::atan2(horiz, dir[1]), dir[2] / horiz, 0.0f, -dir[0] / horiz);
+        } else if (dir[1] < 0.0f) {
+            status = mod.render->matrix_rotate_axis(kPi, 1.0f, 0.0f, 0.0f); // para baixo
+        }
+        return status == SHIP_NATIVE_OK ? mod.render->matrix_scale(thickness, length, thickness) : status;
+    });
+    if (mtx == nullptr) return false;
+    DebugMaterial(g, col[0], col[1], col[2], 200, mtx);
+    __gSPDisplayList(g++, sRayDL);
+    return true;
+}
+
+bool DebugRing(Mod& mod, Gfx*& g, const float center[3], float radius) {
+    const void* mtx =
+        DebugMatrix(mod, center, [&] { return mod.render->matrix_scale(radius * 0.01f, 1.0f, radius * 0.01f); });
+    if (mtx == nullptr) return false;
+    DebugMaterial(g, 0, 255, 255, 110, mtx);
+    __gSPDisplayList(g++, sRingDL);
+    return true;
+}
+
+void DrawDebugOverlay(Mod& mod, PlayState* play, const Actor* actor, const float chosenDir[3]) {
+    ToonState& toon = mod.toon;
+    size_t pointLights = 0;
+    for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) {
+        if (node->info != nullptr && node->info->type != LIGHT_DIRECTIONAL) ++pointLights;
+    }
+    // Pior caso deste ator: sol, lua, raio e anel por luz pontual e a agulha, mais o fim da lista.
+    const size_t need = ((3 + (2 * pointLights)) * kGfxPerRay) + 1;
+    if (toon.debugGfx.size() < kDebugGfxCap || toon.debugUsed + need > toon.debugGfx.size()) {
+        ++mod.stats.debugSkipped;
+        return;
+    }
+    if (!sDebugBuilt) BuildDebugGeometry();
+    Gfx* const start = &toon.debugGfx[toon.debugUsed];
+    Gfx* g = start;
+    uint32_t drawn = 0;
+    const float base[3] = { actor->world.pos.x, actor->world.pos.y + 30.0f, actor->world.pos.z };
+    const Player* player = GET_PLAYER(play);
+    // Os anéis saem uma vez, na passada do Link, e não em todo ator da cena.
+    const bool isPlayer = player != nullptr && actor == &player->actor;
+
+    for (const LightInfo* env : { &play->envCtx.dirLight1, &play->envCtx.dirLight2 }) {
+        const LightDirectional& d = env->params.dir;
+        const float len = std::sqrt(static_cast<float>((d.x * d.x) + (d.y * d.y) + (d.z * d.z)));
+        const float lum = (d.color[0] + d.color[1] + d.color[2]) / (3.0f * 255.0f);
+        if (len <= 0.001f) continue;
+        const float dir[3] = { d.x / len, d.y / len, d.z / len };
+        if (DebugRay(mod, g, base, dir, d.color, 10.0f + (std::min(lum, 1.0f) * 15.0f), 1.2f)) ++drawn;
+    }
+
+    for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) {
+        const LightInfo* info = node->info;
+        if (info == nullptr || info->type == LIGHT_DIRECTIONAL) continue;
+        const LightPoint& p = info->params.point;
+        const float dx = p.x - actor->world.pos.x;
+        const float dy = p.y - actor->world.pos.y;
+        const float dz = p.z - actor->world.pos.z;
+        const float radius = p.radius * mod.cfg.pointLightRange;
+        const float distSq = (dx * dx) + (dy * dy) + (dz * dz);
+        // Anel em toda luz pontual, perto ou não, para o alcance do slider Point Light Range aparecer.
+        if (isPlayer && radius > 0.0f) {
+            const float center[3] = { static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z) };
+            if (DebugRing(mod, g, center, radius)) ++drawn;
+        }
+        if (radius <= 0.0f || distSq >= radius * radius) continue;
+        const float dist = std::sqrt(distSq);
+        if (dist <= 0.001f) continue;
+        const float scale = 1.0f - ((dist / radius) * (dist / radius));
+        const float att = 0.5f + (0.5f * scale); // queda com a distância, só no comprimento visual
+        const float lum = ((p.color[0] + p.color[1] + p.color[2]) / (3.0f * 255.0f)) * att;
+        const float dir[3] = { dx / dist, dy / dist, dz / dist };
+        const uint8_t col[3] = { static_cast<uint8_t>(p.color[0] * att), static_cast<uint8_t>(p.color[1] * att),
+                                 static_cast<uint8_t>(p.color[2] * att) };
+        if (DebugRay(mod, g, base, dir, col, 10.0f + (std::min(lum, 2.0f) * 12.5f), 1.2f)) ++drawn;
+    }
+
+    // A chave escolhida: agulha magenta fina no meio do cone da luz, que continua visível na cor dela.
+    const uint8_t magenta[3] = { 255, 0, 255 };
+    if (DebugRay(mod, g, base, chosenDir, magenta, 35.0f, 0.3f)) ++drawn;
+    if (drawn == 0) return;
+    gSPEndDisplayList(g++);
+    toon.debugUsed += static_cast<size_t>(g - start);
+    if (mod.render->draw_native_display_list(start, LINKSPAN_OOT_RENDER_TRANSLUCENT) == SHIP_NATIVE_OK) {
+        mod.stats.debugRays += drawn;
+    } else {
+        ++mod.stats.debugSkipped;
+    }
+}
+
 } // namespace
 
 ShipNativeStatus ApplyRenderState(Mod& mod) {
@@ -271,6 +437,8 @@ ShipNativeStatus ApplyRenderState(Mod& mod) {
 void ToonFrame(Mod& mod, PlayState* play) {
     ToonState& toon = mod.toon;
     ++toon.frame;
+    toon.debugUsed = 0;
+    if (mod.cfg.debugLightSources && toon.debugGfx.size() < kDebugGfxCap) toon.debugGfx.resize(kDebugGfxCap);
     if (play != toon.play) {
         toon.keys.clear();
         toon.play = play;
@@ -351,6 +519,7 @@ void ToonActorDraw(Mod& mod, const ShipOotRenderActorDrawHookV1& payload) {
         mod.render->emit_toon_key(LINKSPAN_OOT_RENDER_TRANSLUCENT, dx, dy, dz, r, g, b) != SHIP_NATIVE_OK) {
         ++mod.stats.keyFailures;
     }
+    if (cfg.debugLightSources) DrawDebugOverlay(mod, play, actor, st.dir);
 
     if (!cfg.shadowsEnabled) {
         // Religar a sombra a faz crescer de novo em vez de estalar no tamanho congelado.

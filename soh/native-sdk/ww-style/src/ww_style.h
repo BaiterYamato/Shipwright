@@ -43,6 +43,10 @@ struct ToonState {
     uint32_t frame = 0;
     float dt = 3.0f / 60.0f; // segundos por frame de jogo
     float alpha = 0.2f;      // fração do slerp por frame; chega a ~99% em transitionTime segundos
+    // Light Source Viewer: comandos do frame, que o renderer lê até o fim dele. Dimensionado uma vez e nunca
+    // realocado; volta ao começo no frame seguinte.
+    std::vector<Gfx> debugGfx;
+    size_t debugUsed = 0;
 };
 
 // As duas luzes da Navi, vistas pelo hook oot.light.fairy. Só comparadas com node->info, nunca lidas.
@@ -115,6 +119,8 @@ struct Stats {
     uint32_t pools = 0;
     uint32_t poolFailures = 0;
     uint32_t stickLights = 0;
+    uint32_t debugRays = 0;       // raios e anéis do Light Source Viewer
+    uint32_t debugSkipped = 0;    // atores sem overlay por falta de espaço na lista do frame
     uint32_t skyDomes = 0;        // cúpulas desenhadas
     uint32_t skyStars = 0;        // estrelas do último frame
     uint32_t skyBands = 0;        // faixas do horizonte desenhadas
