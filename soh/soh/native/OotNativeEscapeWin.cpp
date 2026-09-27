@@ -19,11 +19,15 @@
 #include <MinHook.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <stdexcept>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #pragma comment(lib, "bcrypt.lib")
@@ -32,8 +36,13 @@ namespace {
 
 struct Patch {
     LPVOID target = nullptr;
+    std::string owner;
+    bool created = false;
+    bool acknowledged = false;
     // Falso enquanto o desvio, instalado num lote, espera o commit para ligar.
     bool active = false;
+    bool pendingEnable = false;
+    bool pendingRemoval = false;
 };
 
 struct EscapeState {
@@ -46,8 +55,7 @@ struct EscapeState {
     std::map<uint64_t, Patch> patches;
     // Lote aberto pelo core: desvios à espera de ligar e alvos ligados que só saem da MinHook no commit.
     int batchDepth = 0;
-    size_t queuedEnables = 0;
-    std::vector<LPVOID> queuedRemovals;
+    std::string batchOwner;
 };
 
 EscapeState& State() {
@@ -163,7 +171,41 @@ ShipNativeStatus Resolve(const char* name, uintptr_t* address) {
     return status;
 }
 
-ShipNativeStatus Install(uintptr_t target, void* detour, void** original, uint64_t* patch) {
+void NeutralizeQueue(const Patch& patch) {
+    const auto queued = patch.active ? MH_QueueEnableHook(patch.target) : MH_QueueDisableHook(patch.target);
+    if (queued != MH_OK) {
+        SPDLOG_ERROR("Link-Span escape hatch: fila de {:#x} não pôde ser neutralizada ({})",
+                     reinterpret_cast<uintptr_t>(patch.target), MH_StatusToString(queued));
+    }
+}
+
+ShipNativeStatus DrainPendingTarget(EscapeState& state, LPVOID target) {
+    for (auto found = state.patches.begin(); found != state.patches.end();) {
+        if (found->second.target != target || !found->second.pendingRemoval) {
+            ++found;
+            continue;
+        }
+        const auto removed = MH_RemoveHook(target);
+        if (removed != MH_OK) {
+            NeutralizeQueue(found->second);
+            SPDLOG_ERROR("Link-Span escape hatch: remoção pendente em {:#x} falhou ({})",
+                         reinterpret_cast<uintptr_t>(target), MH_StatusToString(removed));
+            return SHIP_NATIVE_FAILURE;
+        }
+        if (found->second.acknowledged) {
+            found->second.created = false;
+            found->second.active = false;
+            found->second.pendingEnable = false;
+            found->second.pendingRemoval = false;
+            ++found;
+        } else {
+            found = state.patches.erase(found);
+        }
+    }
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus Install(std::string_view owner, uintptr_t target, void* detour, void** original, uint64_t* patch) {
     if (!InsideExecutable(target)) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
@@ -176,29 +218,50 @@ ShipNativeStatus Install(uintptr_t target, void* detour, void** original, uint64
         }
         state.minhookReady = true;
     }
-    const auto created = MH_CreateHook(reinterpret_cast<LPVOID>(target), detour, reinterpret_cast<LPVOID*>(original));
+    const auto nativeTarget = reinterpret_cast<LPVOID>(target);
+    if (state.batchDepth > 0 && state.batchOwner != owner) return SHIP_NATIVE_FAILURE;
+    if (DrainPendingTarget(state, nativeTarget) != SHIP_NATIVE_OK) return SHIP_NATIVE_FAILURE;
+    // Id nunca reaproveitado: um rollback que falha deixa a entrada retida no mapa com o id dela.
+    const auto id = state.nextPatch++;
+    try {
+        state.patches.emplace(id, Patch{ nativeTarget, std::string(owner), false, false, false,
+                                         state.batchDepth > 0, false });
+    } catch (...) {
+        return SHIP_NATIVE_FAILURE;
+    }
+    const auto created = MH_CreateHook(nativeTarget, detour, reinterpret_cast<LPVOID*>(original));
     if (created == MH_ERROR_ALREADY_CREATED) {
+        state.patches.erase(id);
         return SHIP_NATIVE_LIMIT;
     }
     if (created != MH_OK) {
+        state.patches.erase(id);
         SPDLOG_WARN("Link-Span escape hatch: MH_CreateHook em {:#x} falhou ({})", target, MH_StatusToString(created));
         return created == MH_ERROR_UNSUPPORTED_FUNCTION ? SHIP_NATIVE_UNSUPPORTED : SHIP_NATIVE_FAILURE;
     }
+    state.patches.at(id).created = true;
     const bool batched = state.batchDepth > 0;
-    const auto enabled = batched ? MH_QueueEnableHook(reinterpret_cast<LPVOID>(target))
-                                 : MH_EnableHook(reinterpret_cast<LPVOID>(target));
+    const auto enabled = batched ? MH_QueueEnableHook(nativeTarget) : MH_EnableHook(nativeTarget);
     if (enabled != MH_OK) {
-        MH_RemoveHook(reinterpret_cast<LPVOID>(target));
+        const auto removed = MH_RemoveHook(nativeTarget);
+        if (removed == MH_OK) {
+            state.patches.erase(id);
+        } else {
+            auto& retained = state.patches.at(id);
+            retained.pendingEnable = false;
+            retained.pendingRemoval = true;
+            NeutralizeQueue(retained);
+            SPDLOG_ERROR("Link-Span escape hatch: rollback de {:#x} falhou ({})", target,
+                         MH_StatusToString(removed));
+        }
         *original = nullptr;
         SPDLOG_WARN("Link-Span escape hatch: {} em {:#x} falhou ({})", batched ? "MH_QueueEnableHook" : "MH_EnableHook",
                     target, MH_StatusToString(enabled));
         return SHIP_NATIVE_FAILURE;
     }
-    const auto id = state.nextPatch++;
-    state.patches.emplace(id, Patch{ reinterpret_cast<LPVOID>(target), !batched });
-    if (batched) {
-        ++state.queuedEnables;
-    }
+    auto& installed = state.patches.at(id);
+    installed.active = !batched;
+    installed.acknowledged = true;
     *patch = id;
     return SHIP_NATIVE_OK;
 }
@@ -209,27 +272,67 @@ ShipNativeStatus Remove(uint64_t patch) {
     if (found == state.patches.end()) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    const Patch removed = found->second;
-    state.patches.erase(found);
     if (state.batchDepth > 0) {
-        if (removed.active) {
+        if (found->second.owner != state.batchOwner) return SHIP_NATIVE_INVALID_ARGUMENT;
+        if (!found->second.created) {
+            state.patches.erase(found);
+            return SHIP_NATIVE_OK;
+        }
+        if (found->second.pendingRemoval) {
+            return SHIP_NATIVE_OK;
+        }
+        if (found->second.active) {
             // Ligado: desliga no commit com o resto do lote e só então sai da MinHook.
-            MH_QueueDisableHook(removed.target);
-            state.queuedRemovals.push_back(removed.target);
+            const auto queued = MH_QueueDisableHook(found->second.target);
+            if (queued != MH_OK) {
+                SPDLOG_ERROR("Link-Span escape hatch: MH_QueueDisableHook em {:#x} falhou ({})",
+                             reinterpret_cast<uintptr_t>(found->second.target), MH_StatusToString(queued));
+            }
+            found->second.pendingEnable = false;
+            found->second.pendingRemoval = true;
             return SHIP_NATIVE_OK;
         }
         // Ainda à espera de ligar (init que falhou): sai já, e MH_RemoveHook num desvio desligado não congela.
-        if (state.queuedEnables > 0) {
-            --state.queuedEnables;
+        const auto removed = MH_RemoveHook(found->second.target);
+        if (removed == MH_OK) {
+            state.patches.erase(found);
+            return SHIP_NATIVE_OK;
         }
-        return MH_RemoveHook(removed.target) == MH_OK ? SHIP_NATIVE_OK : SHIP_NATIVE_FAILURE;
+        const auto queued = MH_QueueDisableHook(found->second.target);
+        found->second.pendingEnable = false;
+        found->second.pendingRemoval = true;
+        SPDLOG_ERROR("Link-Span escape hatch: MH_RemoveHook em {:#x} falhou ({})",
+                     reinterpret_cast<uintptr_t>(found->second.target), MH_StatusToString(removed));
+        if (queued != MH_OK) {
+            SPDLOG_ERROR("Link-Span escape hatch: MH_QueueDisableHook em {:#x} falhou ({})",
+                         reinterpret_cast<uintptr_t>(found->second.target), MH_StatusToString(queued));
+        }
+        return SHIP_NATIVE_OK;
     }
-    MH_DisableHook(removed.target);
-    return MH_RemoveHook(removed.target) == MH_OK ? SHIP_NATIVE_OK : SHIP_NATIVE_FAILURE;
+    if (!found->second.created) {
+        state.patches.erase(found);
+        return SHIP_NATIVE_OK;
+    }
+    const auto target = found->second.target;
+    const auto removed = MH_RemoveHook(target);
+    if (removed == MH_OK) {
+        state.patches.erase(found);
+        return SHIP_NATIVE_OK;
+    }
+    SPDLOG_ERROR("Link-Span escape hatch: MH_RemoveHook em {:#x} falhou ({})",
+                 reinterpret_cast<uintptr_t>(target), MH_StatusToString(removed));
+    return SHIP_NATIVE_FAILURE;
 }
 
-void BeginBatch() {
-    ++State().batchDepth;
+void BeginBatch(std::string_view owner) {
+    auto& state = State();
+    if (state.batchDepth > 0) {
+        if (state.batchOwner != owner) throw std::runtime_error("nested escape batch has another owner");
+        ++state.batchDepth;
+        return;
+    }
+    state.batchOwner = owner;
+    state.batchDepth = 1;
 }
 
 ShipNativeStatus CommitBatch() {
@@ -237,30 +340,58 @@ ShipNativeStatus CommitBatch() {
     if (state.batchDepth <= 0) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    if (--state.batchDepth > 0 || (state.queuedEnables == 0 && state.queuedRemovals.empty())) {
+    if (--state.batchDepth > 0) {
         return SHIP_NATIVE_OK;
     }
+    const auto owner = std::move(state.batchOwner);
+    size_t enableCount = 0;
+    size_t removalCount = 0;
+    for (const auto& [id, entry] : state.patches) {
+        if (entry.owner != owner) continue;
+        enableCount += entry.pendingEnable && !entry.pendingRemoval;
+        removalCount += entry.pendingRemoval;
+    }
+    if (enableCount == 0 && removalCount == 0) return SHIP_NATIVE_OK;
     const auto started = std::chrono::steady_clock::now();
     const auto applied = MH_ApplyQueued();
-    // Desligados pelo ApplyQueued, saem sem congelar; se ele falhou, MH_RemoveHook desliga um por um.
-    for (const auto target : state.queuedRemovals) {
-        MH_RemoveHook(target);
+    for (auto& [id, entry] : state.patches) {
+        if (entry.owner != owner || !entry.pendingEnable || entry.pendingRemoval) continue;
+        // Em falha parcial não sabemos até onde ApplyQueued chegou; tratar como ligado torna o rollback seguro.
+        entry.active = true;
+        if (applied == MH_OK) entry.pendingEnable = false;
     }
-    for (auto& entry : state.patches) {
-        entry.second.active = true;
+    // Desligados pelo ApplyQueued saem sem congelar; se ele falhou, MH_RemoveHook ainda tenta desligar e remover.
+    size_t failedRemovals = 0;
+    for (auto found = state.patches.begin(); found != state.patches.end();) {
+        auto& entry = found->second;
+        if (entry.owner != owner || !entry.pendingRemoval) {
+            ++found;
+            continue;
+        }
+        // O ApplyQueued que deu certo desligou o desvio; se a remoção falhar, a fila neutralizada o mantém desligado.
+        if (applied == MH_OK) entry.active = false;
+        const auto removed = MH_RemoveHook(entry.target);
+        if (removed == MH_OK) {
+            found = state.patches.erase(found);
+        } else {
+            ++failedRemovals;
+            NeutralizeQueue(entry);
+            SPDLOG_ERROR("Link-Span escape hatch: MH_RemoveHook em {:#x} falhou ({})",
+                         reinterpret_cast<uintptr_t>(entry.target), MH_StatusToString(removed));
+            ++found;
+        }
     }
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
     if (applied == MH_OK) {
-        SPDLOG_INFO("Link-Span escape hatch: lote com {} desvios ligados e {} removidos em {} ms", state.queuedEnables,
-                    state.queuedRemovals.size(), elapsed);
+        SPDLOG_INFO("Link-Span escape hatch: lote com {} desvios ligados e {} removidos em {} ms", enableCount,
+                    removalCount - failedRemovals, elapsed);
     } else {
         SPDLOG_ERROR("Link-Span escape hatch: MH_ApplyQueued falhou ({}) num lote com {} desvios a ligar e {} a remover",
-                     MH_StatusToString(applied), state.queuedEnables, state.queuedRemovals.size());
+                     MH_StatusToString(applied), enableCount, removalCount);
     }
-    state.queuedEnables = 0;
-    state.queuedRemovals.clear();
-    return applied == MH_OK ? SHIP_NATIVE_OK : SHIP_NATIVE_FAILURE;
+    const bool enablesClean = enableCount == 0 || applied == MH_OK;
+    return enablesClean && failedRemovals == 0 ? SHIP_NATIVE_OK : SHIP_NATIVE_FAILURE;
 }
 
 [[maybe_unused]] const bool kEscapeHatchBound = [] {
