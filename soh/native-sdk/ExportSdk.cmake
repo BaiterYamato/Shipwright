@@ -12,7 +12,11 @@ list(SORT layout_headers)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${layout_headers})
 set(layout_material "oot-native-v2;${CMAKE_SIZEOF_VOID_P};${CMAKE_CXX_COMPILER_ID};${CMAKE_CXX_COMPILER_VERSION};${CMAKE_GENERATOR_PLATFORM};${CMAKE_CXX_FLAGS};${CMAKE_CXX_FLAGS_RELEASE}")
 foreach(header IN LISTS layout_headers)
-    file(SHA256 "${header}" header_hash)
+    # EOL normalizado: o id não pode depender do autocrlf do checkout (o core não tem .gitattributes). Header
+    # já em LF dá o mesmo hash de antes.
+    file(READ "${header}" header_text)
+    string(REPLACE "\r\n" "\n" header_text "${header_text}")
+    string(SHA256 header_hash "${header_text}")
     string(APPEND layout_material "${header_hash}")
 endforeach()
 string(SHA256 layout_id "${layout_material}")
