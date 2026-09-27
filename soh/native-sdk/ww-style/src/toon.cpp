@@ -1,0 +1,387 @@
+// Cel shading e sombra de ator — a política do fork ToonLighting.cpp sobre o transporte do host.
+//
+// O host (render V2/V3) abre o colchete toon no laço de atores e leva os opcodes ao renderer; aqui fica o que é
+// política de OoT: qual luz é a chave de cada ator (a luz pontual mais próxima no alcance, senão o sol ou a lua),
+// como a chave viaja de uma fonte para outra, quem fica fora do toon e quem projeta ou recebe sombra.
+#include <algorithm>
+#include <cmath>
+#include <iterator>
+
+#include "ww_style.h"
+#include "macros.h"
+
+namespace WWStyle {
+namespace {
+
+constexpr int16_t kNoClamp = -32768; // TOON_SHADOW_NO_CLAMP: a sombra parte dos pés capturados
+constexpr float kShadowFadeTime = 0.15f;
+constexpr uint32_t kPruneEvery = 64;
+constexpr uint32_t kStaleFrames = 120;
+
+// Pisos que o jogo cria como ator (ponte levadiça, ponte de Gerudo, plataformas): o host os desenha antes da
+// descarga das sombras, então recebem sombra como o cenário. O pré-passe do host só percorre BG, PROP e SWITCH.
+// O fork aceitava do BG_HAKA_GATE só o piso e a estátua (params & 0xFF em {0, 1}); a lista do host é por id, e o
+// portão entra inteiro — a caveira e o portão continuam projetando sombra (ToonShadowExcluded).
+const int16_t kShadowReceivers[] = {
+    ACTOR_BG_SPOT00_HANEBASI, ACTOR_BG_SPOT09_OBJ, ACTOR_BG_MORI_BIGST, ACTOR_BG_HAKA_MEGANEBG,
+    ACTOR_BG_MENKURI_KAITEN,  ACTOR_OBJ_SWITCH,    ACTOR_OBJ_BEAN,      ACTOR_BG_HAKA_GATE,
+};
+
+bool IsShadowReceiver(int16_t id) {
+    return std::find(std::begin(kShadowReceivers), std::end(kShadowReceivers), id) != std::end(kShadowReceivers);
+}
+
+// Todo Bg_Spot* é cenário do overworld (pontes, cercas, portões, pedras, água do poço e do oásis). O fork
+// comparava o prefixo do nome no ActorDB; a DLL não tem os nomes e lista os ids.
+bool IsBgSpot(int16_t id) {
+    switch (id) {
+        case ACTOR_BG_SPOT00_BREAK:
+        case ACTOR_BG_SPOT00_HANEBASI:
+        case ACTOR_BG_SPOT01_FUSYA:
+        case ACTOR_BG_SPOT01_IDOHASHIRA:
+        case ACTOR_BG_SPOT01_IDOMIZU:
+        case ACTOR_BG_SPOT01_IDOSOKO:
+        case ACTOR_BG_SPOT01_OBJECTS2:
+        case ACTOR_BG_SPOT02_OBJECTS:
+        case ACTOR_BG_SPOT03_TAKI:
+        case ACTOR_BG_SPOT05_SOKO:
+        case ACTOR_BG_SPOT06_OBJECTS:
+        case ACTOR_BG_SPOT07_TAKI:
+        case ACTOR_BG_SPOT08_BAKUDANKABE:
+        case ACTOR_BG_SPOT08_ICEBLOCK:
+        case ACTOR_BG_SPOT09_OBJ:
+        case ACTOR_BG_SPOT11_BAKUDANKABE:
+        case ACTOR_BG_SPOT11_OASIS:
+        case ACTOR_BG_SPOT12_GATE:
+        case ACTOR_BG_SPOT12_SAKU:
+        case ACTOR_BG_SPOT15_RRBOX:
+        case ACTOR_BG_SPOT15_SAKU:
+        case ACTOR_BG_SPOT16_BOMBSTONE:
+        case ACTOR_BG_SPOT16_DOUGHNUT:
+        case ACTOR_BG_SPOT17_BAKUDANKABE:
+        case ACTOR_BG_SPOT17_FUNEN:
+        case ACTOR_BG_SPOT18_BASKET:
+        case ACTOR_BG_SPOT18_FUTA:
+        case ACTOR_BG_SPOT18_OBJ:
+        case ACTOR_BG_SPOT18_SHUTTER:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Fora do cel e da sombra: ficam errados reiluminados e errados projetando uma sombra achatada (portas, a Grande
+// Árvore Deku, superfícies de água, árvores, e os interruptores e o feijão, que são receptores).
+bool ToonActorExcluded(const Actor* actor) {
+    if (actor->category == ACTORCAT_DOOR) {
+        return true;
+    }
+    switch (actor->id) {
+        case ACTOR_BG_TREEMOUTH:
+        case ACTOR_BG_MIZU_WATER:
+        case ACTOR_BG_HAKA_WATER:
+        case ACTOR_EN_WOOD02:
+        case ACTOR_OBJ_SWITCH:
+        case ACTOR_OBJ_BEAN:
+            return true;
+        default:
+            return IsBgSpot(actor->id);
+    }
+}
+
+// A placa enterra o poste abaixo do chão; o renderer levanta os pés do volume até a altura do chão passada.
+bool ToonShadowDeepRooted(const Actor* actor) {
+    return actor->id == ACTOR_EN_KANBAN;
+}
+
+// Continuam no cel, mas sem sombra: grama pequena, Skull Kid, Deku Scrubs, Rei Zora, e os receptores (um piso
+// projetando a própria silhueta no vazio fica errado). Do portão da Sombra, só o piso e a estátua são piso.
+bool ToonShadowExcluded(const Actor* actor, int16_t params) {
+    switch (actor->id) {
+        case ACTOR_EN_KUSA:
+        case ACTOR_EN_SKJ:
+        case ACTOR_EN_DNT_NOMAL:
+        case ACTOR_EN_KZ:
+            return true;
+        case ACTOR_BG_HAKA_GATE: {
+            const uint16_t type = static_cast<uint16_t>(params) & 0xFF;
+            return type == 0 || type == 1;
+        }
+        default:
+            return IsShadowReceiver(actor->id);
+    }
+}
+
+// SmoothDamp criticamente amortecido (Unity): acelera e desacelera até o alvo, sem passar dele.
+float SmoothDamp(float current, float target, float* vel, float smoothTime, float dt) {
+    smoothTime = std::max(smoothTime, 0.0001f);
+    const float omega = 2.0f / smoothTime;
+    const float x = omega * dt;
+    const float expTerm = 1.0f / (1.0f + x + (0.48f * x * x) + (0.235f * x * x * x));
+    const float change = current - target;
+    const float temp = (*vel + (omega * change)) * dt;
+    *vel = (*vel - (omega * temp)) * expTerm;
+    return target + ((change + temp) * expTerm);
+}
+
+// Slerp de direção unitária seguro nos antípodas: gira pela esfera, então a chave não salta quando a luz
+// dominante passa para o lado oposto (a luz de uma fada apagando).
+void Slerp(const float from[3], const float to[3], float t, float out[3]) {
+    float dot = std::clamp((from[0] * to[0]) + (from[1] * to[1]) + (from[2] * to[2]), -1.0f, 1.0f);
+    if (dot > 0.9995f) {
+        for (int i = 0; i < 3; ++i) out[i] = from[i] + ((to[i] - from[i]) * t);
+        const float len = std::sqrt((out[0] * out[0]) + (out[1] * out[1]) + (out[2] * out[2]));
+        if (len > 0.0001f) {
+            for (int i = 0; i < 3; ++i) out[i] /= len;
+        }
+        return;
+    }
+    if (dot < -0.9995f) {
+        // Quase opostos: o grande círculo é ambíguo; gira em volta de um eixo perpendicular qualquer.
+        const float ref[3] = { std::fabs(from[0]) < 0.9f ? 1.0f : 0.0f, std::fabs(from[0]) < 0.9f ? 0.0f : 1.0f, 0.0f };
+        const float d = (ref[0] * from[0]) + (ref[1] * from[1]) + (ref[2] * from[2]);
+        float perp[3] = { ref[0] - (from[0] * d), ref[1] - (from[1] * d), ref[2] - (from[2] * d) };
+        const float len = std::sqrt((perp[0] * perp[0]) + (perp[1] * perp[1]) + (perp[2] * perp[2]));
+        if (len > 0.0001f) {
+            for (int i = 0; i < 3; ++i) perp[i] /= len;
+        }
+        const float angle = t * 3.14159265f;
+        const float c = std::cos(angle);
+        const float s = std::sin(angle);
+        for (int i = 0; i < 3; ++i) out[i] = (from[i] * c) + (perp[i] * s);
+        return;
+    }
+    const float theta = std::acos(dot);
+    const float sinTheta = std::sin(theta);
+    const float s0 = std::sin((1.0f - t) * theta) / sinTheta;
+    const float s1 = std::sin(t * theta) / sinTheta;
+    for (int i = 0; i < 3; ++i) out[i] = (s0 * from[i]) + (s1 * to[i]);
+}
+
+// A luz pontual mais próxima no alcance (raio × pointRange) vence; o brilho não conta, então tocha tremendo não
+// muda a chave. Com a Navi desligada da seleção, as duas luzes dela saem por endereço.
+bool ClosestPointLight(Mod& mod, PlayState* play, const Actor* actor, float dirOut[3], float colOut[3]) {
+    const void* naviGlow = mod.cfg.useNaviLight ? nullptr : mod.navi.glow;
+    const void* naviNoGlow = mod.cfg.useNaviLight ? nullptr : mod.navi.noGlow;
+    float bestDistSq = -1.0f;
+    for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) {
+        const LightInfo* info = node->info;
+        if (info == nullptr || info->type == LIGHT_DIRECTIONAL) continue;
+        if (info == naviGlow || info == naviNoGlow) {
+            ++mod.stats.naviSkipped;
+            continue;
+        }
+        const float dx = info->params.point.x - actor->world.pos.x;
+        const float dy = info->params.point.y - actor->world.pos.y;
+        const float dz = info->params.point.z - actor->world.pos.z;
+        const float radius = info->params.point.radius * mod.cfg.pointLightRange;
+        const float distSq = (dx * dx) + (dy * dy) + (dz * dz);
+        if (radius > 0.0f && distSq > 0.0001f && distSq < (radius * radius) &&
+            (bestDistSq < 0.0f || distSq < bestDistSq)) {
+            const float dist = std::sqrt(distSq);
+            bestDistSq = distSq;
+            dirOut[0] = dx / dist;
+            dirOut[1] = dy / dist;
+            dirOut[2] = dz / dist;
+            colOut[0] = info->params.point.color[0] / 255.0f;
+            colOut[1] = info->params.point.color[1] / 255.0f;
+            colOut[2] = info->params.point.color[2] / 255.0f;
+        }
+    }
+    return bestDistSq >= 0.0f;
+}
+
+// Sol ou lua, o que estiver mais claro agora (acompanha o dia e a noite).
+void EnvKey(PlayState* play, float dirOut[3], float colOut[3]) {
+    const LightInfo* sun = &play->envCtx.dirLight1;
+    const LightInfo* moon = &play->envCtx.dirLight2;
+    const int sunLum = sun->params.dir.color[0] + sun->params.dir.color[1] + sun->params.dir.color[2];
+    const int moonLum = moon->params.dir.color[0] + moon->params.dir.color[1] + moon->params.dir.color[2];
+    const LightInfo* env = moonLum > sunLum ? moon : sun;
+    const float d0 = env->params.dir.x;
+    const float d1 = env->params.dir.y;
+    const float d2 = env->params.dir.z;
+    const float len = std::sqrt((d0 * d0) + (d1 * d1) + (d2 * d2));
+    if (len > 0.001f) {
+        dirOut[0] = d0 / len;
+        dirOut[1] = d1 / len;
+        dirOut[2] = d2 / len;
+        colOut[0] = env->params.dir.color[0] / 255.0f;
+        colOut[1] = env->params.dir.color[1] / 255.0f;
+        colOut[2] = env->params.dir.color[2] / 255.0f;
+    }
+}
+
+uint8_t ToByte(float value) {
+    return static_cast<uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f);
+}
+
+// Chão sob o ator: o floorPoly do bg check, senão o raycast em cache do estado.
+bool FloorUnder(Mod& mod, const Actor* actor, ToonKeyState& st, float* floorHeight) {
+    if (actor->floorPoly != nullptr) {
+        *floorHeight = actor->floorHeight;
+        return true;
+    }
+    const float mdx = actor->world.pos.x - st.floorPos[0];
+    const float mdy = actor->world.pos.y - st.floorPos[1];
+    const float mdz = actor->world.pos.z - st.floorPos[2];
+    if (!st.floorSampled || ((mdx * mdx) + (mdy * mdy) + (mdz * mdz)) > 16.0f) {
+        ShipOotWorldHitV1 hit{sizeof(hit)};
+        st.floorValid = mod.world &&
+                        mod.world->raycast_floor(actor->world.pos.x, actor->world.pos.y + 1.0f, actor->world.pos.z,
+                                                 &hit) == SHIP_NATIVE_OK &&
+                        hit.hit != 0;
+        st.floorY = st.floorValid ? hit.pos[1] : 0.0f;
+        st.floorSampled = true;
+        st.floorPos[0] = actor->world.pos.x;
+        st.floorPos[1] = actor->world.pos.y;
+        st.floorPos[2] = actor->world.pos.z;
+        ++mod.stats.raycasts;
+    }
+    if (st.floorValid) *floorHeight = st.floorY;
+    return st.floorValid;
+}
+
+} // namespace
+
+ShipNativeStatus ApplyRenderState(Mod& mod) {
+    const Settings& cfg = mod.cfg;
+    uint32_t features = 0;
+    if (cfg.celEnabled) features |= LINKSPAN_OOT_RENDER_FEATURE_TOON_ACTORS;
+    if (cfg.shadowsEnabled && cfg.suppressVanillaShadows) features |= LINKSPAN_OOT_RENDER_FEATURE_SUPPRESS_VANILLA_SHADOWS;
+    // Sem receptores o host não descarrega os volumes de sombra; a lista vai sempre que a sombra está ligada.
+    const bool receivers = cfg.shadowsEnabled;
+    ShipNativeStatus status = mod.render->set_state(
+        mod.renderState, features, receivers ? kShadowReceivers : nullptr,
+        receivers ? static_cast<uint32_t>(std::size(kShadowReceivers)) : 0u);
+    if (status != SHIP_NATIVE_OK || (!cfg.celEnabled && !cfg.shadowsEnabled)) return status;
+    status = mod.render->set_toon_ramp(cfg.rampCenter, cfg.rampSoftness, cfg.highlightIntensity, cfg.shadowIntensity,
+                                       cfg.debugHighlightBands ? 1 : 0);
+    if (status != SHIP_NATIVE_OK) return status;
+    // Comprimento da sombra: quanto a chave é levantada antes de projetar. 0 => 0,95 (curta, sob o ator); 1 => 0,10.
+    const float minElevation = 0.95f - (std::clamp(cfg.shadowLength, 0.0f, 1.0f) * 0.85f);
+    return mod.render->set_toon_shadow_params(cfg.shadowOpacity, minElevation, cfg.shadowSlabDepth,
+                                              cfg.shadowSlabRise, cfg.shadowEdgeSoftness,
+                                              cfg.debugShadowVolume ? 1 : 0);
+}
+
+void ToonFrame(Mod& mod, PlayState* play) {
+    ToonState& toon = mod.toon;
+    ++toon.frame;
+    if (play != toon.play) {
+        toon.keys.clear();
+        toon.play = play;
+        mod.navi = {};
+        mod.litFairies.clear();
+    }
+    if (!mod.cfg.celEnabled && !mod.cfg.shadowsEnabled) {
+        // Desligado, o estado suavizado ficaria velho para quando religar.
+        toon.keys.clear();
+        return;
+    }
+    ShipOotRenderFrameInfoV1 info{sizeof(info)};
+    toon.dt = mod.render->get_frame_info(&info) == SHIP_NATIVE_OK && info.delta_seconds > 0.0f ? info.delta_seconds
+                                                                                               : 3.0f / 60.0f;
+    const float transition = std::max(mod.cfg.transitionTime, 0.05f);
+    toon.alpha = 1.0f - std::exp(-4.6f * toon.dt / transition);
+    // A Navi registrada precisa continuar sendo a fada do Link; senão o endereço pode ser de outra coisa.
+    const Player* player = play ? GET_PLAYER(play) : nullptr;
+    if (player == nullptr || player->naviActor != mod.navi.actor) mod.navi = {};
+    if (toon.frame % kPruneEvery == 0) {
+        std::erase_if(toon.keys, [&](const auto& entry) { return toon.frame - entry.second.lastFrame > kStaleFrames; });
+    }
+}
+
+void ToonActorDraw(Mod& mod, const ShipOotRenderActorDrawHookV1& payload) {
+    const Settings& cfg = mod.cfg;
+    if (!cfg.celEnabled && !cfg.shadowsEnabled) return;
+    auto* play = static_cast<PlayState*>(payload.play_state);
+    auto* actor = static_cast<Actor*>(payload.actor);
+    if (play == nullptr || actor == nullptr) return;
+    ++mod.stats.actorDraws;
+
+    // Excluídos ficam com a luz vanilla (o host religa o colchete no ator seguinte) e marcam a borda da captura
+    // de sombra, para a silhueta do ator anterior não engolir esta geometria (com o cel ligado a borda do
+    // colchete já faz isso).
+    if (ToonActorExcluded(actor)) {
+        ++mod.stats.excluded;
+        if (cfg.celEnabled && mod.render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK) ++mod.stats.toonOff;
+        if (cfg.shadowsEnabled) mod.render->emit_toon_shadow(LINKSPAN_OOT_RENDER_OPAQUE, kNoClamp, 0.0f);
+        return;
+    }
+
+    float targetDir[3] = { 0.0f, 1.0f, 0.0f };
+    float targetCol[3] = { 1.0f, 1.0f, 1.0f };
+    if (ClosestPointLight(mod, play, actor, targetDir, targetCol)) {
+        ++mod.stats.pointKeys;
+    } else {
+        EnvKey(play, targetDir, targetCol);
+        ++mod.stats.envKeys;
+    }
+
+    auto [it, isNew] = mod.toon.keys.try_emplace(actor);
+    ToonKeyState& st = it->second;
+    if (isNew || st.actorId != actor->id) {
+        st = ToonKeyState{};
+        std::copy(targetDir, targetDir + 3, st.dir);
+        std::copy(targetCol, targetCol + 3, st.col);
+        st.actorId = actor->id; // shadowScale 0: a sombra cresce na primeira aparição
+    } else {
+        float next[3];
+        Slerp(st.dir, targetDir, mod.toon.alpha, next);
+        std::copy(next, next + 3, st.dir);
+        for (int i = 0; i < 3; ++i) {
+            st.col[i] = SmoothDamp(st.col[i], targetCol[i], &st.colVel[i], cfg.transitionTime, mod.toon.dt);
+        }
+    }
+    st.lastFrame = mod.toon.frame;
+
+    // Toda borda do colchete invalida a chave no renderer, e um ator excluído abre uma: a chave vai em todo ator,
+    // nas duas camadas, sem o dedup do fork.
+    const auto dx = static_cast<int8_t>(st.dir[0] * 127.0f);
+    const auto dy = static_cast<int8_t>(st.dir[1] * 127.0f);
+    const auto dz = static_cast<int8_t>(st.dir[2] * 127.0f);
+    const uint8_t r = ToByte(st.col[0]);
+    const uint8_t g = ToByte(st.col[1]);
+    const uint8_t b = ToByte(st.col[2]);
+    if (mod.render->emit_toon_key(LINKSPAN_OOT_RENDER_OPAQUE, dx, dy, dz, r, g, b) != SHIP_NATIVE_OK ||
+        mod.render->emit_toon_key(LINKSPAN_OOT_RENDER_TRANSLUCENT, dx, dy, dz, r, g, b) != SHIP_NATIVE_OK) {
+        ++mod.stats.keyFailures;
+    }
+
+    if (!cfg.shadowsEnabled) {
+        // Religar a sombra a faz crescer de novo em vez de estalar no tamanho congelado.
+        st.shadowScale = 0.0f;
+        st.shadowScaleVel = 0.0f;
+        return;
+    }
+    // A sombra aparece com o ator no chão ou perto dele, dentro da distância e fora da parede (escada, parede de
+    // escalar, borda), onde a lâmina cortaria a parede. O tamanho suaviza 0..1 em vez de estalar.
+    bool onWall = false;
+    if (actor->id == ACTOR_PLAYER) {
+        const auto* player = reinterpret_cast<const Player*>(actor);
+        onWall = (player->stateFlags1 & (PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE |
+                                         PLAYER_STATE1_CLIMBING_LADDER)) != 0;
+    }
+    bool hasFloor = false;
+    float floorHeight = actor->floorHeight;
+    // O limite de baixo importa com o culling estendido, que desenha atores atrás da câmera (z projetado negativo).
+    if (!ToonShadowExcluded(actor, payload.params) && actor->projectedPos.z < static_cast<float>(cfg.shadowMaxDistance) &&
+        actor->projectedPos.z > -100.0f && FloorUnder(mod, actor, st, &floorHeight)) {
+        const float distToFloor = actor->world.pos.y - floorHeight;
+        hasFloor = distToFloor > -50.0f && distToFloor < 1500.0f;
+    }
+    st.shadowScale = SmoothDamp(st.shadowScale, (hasFloor && !onWall) ? 1.0f : 0.0f, &st.shadowScaleVel,
+                                kShadowFadeTime, mod.toon.dt);
+    if (st.shadowScale > 0.01f) {
+        const float clampY = std::clamp(floorHeight, -32767.0f, 32767.0f);
+        const int16_t feetClamp = ToonShadowDeepRooted(actor) ? static_cast<int16_t>(clampY) : kNoClamp;
+        mod.render->emit_toon_shadow(LINKSPAN_OOT_RENDER_OPAQUE, feetClamp, st.shadowScale);
+        ++mod.stats.shadowsArmed;
+    } else {
+        mod.render->emit_toon_shadow(LINKSPAN_OOT_RENDER_OPAQUE, kNoClamp, 0.0f); // desarma
+        ++mod.stats.shadowsOff;
+    }
+}
+
+} // namespace WWStyle
