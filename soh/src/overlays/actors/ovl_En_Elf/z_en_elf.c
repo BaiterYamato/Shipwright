@@ -840,6 +840,13 @@ void EnElf_UpdateLights(EnElf* this, PlayState* play) {
     this->unk_2BC = Math_Atan2S(this->actor.velocity.z, this->actor.velocity.x);
 
     Actor_SetScale(&this->actor, this->actor.scale.x);
+
+    // SOH [Link-Span] CEL-004: a Navi despacha oot.light.fairy aqui, onde o jogo acabou de gravar as luzes dela (o
+    // Wind Waker Style tingia a luz neste ponto). As outras fadas despacham no fim de EnElf_Update.
+    if (this->actor.params == FAIRY_NAVI) {
+        LinkSpan_FairyLights(play, &this->actor, this->fairyFlags, &this->outerColor, &this->lightInfoNoGlow,
+                             &this->lightInfoGlow);
+    }
 }
 
 void func_80A03CF8(EnElf* this, PlayState* play) {
@@ -1466,9 +1473,12 @@ void EnElf_Update(Actor* thisx, PlayState* play) {
     }
 
     // SOH [Link-Span] CEL-004: depois da action function, em todo estado da fada, como o Wind Waker Style fazia.
-    // Sem hook registrado a função só consulta o ponto.
-    LinkSpan_FairyLights(play, &this->actor, this->fairyFlags, &this->outerColor, &this->lightInfoNoGlow,
-                         &this->lightInfoGlow);
+    // Sem hook registrado a função só consulta o ponto. A Navi não passa por aqui (o update dela é func_80A053F0 e
+    // seus vizinhos) e despacha no fim de EnElf_UpdateLights.
+    if (this->actor.params != FAIRY_NAVI) {
+        LinkSpan_FairyLights(play, &this->actor, this->fairyFlags, &this->outerColor, &this->lightInfoNoGlow,
+                             &this->lightInfoGlow);
+    }
 }
 
 s32 EnElf_OverrideLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot, void* thisx,

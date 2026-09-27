@@ -147,7 +147,13 @@ ShipNativeStatus EmitStencil(uint8_t layer, uint8_t mode) {
 ShipNativeStatus EmitToonShadow(uint8_t layer, int16_t feetClampY, float size) {
     if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
     Gfx** head = RenderLayerHead(layer);
-    gSPToonShadowArm((*head)++, feetClampY, size);
+    // Tamanho <= 0 desarma a captura (normal nula), como o gSPToonShadow(0, 0, 0, 0) do fork: marca a fronteira
+    // do objeto sem deixar o ator anterior acumular esta geometria. O braço (nz = 0x7F) armaria com tamanho 0.
+    if (!(size > 0.0f)) {
+        gSPToonShadow((*head)++, 0, 0, 0, 0.0f);
+    } else {
+        gSPToonShadowArm((*head)++, feetClampY, size);
+    }
     return SHIP_NATIVE_OK;
 }
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <set>
 #include <string>
@@ -488,6 +489,10 @@ const ShipOotRenderV3 renderV3{ sizeof(ShipOotRenderV3), DrawDisplayList, Matrix
                                 EmitToonShadow, FlushToonShadows, SetToonRamp, SetToonShadowParams,
                                 SetActorToonEnabled, MatrixTranslateNew, MatrixRotateAxis, ExportCurrentMatrix,
                                 DrawNativeDisplayList, GetFrameInfo, InterpolationBegin, InterpolationEnd };
+
+// Cada versão conserva a anterior no início: um mod compilado para a V2 lê a V3 pelo mesmo prefixo.
+static_assert(offsetof(ShipOotRenderV2, acquire_state) == sizeof(ShipOotRenderV1), "V2 conserva o V1");
+static_assert(offsetof(ShipOotRenderV3, set_actor_toon_enabled) == sizeof(ShipOotRenderV2), "V3 conserva o V2");
 
 } // namespace
 

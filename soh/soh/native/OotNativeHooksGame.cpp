@@ -117,6 +117,8 @@ extern "C" void LinkSpan_RenderActorDraw(Actor* actor, PlayState* play) {
 }
 
 extern "C" void LinkSpan_RenderWorldLights(PlayState* play) {
+    // O último receptor do pré-passe pode ter saído do colchete toon; o opt-out é do ator, não das luzes do mundo.
+    ShipLuaHost::RestoreOotActorToon(play->state.gfxCtx);
     DispatchRenderPlay(ShipLuaHost::GetOotHookPoints().renderWorldLights, play);
 }
 

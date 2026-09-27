@@ -25,12 +25,24 @@ struct LightsState {
     OotLightsBridge bridge;
     uint64_t nextSerial = 1;
     std::array<Slot, LINKSPAN_OOT_LIGHTS_MAX> slots;
+    // Uma operação no meio da bridge: Lights_PointSetInfo dispara oot.light.point_color, e um callback ali não pode
+    // criar, mudar ou apagar luz de mod enquanto a vaga está pela metade.
+    bool busy = false;
 };
 
 LightsState& State() {
     static LightsState state;
     return state;
 }
+
+// Marca a bridge ocupada durante uma operação; a reentrada responde UNSUPPORTED sem mexer em vaga.
+struct BusyScope {
+    bool previous;
+    BusyScope() : previous(State().busy) { State().busy = true; }
+    ~BusyScope() { State().busy = previous; }
+    BusyScope(const BusyScope&) = delete;
+    BusyScope& operator=(const BusyScope&) = delete;
+};
 
 bool OnOwnerThread() {
     return State().ownerThread == std::this_thread::get_id();
@@ -53,7 +65,8 @@ bool ValidOwner(const char* text) {
 
 bool ValidLight(const ShipOotPointLightV1* light) {
     return light && light->size >= sizeof(ShipOotPointLightV1) && std::isfinite(light->position[0]) &&
-           std::isfinite(light->position[1]) && std::isfinite(light->position[2]) && light->glow <= 1;
+           std::isfinite(light->position[1]) && std::isfinite(light->position[2]) && light->radius >= 0 &&
+           light->glow <= 1;
 }
 
 // Vaga viva do handle, ou nullptr. `issued` diz se o handle já saiu daqui alguma vez.
@@ -75,6 +88,7 @@ uint32_t IndexOf(const Slot& slot) {
 void Free(Slot& slot) {
     const auto& bridge = State().bridge;
     if (bridge.remove && slot.play && slot.play == Gameplay()) {
+        BusyScope busy;
         bridge.remove(slot.play, IndexOf(slot));
     }
     slot = Slot{};
@@ -95,13 +109,14 @@ ShipNativeStatus SHIP_NATIVE_CALL CreatePointLight(const char* owner, const Ship
     if (!OnOwnerThread() || !ValidOwner(owner) || !ValidLight(light) || !handle) return SHIP_NATIVE_INVALID_ARGUMENT;
     *handle = 0;
     auto& state = State();
-    if (!state.bridge.insert) return SHIP_NATIVE_UNSUPPORTED;
+    if (state.busy || !state.bridge.insert) return SHIP_NATIVE_UNSUPPORTED;
     void* play = Gameplay();
     if (!play) return SHIP_NATIVE_UNSUPPORTED;
     for (auto& slot : state.slots) {
         if (slot.used) continue;
         try {
             std::string name(owner);
+            BusyScope busy;
             if (!state.bridge.insert(play, IndexOf(slot), *light)) return SHIP_NATIVE_LIMIT;
             slot.used = true;
             slot.serial = state.nextSerial++;
@@ -116,17 +131,20 @@ ShipNativeStatus SHIP_NATIVE_CALL CreatePointLight(const char* owner, const Ship
 
 ShipNativeStatus SHIP_NATIVE_CALL UpdatePointLight(uint64_t handle, const ShipOotPointLightV1* light) {
     if (!OnOwnerThread() || !ValidLight(light)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (State().busy) return SHIP_NATIVE_UNSUPPORTED;
     bool issued = false;
     Slot* slot = Live(handle, &issued);
     if (!slot) return issued ? SHIP_NATIVE_UNSUPPORTED : SHIP_NATIVE_INVALID_ARGUMENT;
     const auto& bridge = State().bridge;
     if (!bridge.update) return SHIP_NATIVE_UNSUPPORTED;
+    BusyScope busy;
     bridge.update(IndexOf(*slot), *light);
     return SHIP_NATIVE_OK;
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL DestroyPointLight(uint64_t handle) {
     if (!OnOwnerThread()) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (State().busy) return SHIP_NATIVE_UNSUPPORTED;
     bool issued = false;
     Slot* slot = Find(handle, &issued);
     if (!slot) return issued ? SHIP_NATIVE_OK : SHIP_NATIVE_INVALID_ARGUMENT; // já saiu com a cena ou o unload

@@ -431,18 +431,31 @@ bool full = false;
 std::vector<std::string> ops;
 ShipOotPointLightV1 lastLight{};
 int infos[LINKSPAN_OOT_LIGHTS_MAX]{};
+// Simula um callback de oot.light.point_color que volta ao serviço no meio da bridge (Lights_PointSetInfo).
+const ShipOotLightsV1* reenter = nullptr;
+uint64_t reenterHandle = 0;
+std::vector<ShipNativeStatus> reentered;
 void* Gameplay() {
     return current;
+}
+void Reenter(const ShipOotPointLightV1& light) {
+    if (!reenter) return;
+    uint64_t inner = 0;
+    reentered.push_back(reenter->create_point_light("x.mod", &light, &inner));
+    reentered.push_back(reenter->update_point_light(reenterHandle, &light));
+    reentered.push_back(reenter->destroy_point_light(reenterHandle));
 }
 bool Insert(void*, uint32_t slot, const ShipOotPointLightV1& light) {
     if (full) return false;
     ops.push_back("insert:" + std::to_string(slot));
     lastLight = light;
+    Reenter(light);
     return true;
 }
 void Update(uint32_t slot, const ShipOotPointLightV1& light) {
     ops.push_back("update:" + std::to_string(slot));
     lastLight = light;
+    Reenter(light);
 }
 void Remove(void* play, uint32_t slot) {
     ops.push_back("remove:" + std::to_string(slot) + (play == &playTag ? ":a" : ":b"));
@@ -1365,6 +1378,9 @@ int main(int argc, char** argv) {
         bad.position[1] = std::nan("");
         Check(lights->create_point_light("autor.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "posição NaN");
         bad = light;
+        bad.radius = -1;
+        Check(lights->create_point_light("autor.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "raio negativo");
+        bad = light;
         bad.glow = 2;
         Check(lights->create_point_light("autor.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT &&
                   lights->create_point_light("", &light, &handle) == SHIP_NATIVE_INVALID_ARGUMENT &&
@@ -1425,6 +1441,29 @@ int main(int argc, char** argv) {
             uint64_t other = 0;
             Check(lights->create_point_light("a.mod", &light, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "outra thread");
         }).join();
+        // Reentrada pela bridge: create/update/destroy recusam sem tocar em vaga, e a luz externa termina inteira.
+        ShipLuaHost::ResetOotNativeLights();
+        ops.clear();
+        uint64_t outer = 0;
+        reenter = lights;
+        reenterHandle = 0;
+        reentered.clear();
+        Check(lights->create_point_light("a.mod", &light, &outer) == SHIP_NATIVE_OK && outer &&
+                  ShipLuaHost::OotLightCount() == 1 && ops.size() == 1 && ops[0] == "insert:0" &&
+                  reentered.size() == 3,
+              "create reentrante cria só a luz externa");
+        reenterHandle = outer;
+        reentered.clear();
+        Check(lights->update_point_light(outer, &light) == SHIP_NATIVE_OK && ShipLuaHost::OotLightCount() == 1 &&
+                  lights->get_point_light_info(outer, &identity) == SHIP_NATIVE_OK && identity == &infos[0],
+              "update reentrante não apaga a própria luz");
+        Check(reentered.size() == 3 &&
+                  std::all_of(reentered.begin(), reentered.end(),
+                              [](ShipNativeStatus status) { return status == SHIP_NATIVE_UNSUPPORTED; }),
+              "reentrada responde UNSUPPORTED");
+        reenter = nullptr;
+        Check(lights->destroy_point_light(outer) == SHIP_NATIVE_OK && ShipLuaHost::OotLightCount() == 0,
+              "fora da bridge o serviço volta a aceitar");
         ShipLuaHost::ResetOotNativeLights();
         ShipLuaHost::SetOotLightsBridge({});
     }
