@@ -10,6 +10,7 @@
 #include "oot_hooks.h"
 #include "oot_lights.h"
 #include "oot_render.h"
+#include "oot_resources.h"
 #include "oot_world.h"
 #include "settings.h"
 #include "z64.h"
@@ -114,13 +115,22 @@ struct Stats {
     uint32_t pools = 0;
     uint32_t poolFailures = 0;
     uint32_t stickLights = 0;
+    uint32_t skyDomes = 0;        // cúpulas desenhadas
+    uint32_t skyStars = 0;        // estrelas do último frame
+    uint32_t skyBands = 0;        // faixas do horizonte desenhadas
+    uint32_t skyClouds = 0;       // nuvens do último frame
+    uint32_t skyWisps = 0;        // fiapos do último frame
+    uint32_t skyTexOverrides = 0; // texturas de nuvem trocadas por um pacote
+    uint32_t skyFailures = 0;
 };
 
 struct Mod {
     const ShipNativeRuntime* runtime = nullptr;
+    const ShipOotEngineV1* engine = nullptr;
     const ShipOotRenderV3* render = nullptr;
     const ShipOotLightsV1* lights = nullptr;
     const ShipOotWorldV1* world = nullptr;
+    const ShipOotResourcesV1* resources = nullptr; // opcional: texturas de nuvem de um pacote montado
     uint64_t renderState = 0;
     Settings cfg;
     ToonState toon;

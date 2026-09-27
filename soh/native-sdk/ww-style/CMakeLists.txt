@@ -14,7 +14,11 @@ add_library(linkspan_ww_style SHARED
     src/settings.cpp
     src/toon.cpp
     src/fairy.cpp
-    src/world.cpp)
+    src/world.cpp
+    src/cloud_textures.cpp
+    src/sky_env.cpp
+    src/sky_gradient.cpp
+    src/sky_clouds.cpp)
 target_include_directories(linkspan_ww_style PRIVATE ${OOT_NATIVE_INCLUDE_DIRS})
 target_compile_definitions(linkspan_ww_style PRIVATE ${OOT_NATIVE_COMPILE_DEFINITIONS})
 if(MSVC)
@@ -32,4 +36,11 @@ add_executable(linkspan_ww_style_tests tests/settings_tests.cpp src/settings.cpp
 target_include_directories(linkspan_ww_style_tests PRIVATE src)
 if(MSVC)
     target_compile_options(linkspan_ww_style_tests PRIVATE /utf-8)
+endif()
+
+# Gerador das texturas de nuvem contra a saída do script Python do fork.
+add_executable(linkspan_ww_style_cloud_tests tests/cloud_textures_tests.cpp src/cloud_textures.cpp)
+target_include_directories(linkspan_ww_style_cloud_tests PRIVATE src)
+if(MSVC)
+    target_compile_options(linkspan_ww_style_cloud_tests PRIVATE /utf-8)
 endif()
