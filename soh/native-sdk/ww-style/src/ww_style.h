@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "oot_engine.h"
 #include "oot_hooks.h"
@@ -50,6 +51,49 @@ struct NaviLights {
     const void* noGlow = nullptr;
 };
 
+// Tremulação de uma chama: caminhada aleatória suavizada entre alvos, com a amostra anterior para reconhecer o
+// ruído por frame das tochas.
+struct FlameFlickerState {
+    float cur;
+    float prevTarget;
+    float nextTarget;
+    float phase;
+    float maxSeen; // brilho cheio visto, esquecido devagar
+    int lastInMax;
+    int hold;      // frames que a luz ainda conta como chama depois do último salto
+};
+
+// Projeção de uma luz pontual: giro nos dois eixos, pulso de tamanho e de alfa, e o raio suavizado da Navi.
+struct WorldLightState {
+    float angleY;
+    float angleX;
+    float sizeCur;
+    float sizeTarget;
+    float sizeTimer;
+    float alphaCur;
+    float alphaTarget;
+    float alphaTimer;
+    float spawnRadius;
+    uint32_t gen; // geração do último frame em que a luz apareceu
+};
+
+// Luzes do mundo (world.cpp). Chaves por LightInfo, o node->info da lista play->lightCtx.
+struct LightingState {
+    const void* play = nullptr;
+    std::unordered_map<const void*, FlameFlickerState> flicker;
+    std::unordered_map<const void*, WorldLightState> lights;
+    // Fada solta → a luz sem brilho dela, vista pelo hook de fada. A luz fica dentro do ator, então o par não muda
+    // enquanto o ator existir; o frame de desenho confere quem está vivo pela lista de atores.
+    std::unordered_map<const void*, const void*> fairyNoGlow;
+    std::vector<const void*> wildLights; // luzes das fadas soltas vivas neste frame
+    std::vector<Gfx> dl;                 // projeções do frame; o renderer lê até o fim do frame
+    uint64_t stickLight = 0;
+    const void* stickInfo = nullptr;
+    uint32_t gen = 0;
+    uint32_t rng = 0x9E3779B9u;
+    float dt = 3.0f / 60.0f;
+};
+
 struct Stats {
     uint32_t configures = 0;
     uint32_t actorDraws = 0;
@@ -66,6 +110,10 @@ struct Stats {
     uint32_t naviSkipped = 0;
     uint32_t naviTinted = 0;
     uint32_t wildFairyLit = 0;
+    uint32_t flickered = 0;
+    uint32_t pools = 0;
+    uint32_t poolFailures = 0;
+    uint32_t stickLights = 0;
 };
 
 struct Mod {
@@ -79,6 +127,7 @@ struct Mod {
     NaviLights navi;
     // Fadas soltas que este mod acendeu; desligar a opção devolve o raio 0 só a elas.
     std::unordered_set<const void*> litFairies;
+    LightingState lighting;
     Stats stats;
 };
 
@@ -89,5 +138,12 @@ void ToonActorDraw(Mod& mod, const ShipOotRenderActorDrawHookV1& payload);
 
 // fairy.cpp
 void FairyLights(Mod& mod, ShipOotFairyLightHookV1& payload);
+
+// world.cpp
+void WorldFrame(Mod& mod, PlayState* play);
+void FlameFlicker(Mod& mod, ShipOotPointLightColorHookV2& light);
+void DrawWorldLights(Mod& mod, PlayState* play);
+void DekuStickLight(Mod& mod, PlayState* play);
+void DropDekuStickLight(Mod& mod);
 
 } // namespace WWStyle

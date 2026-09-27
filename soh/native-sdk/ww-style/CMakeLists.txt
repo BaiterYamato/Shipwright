@@ -13,7 +13,8 @@ add_library(linkspan_ww_style SHARED
     src/ww_style.cpp
     src/settings.cpp
     src/toon.cpp
-    src/fairy.cpp)
+    src/fairy.cpp
+    src/world.cpp)
 target_include_directories(linkspan_ww_style PRIVATE ${OOT_NATIVE_INCLUDE_DIRS})
 target_compile_definitions(linkspan_ww_style PRIVATE ${OOT_NATIVE_COMPILE_DEFINITIONS})
 if(MSVC)

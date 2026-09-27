@@ -248,7 +248,10 @@ ShipNativeStatus ApplyRenderState(Mod& mod) {
     const Settings& cfg = mod.cfg;
     uint32_t features = 0;
     if (cfg.celEnabled) features |= LINKSPAN_OOT_RENDER_FEATURE_TOON_ACTORS;
-    if (cfg.shadowsEnabled && cfg.suppressVanillaShadows) features |= LINKSPAN_OOT_RENDER_FEATURE_SUPPRESS_VANILLA_SHADOWS;
+    if (cfg.shadowsEnabled && cfg.suppressVanillaShadows)
+        features |= LINKSPAN_OOT_RENDER_FEATURE_SUPPRESS_VANILLA_SHADOWS;
+    // A projeção substitui o brilho desenhado no ponto das luzes GLOW (tochas, fogo).
+    if (cfg.lightCasting && cfg.hideVanillaGlow) features |= LINKSPAN_OOT_RENDER_FEATURE_HIDE_VANILLA_POINT_GLOW;
     // Sem receptores o host não descarrega os volumes de sombra; a lista vai sempre que a sombra está ligada.
     const bool receivers = cfg.shadowsEnabled;
     ShipNativeStatus status = mod.render->set_state(
@@ -366,8 +369,9 @@ void ToonActorDraw(Mod& mod, const ShipOotRenderActorDrawHookV1& payload) {
     bool hasFloor = false;
     float floorHeight = actor->floorHeight;
     // O limite de baixo importa com o culling estendido, que desenha atores atrás da câmera (z projetado negativo).
-    if (!ToonShadowExcluded(actor, payload.params) && actor->projectedPos.z < static_cast<float>(cfg.shadowMaxDistance) &&
-        actor->projectedPos.z > -100.0f && FloorUnder(mod, actor, st, &floorHeight)) {
+    const float projZ = actor->projectedPos.z;
+    if (!ToonShadowExcluded(actor, payload.params) && projZ < static_cast<float>(cfg.shadowMaxDistance) &&
+        projZ > -100.0f && FloorUnder(mod, actor, st, &floorHeight)) {
         const float distToFloor = actor->world.pos.y - floorHeight;
         hasFloor = distToFloor > -50.0f && distToFloor < 1500.0f;
     }

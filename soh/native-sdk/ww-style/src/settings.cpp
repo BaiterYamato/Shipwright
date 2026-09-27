@@ -92,8 +92,9 @@ const Field kFields[] = {
 };
 
 std::string_view Trim(std::string_view text) {
-    while (!text.empty() && (text.front() == ' ' || text.front() == '\t' || text.front() == '\r')) text.remove_prefix(1);
-    while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r')) text.remove_suffix(1);
+    const auto blank = [](char c) { return c == ' ' || c == '\t' || c == '\r'; };
+    while (!text.empty() && blank(text.front())) text.remove_prefix(1);
+    while (!text.empty() && blank(text.back())) text.remove_suffix(1);
     return text;
 }
 
