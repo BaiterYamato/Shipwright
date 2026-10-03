@@ -400,6 +400,34 @@ void TestGraphGaps() {
     CHECK(before == m.Scene().document.dump());
 }
 
+void TestGraphInherited() {
+    // Base: superfícies 0 e 1 fora (exits 5 e 6 de 3). Mod: mantém a 0, corrige a 1 e põe a 2 fora. O texto agregado
+    // (2 superfícies, ex.: 0.exit=5) seria igual; por item, a 2 é nova.
+    GraphFixture base;
+    base.Collision()["surfaceTypes"] = ParseJson(R"({"0":{"exit":5},"1":{"exit":6},"2":{"exit":0}})");
+    GraphFixture mod;
+    mod.Collision()["surfaceTypes"] = ParseJson(R"({"0":{"exit":5},"1":{"exit":0},"2":{"exit":6}})");
+    const auto vanilla = base.Graph();
+    auto graph = mod.Graph();
+    CHECK(graph.notes == vanilla.notes); // o texto bate: comparar por ele apagaria a 2
+    CHECK(DropInheritedFindings(graph, vanilla) == 1);
+    CHECK(graph.notes.size() == 1 && AnyText(graph.notes, "1 superfície(s) com exit fora de 1..3") &&
+          AnyText(graph.notes, "(ex.: 2.exit=6)"));
+    // Limite diferente (o mod muda a lista de saídas) é outro grupo: nada sai.
+    GraphFixture shorter;
+    shorter.Collision()["surfaceTypes"] = ParseJson(R"({"0":{"exit":5}})");
+    shorter.SceneDoc()["setups"]["0"]["exits"] = ParseJson(R"({"0":0,"1":0})");
+    auto changed = shorter.Graph();
+    CHECK(DropInheritedFindings(changed, vanilla) == 0 && changed.notes.size() == 1);
+    // Tudo igual: some a nota; lacunas nunca saem.
+    GraphFixture same;
+    same.Collision()["surfaceTypes"] = base.Collision()["surfaceTypes"];
+    auto equal = same.Graph();
+    equal.gaps.push_back("lacuna");
+    CHECK(DropInheritedFindings(equal, vanilla) == 2 && equal.notes.empty() && equal.findings.empty());
+    CHECK(equal.gaps.size() == 1);
+}
+
 void TestGraphCompact() {
     // A versão do cache tira atores, geometria e campos que o grafo não lê; chaves e $order das listas ficam.
     const auto room = Collect({ R"({"$schema":"unbound/room/1","setups":{"0":{"actors":{"0":{"id":9,"pos":[0,0,0]}},
@@ -446,6 +474,7 @@ int main() {
     TestGraphWater();
     TestGraphDoors();
     TestGraphGaps();
+    TestGraphInherited();
     TestGraphCompact();
     if (gFailures) {
         std::fprintf(stderr, "%d falha(s)\n", gFailures);

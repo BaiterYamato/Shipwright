@@ -128,9 +128,11 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   incompleto" e não conta como nota: dependência ausente, recusada, alias `.meta` (o jogo carrega o alvo; vale
   também para documento de mod e para a própria cena) ou além do orçamento (4 096 leituras e 64 MB disparadas pelo
   grafo, de mod ou da base), e sala que traz `exits` (troca a lista conforme o percurso). O cache da checagem guarda
-  só o que o grafo lê de salas e colisões. Num delta sobre uma cena da base, o grafo também roda na cena só da base, e o que
-  sai igual nas duas fica fora, contado em `herdadas=`: a `spot04` vanilla tem setups de cutscene com menos saídas
-  que os exits da colisão, e isso não é do mod. O resumo ganha `grafos=`, `incompletos=`, `herdadas=` e
+  só o que o grafo lê de salas e colisões. Num delta sobre uma cena da base, o grafo também roda na cena só da base,
+  e cada item que sai igual nas duas (mesmo lugar, mesmo limite, mesmo campo=valor) fica fora, contado em
+  `herdadas=`: a `spot04` vanilla tem setups de cutscene com menos saídas que os exits da colisão, e isso não é do
+  mod. Lacunas nunca saem; a releitura da base conta no orçamento, e sem saldo as notas ficam todas, com uma lacuna.
+  O resumo ganha `grafos=`, `incompletos=`, `herdadas=` e
   `dependencias=`. Só as cenas que um mod traz são raízes; um mod que só troca uma colisão da base não é cruzado
   com as cenas da base.
 

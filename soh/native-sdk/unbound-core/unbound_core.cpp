@@ -1087,6 +1087,7 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         bool modded = false; // alguma camada de mod traz o caminho
         bool base = false;   // o oot-unbound.o2r também traz
         bool baseDone = false;
+        bool baseSkipped = false; // a releitura da base não coube no orçamento
         LinkSpanUnbound::ReferenceReport baseReport; // só da base, sob demanda
     };
     std::map<std::string, Loaded> loaded;
@@ -1167,7 +1168,8 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         return dependency ? &dependency->report : nullptr;
     };
     // O mesmo caminho como o oot.o2r do usuário o dá, sem nenhum mod: o que vem só da base é o próprio relatório. A
-    // camada da base de um caminho de mod é relida aqui, só quando uma comparação precisa dela.
+    // camada da base de um caminho de mod é relida aqui, só quando uma comparação precisa dela, e a releitura conta
+    // no orçamento do grafo (a ABI entrega todas as camadas: as de mod relidas também pesam).
     const LinkSpanUnbound::GraphLookup baseLookup =
         [&](const std::string& path) -> const LinkSpanUnbound::ReferenceReport* {
         Loaded* dependency = resolve(path);
@@ -1179,8 +1181,24 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         }
         if (!dependency->baseDone) {
             dependency->baseDone = true;
+            if (graphReads >= MAX_REFERENCE_DOCUMENTS || graphBytes >= kGraphBytes) {
+                dependency->baseSkipped = true;
+                return nullptr;
+            }
+            ++graphReads;
             LayerCollector collector = DocumentCollector();
-            if (state.resources->read_file_layers(path.c_str(), CollectLayer, &collector) == SHIP_NATIVE_OK) {
+            const size_t budget = kGraphBytes - graphBytes;
+            if (budget < collector.maxTotal) {
+                collector.maxTotal = static_cast<uint32_t>(budget);
+                collector.maxLayer = std::min(collector.maxLayer, collector.maxTotal);
+            }
+            const ShipNativeStatus read = state.resources->read_file_layers(path.c_str(), CollectLayer, &collector);
+            graphBytes += collector.totalBytes;
+            if (read == SHIP_NATIVE_LIMIT) {
+                graphBytes = kGraphBytes;
+                dependency->baseSkipped = true;
+            }
+            if (read == SHIP_NATIVE_OK) {
                 std::vector<LinkSpanUnbound::LayerDocument> baseLayers;
                 for (auto& layer : collector.layers) {
                     if (SameArchive(layer.archive, state.basePath)) {
@@ -1233,35 +1251,30 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
             ++graphs;
             try {
                 auto graph = LinkSpanUnbound::CollectSceneGraph(report, lookup);
-                // Nota ou lacuna que a cena só da base também dá vem do jogo e não do mod (a spot04 vanilla tem
-                // setups de cutscene com menos saídas que os exits da colisão): fica fora, contada em herdadas=.
-                const LinkSpanUnbound::ReferenceReport* base =
-                    graph.notes.empty() && graph.gaps.empty() ? nullptr : baseLookup(path);
-                LinkSpanUnbound::SceneGraph vanilla;
-                if (base && base->accepted && base->kind == LinkSpanUnbound::DocumentKind::Scene) {
+                // Item que a cena só da base também dá (mesmo lugar, limite e campo=valor) vem do jogo e não do mod
+                // (a spot04 vanilla tem setups de cutscene com menos saídas que os exits da colisão): fica fora,
+                // contado em herdadas=. Lacunas ficam sempre. Sem a comparação, tudo fica como nota do mod.
+                if (!graph.findings.empty()) {
                     try {
-                        vanilla = LinkSpanUnbound::CollectSceneGraph(*base, baseLookup);
+                        const LinkSpanUnbound::ReferenceReport* base = baseLookup(path);
+                        if (base && base->accepted && base->kind == LinkSpanUnbound::DocumentKind::Scene) {
+                            inherited += LinkSpanUnbound::DropInheritedFindings(
+                                graph, LinkSpanUnbound::CollectSceneGraph(*base, baseLookup));
+                        }
                     } catch (const std::exception&) {
-                        // Sem a comparação, tudo fica como nota do mod.
                     }
-                    const auto drop = [&](std::vector<std::string>& list, const std::vector<std::string>& known) {
-                        const auto before = list.size();
-                        list.erase(std::remove_if(list.begin(), list.end(),
-                                                  [&](const std::string& item) {
-                                                      return std::find(known.begin(), known.end(), item) !=
-                                                             known.end();
-                                                  }),
-                                   list.end());
-                        inherited += before - list.size();
-                    };
-                    drop(graph.notes, vanilla.notes);
-                    drop(graph.gaps, vanilla.gaps);
+                    if (document.baseSkipped) {
+                        graph.gaps.push_back(path + ": comparação com a base fora do orçamento; notas herdadas não "
+                                                    "separadas");
+                    }
                 }
                 notes.insert(notes.end(), graph.notes.begin(), graph.notes.end());
                 gaps.insert(gaps.end(), graph.gaps.begin(), graph.gaps.end());
             } catch (const std::exception& error) {
                 gaps.push_back(path + ": grafo falhou (" + error.what() + ")");
             }
+        }
+        if (report.kind == LinkSpanUnbound::DocumentKind::Scene) {
             // A cena não é dependência de outra: o documento inteiro não fica no cache.
             document.report.document = LinkSpanUnbound::Json();
             document.baseReport.document = LinkSpanUnbound::Json();

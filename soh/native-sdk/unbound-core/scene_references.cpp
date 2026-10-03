@@ -1,6 +1,7 @@
 #include "scene_references.h"
 
 #include <algorithm>
+#include <map>
 #include <set>
 
 #include "actor_registry.h"
@@ -154,27 +155,36 @@ std::vector<ListItem> GraphSetups(const Json& document) {
     return result;
 }
 
-// Quantos e o primeiro, para uma nota só por lista.
+// Os itens fora de uma lista; viram um grupo de findings (uma nota só por lista).
 struct GraphNote {
-    size_t count = 0;
-    std::string example;
+    std::vector<std::string> items;
 
     void Add(const std::string& field, int64_t value) {
-        if (count++ == 0) {
-            example = field + "=" + std::to_string(value);
-        }
+        items.push_back(field + "=" + std::to_string(value));
     }
 
-    void Write(std::vector<std::string>& notes, const std::string& where, const std::string& what) const {
-        if (count) {
-            notes.push_back(where + ": " + std::to_string(count) + " " + what + " (ex.: " + example + ")");
+    void Write(SceneGraph& graph, const std::string& where, const std::string& what) {
+        if (!items.empty()) {
+            graph.findings.push_back({ where, what, std::move(items) });
         }
     }
 };
 
+// Uma nota por grupo: quantos e o primeiro.
+std::vector<std::string> RenderGraphNotes(const std::vector<GraphFindings>& findings) {
+    std::vector<std::string> notes;
+    for (const auto& group : findings) {
+        if (!group.items.empty()) {
+            notes.push_back(group.where + ": " + std::to_string(group.items.size()) + " " + group.what + " (ex.: " +
+                            group.items.front() + ")");
+        }
+    }
+    return notes;
+}
+
 // Room de um lado de porta (s16): ao montar a cena, z_room.c (func_80096FE8) lê roomList[room] para dimensionar o
 // buffer de salas, sem conferir o tamanho, antes de qualquer porta existir. Room negativa não lê.
-void GraphDoorRooms(const ReferenceReport& scene, size_t rooms, std::vector<std::string>& notes) {
+void GraphDoorRooms(const ReferenceReport& scene, size_t rooms, SceneGraph& graph) {
     for (const auto& [setupKey, setup] : GraphSetups(scene.document)) {
         GraphNote outside;
         size_t slot = 0;
@@ -189,7 +199,7 @@ void GraphDoorRooms(const ReferenceReport& scene, size_t rooms, std::vector<std:
                 }
             }
         }
-        outside.Write(notes, scene.path + " setups." + setupKey + ".transitionActors",
+        outside.Write(graph, scene.path + " setups." + setupKey + ".transitionActors",
                       "lado(s) de porta com room além das " + std::to_string(rooms) +
                           " salas da cena; ao montar a cena, o jogo lê fora da lista de salas");
     }
@@ -197,7 +207,7 @@ void GraphDoorRooms(const ReferenceReport& scene, size_t rooms, std::vector<std:
 
 // Câmera de um lado de porta (`effects`, s8): Camera_ChangeDoorCam (z_camera.c) passa o índice ao
 // Camera_GetBgCamSetting, que lê a tabela da colisão da cena sem conferir. -1 (CAM_SET_DOORC) e -99 não leem.
-void GraphDoorCameras(const ReferenceReport& doc, size_t cameras, std::vector<std::string>& notes) {
+void GraphDoorCameras(const ReferenceReport& doc, size_t cameras, SceneGraph& graph) {
     for (const auto& [setupKey, setup] : GraphSetups(doc.document)) {
         GraphNote outside;
         size_t slot = 0;
@@ -220,7 +230,7 @@ void GraphDoorCameras(const ReferenceReport& doc, size_t cameras, std::vector<st
                 }
             }
         }
-        outside.Write(notes, doc.path + " setups." + setupKey + ".transitionActors",
+        outside.Write(graph, doc.path + " setups." + setupKey + ".transitionActors",
                       "lado(s) de porta com câmera fora das " + std::to_string(cameras) +
                           " da colisão da cena; se a porta trocar a câmera, o jogo lê fora da lista");
     }
@@ -307,22 +317,23 @@ Json CompactForGraph(const Json& document, DocumentKind kind) {
     return out;
 }
 
-SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lookup) {
-    SceneGraph graph;
+namespace {
+
+void CollectGraphFindings(const ReferenceReport& scene, const GraphLookup& lookup, SceneGraph& graph) {
     if (!scene.accepted || scene.kind != DocumentKind::Scene) {
-        return graph;
+        return;
     }
     const auto rooms = PositionalItems(Sub(scene.document, "rooms"), "rooms");
     // numRooms é u16 e Room.num é s16: um slot acima de 32 767 não é uma sala alcançável.
     const size_t roomCount = std::min<size_t>(rooms.size(), 32768);
-    GraphDoorRooms(scene, roomCount, graph.notes);
+    GraphDoorRooms(scene, roomCount, graph);
 
     const std::string collisionPath = ResourceLookupPath("collision", PathField(scene.document, "collision"));
     const ReferenceReport* collision = collisionPath.empty() || !lookup ? nullptr : lookup(collisionPath);
     if (!collision || !collision->accepted || collision->kind != DocumentKind::Collision) {
         graph.gaps.push_back(scene.path + ": colisão " + (collisionPath.empty() ? "ausente" : collisionPath) +
                              " sem documento Unbound aceito; câmeras, água e exits não conferidos");
-        return graph;
+        return;
     }
     const size_t cameraCount = PositionalItems(Sub(collision->document, "cameras"), "cameras").size();
 
@@ -334,10 +345,10 @@ SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lo
             water.Add(key + ".room", room);
         }
     }
-    water.Write(graph.notes, collision->path + " waterBoxes (cena " + scene.path + ")",
+    water.Write(graph, collision->path + " waterBoxes (cena " + scene.path + ")",
                 "water box(es) com room fora das " + std::to_string(roomCount) +
                     " salas da cena; a água não liga em sala nenhuma");
-    GraphDoorCameras(scene, cameraCount, graph.notes);
+    GraphDoorCameras(scene, cameraCount, graph);
 
     // Uma sala pode trazer exits (mesmo vazio) e trocar a lista da cena até outra sala trocar de novo: a lista que o
     // Player usa depende do percurso. Aí os exits não são conferidos.
@@ -359,7 +370,7 @@ SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lo
                                  " sem documento Unbound aceito; portas da sala e exits não conferidos");
             continue;
         }
-        GraphDoorCameras(*room, cameraCount, graph.notes);
+        GraphDoorCameras(*room, cameraCount, graph);
         for (const auto& [setupKey, setup] : GraphSetups(room->document)) {
             if (setup->contains("exits")) {
                 exitsKnown = false;
@@ -370,7 +381,7 @@ SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lo
         }
     }
     if (!exitsKnown) {
-        return graph;
+        return;
     }
     // Exit da superfície (s32): z_player.c lê setupExitList[exit - 1] sem conferir. 0 é sem saída.
     const auto surfaces = PositionalItems(Sub(collision->document, "surfaceTypes"), "surfaceTypes");
@@ -383,11 +394,43 @@ SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lo
                 outside.Add(key + ".exit", exit);
             }
         }
-        outside.Write(graph.notes, collision->path + " surfaceTypes (cena " + scene.path + " setups." + setupKey + ")",
+        outside.Write(graph, collision->path + " surfaceTypes (cena " + scene.path + " setups." + setupKey + ")",
                       "superfície(s) com exit fora de 1.." + std::to_string(exits) +
                           " (saídas da cena); lá o jogo lê fora da lista");
     }
+}
+
+} // namespace
+
+SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lookup) {
+    SceneGraph graph;
+    CollectGraphFindings(scene, lookup, graph);
+    graph.notes = RenderGraphNotes(graph.findings);
     return graph;
+}
+
+size_t DropInheritedFindings(SceneGraph& graph, const SceneGraph& base) {
+    std::map<std::pair<std::string, std::string>, std::set<std::string>> known;
+    for (const auto& group : base.findings) {
+        known[{ group.where, group.what }].insert(group.items.begin(), group.items.end());
+    }
+    size_t dropped = 0;
+    for (auto& group : graph.findings) {
+        const auto found = known.find({ group.where, group.what });
+        if (found == known.end()) {
+            continue;
+        }
+        const size_t before = group.items.size();
+        group.items.erase(std::remove_if(group.items.begin(), group.items.end(),
+                                         [&](const std::string& item) { return found->second.count(item) != 0; }),
+                          group.items.end());
+        dropped += before - group.items.size();
+    }
+    graph.findings.erase(std::remove_if(graph.findings.begin(), graph.findings.end(),
+                                        [](const GraphFindings& group) { return group.items.empty(); }),
+                         graph.findings.end());
+    graph.notes = RenderGraphNotes(graph.findings);
+    return dropped;
 }
 
 } // namespace LinkSpanUnbound

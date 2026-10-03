@@ -50,14 +50,24 @@ ReferenceReport CollectReferences(const std::vector<LayerDocument>& layers, Tran
 
 // Grafo entre documentos (UNBOUND-025): índices que a cena, as salas e a colisão usam para ler listas uns dos outros,
 // e que o host não confere. Puro; não muda JSON nem XML.
+// Os itens de uma nota: onde (documento e lista), o que (com o limite usado) e cada campo=valor fora.
+struct GraphFindings {
+    std::string where;
+    std::string what;
+    std::vector<std::string> items;
+};
 struct SceneGraph {
-    std::vector<std::string> notes; // o jogo leria fora da lista, ou o valor não teria efeito
-    std::vector<std::string> gaps;  // o que não deu para conferir (dependência ausente ou recusada, exits de sala)
+    std::vector<GraphFindings> findings; // por item, para comparar com a base
+    std::vector<std::string> notes;      // uma por grupo de findings: o jogo leria fora da lista, ou sem efeito
+    std::vector<std::string> gaps;       // o que não deu para conferir (dependência ausente ou recusada, exits de sala)
 };
 // Relatório já mesclado de um caminho (sem __OTR__); nullptr é desconhecido, nunca lista vazia. Os ponteiros
 // precisam viver até o retorno.
 using GraphLookup = std::function<const ReferenceReport*(const std::string&)>;
 SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lookup);
+// Tira de `graph` cada item que a cena só da base também dá (mesmo lugar, mesmo limite, mesmo campo=valor) e refaz
+// as notas com o que sobra; devolve quantos itens saíram. Lacunas ficam: cobertura que faltou não vira herança.
+size_t DropInheritedFindings(SceneGraph& graph, const SceneGraph& base);
 // Só o que o grafo lê de uma sala (portas e se ela troca os exits) ou de uma colisão (quantas câmeras, room da
 // água, exit da superfície), para o cache do game.ready não reter atores, geometria e o resto. As chaves e a ordem
 // das listas ficam; o grafo sai igual. Cena volta inteira; paths, vazio.
