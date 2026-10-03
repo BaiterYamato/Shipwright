@@ -37,8 +37,10 @@ if (-not $layoutMatch.Success) {
 }
 $layout = $layoutMatch.Groups[1].Value.Substring(0, 8)
 
-$sourceRoot = [System.IO.Path]::GetFullPath('soh\native-sdk\unbound-core')
-$packageRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
+$sourceRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path 'soh\native-sdk\unbound-core'))
+# GetFullPath com caminho relativo usa o diretório do processo .NET, que o Set-Location não muda.
+$packageRoot = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) { [System.IO.Path]::GetFullPath($OutputDirectory) }
+               else { [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $OutputDirectory)) }
 $staging = Join-Path $packageRoot 'staging'
 if (Test-Path -LiteralPath $staging) {
     Remove-Item -LiteralPath $staging -Recurse -Force

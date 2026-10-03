@@ -125,11 +125,24 @@ function Get-ZipInventory {
         $layoutId = Get-FileLayoutFromName -Name ([System.IO.Path]::GetFileName($Path))
         $layoutSource = if ($layoutId) { 'filename' } else { $null }
         $hostRequired = $null
+        $hostFingerprints = @()
+        $hostSha256 = $null
         $metadataSource = $null
+        $fileName = [System.IO.Path]::GetFileName($Path)
         if ($manifest) {
             $toml = Get-TextZipEntry -Entry $manifest
             $id = Get-TomlString -Toml $toml -Name 'id'
             $packageVersion = Get-TomlString -Toml $toml -Name 'version'
+            # O manifesto de mod nativo é gerado no configure do CMake; um build velho chegou a sair com o nome
+            # da versão nova e o manifesto (versão e fingerprint) da anterior.
+            $nameVersion = [regex]::Match($fileName, '-(\d+\.\d+\.\d+)(?=-|\.[A-Za-z0-9]+$)')
+            if ($nameVersion.Success -and $packageVersion -and $nameVersion.Groups[1].Value -ne $packageVersion) {
+                throw "Versão no nome ($($nameVersion.Groups[1].Value)) difere do manifest.toml ($packageVersion): $fileName"
+            }
+            $fingerprintMatch = [regex]::Match($toml, '(?m)^\s*host_fingerprints\s*=\s*\[([^\]]*)\]')
+            if ($fingerprintMatch.Success) {
+                $hostFingerprints = @([regex]::Matches($fingerprintMatch.Groups[1].Value, '[0-9a-fA-F]{64}') | ForEach-Object { $_.Value.ToLowerInvariant() })
+            }
             $manifestLayout = Get-TomlString -Toml $toml -Name 'oot_layout_id'
             if (-not $manifestLayout) { $manifestLayout = Get-TomlString -Toml $toml -Name 'layout_id' }
             if ($manifestLayout) { $layoutId = $manifestLayout; $layoutSource = 'manifest.toml' }
@@ -143,7 +156,20 @@ function Get-ZipInventory {
             $layoutSource = 'linkspan-overlay.json'
             $hostRequired = (([string]$overlayJson.target.host) + ' ' + ([string]$overlayJson.target.hostVersion)).Trim()
             if ($overlayJson.target.hostBase) { $hostRequired += ' (' + [string]$overlayJson.target.hostBase + ')' }
+            $hostEntry = $archive.Entries | Where-Object { $_.FullName -eq 'soh.exe' } | Select-Object -First 1
+            if ($hostEntry) {
+                $hostStream = $hostEntry.Open()
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                try { $hostSha256 = ([BitConverter]::ToString($sha.ComputeHash($hostStream)) -replace '-', '').ToLowerInvariant() }
+                finally { $sha.Dispose(); $hostStream.Dispose() }
+            }
             $metadataSource = 'linkspan-overlay.json (overlay sem manifest.toml)'
+        }
+        elseif ([System.IO.Path]::GetExtension($Path) -ieq '.o2r') {
+            # Arquivo de recursos solto em mods/ (ex.: dados do Unbound): o VFS do host monta, sem manifesto.
+            $id = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+            $packageVersion = '-'
+            $metadataSource = 'arquivo de recursos .o2r (sem manifest.toml)'
         }
         else {
             throw "Pacote sem manifest.toml nem linkspan-overlay.json: $Path"
@@ -156,6 +182,8 @@ function Get-ZipInventory {
             layoutId = $layoutId
             layoutSource = $layoutSource
             hostRequired = $hostRequired
+            hostFingerprints = $hostFingerprints
+            hostSha256 = $hostSha256
             metadataSource = $metadataSource
             size = [Int64](Get-Item -LiteralPath $Path).Length
             sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -175,8 +203,14 @@ function Invoke-ProtectedScanner {
     $scannerArgs += @($scanner, '--max-file-bytes', [string]$MaxFileBytes, '--json-out', $JsonOut, '--text-out', $TextOut)
     foreach ($pattern in $AllowLarge) { $scannerArgs += @('--allow-large', $pattern) }
     $scannerArgs += $Paths
-    & $python.Source @scannerArgs
+    # O scanner manda o JSON no stdout e o resumo no stderr; os dois já ficam em arquivo. No PowerShell 5.1,
+    # stderr de executável com a saída redirecionada vira erro terminante sob ErrorActionPreference Stop.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $python.Source @scannerArgs 2>&1 | Out-Null }
+    finally { $ErrorActionPreference = $previousPreference }
     if ($LASTEXITCODE -ne 0) { throw "Scanner de conteúdo protegido recusou os artefatos; veja $TextOut" }
+    Write-Host (Get-Content -LiteralPath $TextOut -TotalCount 1)
 }
 
 function Invoke-ReleaseVerification {
@@ -256,9 +290,21 @@ try {
             }
         }
     }
+    # Mods com host_fingerprints só resolvem símbolos no soh.exe que fixaram: precisam citar o do overlay.
+    $overlayHosts = @($packages | Where-Object { $_.hostSha256 } | ForEach-Object { $_.hostSha256 })
+    if ($overlayHosts.Count -gt 0) {
+        foreach ($package in $packages) {
+            if (@($package.hostFingerprints).Count -eq 0) { continue }
+            $hit = @($package.hostFingerprints | Where-Object { $overlayHosts -contains $_ })
+            if ($hit.Count -eq 0) {
+                throw "host_fingerprints de $($package.file) não citam o soh.exe do overlay ($($overlayHosts -join ', '))"
+            }
+        }
+    }
     $inventory = [ordered]@{ schemaVersion = 1; releaseVersion = $Version; packages = $packages }
     Write-Utf8NoBom -Path (Join-Path $stage 'inventory.json') -Content (($inventory | ConvertTo-Json -Depth 10) + "`n")
-    $sumLines = @($packages | Sort-Object file | ForEach-Object { $_.sha256 + '  ' + $_.file })
+    # Sort-Object com nome de propriedade não enxerga a chave de um [ordered]; o bloco de script, sim.
+    $sumLines = @($packages | Sort-Object { $_.file } | ForEach-Object { $_.sha256 + '  ' + $_.file })
     Write-Utf8NoBom -Path (Join-Path $stage 'SHA256SUMS.txt') -Content (($sumLines -join "`n") + "`n")
 
     $md = @('# Link-Span OoT ' + $Version, '', '## Pacotes', '', '| Arquivo | ID | Versão | Layout | Host exigido | SHA-256 |', '|---|---|---|---|---|---|')
@@ -267,7 +313,7 @@ try {
         $requiredHost = if ($package.hostRequired) { $package.hostRequired } else { 'conforme manifest.toml / host compatível' }
         $md += '| `' + $package.file + '` | `' + $package.id + '` | ' + $package.version + ' | `' + $layout + '` | ' + $requiredHost + ' | `' + $package.sha256 + '` |'
     }
-    $md += @('', '## Instalação e rollback', '', '- Instale o overlay sobre Shipwright 9.2.3 fresco; execute uma vez para validar os assets locais.', '- Copie os mods independentes para `mods/` e reinicie.', '- Atualize com o jogo fechado, por rename atômico, preservando a versão anterior em `mods-disabled/backup/`.', '- O scanner `protected-content.txt` deve permanecer OK; nenhum ROM, archive derivado ou save é distribuído.')
+    $md += @('', '## Instalação e rollback', '', '- Instale o overlay sobre Shipwright 9.2.3 fresco; execute uma vez para validar os assets locais.', '- Copie os mods independentes para `mods/` e reinicie.', '- Atualize com o jogo fechado: tire a versão anterior de `mods/` (guarde a cópia para voltar) e copie a nova. O save preserva os blocos de mods ausentes.', '- Mod que derruba o boot é desativado no início seguinte (lista `mods/.shiplua-disabled`, sem apagar arquivo); apague a linha da lista para reativar.', '- O scanner `protected-content.txt` deve permanecer OK; nenhum ROM, archive derivado ou save é distribuído.')
     Write-Utf8NoBom -Path (Join-Path $stage 'RELEASE.md') -Content (($md -join "`n") + "`n")
     Move-Item -LiteralPath $stage -Destination $releaseDirectory
     [ordered]@{ release = $releaseDirectory; packages = $packages.Count; sha256Sums = 'SHA256SUMS.txt'; inventory = 'inventory.json' } | ConvertTo-Json

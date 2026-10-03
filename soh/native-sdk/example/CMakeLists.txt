@@ -28,7 +28,8 @@ if(NOT EXISTS "${HOST_EXECUTABLE}")
     message(FATAL_ERROR "Provide HOST_EXECUTABLE for the native icon-table binding")
 endif()
 file(SHA256 "${HOST_EXECUTABLE}" host_fingerprint)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HOST_EXECUTABLE}")
+# O manifesto gerado é escrito no configure: sem o manifest.toml como dependência, um bump de versão não chegava ao pacote.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HOST_EXECUTABLE}" manifest.toml)
 file(READ manifest.toml manifest_text)
 file(WRITE "${CMAKE_BINARY_DIR}/mod/manifest.toml" "${manifest_text}\nhost_fingerprints = [\"${host_fingerprint}\"]\n")
 # Texturas do mod no formato de recurso do libultraship; o provider monta a pasta no configure.
