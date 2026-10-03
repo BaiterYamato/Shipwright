@@ -459,7 +459,9 @@ def make_many(put, registry, field, field_room, field_collision, objects):
 
 
 # UNBOUND-021 (Prelude, prioridade 5 da matriz de limites): cenas só com recursos nossos.
-EDGE_LIMIT = 1048576   # BGCHECK_XYZ_ABSMAX: coordenada com |c| >= isso é posição inválida para a colisão
+# BGCHECK_XYZ_ABSMAX. O BgCheck só registra a posição como inválida (osSyncPrintf, desligado no build) e a colisão
+# continua; o que muda de fato é o EffectSs (poeira, faíscas, respingos), apagado com |c| > 1 048 576.
+EDGE_LIMIT = 1048576
 EDGE_SPAWN = 1048500   # 76 unidades antes do limite, em x e em z
 EDGE_FAR = 1048800     # o piso passa do limite
 EDGE_STRIP = 1048000   # a faixa do spawn vai daqui até EDGE_FAR
@@ -526,27 +528,28 @@ def quads_display_list(parts):
 def edge_collision(sx, sz):
     """collision.bin do canto (sx, sz) do mundo com exatamente EDGE_VERTICES vértices e EDGE_POLYS polígonos.
 
-    O enchimento (grade 91x89 em x de EDGE_NEAR a EDGE_STRIP, repetida até 32 767 polígonos, e 90 vértices sem uso)
-    ocupa os índices baixos; a faixa do spawn, de EDGE_STRIP a EDGE_FAR em x, usa só os vértices 8189 a 8192 e os
-    polígonos 32767 e 32768, e o chão sob o spawn é o polígono 32768 com o vértice 8192. Se algum índice fosse
-    estreitado (13 bits no vértice, s16 no polígono), o jogador não teria chão no spawn."""
+    O vértice 0 fica reservado; o enchimento (grade 91x89 em x de EDGE_NEAR a EDGE_STRIP, repetida até 32 767
+    polígonos, e 89 vértices sem uso) vem depois. A faixa do spawn, de EDGE_STRIP a EDGE_FAR em x, usa só os vértices
+    8189 a 8192 e os polígonos 32767 e 32768. O chão sob o spawn é o polígono 32768, com o vértice 8192 no vIA, o
+    índice que passa pela máscara de 13 bits do vanilla (COLPOLY_VTX_INDEX). Com a máscara, 8192 viraria o vértice 0,
+    que repete outro vértice do mesmo triângulo: o triângulo degenera e o spawn fica sem chão (conferido abaixo).
+    Com o índice de polígono em s16, o 32768 não seria alcançado."""
     fill_x = axis_range(sx, EDGE_NEAR, EDGE_STRIP)
     strip_x = axis_range(sx, EDGE_STRIP, EDGE_FAR)
     zs = axis_range(sz, EDGE_NEAR, EDGE_FAR)
     columns, rows = 91, 89
-    vertices = bytearray()
+    points = [None]  # vértice 0: cópia de um vértice do triângulo do spawn, definida mais abaixo
     for row in range(rows):
         for column in range(columns):
-            x = fill_x[0] + (fill_x[1] - fill_x[0]) * column // (columns - 1)
-            z = zs[0] + (zs[1] - zs[0]) * row // (rows - 1)
-            vertices += struct.pack("<iii", x, 0, z)
-    unused = EDGE_VERTICES - 4 - columns * rows
-    vertices += struct.pack("<iii", fill_x[0], 0, zs[0]) * unused
+            points.append((fill_x[0] + (fill_x[1] - fill_x[0]) * column // (columns - 1),
+                           zs[0] + (zs[1] - zs[0]) * row // (rows - 1)))
+    points += [(fill_x[0], zs[0])] * (EDGE_VERTICES - 4 - len(points))
     fill = []
     for row in range(rows - 1):
         for column in range(columns - 1):
-            a = row * columns + column
-            fill += quad_polys(a, a + columns, a + 1, a + columns + 1)
+            a = 1 + row * columns + column
+            fill.append((a, a + columns, a + 1))
+            fill.append((a + 1, a + columns, a + columns + 1))
     polys = [fill[i % len(fill)] for i in range(EDGE_POLYS - 2)]
     # O triângulo da faixa que fica sob o spawn é o último polígono, e o vértice só dele é o último vértice.
     corners = {"a": (strip_x[0], zs[0]), "b": (strip_x[0], zs[1]), "c": (strip_x[1], zs[0]), "d": (strip_x[1], zs[1])}
@@ -555,26 +558,36 @@ def edge_collision(sx, sz):
     def side(p, q, r):
         return (p[0] - r[0]) * (q[1] - r[1]) - (q[0] - r[0]) * (p[1] - r[1])
 
-    def strictly_inside(tri):
-        v1, v2, v3 = (corners[k] for k in tri)
+    def strictly_inside(v1, v2, v3):
         signs = (side(spawn, v1, v2), side(spawn, v2, v3), side(spawn, v3, v1))
         return all(s > 0 for s in signs) or all(s < 0 for s in signs)
 
-    spawn_tri, other_tri = ("abc", "cbd") if strictly_inside("abc") else ("cbd", "abc")
-    assert strictly_inside(spawn_tri)
+    spawn_tri, other_tri = ("abc", "cbd") if strictly_inside(*(corners[k] for k in "abc")) else ("cbd", "abc")
     order = [(set(other_tri) - set(spawn_tri)).pop(), "b", "c", (set(spawn_tri) - set(other_tri)).pop()]
     index = {key: EDGE_VERTICES - 4 + i for i, key in enumerate(order)}
-    for key in order:
-        vertices += struct.pack("<iii", corners[key][0], 0, corners[key][1])
-    for tri in (other_tri, spawn_tri):
-        polys.append(struct.pack("<HHIIIhhhhi", 0, 0, *(index[k] for k in tri), 0, 32767, 0, 0, 0))
-    assert len(vertices) == 12 * EDGE_VERTICES and len(polys) == EDGE_POLYS
-    return bytes(vertices) + b"".join(polys)
+    points += [corners[key] for key in order]
+    # Rotação cíclica (mantém o winding) que põe o 8192 no vIA.
+    last = [index[k] for k in spawn_tri]
+    turn = last.index(EDGE_VERTICES - 1)
+    last = last[turn:] + last[:turn]
+    points[0] = points[last[1]]
+    polys += [tuple(index[k] for k in other_tri), tuple(last)]
+
+    def floor_under_spawn(tris):
+        return [i for i, tri in enumerate(tris) if strictly_inside(*(points[v] for v in tri))]
+
+    assert len(points) == EDGE_VERTICES and len(polys) == EDGE_POLYS
+    assert floor_under_spawn(polys) == [EDGE_POLYS - 1]
+    # Mutação: a máscara de 13 bits do vanilla no vIA e no vIB tira o chão do spawn.
+    masked = [(a & 0x1FFF, b & 0x1FFF, c) for a, b, c in polys]
+    assert floor_under_spawn(masked) == []
+    vertices = b"".join(struct.pack("<iii", x, 0, z) for x, z in points)
+    return vertices + b"".join(struct.pack("<HHIIIhhhhi", 0, 0, a, b, c, 0, 32767, 0, 0, 0) for a, b, c in polys)
 
 
 def make_edge(put, registry, field, field_room, field_collision):
     """M01/M13/M14: piso no extremo do mundo, nos cantos (+x, -z) e (-x, +z). O spawn fica 76 unidades antes do
-    limite nos dois eixos, olhando para fora em x; o piso continua além do limite, onde a colisão deixa de valer."""
+    limite nos dois eixos, olhando para fora em x; o piso continua além do limite (a colisão vale até o fim dele)."""
     for name, pixel in LAB_TEXTURES.items():
         put(f"textures/linkspan_e/{name}", rgba16_texture(pixel))
     for name, sx, sz in (("edge_pos", 1, -1), ("edge_neg", -1, 1)):
@@ -587,7 +600,7 @@ def make_edge(put, registry, field, field_room, field_collision):
         limit_z = sz * EDGE_LIMIT
         put(f"{folder}/v_fill", floor_vertices(fill_x, zs, 31, 31))
         put(f"{folder}/v_strip", floor_vertices(strip_x, zs, 3, 31))
-        # Marcas do limite: faixa azul em x = ±1 048 576 e em z = ±1 048 576, onde a colisão acaba.
+        # Marcas do limite: faixa azul em x = ±1 048 576 e em z = ±1 048 576, onde os efeitos EffectSs somem.
         put(f"{folder}/v_limit_x", wall_vertices((limit_x, limit_x), zs, 40))
         put(f"{folder}/v_limit_z", wall_vertices(xs, (limit_z, limit_z), 40))
         put(f"{folder}/floor", quads_display_list([("grid", f"{folder}/v_fill"), ("red", f"{folder}/v_strip"),

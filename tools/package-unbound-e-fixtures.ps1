@@ -51,7 +51,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Fixture documents rejected by the Unbound chec
 [System.IO.File]::WriteAllText((Join-Path $staging 'manifest.toml'), @'
 id = "linkspan.unbound.e-fixtures"
 name = "Link-Span Unbound E Fixtures"
-version = "0.1.2"
+version = "0.1.3"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -68,7 +68,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'main.lua') -Destination (Join-Pat
 Copy-Item -LiteralPath $dll -Destination (Join-Path $staging 'provider\linkspan_unbound_e_fixtures.dll')
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$package = Join-Path $packageRoot "LinkSpan-Unbound-E-Fixtures-0.1.2-layout-$layout.shipmod"
+$package = Join-Path $packageRoot "LinkSpan-Unbound-E-Fixtures-0.1.3-layout-$layout.shipmod"
 if (Test-Path -LiteralPath $package) {
     Remove-Item -LiteralPath $package -Force
 }
