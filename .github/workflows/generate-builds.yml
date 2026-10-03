@@ -170,6 +170,8 @@ jobs:
       env:
         CC: gcc-12
         CXX: g++-12
+    - name: Test ShipLua core and OoT host
+      run: ctest --test-dir build-cmake --output-on-failure --timeout 180
     - name: Upload build
       uses: actions/upload-artifact@v7
       with:
@@ -235,6 +237,8 @@ jobs:
         (cd build-windows && cpack)
         cd ..
         mv _packages/*.zip _packages/soh-windows.zip
+    - name: Test ShipLua core and OoT host
+      run: ctest --test-dir build-windows -C Release --output-on-failure --timeout 180
     - name: Unzip package
       run: Expand-Archive -Path _packages/soh-windows.zip -DestinationPath soh-windows
     - name: Upload build

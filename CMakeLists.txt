@@ -402,6 +402,12 @@ if(SOH_TOOLS_ONLY)
     return()
 endif()
 
+# Expose the embedded ShipLua and OoT adapter tests from the build root. The
+# subprojects already declare their tests; without this, `ctest --test-dir build`
+# reports zero tests and CI can pass without executing any of them.
+enable_testing()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
 ################################################################################
 # Sub-projects
 ################################################################################
@@ -457,6 +463,14 @@ get_property(SHIPLUA_TARGETS DIRECTORY "${LINKSPAN_SDK_SOURCE_DIR}" PROPERTY BUI
 foreach(target IN LISTS SHIPLUA_TARGETS ITEMS miniz)
     get_target_property(target_type ${target} TYPE)
     if(target_type MATCHES "^(STATIC_LIBRARY|SHARED_LIBRARY|MODULE_LIBRARY|OBJECT_LIBRARY|EXECUTABLE)$")
+        target_compile_options(${target} PRIVATE "${SHIPLUA_MINIZ_PREFIX_OPTION}")
+    endif()
+endforeach()
+# The core tests that create ZIP fixtures call miniz directly. They must use
+# the same symbol prefix as the embedded library when built inside Shipwright.
+foreach(target IN ITEMS native_provider_tests manifest_discovery_tests
+                        package_extractor_tests mod_root_loader_tests)
+    if(TARGET ${target})
         target_compile_options(${target} PRIVATE "${SHIPLUA_MINIZ_PREFIX_OPTION}")
     endif()
 endforeach()
