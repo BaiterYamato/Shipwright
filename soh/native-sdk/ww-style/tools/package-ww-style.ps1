@@ -25,17 +25,7 @@ Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'provider\linkspan_ww
 $version = (Select-String -LiteralPath (Join-Path $source 'manifest.toml') -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 $shipmod = Join-Path $OutputDirectory "LinkSpan-WindWakerStyle-$version.shipmod"
 Remove-Item -LiteralPath $shipmod -Force -ErrorAction SilentlyContinue
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::Open($shipmod, [System.IO.Compression.ZipArchiveMode]::Create)
-try {
-    foreach ($file in Get-ChildItem -LiteralPath $stage -Recurse -File) {
-        $name = $file.FullName.Substring($stage.Length + 1).Replace('\', '/')
-        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-            $zip, $file.FullName, $name, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-    }
-} finally {
-    $zip.Dispose()
-}
+. (Join-Path $PSScriptRoot '..\..\..\..\tools\linkspan-zip.ps1')
+New-LinkSpanZip -Source $stage -Destination $shipmod
 Remove-Item -LiteralPath $stage -Recurse -Force
 Write-Output $shipmod

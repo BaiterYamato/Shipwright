@@ -35,14 +35,10 @@ function Write-Utf8NoBom([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
 }
 
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
+
 function New-DeterministicZip([string]$Source, [string]$Destination) {
-    if (Test-Path -LiteralPath $Destination) {
-        Remove-Item -LiteralPath $Destination -Force
-    }
-    $fixed = [datetime]::SpecifyKind([datetime]'2000-01-01T00:00:00', [DateTimeKind]::Utc)
-    Get-ChildItem -LiteralPath $Source -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = $fixed }
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $Source, $Destination, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
 $version = '0.3.16'

@@ -19,7 +19,6 @@ Copy-Item -LiteralPath (Join-Path $source 'main.lua') -Destination $stage
 Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'provider\linkspan_cel_render_demo.dll')
 $shipmod = Join-Path $OutputDirectory 'cel-render-demo.shipmod'
 Remove-Item -LiteralPath $shipmod -Force -ErrorAction SilentlyContinue
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $stage, $shipmod, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+. (Join-Path $PSScriptRoot '..\..\..\..\tools\linkspan-zip.ps1')
+New-LinkSpanZip -Source $stage -Destination $shipmod
 Write-Output $shipmod

@@ -25,38 +25,12 @@ if (Test-Path -LiteralPath $target) {
 }
 [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($target)) | Out-Null
 
-# No PowerShell 5.1, ZipFile.CreateFromDirectory grava entradas com '\'. As entradas são criadas uma a
-# uma com '/', com o manifest da raiz primeiro.
-Add-Type -AssemblyName System.IO.Compression
+# Entradas com '/', manifest da raiz primeiro, ordem ordinal e horário fixo (linkspan-zip.ps1).
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
+New-LinkSpanZip -Source $root -Destination $target
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$files = @(Get-ChildItem -LiteralPath $root -Recurse -File | Sort-Object @{
-        Expression = { $_.Name -ne 'manifest.toml' -or ($_.DirectoryName.TrimEnd('\') + '\') -ine $root }
-    }, FullName)
-$entryNames = @($files | ForEach-Object { $_.FullName.Substring($root.Length).Replace('\', '/') })
-
-$stream = [System.IO.File]::Open($target, [System.IO.FileMode]::CreateNew)
-try {
-    $archive = [System.IO.Compression.ZipArchive]::new($stream, [System.IO.Compression.ZipArchiveMode]::Create)
-    try {
-        for ($i = 0; $i -lt $files.Count; $i++) {
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                $archive,
-                $files[$i].FullName,
-                $entryNames[$i],
-                [System.IO.Compression.CompressionLevel]::Optimal
-            ) | Out-Null
-        }
-    }
-    finally {
-        $archive.Dispose()
-    }
-}
-catch {
-    $stream.Dispose()
-    Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
-    throw
-}
-$stream.Dispose()
+$read = [System.IO.Compression.ZipFile]::OpenRead($target)
+try { $entryNames = @($read.Entries | ForEach-Object { $_.FullName }) } finally { $read.Dispose() }
 
 [ordered]@{
     outputPath = $target

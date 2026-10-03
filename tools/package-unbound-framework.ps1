@@ -94,10 +94,8 @@ $package = Join-Path $packageRoot "LinkSpan-Unbound-Framework-$version-layout-$l
 if (Test-Path -LiteralPath $package) {
     Remove-Item -LiteralPath $package -Force
 }
-$fixed = [datetime]::SpecifyKind([datetime]'2000-01-01T00:00:00', [DateTimeKind]::Utc)
-Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = $fixed }
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $staging, $package, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
+New-LinkSpanZip -Source $staging -Destination $package
 & $validatorExe $package
 if ($LASTEXITCODE -ne 0) { throw 'Invalid Unbound framework package.' }
 
