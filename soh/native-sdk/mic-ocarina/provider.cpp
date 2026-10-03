@@ -16,7 +16,11 @@
 #include <shiplua/native/ship_native_abi.h>
 
 #include "oot_engine.h"
+#include "oot_layout_id.h"
 #include "oot_ocarina.h"
+#include "oot_resources.h"
+#include "remake_ui.h"
+#include "package_assets.h"
 
 namespace {
 
@@ -97,6 +101,7 @@ struct MeterHistory {
 };
 
 struct Capture {
+    enum class State { Idle, Opening, Capturing, Closing, Failed };
     std::array<float, kRingSize> ring{};
     std::atomic<std::uint32_t> ringWrite{ 0 };
     std::uint32_t ringRead = 0;
@@ -120,21 +125,27 @@ struct Capture {
     std::mutex meterMutex;
     MeterHistory meter{};
     SDL_AudioDeviceID device = 0;
+    SDL_AudioStream* conversion = nullptr;
     bool audioSubsystemReady = false;
+    std::atomic<State> state{ State::Idle };
     std::thread worker;
     std::atomic<bool> workerRunning{ false };
+    std::atomic<bool> resetRequested{ false };
     char lastError[192]{};
 
     static void AudioCallback(void* user, Uint8* stream, int length) {
         auto& capture = *static_cast<Capture*>(user);
-        const float* samples = reinterpret_cast<const float*>(stream);
-        const int count = length / static_cast<int>(sizeof(float));
-        const std::uint32_t write = capture.ringWrite.load(std::memory_order_relaxed);
-        for (int i = 0; i < count; ++i) {
-            capture.ring[(write + static_cast<std::uint32_t>(i)) & (kRingSize - 1)] = samples[i];
+        if (SDL_AudioStreamPut(capture.conversion, stream, length) < 0) return;
+        float samples[2048];
+        int bytes = 0;
+        while ((bytes = SDL_AudioStreamGet(capture.conversion, samples, sizeof(samples))) > 0) {
+            const int count = bytes / static_cast<int>(sizeof(float));
+            const auto write = capture.ringWrite.load(std::memory_order_relaxed);
+            for (int i = 0; i < count; ++i)
+                capture.ring[(write + static_cast<std::uint32_t>(i)) & (kRingSize - 1)] = samples[i];
+            capture.ringWrite.store(write + static_cast<std::uint32_t>(count), std::memory_order_release);
+            capture.capturedSamples.fetch_add(static_cast<std::uint32_t>(count), std::memory_order_relaxed);
         }
-        capture.ringWrite.store(write + static_cast<std::uint32_t>(count), std::memory_order_release);
-        capture.capturedSamples.fetch_add(static_cast<std::uint32_t>(count), std::memory_order_relaxed);
     }
 
     float Rms(const float* window) const {
@@ -350,6 +361,16 @@ struct Capture {
     void Run() {
         float window[kWindowSize]{};
         while (workerRunning.load(std::memory_order_acquire)) {
+            if (resetRequested.load(std::memory_order_acquire)) {
+                tracker = {};
+                ResetMeter();
+                ringRead = ringWrite.load(std::memory_order_acquire);
+                matchedSong.store(-1, std::memory_order_relaxed);
+                telemetryPhraseCount.store(0, std::memory_order_relaxed);
+                telemetryTone.store(0, std::memory_order_relaxed);
+                matchSequence.fetch_add(1, std::memory_order_release);
+                resetRequested.store(false, std::memory_order_release);
+            }
             const std::uint32_t write = ringWrite.load(std::memory_order_acquire);
             if (write - ringRead < kWindowSize) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(4));
@@ -366,32 +387,43 @@ struct Capture {
         }
     }
 
-    bool Open() {
+    bool OpenDevice() {
         lastError[0] = '\0';
         if (device != 0) {
             return true;
         }
         if (!audioSubsystemReady) {
-            if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
-                std::snprintf(lastError, sizeof(lastError), "SDL audio indisponível: %s", SDL_GetError());
+            const int initialized = SDL_InitSubSystem(SDL_INIT_AUDIO);
+            if (initialized != 0) {
+                std::snprintf(lastError, sizeof(lastError), "Audio capture unavailable: %s", SDL_GetError());
                 return false;
             }
             audioSubsystemReady = true;
         }
         SDL_AudioSpec wanted{};
-        wanted.freq = kSampleRate;
-        wanted.format = AUDIO_F32SYS;
-        wanted.channels = 1;
+        // Negotiate the device format; resample into the detector's original
+        // 22.05 kHz mono stream rather than forcing a low-rate float format.
+        wanted.freq = 48000;
+        wanted.format = AUDIO_S16SYS;
+        wanted.channels = 2;
         wanted.samples = kHopSize;
         wanted.callback = AudioCallback;
         wanted.userdata = this;
         SDL_AudioSpec obtained{};
-        device = SDL_OpenAudioDevice(nullptr, 1, &wanted, &obtained, 0);
+        device = SDL_OpenAudioDevice(nullptr, 1, &wanted, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
         if (device == 0) {
-            std::snprintf(lastError, sizeof(lastError), "não foi possível abrir o microfone: %s", SDL_GetError());
+            std::snprintf(lastError, sizeof(lastError), "Could not open microphone: %s", SDL_GetError());
+            return false;
+        }
+        conversion = SDL_NewAudioStream(obtained.format, obtained.channels, obtained.freq,
+                                        AUDIO_F32SYS, 1, kSampleRate);
+        if (!conversion) {
+            std::snprintf(lastError, sizeof(lastError), "Audio capture unavailable: %s", SDL_GetError());
+            SDL_CloseAudioDevice(device); device = 0;
             return false;
         }
         tracker = {};
+        resetRequested.store(false, std::memory_order_relaxed);
         ResetMeter();
         matchedSong.store(-1, std::memory_order_relaxed);
         capturedSamples.store(0, std::memory_order_relaxed);
@@ -402,25 +434,59 @@ struct Capture {
         telemetryTone.store(0, std::memory_order_relaxed);
         telemetryPhraseCount.store(0, std::memory_order_relaxed);
         ringRead = ringWrite.load(std::memory_order_acquire);
-        workerRunning.store(true, std::memory_order_release);
-        worker = std::thread([this] { Run(); });
         SDL_PauseAudioDevice(device, 0);
         return true;
     }
 
+    bool IsCapturing() const { return state.load(std::memory_order_acquire) == State::Capturing; }
+
+    // The game never waits for device enumeration or driver initialization.
+    // The same worker owns open, pitch analysis and device teardown.
+    template<class OpenDeviceFn> bool StartWith(OpenDeviceFn openDevice) {
+        const auto current = state.load(std::memory_order_acquire);
+        if (current == State::Capturing || current == State::Opening) return true;
+        if (current == State::Closing) return false;
+        if (worker.joinable()) worker.join(); // Idle/Failed is published only after cleanup.
+        workerRunning.store(true, std::memory_order_release);
+        state.store(State::Opening, std::memory_order_release);
+        try {
+            worker = std::thread([this, openDevice] {
+                const bool opened = openDevice();
+                auto expected = State::Opening;
+                if (opened && state.compare_exchange_strong(expected, State::Capturing,
+                                                            std::memory_order_acq_rel)) Run();
+                CloseDevice();
+                const bool failed = !opened && workerRunning.load(std::memory_order_acquire);
+                state.store(failed ? State::Failed : State::Idle, std::memory_order_release);
+            });
+        } catch (...) {
+            workerRunning.store(false, std::memory_order_release);
+            std::snprintf(lastError, sizeof(lastError), "Audio capture unavailable: could not start capture worker");
+            state.store(State::Failed, std::memory_order_release);
+            return false;
+        }
+        return true;
+    }
+    bool Open() { return StartWith([this] { return OpenDevice(); }); }
+
     void Close() {
+        auto current = state.load(std::memory_order_acquire);
+        while (current == State::Opening || current == State::Capturing) {
+            if (state.compare_exchange_weak(current, State::Closing, std::memory_order_acq_rel)) break;
+        }
+        workerRunning.store(false, std::memory_order_release);
+    }
+
+    void CloseDevice() {
         if (device == 0) {
             return;
         }
         SDL_PauseAudioDevice(device, 1);
         SDL_LockAudioDevice(device);
         SDL_UnlockAudioDevice(device);
-        workerRunning.store(false, std::memory_order_release);
-        if (worker.joinable()) {
-            worker.join();
-        }
         SDL_CloseAudioDevice(device);
         device = 0;
+        SDL_FreeAudioStream(conversion); conversion = nullptr;
         tracker = {};
         ResetMeter();
         matchedSong.store(-1, std::memory_order_relaxed);
@@ -438,6 +504,7 @@ struct Capture {
     // código já descarregado.
     void Shutdown() {
         Close();
+        if (worker.joinable()) worker.join();
         if (audioSubsystemReady) {
             SDL_QuitSubSystem(SDL_INIT_AUDIO);
             audioSubsystemReady = false;
@@ -446,13 +513,126 @@ struct Capture {
 };
 
 struct Mod {
-    const ShipOotMovementV1* movement = nullptr;
+    const ShipOotMovementV2* movement = nullptr;
     const ShipOotOcarinaV1* ocarina = nullptr;
+    const ShipOotEngineV1* engine = nullptr;
+    const ShipOotResourcesV2* resources = nullptr;
+    std::uint64_t assetsArchive = 0;
+    std::uint32_t* nativeInputButtons = nullptr;
+    std::uint8_t* nativeNoteBuffer = nullptr;
+    void (*originalMessageDraw)(PlayState*, Gfx**) = nullptr;
+    void (*originalReadInput)() = nullptr;
+    void (*originalButtonMapping)(bool) = nullptr;
+    bool remakeHud = true;
+    bool remakeControls = true;
+    bool songbook = false;
+    bool practice = false;
+    bool minusWasDown = false;
+    bool bookWasDown = false;
+    bool startRequested = false;
+    bool resetRequested = false;
+    bool practiceRequested = false;
     Capture capture;
     bool startWasDown = false;
     bool bWasDown = false;
+    std::uint32_t messagePhysicalPrevious = 0;
     std::uint32_t lastMatchSequence = 0;
 };
+
+Mod* activeMod = nullptr;
+
+bool UiVisible(const Mod& mod, const PlayState* play) {
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    return play && save && play->pauseCtx.state == 0 && MicRemake::Visible(save->gameMode, play->msgCtx.msgMode);
+}
+
+bool RemakeGamepad(const Mod& mod) {
+    return mod.remakeControls && mod.movement->has_gamepad(0) &&
+        UiVisible(mod, static_cast<const PlayState*>(mod.engine->get_play_state()));
+}
+
+void RemakeMessageDraw(PlayState* play, Gfx** displayList) {
+    Mod& mod = *activeMod;
+    Gfx* start = *displayList;
+    const bool replacing = mod.remakeHud && UiVisible(mod, play);
+    // Message_DrawMain cancels from PlayState input, independently of the
+    // remapped audio input. Y is bound to gameplay B by DMR; it must remain a
+    // note here too. Scope the B override to music logic so normal gameplay
+    // mappings and dialogue input are restored immediately afterwards.
+    auto& input = play->state.input[0];
+    const auto originalCurrentB = input.cur.button & BTN_B;
+    const auto originalPressedB = input.press.button & BTN_B;
+    bool remappedCancel = false;
+    if (RemakeGamepad(mod)) {
+        const auto physical = mod.movement->get_gamepad_buttons(0);
+        if (physical || mod.messagePhysicalPrevious) {
+            const bool b = (physical & PhysicalButton(kNintendoB)) != 0;
+            const bool previousB = (mod.messagePhysicalPrevious & PhysicalButton(kNintendoB)) != 0;
+            input.cur.button = (input.cur.button & ~BTN_B) | (b ? BTN_B : 0);
+            input.press.button = (input.press.button & ~BTN_B) | (b && !previousB ? BTN_B : 0);
+            remappedCancel = true;
+        }
+        mod.messagePhysicalPrevious = physical;
+    } else {
+        mod.messagePhysicalPrevious = 0;
+    }
+    // Message_DrawMain also advances songs, timers and note history. Execute it
+    // normally, then discard ONLY its display commands for ocarina screens.
+    mod.originalMessageDraw(play, displayList);
+    if (remappedCancel) {
+        input.cur.button = (input.cur.button & ~BTN_B) | originalCurrentB;
+        input.press.button = (input.press.button & ~BTN_B) | originalPressedB;
+    }
+    if (replacing && UiVisible(mod, play)) *displayList = start;
+}
+
+void RemakeReadInput() {
+    Mod& mod = *activeMod;
+    mod.originalReadInput();
+    if (RemakeGamepad(mod)) {
+        const auto physical = mod.movement->get_gamepad_buttons(0);
+        const auto notes = mod.songbook ? 0 : MicRemake::MapNotes(physical);
+        // Shield/target and stick mappings are gameplay controls, not note modifiers.
+        // Stock Nintendo A is commonly mapped to N64 B. Do not carry that
+        // cancel bit into the new A note; derive controller actions physically.
+        const auto keyboardActions = physical == 0 ? (*mod.nativeInputButtons & (BTN_B | BTN_START)) : 0;
+        *mod.nativeInputButtons = keyboardActions | notes |
+            ((physical & PhysicalButton(kNintendoB)) ? BTN_B : 0) |
+            ((physical & PhysicalButton(kControllerStart)) ? BTN_START : 0);
+    } else if (mod.songbook) {
+        *mod.nativeInputButtons &= ~MicRemake::NoteMask;
+    }
+}
+
+void RemakeButtonMapping(bool customControls) {
+    Mod& mod = *activeMod;
+    mod.originalButtonMapping(RemakeGamepad(mod) ? false : customControls);
+}
+
+bool InstallUi(const ShipNativeRuntime* runtime, Mod& mod) {
+    if (runtime->abi_minor < 3 || !runtime->resolve_symbol || !runtime->install_patch) return false;
+    uintptr_t input = 0, notes = 0;
+    if (runtime->resolve_symbol(runtime->context, "sOcarinaInputButtonCur", &input) != SHIP_NATIVE_OK ||
+        runtime->resolve_symbol(runtime->context, "sOcarinaButtonIndexBuf", &notes) != SHIP_NATIVE_OK ||
+        !input || !notes) return false;
+    mod.nativeInputButtons = reinterpret_cast<std::uint32_t*>(input);
+    mod.nativeNoteBuffer = reinterpret_cast<std::uint8_t*>(notes);
+    struct Patch { const char* name; void* replacement; void** original; };
+    const Patch patches[] = {
+        { "Message_DrawMain", reinterpret_cast<void*>(RemakeMessageDraw), reinterpret_cast<void**>(&mod.originalMessageDraw) },
+        { "AudioOcarina_ReadControllerInput", reinterpret_cast<void*>(RemakeReadInput), reinterpret_cast<void**>(&mod.originalReadInput) },
+        { "AudioOcarina_SetCustomButtonMapping", reinterpret_cast<void*>(RemakeButtonMapping), reinterpret_cast<void**>(&mod.originalButtonMapping) },
+    };
+    activeMod = &mod;
+    for (const Patch& patch : patches) {
+        uintptr_t target = 0;
+        std::uint64_t handle = 0;
+        if (runtime->resolve_symbol(runtime->context, patch.name, &target) != SHIP_NATIVE_OK || !target ||
+            runtime->install_patch(runtime->context, target, patch.replacement, patch.original, &handle) != SHIP_NATIVE_OK)
+            return false;
+    }
+    return true;
+}
 
 ShipNativeStatus Write(ShipNativeWriteFn write, void* writer, const char* text) {
     return write(writer, text, static_cast<std::uint32_t>(std::strlen(text)));
@@ -507,7 +687,83 @@ ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, std::uint32_t 
     if (!user || length != 0 || !write) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    return Write(write, writer, "pronto; ocarina + Start ativa microfone; B encerra");
+    return Write(write, writer, "ready; L/R/Y/X/A notes; ZL songbook; + microphone/reset; - practice; B cancel");
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL UiState(void* user, const char*, std::uint32_t length, ShipNativeWriteFn write, void* writer) {
+    if (!user || length || !write) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    const auto* play = static_cast<const PlayState*>(mod.engine->get_play_state());
+    if (!UiVisible(mod, play) || !mod.remakeHud) return Write(write, writer, "visible=0");
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    const bool gamepad = mod.movement->has_gamepad(0) != 0;
+    const auto held = gamepad && mod.remakeControls ? MicRemake::MapNotes(mod.movement->get_gamepad_buttons(0))
+                                                  : mod.movement->get_input_current(0);
+    const auto known = MicRemake::LearnedSongs(save->inventory.questItems, save->scarecrowSpawnSongSet != 0);
+    char response[256];
+    int used = std::snprintf(response, sizeof(response),
+        "visible=1;gamepad=%d;remap=%d;mode=%d;action=%d;song=%u;book=%d;practice=%d;held=%d;known=%u;notes=",
+        gamepad, mod.remakeControls, play->msgCtx.msgMode, play->msgCtx.ocarinaAction,
+        unsigned(play->msgCtx.lastPlayedSong), mod.songbook, mod.practice, MicRemake::HeldNote(held), unsigned(known));
+    for (int i = 0; i < 8 && mod.nativeNoteBuffer[i] < 5; ++i)
+        used += std::snprintf(response + used, sizeof(response) - used, i ? ",%u" : "%u", unsigned(mod.nativeNoteBuffer[i]));
+    return Write(write, writer, response);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Songbook(void* user, const char*, std::uint32_t length, ShipNativeWriteFn write, void* writer) {
+    if (!user || length || !write) return SHIP_NATIVE_INVALID_ARGUMENT;
+    const auto& mod = *static_cast<Mod*>(user);
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!save) return Write(write, writer, "");
+    const auto known = MicRemake::LearnedSongs(save->inventory.questItems, save->scarecrowSpawnSongSet != 0);
+    char response[512]{};
+    int used = 0;
+    for (int song = 0; song < 13; ++song) {
+        if (!(known & (1u << song))) continue;
+        std::uint8_t notes[8]{};
+        std::uint32_t count = 0;
+        if (mod.ocarina->get_song_pattern(song, notes, 8, &count) != SHIP_NATIVE_OK || count > 8) continue;
+        used += std::snprintf(response + used, sizeof(response) - used, "%d:", song);
+        for (std::uint32_t i = 0; i < count; ++i)
+            used += std::snprintf(response + used, sizeof(response) - used, i ? ",%u" : "%u", unsigned(notes[i]));
+        used += std::snprintf(response + used, sizeof(response) - used, ";");
+    }
+    return Write(write, writer, response);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, std::uint32_t length,
+                                          ShipNativeWriteFn write, void* writer) {
+    if (!user || !payload || length != 3 || payload[1] != ',' ||
+        (payload[0] != '0' && payload[0] != '1') || (payload[2] != '0' && payload[2] != '1'))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    mod.remakeHud = payload[0] == '1'; mod.remakeControls = payload[2] == '1';
+    if (!mod.remakeHud) mod.songbook = false;
+    return Write(write, writer, "configured");
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Control(void* user, const char* payload, std::uint32_t length,
+                                        ShipNativeWriteFn write, void* writer) {
+    if (!user || !payload || length > 16) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    const std::string command(payload, length);
+    if (command == "open") {
+        const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+        if (!save || save->gameMode != GAMEMODE_NORMAL) return Write(write, writer, "Open a save file first.");
+        const auto item = save->inventory.items[SLOT_OCARINA];
+        if (item != ITEM_OCARINA_FAIRY && item != ITEM_OCARINA_TIME)
+            return Write(write, writer, "You need an ocarina in your inventory.");
+        if (!mod.movement->player_use_item_shortcut || mod.movement->player_use_item_shortcut(item) != SHIP_NATIVE_OK)
+            return Write(write, writer, "The ocarina cannot be used right now.");
+        return Write(write, writer, "Ocarina opened.");
+    }
+    if (!mod.ocarina->is_active()) return Write(write, writer, "Open the ocarina first.");
+    if (command == "audio") mod.startRequested = true;
+    else if (command == "reset") mod.resetRequested = true;
+    else if (command == "practice") mod.practiceRequested = true;
+    else if (command == "book") mod.songbook = !mod.songbook;
+    else return SHIP_NATIVE_INVALID_ARGUMENT;
+    return Write(write, writer, "requested");
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, std::uint32_t length, ShipNativeWriteFn write,
@@ -525,43 +781,63 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, std::uint32_t 
                                   : (virtualButtons & BTN_B) != 0;
     const bool startPressed = startDown && !mod.startWasDown;
     const bool bPressed = bDown && !mod.bWasDown;
+    const bool minusDown = hasGamepad ? (physical & MicRemake::Physical(4)) != 0 : (virtualButtons & BTN_L) != 0;
+    const bool bookDown = hasGamepad ? mod.movement->get_gamepad_axis(0, 4) > 8000 : (virtualButtons & BTN_Z) != 0;
+    const bool bookPressed = bookDown && !mod.bookWasDown;
+    const bool practicePressed = (minusDown && !mod.minusWasDown) || mod.practiceRequested;
+    const bool audioPressed = startPressed || mod.startRequested;
+    const bool resetPressed = mod.resetRequested || (audioPressed && mod.capture.IsCapturing());
+    mod.minusWasDown = minusDown; mod.bookWasDown = bookDown;
+    mod.startRequested = mod.resetRequested = mod.practiceRequested = false;
     mod.startWasDown = startDown;
     mod.bWasDown = bDown;
 
     if (!mod.ocarina->is_active()) {
-        const bool wasCapturing = mod.capture.device != 0;
+        const bool wasCapturing = mod.capture.IsCapturing();
         mod.capture.Close();
-        return Write(write, writer, wasCapturing ? "audio-input-off: ocarina guardada" : "aguardando ocarina");
+        mod.songbook = false;
+        return Write(write, writer, wasCapturing ? "audio-input-off: ocarina closed" : "waiting for ocarina");
     }
 
-    if (mod.capture.device == 0) {
-        if (!startPressed) {
-            return Write(write, writer, "ocarina ativa; aperte Start para usar o microfone");
-        }
-        if (!LoadPatterns(mod)) {
-            return Write(write, writer, "erro: padrões de música do OoT indisponíveis");
-        }
-        mod.capture.availableFlags.store(mod.ocarina->get_available_song_flags(), std::memory_order_relaxed);
-        if (!mod.capture.Open()) {
-            return Write(write, writer, mod.capture.lastError);
-        }
-        mod.lastMatchSequence = mod.capture.matchSequence.load(std::memory_order_acquire);
-        return Write(write, writer, "audio-input-on");
-    }
+    const auto* play = static_cast<const PlayState*>(mod.engine->get_play_state());
+    const bool canBrowse = play && MicRemake::CanBrowse(play->msgCtx.msgMode, play->msgCtx.ocarinaAction);
+    if (!canBrowse || !mod.remakeHud) mod.songbook = false;
+    else if (bookPressed) mod.songbook = !mod.songbook;
+    if (practicePressed && mod.capture.IsCapturing()) mod.practice = !mod.practice;
+    if (resetPressed && mod.capture.IsCapturing()) mod.capture.resetRequested.store(true, std::memory_order_release);
 
     if (bPressed) {
         mod.capture.Close();
         return Write(write, writer, "audio-input-off: B");
     }
+    const auto captureState = mod.capture.state.load(std::memory_order_acquire);
+    if (captureState == Capture::State::Opening) return Write(write, writer, "audio-input-opening");
+    if (captureState == Capture::State::Closing) return Write(write, writer, "audio-input-closing");
+    if (captureState != Capture::State::Capturing) {
+        if (!audioPressed) {
+            if (captureState == Capture::State::Failed) return Write(write, writer, mod.capture.lastError);
+            return Write(write, writer, "ocarina ready; + / Start opens audio input");
+        }
+        if (!LoadPatterns(mod)) {
+            return Write(write, writer, "Song patterns unavailable");
+        }
+        mod.capture.availableFlags.store(mod.ocarina->get_available_song_flags(), std::memory_order_relaxed);
+        mod.lastMatchSequence = mod.capture.matchSequence.load(std::memory_order_acquire);
+        if (!mod.capture.Open()) {
+            return Write(write, writer, mod.capture.lastError);
+        }
+        mod.songbook = false;
+        return Write(write, writer, "audio-input-opening");
+    }
 
     mod.capture.availableFlags.store(mod.ocarina->get_available_song_flags(), std::memory_order_relaxed);
     const std::uint32_t sequence = mod.capture.matchSequence.load(std::memory_order_acquire);
-    if (sequence != mod.lastMatchSequence) {
+    if (!mod.capture.resetRequested.load(std::memory_order_acquire) && sequence != mod.lastMatchSequence) {
         mod.lastMatchSequence = sequence;
         const int song = mod.capture.matchedSong.load(std::memory_order_relaxed);
-        if (song >= 0 && mod.ocarina->submit_song(static_cast<std::uint8_t>(song)) == SHIP_NATIVE_OK) {
+        if (!mod.practice && song >= 0 && mod.ocarina->submit_song(static_cast<std::uint8_t>(song)) == SHIP_NATIVE_OK) {
             char response[64];
-            std::snprintf(response, sizeof(response), "música reconhecida: %d", song);
+            std::snprintf(response, sizeof(response), "song recognized: %d", song);
             mod.capture.Close();
             return Write(write, writer, response);
         }
@@ -589,11 +865,18 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     *instance = nullptr;
-    const auto* movement = static_cast<const ShipOotMovementV1*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION, sizeof(ShipOotMovementV1)));
+    const auto* movement = static_cast<const ShipOotMovementV2*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2, sizeof(ShipOotMovementV2)));
     const auto* ocarina = static_cast<const ShipOotOcarinaV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_OCARINA_SERVICE, LINKSPAN_OOT_OCARINA_VERSION, sizeof(ShipOotOcarinaV1)));
-    if (!movement || !ocarina || !movement->get_input_current || !movement->has_gamepad ||
+    const auto* engine = static_cast<const ShipOotEngineV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(ShipOotEngineV1)));
+    const auto* resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2, sizeof(ShipOotResourcesV2)));
+    if (!engine || !resources || !movement || !ocarina || !movement->get_gamepad_axis ||
+        !engine->layout_id || engine->play_state_size != sizeof(PlayState) || engine->save_context_size != sizeof(SaveContext) ||
+        !engine->get_play_state || !engine->get_save_context || !resources->mount_archive || !resources->unmount_archive ||
+        std::strcmp(engine->layout_id, LINKSPAN_OOT_LAYOUT_ID) != 0 || !movement->get_input_current || !movement->has_gamepad ||
         !movement->get_gamepad_buttons || !ocarina->is_active || !ocarina->get_available_song_flags ||
         !ocarina->get_song_count || !ocarina->get_song_pattern || !ocarina->submit_song) {
         return SHIP_NATIVE_UNSUPPORTED;
@@ -604,11 +887,18 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     mod->movement = movement;
     mod->ocarina = ocarina;
+    mod->engine = engine;
+    mod->resources = resources;
     *instance = mod;
+    const auto assets = MicAssetsDirectory();
+    if (assets.empty() || resources->mount_archive(assets.c_str(), &mod->assetsArchive) != SHIP_NATIVE_OK ||
+        !InstallUi(runtime, *mod)) return SHIP_NATIVE_UNSUPPORTED;
     if (runtime->register_function(runtime->context, "status", Status, mod) != SHIP_NATIVE_OK ||
-        runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
-        delete mod;
-        *instance = nullptr;
+        runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "ui_state", UiState, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "songbook", Songbook, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "configure", Configure, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "control", Control, mod) != SHIP_NATIVE_OK) {
         return SHIP_NATIVE_FAILURE;
     }
     return SHIP_NATIVE_OK;
@@ -618,7 +908,9 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* mod = static_cast<Mod*>(instance);
     if (mod) {
         mod->capture.Shutdown();
+        if (mod->assetsArchive) mod->resources->unmount_archive(mod->assetsArchive);
     }
+    if (activeMod == mod) activeMod = nullptr;
     delete mod;
 }
 

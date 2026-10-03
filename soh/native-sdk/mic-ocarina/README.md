@@ -1,45 +1,55 @@
-# Mic Ocarina 0.1.4
+# Mic Ocarina 0.2.0
 
-Mod nativo para o Link-Span/Shipwright OoT.
+Mod independente para Link-Span / Shipwright OoT. Inclui a interface da ocarina inspirada no remake e a entrada por microfone.
 
-## Requisitos
+## Interface
 
-- Host com o serviço `linkspan.oot.ocarina` v1 (overlay Link-Span MovementV2-OcarinaV1 ou posterior). Em hosts
-  anteriores o mod não carrega.
-- Microfone padrão do Windows liberado para aplicativos de área de trabalho
-  (Configurações > Privacidade > Microfone).
+- Partitura em pergaminho, notas com os botões do controle e confirmação da música reconhecida.
+- Songbook com as músicas aprendidas no save e suas sequências.
+- Microfone: indicador de captura, nível de volume real, nota/frequência e histórico de afinação.
+- A abertura do dispositivo ocorre em segundo plano, mantendo o jogo responsivo. O áudio é convertido do formato do microfone para o formato original do detector.
+- Os textos exibidos no jogo estão em inglês.
+- As opções ficam em Mods > Mic Ocarina > Ocarina & Audio.
+- Open ocarina abre o instrumento que Link já possui; o painel informa o estado da captura e eventuais recusas.
 
-## Uso
+## Controles Nintendo
 
-1. Coloque o ZIP inteiro na pasta `mods`.
-2. Entre normalmente no modo de tocar ocarina.
-3. Aperte **Start/+** para iniciar a captura do microfone padrão.
-4. O aviso aparece no alto da tela e diferencia **SEM SINAL**, **ENTRADA OK**, **SOM RECEBIDO** e a nota detectada,
-   por exemplo **NOTA A4 440 Hz**. A barra responde ao volume real capturado.
-5. Cantarole a sequência relativa de uma música aceita naquele momento. Abaixo do aviso, o rolo de notas mostra cada
-   nota cantarolada como uma barra, na altura relativa à primeira nota que marcou o tom. A barra fica branca enquanto
-   a nota ainda não conta e verde quando entra na frase comparada com as músicas.
-6. Aperte **B** para encerrar o modo de áudio. Guardar a ocarina também encerra e libera o dispositivo.
+Abra a ocarina normalmente, inclusive pelo D-pad esquerdo do Dynamic Movement Remake.
 
-Cantarole a música inteira sem parar: cerca de um segundo de silêncio encerra a frase, e o rolo recomeça vazio. Uma
-nota longa partida por vibrato ou respiração continua contando como uma nota só.
+| Botão | Ação |
+| --- | --- |
+| L / R / A / Y / X | Notas D4 / F4 / A4 / B4 / D5 |
+| ZL | Abrir/fechar songbook durante execução livre |
+| + | Iniciar microfone; com captura ativa, reiniciar a frase |
+| - | Alternar prática de áudio, sem ativar efeitos de músicas |
+| B | Cancelar e guardar a ocarina |
 
-A detecção vai de 80 Hz, abaixo da voz mais grave, a 2400 Hz, acima do C7: dá para cantarolar ou assobiar em qualquer
-tom, e a nota aparece na oitava certa.
+A sequência de Zelda's Lullaby passa a ser **Y X A Y X A**. Os botões são lidos por posição física SDL; os glifos usam os nomes Nintendo das referências.
 
-Em controles Nintendo, o mod lê os botões físicos **+** e **B**. Sem gamepad, usa os botões virtuais Start e B.
-A música reconhecida chega ao jogo como se tivesse sido tocada, com o efeito normal dela; músicas que o jogo não
-aceita naquele momento são ignoradas.
+Na versão 0.2.1, o Y também é filtrado na lógica de cancelamento da tela, além da leitura de notas do áudio. Assim, o binding de ataque B usado pelo movimento dinâmico não fecha o instrumento ao tocar Y. B físico continua cancelando, e os bindings normais são restaurados ao sair dessa lógica.
 
-## Com o Dynamic Movement Remake
+Sem gamepad, permanecem os controles virtuais do jogo: A/C para notas, Z para songbook, Start para microfone/reset e L para prática. O HUD apresenta esses comandos. O menu também oferece ações para iniciar captura, praticar e reiniciar.
 
-Os dois mods rodam juntos. No perfil do Dynamic Movement, **B** também é o B do N64 e guarda a ocarina. Como ele
-tira os botões C do analógico direito, tocar notas pelos botões fica limitado a A, D-pad direita (C-Up) e ZR (o C
-selecionado com R); o microfone não depende disso.
+## Compatibilidade
+
+- Pacote de extensão nativa ABI 1.3, limitado ao executável cujo SHA-256 está no manifest gerado pelo CMake.
+- Compilar com OotNativeSdk.cmake e HOST_EXECUTABLE do mesmo host.
+- Recursos próprios são montados pelo provider, sem substituir texturas globais de outros mods.
+- Dynamic Movement Remake 0.2.13 cede R/X e seus atalhos à ocarina; mantém a correção da continuidade da câmera.
+- O renderizador nativo continua executando reconhecimento, timers, diálogos e efeitos de músicas. Somente os comandos de desenho da tela musical são substituídos.
+- Mods de mapeamento da ocarina de terceiros podem conflitar com a leitura dos mesmos botões. A opção de controles do remake pode ser desativada.
+- Microfone padrão do Windows habilitado para aplicativos de desktop. A captura só começa após ação explícita; B ou guardar a ocarina libera o dispositivo.
+
+## Reconhecimento por áudio
+
+O detector existente continua usando YIN, filtro de ruído, contorno relativo e união de notas partidas por vibrato/respiração. Alcance de 80 a 2400 Hz. Cantarole ou assobie a sequência; aproximadamente um segundo de silêncio encerra a frase. Só músicas aceitas pelo jogo naquele momento são submetidas.
+
+Reset limpa a frase e o histórico na thread de captura. Practice mantém o feedback, consumindo resultados sem enviar músicas ao jogo.
+
+## Validação
+
+CTest inclui o detector original, conversão real de áudio estéreo de 48 kHz, abertura lenta/cancelamento e regressões para mapeamento, preservação de estado do renderizador, diálogos, teclado, songbook, prática, reset e limite de desenho do HUD. A disponibilidade do dispositivo e a resposta de um controle físico exigem playtest com o hardware.
 
 ## Origem
 
-O código deriva do protótipo `MicOcarina.cpp` fornecido em `MicOcarina.rar`: detector YIN, filtro de ruído, comparação
-por contorno relativo, junção de notas partidas e rolo de notas foram portados. O rolo, que no protótipo era uma
-janela ImGui, é desenhado pelo HUD do Link-Span (`hud.draw`). Dependências diretas de 2Ship/MM e as músicas exclusivas
-do MM foram removidas. O reconhecimento consulta as músicas e flags do OoT pelo serviço `linkspan.oot.ocarina` v1.
+O detector foi portado do protótipo MicOcarina.cpp fornecido anteriormente. A interface utiliza arte própria gerada por tools/generate-ocarina-hud-assets.ps1; as imagens de referência não são distribuídas no pacote.
