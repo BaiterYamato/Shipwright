@@ -14,6 +14,7 @@
 #include "soh/Enhancements/randomizer/logic.h"
 #include "soh/Enhancements/randomizer/randomizer.h"
 #include "soh/Enhancements/randomizer/randomizer_check_tracker.h"
+#include "soh/native/OotNativeItems.h"
 
 #define Path _Path
 #define PATH_HACK
@@ -382,6 +383,25 @@ static bool GiveItemHandler(std::shared_ptr<Ship::Console> Console, const std::v
         ERROR_MESSAGE("[SOH] Unexpected arguments passed");
         return 1;
     }
+    if (args[1] == "linkspan") {
+        if (gPlayState == nullptr || gSaveContext.gameMode != GAMEMODE_NORMAL) {
+            ERROR_MESSAGE("Carregue um arquivo antes de receber um item Link-Span");
+            return 1;
+        }
+        const auto& items = ShipLuaHost::GetOotNativeItemsServiceV2();
+        uint8_t item = 0;
+        if (items.find_item(args[2].c_str(), &item) != SHIP_NATIVE_OK) {
+            ERROR_MESSAGE("Item Link-Span nao encontrado; use o nome completo registrado");
+            return 1;
+        }
+        if (items.give_item(item) != SHIP_NATIVE_OK) {
+            ERROR_MESSAGE("Nao foi possivel receber o item agora; deixe Link livre e tente novamente");
+            return 1;
+        }
+        INFO_MESSAGE("Item Link-Span solicitado");
+        return 0;
+    }
+
     GetItemEntry getItemEntry = GET_ITEM_NONE;
 
     if (args[1].compare("vanilla") == 0) {
@@ -389,7 +409,7 @@ static bool GiveItemHandler(std::shared_ptr<Ship::Console> Console, const std::v
     } else if (args[1].compare("randomizer") == 0) {
         getItemEntry = Rando::StaticData::RetrieveItem((RandomizerGet)std::stoi(args[2])).GetGIEntry_Copy();
     } else {
-        ERROR_MESSAGE("[SOH] Invalid argument passed, must be 'vanilla' or 'randomizer'");
+        ERROR_MESSAGE("[SOH] Use 'vanilla', 'randomizer' ou 'linkspan'");
         return 1;
     }
 
@@ -1594,10 +1614,10 @@ void DebugConsole_Init(void) {
                              } });
 
     CMD_REGISTER("give_item", { GiveItemHandler,
-                                "Gives an item to the player as if it was given from an actor",
+                                "Entrega ao Link um item vanilla, do randomizer ou registrado por um mod Link-Span",
                                 {
-                                    { "vanilla|randomizer", Ship::ArgumentType::TEXT },
-                                    { "giveItemID", Ship::ArgumentType::NUMBER },
+                                    { "vanilla|randomizer|linkspan", Ship::ArgumentType::TEXT },
+                                    { "giveItemID|registeredName", Ship::ArgumentType::TEXT },
                                 } });
 
     CMD_REGISTER("item", { ItemHandler,

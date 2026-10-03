@@ -47,6 +47,9 @@ class SohMenu : public Ship::Menu {
     static void UpdateLanguageMap(std::map<int32_t, const char*>& languageMap);
 
   private:
+    void SyncModSidebars();
+    std::vector<std::pair<std::string, std::string>> mModSidebarEntries;
+    std::vector<std::string> mModSidebarLabels;
     char mGitCommitHashTruncated[8];
     bool mIsTaggedVersion;
     bool mMenuElementsInitialized = false;

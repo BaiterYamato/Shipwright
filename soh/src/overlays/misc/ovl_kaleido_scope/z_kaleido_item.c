@@ -18,6 +18,37 @@ static s16 sEquipState = 0;
 static s16 sEquipAnimTimer = 0;
 static s16 sEquipMoveTimer = 10;
 
+// Dynamic Movement: A escolhe um dos mesmos três botões C usados pelo menu R.
+extern u8 LinkSpan_DynamicMovementInventoryMenuEnabled(void);
+
+static void LinkSpan_DrawEquipChoice(PlayState* play, u8 choice) {
+    OPEN_DISPS(play->state.gfxCtx);
+    Gfx_SetupDL_42Opa(play->state.gfxCtx);
+    gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+    for (u8 button = 1; button <= 3; ++button) {
+        const s16 x = 112 + (button - 1) * 32;
+        const s16 y = 176;
+        const u8 selected = button == choice;
+        const u8 item = gSaveContext.equips.buttonItems[button];
+        gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, selected ? 255 : 180, selected ? 230 : 180,
+                        selected ? 70 : 180, 255);
+        gDPLoadTextureBlock(POLY_OPA_DISP++, gEquippedItemOutlineTex, G_IM_FMT_IA, G_IM_SIZ_8b, 32, 32, 0,
+                               G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP,
+                               G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+        gSPTextureRectangle(POLY_OPA_DISP++, (x - 4) << 2, (y - 4) << 2, (x + 28) << 2, (y + 28) << 2,
+                            G_TX_RENDERTILE, 0, 0, 1024, 1024);
+        if (item != ITEM_NONE && gItemIcons[item] != NULL) {
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, 255);
+            gDPLoadTextureBlock(POLY_OPA_DISP++, gItemIcons[item], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                                G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP,
+                                G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+            gSPTextureRectangle(POLY_OPA_DISP++, x << 2, y << 2, (x + 24) << 2, (y + 24) << 2,
+                                G_TX_RENDERTILE, 0, 0, 1365, 1365);
+        }
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
 static s16 sAmmoVtxOffset[] = {
     0, 2, 4, 6, 99, 99, 8, 99, 10, 99, 99, 99, 99, 99, 12,
 };
@@ -396,6 +427,12 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     static s16 magicArrowEffectsR[] = { 255, 100, 255 };
     static s16 magicArrowEffectsG[] = { 0, 100, 255 };
     static s16 magicArrowEffectsB[] = { 0, 255, 100 };
+    static u8 sLinkSpanEquipMenuOpen = 0;
+    static u8 sLinkSpanEquipChoice = 1;
+    static s8 sLinkSpanEquipStickLatch = 0;
+    static u16 sLinkSpanEquipItem = ITEM_NONE;
+    static u16 sLinkSpanEquipSlot = 0;
+    static u16 sLinkSpanEquipVisualSlot = 0;
     Input* input = &play->state.input[0];
     PauseContext* pauseCtx = &play->pauseCtx;
     u16 i;
@@ -414,6 +451,41 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     Gfx_SetupDL_42Opa(play->state.gfxCtx);
 
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+
+    if (!LinkSpan_DynamicMovementInventoryMenuEnabled() || pauseCtx->state != 6 ||
+        pauseCtx->pageIndex != PAUSE_ITEM || pauseCtx->unk_1E4 != 0 || pauseCtx->cursorSpecialPos != 0 ||
+        (sLinkSpanEquipMenuOpen && pauseCtx->cursorSlot[PAUSE_ITEM] != sLinkSpanEquipVisualSlot)) {
+        sLinkSpanEquipMenuOpen = 0;
+    }
+    if (sLinkSpanEquipMenuOpen) {
+        const s8 stick = input->rel.right_stick_x;
+        if (stick > -20 && stick < 20) sLinkSpanEquipStickLatch = 0;
+        if ((stick >= 45 && sLinkSpanEquipStickLatch == 0) || CHECK_BTN_ALL(input->press.button, BTN_DRIGHT)) {
+            if (sLinkSpanEquipChoice < 3) ++sLinkSpanEquipChoice;
+            sLinkSpanEquipStickLatch = 1;
+        } else if ((stick <= -45 && sLinkSpanEquipStickLatch == 0) ||
+                   CHECK_BTN_ALL(input->press.button, BTN_DLEFT)) {
+            if (sLinkSpanEquipChoice > 1) --sLinkSpanEquipChoice;
+            sLinkSpanEquipStickLatch = -1;
+        }
+        if (CHECK_BTN_ALL(input->press.button, BTN_B)) {
+            sLinkSpanEquipMenuOpen = 0;
+        } else if (CHECK_BTN_ALL(input->press.button, BTN_A)) {
+            const u16 selectedButton = sLinkSpanEquipChoice == 1 ? BTN_CLEFT :
+                                       sLinkSpanEquipChoice == 2 ? BTN_CDOWN : BTN_CRIGHT;
+            if (GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, sLinkSpanEquipSlot,
+                                      sLinkSpanEquipItem)) {
+                input->press.button |= selectedButton;
+                KaleidoScope_SetupItemEquip(play, sLinkSpanEquipItem, sLinkSpanEquipSlot,
+                                            pauseCtx->itemVtx[sLinkSpanEquipVisualSlot * 4].v.ob[0] * 10,
+                                            pauseCtx->itemVtx[sLinkSpanEquipVisualSlot * 4].v.ob[1] * 10);
+                input->press.button &= ~selectedButton;
+            }
+            sLinkSpanEquipMenuOpen = 0;
+        }
+        input->press.button &= ~(BTN_A | BTN_B | BTN_DLEFT | BTN_DRIGHT);
+        pauseCtx->stickRelX = pauseCtx->stickRelY = 0;
+    }
 
     pauseCtx->cursorColorSet = 0;
     pauseCtx->nameColorSet = 0;
@@ -669,7 +741,19 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
                 KaleidoScope_SetCursorVtx(pauseCtx, index, pauseCtx->itemVtx);
 
                 if ((pauseCtx->debugState == 0) && (pauseCtx->state == 6) && (pauseCtx->unk_1E4 == 0)) {
-                    KaleidoScope_HandleItemCycles(play);
+                    if (LinkSpan_DynamicMovementInventoryMenuEnabled() && !sLinkSpanEquipMenuOpen &&
+                        CHECK_BTN_ALL(input->press.button, BTN_A) && CHECK_AGE_REQ_SLOT(cursorSlot) &&
+                        cursorItem != ITEM_NONE && cursorItem != ITEM_SOLD_OUT) {
+                        sLinkSpanEquipMenuOpen = 1;
+                        sLinkSpanEquipChoice = 1;
+                        sLinkSpanEquipStickLatch = 0;
+                        sLinkSpanEquipItem = cursorItem;
+                        sLinkSpanEquipSlot = cursorSlot;
+                        sLinkSpanEquipVisualSlot = cursorSlot;
+                        input->press.button &= ~BTN_A;
+                    } else if (!sLinkSpanEquipMenuOpen) {
+                        KaleidoScope_HandleItemCycles(play);
+                    }
                     u16 buttonsToCheck = BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT;
                     if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) &&
                         (!CVarGetInteger(CVAR_SETTING("DPadOnPause"), 0) ||
@@ -779,6 +863,10 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 
     if (pauseCtx->cursorSpecialPos == 0) {
         KaleidoScope_DrawCursor(play, PAUSE_ITEM);
+    }
+
+    if (sLinkSpanEquipMenuOpen) {
+        LinkSpan_DrawEquipChoice(play, sLinkSpanEquipChoice);
     }
 
     gDPPipeSync(POLY_OPA_DISP++);

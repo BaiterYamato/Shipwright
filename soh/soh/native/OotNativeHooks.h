@@ -11,6 +11,8 @@
 namespace ShipLuaHost {
 struct OotHookPoints {
     uint64_t playUpdate = 0;
+    uint64_t actorInit = 0;
+    uint64_t playDrawEnd = 0;
     uint64_t actorUpdate = 0;
     uint64_t actorDraw = 0;
     uint64_t saveLoaded = 0;

@@ -37,6 +37,10 @@
  *   `capacity`). Os atores nascem na ordem final. Um TRANSFORM que falha precisa
  *   deixar `entries` intacto: o host só restaura os campos do payload. */
 #define LINKSPAN_OOT_HOOK_PLAY_UPDATE "oot.play.update"
+#define LINKSPAN_OOT_HOOK_ACTOR_INIT "oot.actor.init"
+#define LINKSPAN_OOT_HOOK_PLAY_DRAW_END "oot.play.draw_end"
+/* OBSERVE somente: ator depois de init completo, inclusive carga tardia de
+ * objeto; draw_end depois do desenho normal da cena, no escopo de render. */
 #define LINKSPAN_OOT_HOOK_ACTOR_UPDATE "oot.actor.update"
 #define LINKSPAN_OOT_HOOK_ACTOR_DRAW "oot.actor.draw"
 #define LINKSPAN_OOT_HOOK_SAVE_LOADED "oot.save.loaded"

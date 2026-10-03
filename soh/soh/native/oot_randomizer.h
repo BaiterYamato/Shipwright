@@ -5,6 +5,7 @@
 
 #define LINKSPAN_OOT_RANDOMIZER_SERVICE "linkspan.oot.randomizer"
 #define LINKSPAN_OOT_RANDOMIZER_VERSION 1u
+#define LINKSPAN_OOT_RANDOMIZER_VERSION_2 2u
 /* Itens de mod distintos que cabem numa seed (faixa RG_LINKSPAN_ITEM_* do randomizer). */
 #define LINKSPAN_OOT_RANDOMIZER_MAX_ITEMS 64u
 /* Cópias de um item no pool. */
@@ -36,5 +37,29 @@ typedef struct ShipOotRandomizerV1 {
     uint32_t(SHIP_NATIVE_CALL* seed_item_count)(void);
     ShipNativeStatus(SHIP_NATIVE_CALL* seed_item_name)(uint32_t index, char* name, uint32_t capacity);
 } ShipOotRandomizerV1;
+
+/* Consulta somente leitura da seed em uso. IDs são RandomizerGet do SDK OoT
+ * deste host; não são IDs runtime de linkspan.oot.items. Não entrega itens nem
+ * altera checks. UNSUPPORTED fora de um save randomizer; FAILURE sem resultado.
+ * Strings UTF-8 copiadas, terminadas em NUL, sem ponteiros retidos pelo mod. */
+typedef struct ShipOotRandomizerItemInfoV2 {
+    uint32_t size;
+    uint32_t item;
+    char name[128];
+} ShipOotRandomizerItemInfoV2;
+typedef struct ShipOotRandomizerHintV2 {
+    uint32_t size;
+    uint32_t item;
+    uint32_t check;
+    char item_name[128];
+    char area_name[128];
+    char description[128];
+} ShipOotRandomizerHintV2;
+typedef struct ShipOotRandomizerV2 {
+    uint32_t size;
+    uint32_t(SHIP_NATIVE_CALL* item_count)(void);
+    ShipNativeStatus(SHIP_NATIVE_CALL* item_info)(uint32_t item, ShipOotRandomizerItemInfoV2* info);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_uncollected)(uint32_t item, ShipOotRandomizerHintV2* hint);
+} ShipOotRandomizerV2;
 
 #endif

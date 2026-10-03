@@ -19,6 +19,7 @@ struct RandoState {
     // Chave: id runtime do item no momento da oferta; o nome é o que vale para a seed.
     std::map<uint8_t, OotRandoOffer> offers;
     std::vector<std::string> seedItems;
+    OotRandoQueryBackend query;
 };
 
 RandoState& State() {
@@ -87,6 +88,19 @@ ShipNativeStatus SHIP_NATIVE_CALL SeedItemName(uint32_t index, char* name, uint3
 const ShipOotRandomizerV1 randomizerV1{ sizeof(ShipOotRandomizerV1), AddItem, RemoveItem, SeedItemCount,
                                         SeedItemName };
 
+uint32_t SHIP_NATIVE_CALL ItemCount() {
+    return OnOwnerThread() && State().query.itemCount ? State().query.itemCount() : 0;
+}
+ShipNativeStatus SHIP_NATIVE_CALL ItemInfo(uint32_t item, ShipOotRandomizerItemInfoV2* info) {
+    if (!OnOwnerThread() || !info || info->size < sizeof(*info)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    return State().query.itemInfo ? State().query.itemInfo(item, info) : SHIP_NATIVE_UNSUPPORTED;
+}
+ShipNativeStatus SHIP_NATIVE_CALL FindUncollected(uint32_t item, ShipOotRandomizerHintV2* hint) {
+    if (!OnOwnerThread() || !hint || hint->size < sizeof(*hint)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    return State().query.findUncollected ? State().query.findUncollected(item, hint) : SHIP_NATIVE_UNSUPPORTED;
+}
+const ShipOotRandomizerV2 randomizerV2{sizeof(randomizerV2), ItemCount, ItemInfo, FindUncollected};
+
 } // namespace
 
 void InitializeOotNativeRando(std::thread::id ownerThread) {
@@ -102,6 +116,8 @@ void ResetOotNativeRando() {
 const ShipOotRandomizerV1& GetOotNativeRandomizerService() {
     return randomizerV1;
 }
+const ShipOotRandomizerV2& GetOotNativeRandomizerServiceV2() { return randomizerV2; }
+void BindOotRandoQueryBackend(const OotRandoQueryBackend& backend) { State().query = backend; }
 
 std::vector<OotRandoOffer> GetOotRandoOffers() {
     std::vector<OotRandoOffer> result;

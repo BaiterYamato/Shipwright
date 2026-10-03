@@ -6,6 +6,7 @@
 
 #define LINKSPAN_OOT_REGISTRY_SERVICE "linkspan.oot.registry"
 #define LINKSPAN_OOT_REGISTRY_VERSION 1u
+#define LINKSPAN_OOT_REGISTRY_VERSION_2 2u
 #define LINKSPAN_OOT_REGISTRY_AUTO_ID INT32_MIN
 #define LINKSPAN_OOT_REGISTRY_MAX_NAME 255u
 #define LINKSPAN_OOT_REGISTRY_MAX_SPACES 64u
@@ -41,5 +42,33 @@ typedef struct ShipOotRegistryV1 {
     ShipNativeStatus(SHIP_NATIVE_CALL* list_entries)(uint64_t space_handle, ShipOotRegistryEntryFn callback,
                                                      void* user);
 } ShipOotRegistryV1;
+
+/* Prefixo compatível com V1. Entradas V2 têm dono explícito (id do mod);
+ * o host remove entradas e espaços desse dono no unload, inclusive após
+ * falha de inicialização do provider. Nomes/IDs duplicados são recusados. */
+typedef struct ShipOotRegistryV2 {
+    uint32_t size;
+    ShipNativeStatus(SHIP_NATIVE_CALL* create_space)(const char*, int32_t, int32_t, uint32_t, uint64_t*);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_space)(const char*, uint64_t*);
+    ShipNativeStatus(SHIP_NATIVE_CALL* destroy_space)(uint64_t);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_entry)(uint64_t, const char*, int32_t,
+                                                       const uint8_t*, uint32_t, uint64_t*, int32_t*);
+    ShipNativeStatus(SHIP_NATIVE_CALL* unregister_entry)(uint64_t);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_entry_by_name)(uint64_t, const char*, uint64_t*, int32_t*);
+    ShipNativeStatus(SHIP_NATIVE_CALL* find_entry_by_id)(uint64_t, int32_t, uint64_t*);
+    ShipNativeStatus(SHIP_NATIVE_CALL* read_entry)(uint64_t, char*, uint32_t, uint32_t*,
+                                                   uint8_t*, uint32_t, uint32_t*, int32_t*);
+    ShipNativeStatus(SHIP_NATIVE_CALL* list_entries)(uint64_t, ShipOotRegistryEntryFn, void*);
+    ShipNativeStatus(SHIP_NATIVE_CALL* create_space_owned)(const char* owner, const char* name,
+                                                            int32_t first_id, int32_t last_id,
+                                                            uint32_t stride, uint64_t* space_handle);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_entry_owned)(const char* owner, uint64_t space_handle,
+                                                              const char* name, int32_t requested_id,
+                                                              const uint8_t* payload, uint32_t payload_size,
+                                                              uint64_t* entry_handle, int32_t* assigned_id);
+    /* Copia owner sem terminador; chamada com output=NULL/capacity=0 consulta tamanho. */
+    ShipNativeStatus(SHIP_NATIVE_CALL* read_entry_owner)(uint64_t entry_handle, char* output,
+                                                          uint32_t capacity, uint32_t* size);
+} ShipOotRegistryV2;
 
 #endif

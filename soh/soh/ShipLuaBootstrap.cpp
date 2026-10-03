@@ -43,6 +43,7 @@
 #endif
 
 #include <spdlog/spdlog.h>
+#include <nlohmann/json.hpp>
 
 #include <cstring>
 
@@ -741,9 +742,12 @@ ShipLua::Result<void> RegisterHostCapability(const std::string& id, const std::s
     return gCapabilityRegistry->Register(id, std::move(offer));
 }
 
+ShipLua::Result<bool> ApplyPlayerSpeedMultiplier(double requested);
+
 ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     ShipLua::LuaApiHostContext context;
     context.gameId = "oot";
+    context.resourceExists = [](const std::string& path) { return NativeHasResourceFile(path.c_str()) != 0; };
     context.hostVersion = GetHostVersion();
     context.capabilities = { "oot.player.jump",         "oot.spawn_dog",      "oot.player.bunny_hood",
                              "oot.player.mask",         "player.speed",       "player.fields",
@@ -758,6 +762,7 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     context.capabilityRegistry = gCapabilityRegistry;
     context.actors = gActorProvider;
     context.timers = gTimers;
+    context.setSpeedMultiplier = ApplyPlayerSpeedMultiplier;
     context.capabilities.push_back("core.timers");
     auto registered = RegisterHostCapability("oot.player.jump", "Apply a validated jump impulse to OoT Link.");
     if (!registered.isOk()) {
@@ -960,12 +965,10 @@ float gSpeedPreviousValue = 1.0f;
 int gSpeedPreviousToggleMode = 0;
 u8 gSpeedPreviousToggleState = 0;
 
-int LuaSetSpeedMultiplier(lua_State* state) {
-    const double requested = luaL_checknumber(state, 1);
+ShipLua::Result<bool> ApplyPlayerSpeedMultiplier(double requested) {
     if (!std::isfinite(requested) || requested < 0.1 || requested > 5.0) {
         SPDLOG_WARN("ShipLua set_speed_multiplier: fator fora da faixa 0.1–5.0");
-        lua_pushboolean(state, 0);
-        return 1;
+        return ShipLua::Result<bool>::ok(false);
     }
 
     const bool restore = std::fabs(requested - 1.0) < 0.0001;
@@ -997,8 +1000,7 @@ int LuaSetSpeedMultiplier(lua_State* state) {
     // CVar. Sem esta chamada, mudar o valor programaticamente não liga nada.
     ShipInit::Init(CVAR_CHEAT("SpeedModifier.Value"));
 
-    lua_pushboolean(state, 1);
-    return 1;
+    return ShipLua::Result<bool>::ok(true);
 }
 
 // ---------------------------------------------------------------------------
@@ -6117,16 +6119,13 @@ void InstallOotApi(lua_State* state) {
 
     lua_setfield(state, shipTable, "oot");
 
-    // Primitiva comum aos dois jogos: ship.player.set_speed_multiplier.
-    // Precisa ficar ANTES do pop final — depois dele o índice shipTable já
-    // não é válido.
+    // A API comum registra set_speed_multiplier no núcleo antes do entrypoint.
+    // O host acrescenta somente as operações específicas de campos do OoT.
     lua_getfield(state, shipTable, "player");
     if (!lua_istable(state, -1)) {
         lua_pop(state, 1);
         lua_newtable(state);
     }
-    lua_pushcfunction(state, LuaSetSpeedMultiplier);
-    lua_setfield(state, -2, "set_speed_multiplier");
     lua_pushcfunction(state, LuaPlayerGet);
     lua_setfield(state, -2, "get");
     lua_pushcfunction(state, LuaPlayerSet);
@@ -6360,12 +6359,29 @@ void MountCrossWorldArchives() {
 }
 
 // PASSO 1 — assets próprios de mod.
-// Todo archive (.o2r/.otr) encontrado na pasta de mods vira endereçável sob
-// "mod/<nome>/", sem colidir com os assets do jogo. Aceita tanto um archive
-// solto (mods/rito_mask.o2r) quanto a convenção de pasta
-// (mods/rito-mask/assets/*.o2r). É o que permite a um mod trazer conteúdo
-// NOVO, em vez de apenas remixar o que já existe nos dois jogos.
+std::vector<std::filesystem::path> gPendingUnboundArchives;
+
+bool IsUnboundLayerArchive(const std::filesystem::path& path) {
+    const auto archive = std::make_shared<Ship::O2rArchive>(path.generic_string());
+    archive->Load();
+    if (!archive->IsLoaded() || !archive->HasFile("unbound.json")) {
+        return false;
+    }
+    const auto file = archive->LoadFile("unbound.json");
+    if (!file || !file->IsLoaded || !file->Buffer || file->Buffer->size() > 64 * 1024) {
+        return false;
+    }
+    const auto& bytes = *file->Buffer;
+    const auto manifest = nlohmann::json::parse(bytes.begin(), bytes.end(), nullptr, false);
+    return manifest.is_object() && manifest.contains("format") && manifest["format"] == "unbound" &&
+           manifest.contains("formatVersion") && manifest["formatVersion"] == 2;
+}
+
+// Archives de assets comuns ficam sob "mod/<nome>/", sem colidir com o jogo.
+// Camadas Unbound v2 precisam preservar os caminhos originais para que cenas,
+// colisões e entradas sejam mescladas; elas são montadas após o provider.
 void MountModAssetArchives() {
+    gPendingUnboundArchives.clear();
     Ship::Context* shipContext = Ship::Context::GetRawInstance();
     if (shipContext == nullptr || shipContext->GetResourceManager() == nullptr) {
         return;
@@ -6404,7 +6420,15 @@ void MountModAssetArchives() {
     }
 
     std::size_t mounted = 0;
+    std::sort(archives.begin(), archives.end());
     for (const std::filesystem::path& archivePath : archives) {
+        // A base Unbound é convertida no Init do provider. Só depois dele uma
+        // camada Unbound pode entrar na raiz: ela precisa mesclar cenas e exits
+        // por caminho original antes do game.ready, sem contaminar a conversão.
+        if (archivePath.extension() == ".o2r" && IsUnboundLayerArchive(archivePath)) {
+            gPendingUnboundArchives.push_back(archivePath);
+            continue;
+        }
         const std::string id = archivePath.stem().string();
         const auto modArchive =
             std::make_shared<MmCrossWorldArchive>(archivePath.string(), archiveManager.get(), "mod/" + id + "/");
@@ -6449,7 +6473,19 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     for (const auto& [modId, reason] : loaded.value->rejected) {
         SPDLOG_WARN("ShipLua rejeitou o mod '{}': {}", modId, reason);
     }
+    for (const auto& archivePath : gPendingUnboundArchives) {
+        uint64_t handle = 0;
+        const auto status = NativeMountResourceArchive(archivePath.string().c_str(), &handle);
+        if (status == SHIP_NATIVE_OK) {
+            SPDLOG_INFO("ShipLua montou camada Unbound '{}' na raiz do VFS", archivePath.string());
+        } else {
+            SPDLOG_WARN("ShipLua não conseguiu montar camada Unbound '{}' (status {})", archivePath.string(),
+                        static_cast<int>(status));
+        }
+    }
+    gPendingUnboundArchives.clear();
     SPDLOG_INFO("ShipLua carregou {} mod(s) de '{}'", loaded.value->loadedIds.size(), modsRoot.string());
+    if (gMenuRegistry != nullptr) gMenuRegistry->SetLoadedMods(loaded.value->loadedIds);
 
     for (const std::string& modId : loaded.value->loadedIds) {
         ShipLua::LuaRuntime* runtime = gModHost->GetRuntime(modId);

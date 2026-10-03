@@ -3,6 +3,7 @@
 #include "vt.h"
 
 #include <string.h>
+extern void LinkSpan_PlayDrawEnd(PlayState* play);
 
 #include "soh/Enhancements/gameconsole.h"
 #include "soh/frame_interpolation.h"
@@ -1670,6 +1671,7 @@ void Play_Draw(PlayState* play) {
         // Draw Enhancements that need to be placed in the world. This happens before the PostWorldDraw
         // so that they aren't drawn when the pause menu is up (e.g. collision viewer, actor name tags)
         GameInteractor_ExecuteOnPlayDrawEnd();
+        LinkSpan_PlayDrawEnd(play);
 
     Play_Draw_DrawOverlayElements:
         if ((HREG(80) != 10) || (HREG(89) != 0)) {

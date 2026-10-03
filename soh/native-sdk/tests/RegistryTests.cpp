@@ -138,6 +138,40 @@ int main() {
     worker.join();
     Check(otherThreadStatus == SHIP_NATIVE_INVALID_ARGUMENT, "thread externa deve ser recusada");
 
+    const auto& owned = ShipLuaHost::GetOotNativeRegistryServiceV2();
+    Check(owned.size == sizeof(ShipOotRegistryV2), "tabela V2 deve declarar tamanho completo");
+    uint64_t equipment = 0;
+    Check(owned.create_space_owned("core.equipment", "custom/equipment", 1024, 1030, 1,
+                                   &equipment) == SHIP_NATIVE_OK, "coremod cria espaço com dono");
+    uint64_t sword = 0;
+    int32_t swordId = 0;
+    Check(owned.register_entry_owned("mod.sword", equipment, "custom/sword", LINKSPAN_OOT_REGISTRY_AUTO_ID,
+                                     nullptr, 0, &sword, &swordId) == SHIP_NATIVE_OK && swordId == 1024,
+          "mod registra equipamento com dono");
+    uint64_t conflict = 0;
+    int32_t conflictId = 0;
+    Check(owned.register_entry_owned("mod.other", equipment, "custom/sword", LINKSPAN_OOT_REGISTRY_AUTO_ID,
+                                     nullptr, 0, &conflict, &conflictId) == SHIP_NATIVE_INVALID_ARGUMENT &&
+              !conflict, "chave duplicada deve falhar antes de registrar entrada parcial");
+    uint32_t ownerSize = 0;
+    Check(owned.read_entry_owner(sword, nullptr, 0, &ownerSize) == SHIP_NATIVE_OK &&
+              ownerSize == std::strlen("mod.sword"), "dono pode ser consultado para diagnóstico");
+    std::array<char, 32> ownerName{};
+    Check(owned.read_entry_owner(sword, ownerName.data(), ownerName.size(), &ownerSize) == SHIP_NATIVE_OK &&
+              std::string(ownerName.data(), ownerSize) == "mod.sword", "nome do dono deve ser íntegro");
+    ShipLuaHost::ReleaseOotRegistryOwner("mod.other");
+    Check(owned.find_entry_by_name(equipment, "custom/sword", &foundEntry, &foundId) == SHIP_NATIVE_OK,
+          "rollback do mod rejeitado preserva entrada alheia");
+    ShipLuaHost::ReleaseOotRegistryOwner("mod.sword");
+    Check(owned.find_entry_by_name(equipment, "custom/sword", &foundEntry, &foundId) == SHIP_NATIVE_UNSUPPORTED,
+          "unload remove entrada do dono");
+    Check(owned.register_entry_owned("mod.other", equipment, "custom/sword", LINKSPAN_OOT_REGISTRY_AUTO_ID,
+                                     nullptr, 0, &conflict, &conflictId) == SHIP_NATIVE_OK && conflictId == 1024,
+          "ID e chave podem ser reutilizados após unload");
+    ShipLuaHost::ReleaseOotRegistryOwner("core.equipment");
+    Check(owned.find_space("custom/equipment", &foundSpace) == SHIP_NATIVE_UNSUPPORTED,
+          "unload do dono do espaço remove-o em cascata");
+
     Check(registry.destroy_space(scenes) == SHIP_NATIVE_OK, "destroy_space deve remover o catálogo em cascata");
     Check(registry.find_entry_by_id(scenes, 0x81, &foundEntry) == SHIP_NATIVE_UNSUPPORTED &&
               registry.unregister_entry(water) == SHIP_NATIVE_UNSUPPORTED,

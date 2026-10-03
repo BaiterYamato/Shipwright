@@ -82,6 +82,15 @@ extern "C" void LinkSpan_PlayUpdate(PlayState* play) {
     ShipLuaHost::GetOotHookRegistry()->Dispatch(point, &payload, sizeof(payload), PlayUpdateOriginal, nullptr);
 }
 
+extern "C" void LinkSpan_ActorInit(Actor* actor, PlayState* play) {
+    const auto* registry = ShipLuaHost::GetOotHookRegistry();
+    const auto point = ShipLuaHost::GetOotHookPoints().actorInit;
+    if (registry && registry->HasHooks(point)) DispatchActor(point, actor, play, nullptr);
+}
+extern "C" void LinkSpan_PlayDrawEnd(PlayState* play) {
+    DispatchRenderPlay(ShipLuaHost::GetOotHookPoints().playDrawEnd, play);
+}
+
 extern "C" void LinkSpan_ActorUpdate(Actor* actor, PlayState* play) {
     const auto* registry = ShipLuaHost::GetOotHookRegistry();
     const auto point = ShipLuaHost::GetOotHookPoints().actorUpdate;

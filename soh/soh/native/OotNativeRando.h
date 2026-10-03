@@ -19,6 +19,13 @@ void InitializeOotNativeRando(std::thread::id ownerThread = std::this_thread::ge
 // Esquece ofertas e a seed (testes e troca de host).
 void ResetOotNativeRando();
 const ShipOotRandomizerV1& GetOotNativeRandomizerService();
+const ShipOotRandomizerV2& GetOotNativeRandomizerServiceV2();
+struct OotRandoQueryBackend {
+    uint32_t (*itemCount)() = nullptr;
+    ShipNativeStatus (*itemInfo)(uint32_t, ShipOotRandomizerItemInfoV2*) = nullptr;
+    ShipNativeStatus (*findUncollected)(uint32_t, ShipOotRandomizerHintV2*) = nullptr;
+};
+void BindOotRandoQueryBackend(const OotRandoQueryBackend& backend);
 
 // Ofertas cujo item ainda está no registro, em ordem de nome: a mesma seed com os mesmos mods dá o mesmo pool.
 // Esta e as funções de seed abaixo valem em qualquer thread (a geração roda fora da thread do jogo).

@@ -5,12 +5,15 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <spdlog/spdlog.h>
 
 #include "OotNativeItems.h"
 #include "OotNativeSave.h"
 #include "soh/Enhancements/randomizer/item.h"
 #include "soh/Enhancements/randomizer/static_data.h"
+#include "soh/Enhancements/randomizer/SeedContext.h"
+#include "soh/Enhancements/randomizer/randomizer_check_objects.h"
 
 #include "z64.h"
 
@@ -149,6 +152,67 @@ void LinkSpan_ParseRandoSpoilerItems(const nlohmann::json& locations) {
 }
 
 namespace ShipLuaHost {
+
+namespace {
+const char* HintDescription(RandomizerCheckType type) {
+    switch (type) {
+        case RCTYPE_SKULL_TOKEN: return "guarded by a golden creature";
+        case RCTYPE_COW: return "offered by a bovine friend";
+        case RCTYPE_SHOP: case RCTYPE_MERCHANT: case RCTYPE_SCRUB: return "available for trade";
+        case RCTYPE_BOSS_HEART_OR_OTHER_REWARD: return "held by a powerful foe";
+        case RCTYPE_DUNGEON_REWARD: return "deep within this place";
+        case RCTYPE_FREESTANDING: return "lying in plain sight";
+        case RCTYPE_POT: return "inside a vessel";
+        case RCTYPE_CRATE: case RCTYPE_NLCRATE: case RCTYPE_SMALL_CRATE: return "inside a container";
+        case RCTYPE_CHEST_GAME: return "behind a game of chance";
+        case RCTYPE_SONG_LOCATION: return "waiting to be learned";
+        case RCTYPE_BEEHIVE: return "guarded by buzzing insects";
+        case RCTYPE_GRASS: case RCTYPE_BUSH: return "hidden in the brush";
+        case RCTYPE_TREE: case RCTYPE_NLTREE: return "above in the branches";
+        default: return "somewhere in this area";
+    }
+}
+template <size_t N> bool CopyHintText(char (&out)[N], const std::string& text) {
+    if (text.size() >= N) return false;
+    std::memcpy(out, text.c_str(), text.size() + 1);
+    return true;
+}
+uint32_t RandoItemCount() { return RG_MAX; }
+ShipNativeStatus RandoItemInfo(uint32_t item, ShipOotRandomizerItemInfoV2* info) {
+    if (item <= RG_NONE || item >= RG_MAX) return SHIP_NATIVE_INVALID_ARGUMENT;
+    const auto name = Rando::StaticData::RetrieveItem(static_cast<RandomizerGet>(item)).GetName().GetEnglish();
+    if (name.empty()) return SHIP_NATIVE_FAILURE;
+    ShipOotRandomizerItemInfoV2 result{sizeof(result), item};
+    if (!CopyHintText(result.name, name)) return SHIP_NATIVE_LIMIT;
+    *info = result;
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus RandoFindUncollected(uint32_t item, ShipOotRandomizerHintV2* hint) {
+    if (item <= RG_NONE || item >= RG_MAX) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (gSaveContext.ship.quest.id != QUEST_RANDOMIZER) return SHIP_NATIVE_UNSUPPORTED;
+    auto ctx = Rando::Context::GetInstance();
+    if (!ctx) return SHIP_NATIVE_UNSUPPORTED;
+    auto& locations = Rando::StaticData::GetLocationTable();
+    for (size_t i = 0; i < RC_MAX; ++i) {
+        const auto check = static_cast<RandomizerCheck>(i);
+        if (locations[check].GetRandomizerCheck() == RC_UNKNOWN_CHECK) continue;
+        const auto loc = ctx->GetItemLocation(check);
+        if (!loc || loc->GetPlacedRandomizerGet() != item || loc->GetCheckStatus() == RCSHOW_COLLECTED ||
+            loc->GetCheckStatus() == RCSHOW_SAVED) continue;
+        ShipOotRandomizerHintV2 result{sizeof(result), item, static_cast<uint32_t>(check)};
+        if (!CopyHintText(result.item_name, loc->GetPlacedItemName().GetEnglish()) ||
+            !CopyHintText(result.area_name, RandomizerCheckObjects::GetRCAreaName(locations[check].GetArea())) ||
+            !CopyHintText(result.description, HintDescription(locations[check].GetRCType()))) return SHIP_NATIVE_LIMIT;
+        *hint = result;
+        return SHIP_NATIVE_OK;
+    }
+    return SHIP_NATIVE_FAILURE;
+}
+const bool kQueryBound = [] {
+    BindOotRandoQueryBackend({RandoItemCount, RandoItemInfo, RandoFindUncollected});
+    return true;
+}();
+} // namespace
 
 // OotBeforeSave (OotNativeSaveGame.cpp), na thread do jogo.
 void StoreOotRandoSeed() {

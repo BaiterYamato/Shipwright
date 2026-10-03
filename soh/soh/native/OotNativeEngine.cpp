@@ -6,6 +6,7 @@
 #include "OotNativeLights.h"
 #include "OotNativeRando.h"
 #include "OotNativeAnchor.h"
+#include "OotNativeActorModels.h"
 #include "OotNativeRegistry.h"
 #include "OotNativeSave.h"
 #include "OotNativeScenes.h"
@@ -543,6 +544,10 @@ const ShipOotOcarinaV1 ocarinaV1{
 };
 }
 
+extern "C" uint8_t LinkSpan_DynamicMovementInventoryMenuEnabled(void) {
+    return dpadHudOwned ? 1 : 0;
+}
+
 void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
     gamepadBridge = bridge;
     // Os settings transitórios pertencem aos mods que usavam a ponte anterior.
@@ -575,6 +580,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeText(gameThread);
     InitializeOotNativeRando(gameThread);
     InitializeOotNativeAnchor(gameThread);
+    InitializeOotNativeActorModels(gameThread);
     InitializeOotNativeJsonTypes(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
@@ -645,11 +651,22 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
         {LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_3, sizeof(renderV3), &renderV3});
     const auto& lights = GetOotNativeLightsService();
     policy.services.push_back({LINKSPAN_OOT_LIGHTS_SERVICE, LINKSPAN_OOT_LIGHTS_VERSION, sizeof(lights), &lights});
+    const auto& registryV2 = GetOotNativeRegistryServiceV2();
+    policy.services.push_back({LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION_2,
+                               sizeof(registryV2), &registryV2});
     policy.hooks = CreateOotHookRegistry();
+    const auto& actorModels = GetOotNativeActorModelsService();
+    policy.services.push_back({LINKSPAN_OOT_ACTOR_MODELS_SERVICE, LINKSPAN_OOT_ACTOR_MODELS_VERSION,
+                               sizeof(actorModels), &actorModels});
     policy.onProviderUnload = [](std::string_view owner) {
+        ReleaseOotActorModelOwner(owner);
+        ReleaseOotRegistryOwner(owner);
         ReleaseOotRenderOwner(owner);
         ReleaseOotLightOwner(owner);
     };
+    const auto& randomizerV2 = GetOotNativeRandomizerServiceV2();
+    policy.services.push_back({LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION_2,
+                               sizeof(randomizerV2), &randomizerV2});
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;
 }

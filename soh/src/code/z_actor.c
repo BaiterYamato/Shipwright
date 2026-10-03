@@ -27,6 +27,7 @@
 // (randomizer). Definido em ShipLuaBootstrap.cpp; no-op quando nenhum mod
 // assina hook.oot.item.give.
 extern void ShipLua_TransformGivenItem(GetItemEntry* entry);
+extern void LinkSpan_ActorInit(Actor* actor, PlayState* play);
 
 #if defined(_MSC_VER) || defined(__GNUC__)
 #include "textures/place_title_cards/g_pn_49.h"
@@ -1316,6 +1317,7 @@ void Actor_Init(Actor* actor, PlayState* play) {
             actor->init = NULL;
 
             GameInteractor_ExecuteOnActorInit(actor);
+            LinkSpan_ActorInit(actor, play);
         } else {
             actor->init = NULL;
             Actor_Kill(actor);
@@ -2711,6 +2713,7 @@ void Actor_UpdateAll(PlayState* play, ActorContext* actorCtx) {
                         actor->init = NULL;
 
                         GameInteractor_ExecuteOnActorInit(actor);
+                        LinkSpan_ActorInit(actor, play);
                     } else {
                         actor->init = NULL;
                         Actor_Kill(actor);
@@ -3474,7 +3477,11 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
 
     ActorDBEntry* dbEntry = ActorDB_Retrieve(actorId);
 
-    assert(dbEntry->valid);
+    // Id desconhecido não possui tamanho nem callbacks: recusar antes de alocar.
+    if (!dbEntry->valid || dbEntry->instanceSize < sizeof(Actor)) {
+        LUSLOG_WARN("Actor_Spawn: Unknown actor id 0x%x", actorId);
+        return NULL;
+    }
 
     if (HREG(20) != 0) {
         // "Actor class addition [%d:%s]"
@@ -3517,8 +3524,6 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     // #region SOH [ObjectExtension]
     SetActorListIndex(actor, -1);
     // #endregion
-
-    assert(dbEntry->numLoaded < 255);
 
     dbEntry->numLoaded++;
 

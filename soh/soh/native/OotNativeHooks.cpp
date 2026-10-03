@@ -26,6 +26,8 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
         if (hookLogger) hookLogger(message);
     });
     points.playUpdate = Declare(LINKSPAN_OOT_HOOK_PLAY_UPDATE, sizeof(ShipOotPlayHookV1));
+    points.actorInit = Declare(LINKSPAN_OOT_HOOK_ACTOR_INIT, sizeof(ShipOotActorHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.playDrawEnd = Declare(LINKSPAN_OOT_HOOK_PLAY_DRAW_END, sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.actorUpdate = Declare(LINKSPAN_OOT_HOOK_ACTOR_UPDATE, sizeof(ShipOotActorHookV1));
     points.actorDraw = Declare(LINKSPAN_OOT_HOOK_ACTOR_DRAW, sizeof(ShipOotActorHookV1));
     points.saveLoaded = Declare(LINKSPAN_OOT_HOOK_SAVE_LOADED, sizeof(ShipOotSaveHookV1), SHIP_NATIVE_HOOK_OBSERVE);

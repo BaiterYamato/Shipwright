@@ -1,4 +1,5 @@
 #include "OotNativeEngine.h"
+#include "OotNativeActorModels.h"
 #include "oot_engine.h"
 #include "oot_hooks.h"
 #include "oot_save.h"
@@ -46,6 +47,17 @@
 #include <vector>
 #include "z64.h"
 #include "macros.h"
+
+// Este teste não liga o driver gráfico do jogo. A integração verifica a tabela;
+// modelos, animação e diálogo são exercitados no runtime.
+namespace ShipLuaHost {
+void InitializeOotNativeActorModels(std::thread::id) {}
+const ShipOotActorModelsV1& GetOotNativeActorModelsService() {
+    static const ShipOotActorModelsV1 service{sizeof(ShipOotActorModelsV1), nullptr, nullptr, nullptr};
+    return service;
+}
+void ReleaseOotActorModelOwner(std::string_view) {}
+}
 extern "C" {
 #include "functions.h"
 PlayState* gPlayState = nullptr;
@@ -666,7 +678,38 @@ int main(int argc, char** argv) {
         {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
          MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
     auto policy = ShipLuaHost::CreateOotNativePolicy();
-    Check(policy.services.size() == 27 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    {
+        const auto& query = ShipLuaHost::GetOotNativeRandomizerServiceV2();
+        ShipOotRandomizerItemInfoV2 info{sizeof(info)};
+        ShipOotRandomizerHintV2 hint{sizeof(hint)};
+        Check(query.item_count() == 0 && query.item_info(1, &info) == SHIP_NATIVE_UNSUPPORTED &&
+              query.find_uncollected(1, &hint) == SHIP_NATIVE_UNSUPPORTED,
+              "randomizer queries refuse an absent backend");
+        ShipLuaHost::BindOotRandoQueryBackend({[]() -> uint32_t { return 3; },
+            [](uint32_t item, ShipOotRandomizerItemInfoV2* out) -> ShipNativeStatus {
+                if (item != 1) return SHIP_NATIVE_INVALID_ARGUMENT;
+                out->item = item; std::strcpy(out->name, "Test Item"); return SHIP_NATIVE_OK;
+            }, [](uint32_t item, ShipOotRandomizerHintV2* out) -> ShipNativeStatus {
+                if (item != 1) return SHIP_NATIVE_FAILURE;
+                out->item = item; out->check = 42; return SHIP_NATIVE_OK;
+            }});
+        Check(query.item_count() == 3 && query.item_info(1, &info) == SHIP_NATIVE_OK &&
+              info.item == 1 && std::string(info.name) == "Test Item" &&
+              query.find_uncollected(1, &hint) == SHIP_NATIVE_OK && hint.check == 42 &&
+              query.find_uncollected(2, &hint) == SHIP_NATIVE_FAILURE,
+              "randomizer queries return copied item and location data");
+        info.size = 0;
+        Check(query.item_info(1, &info) == SHIP_NATIVE_INVALID_ARGUMENT &&
+              query.find_uncollected(1, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "randomizer query sizes and null arguments are checked");
+        bool refused = false;
+        std::thread queryThread([&] { refused = query.item_count() == 0 &&
+            query.find_uncollected(1, &hint) == SHIP_NATIVE_INVALID_ARGUMENT; });
+        queryThread.join();
+        Check(refused, "randomizer queries run only on the owner thread");
+        ShipLuaHost::BindOotRandoQueryBackend({});
+    }
+    Check(policy.services.size() == 30 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
           policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
           policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
           policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -733,8 +776,14 @@ int main(int argc, char** argv) {
           policy.services[25].size == sizeof(ShipOotRenderV3) &&
           std::string(policy.services[26].name) == LINKSPAN_OOT_LIGHTS_SERVICE &&
           policy.services[26].version == LINKSPAN_OOT_LIGHTS_VERSION &&
-          policy.services[26].size == sizeof(ShipOotLightsV1) && policy.onProviderUnload,
-          "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1, ocarina V1, scenes V1/V2/V3, "
+          policy.services[26].size == sizeof(ShipOotLightsV1) &&
+          std::string(policy.services[27].name) == LINKSPAN_OOT_REGISTRY_SERVICE &&
+          policy.services[27].version == LINKSPAN_OOT_REGISTRY_VERSION_2 &&
+          policy.services[27].size == sizeof(ShipOotRegistryV2) &&
+          std::string(policy.services[28].name) == LINKSPAN_OOT_ACTOR_MODELS_SERVICE &&
+          policy.services[28].version == LINKSPAN_OOT_ACTOR_MODELS_VERSION &&
+          policy.services[28].size == sizeof(ShipOotActorModelsV1) && policy.onProviderUnload,
+          "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1/V2, ocarina V1, scenes V1/V2/V3, "
           "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1, "
           "text V1, randomizer V1 e anchor V1, com as versões novas no fim");
     {

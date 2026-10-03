@@ -1,19 +1,38 @@
 #include "SohMenuModRegistry.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <string>
 #include <type_traits>
 #include <variant>
 
+#include <fast/Fast3dGui.h>
 #include <imgui.h>
+#include <ship/Context.h>
+#include <ship/resource/ResourceManager.h>
 
 namespace SohGui {
 namespace {
 
 // Quadros de UI que o valor local de um slider solto espera a página publicada alcançá-lo.
 constexpr int kEditingHoldFrames = 30;
+
+std::string DisplayNameFromId(std::string id) {
+    if (id.starts_with("linkspan.")) id.erase(0, sizeof("linkspan.") - 1);
+    bool startWord = true;
+    for (char& letter : id) {
+        if (letter == '.' || letter == '-' || letter == '_') {
+            letter = ' ';
+            startWord = true;
+        } else if (startWord) {
+            letter = static_cast<char>(std::toupper(static_cast<unsigned char>(letter)));
+            startWord = false;
+        }
+    }
+    return id;
+}
 
 std::string ValueText(const ShipLua::MenuValue& value) {
     return std::visit([](const auto& item) -> std::string {
@@ -78,7 +97,51 @@ void Tooltip(const ShipLua::MenuWidget& widget) {
     if (!widget.tooltip.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", widget.tooltip.c_str());
 }
 
+bool IconAction(const ShipLua::MenuWidget& widget) {
+    auto* context = Ship::Context::GetRawInstance();
+    auto gui = context ? std::dynamic_pointer_cast<Fast::Fast3dGui>(context->GetWindow()->GetGui()) : nullptr;
+    ImTextureID texture = nullptr;
+    if (gui && !widget.iconPath.empty()) {
+        const std::string name = "linkspan.menu." + widget.iconPath;
+        if (!gui->HasTextureByName(name)) {
+            try {
+                if (context->GetResourceManager()->LoadResource(widget.iconPath, true)) {
+                    gui->LoadGuiTexture(name, widget.iconPath);
+                }
+            } catch (...) {
+                // O recurso opcional pode faltar; o botão de texto mantém a ação acessível.
+            }
+        }
+        texture = gui->GetTextureByName(name);
+    }
+    if (!texture) return ImGui::Button(widget.label.c_str(), ImVec2(56.0f, 56.0f));
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, widget.selected ? 2.0f : 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Border, widget.selected ? ImVec4(1, 1, 1, 1) : ImVec4(0.25f, 0.25f, 0.25f, 1));
+    const bool clicked = ImGui::ImageButton(widget.id.c_str(), texture, ImVec2(48.0f, 48.0f), ImVec2(0, 0),
+                                            ImVec2(1, 1), ImVec4(0.05f, 0.05f, 0.05f, 1),
+                                            ImVec4(1, 1, 1, widget.selected ? 1.0f : 0.3f));
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+    return clicked;
+}
+
 } // namespace
+
+void SohMenuModRegistry::SetLoadedMods(std::vector<std::string> modIds) {
+    std::scoped_lock lock(mMutex);
+    mLoadedMods = std::move(modIds);
+}
+
+std::vector<std::pair<std::string, std::string>> SohMenuModRegistry::SidebarMods() const {
+    std::scoped_lock lock(mMutex);
+    std::map<std::string, std::string> names;
+    for (const auto& id : mLoadedMods) names.emplace(id, DisplayNameFromId(id));
+    for (const auto& [key, page] : mPages) {
+        names[key.first] = page.title.empty() ? key.first : page.title;
+    }
+    return {names.begin(), names.end()};
+}
 
 ShipLua::Result<void> SohMenuModRegistry::Upsert(ShipLua::MenuPage page) {
     if (page.owner.empty() || page.id.empty() || page.columns == 0 || page.columns > 4) {
@@ -94,6 +157,7 @@ void SohMenuModRegistry::RemoveMod(const std::string& modId) noexcept {
         std::scoped_lock lock(mMutex);
         std::erase_if(mPages, [&](const auto& entry) { return entry.first.first == modId; });
         std::erase_if(mInputs, [&](const auto& input) { return input.owner == modId; });
+        std::erase(mLoadedMods, modId);
     } catch (...) {
     }
 }
@@ -131,7 +195,17 @@ std::vector<ShipLua::MenuInput> SohMenuModRegistry::DrainInputs(const std::strin
     return inputs;
 }
 
-void SohMenuModRegistry::Draw() {
+void SohMenuModRegistry::DrawOverview() {
+    const auto mods = SidebarMods();
+    if (mods.empty()) {
+        ImGui::TextDisabled("No mods loaded.");
+    } else {
+        ImGui::Text("%zu mod(s) loaded.", mods.size());
+        ImGui::TextWrapped("Select a mod on the left to view its options.");
+    }
+}
+
+void SohMenuModRegistry::DrawOwner(const std::string& modId) {
     const auto pages = Snapshot();
     for (auto editing = mEditing.begin(); editing != mEditing.end();) {
         const auto& [owner, pageId, widgetId, generation] = editing->first;
@@ -146,16 +220,22 @@ void SohMenuModRegistry::Draw() {
         if (!present || --editing->second.framesLeft <= 0) editing = mEditing.erase(editing);
         else ++editing;
     }
-    if (pages.empty()) {
-        ImGui::TextDisabled("No loaded mod declared a menu page.");
+    if (std::none_of(pages.begin(), pages.end(), [&](const ShipLua::MenuPage& page) { return page.owner == modId; })) {
+        ImGui::TextDisabled("This mod has no options in this tab.");
         return;
     }
     for (const ShipLua::MenuPage& page : pages) {
+        if (page.owner != modId) continue;
         ImGui::PushID(page.owner.c_str());
         ImGui::PushID(page.id.c_str());
-        const std::string heading = page.title + " - " + page.sidebar;
+        const std::string heading = page.sidebar;
+        const bool iconGrid = !page.widgets.empty() && std::all_of(page.widgets.begin(), page.widgets.end(),
+            [](const ShipLua::MenuWidget& widget) {
+                return widget.type == ShipLua::MenuWidgetType::Action && !widget.iconPath.empty();
+            });
         if (ImGui::CollapsingHeader(heading.c_str(), ImGuiTreeNodeFlags_DefaultOpen) &&
-            ImGui::BeginTable("mod-menu", static_cast<int>(page.columns), ImGuiTableFlags_SizingStretchSame)) {
+            ImGui::BeginTable("mod-menu", static_cast<int>(page.columns),
+                              iconGrid ? ImGuiTableFlags_SizingFixedFit : ImGuiTableFlags_SizingStretchSame)) {
             for (std::uint32_t column = 0; column < page.columns; ++column) {
                 ImGui::TableNextColumn();
                 for (const ShipLua::MenuWidget& widget : page.widgets) {
@@ -216,7 +296,7 @@ void SohMenuModRegistry::Draw() {
                             break;
                         }
                         case ShipLua::MenuWidgetType::Action:
-                            if (ImGui::Button(widget.label.c_str())) {
+                            if (widget.iconPath.empty() ? ImGui::Button(widget.label.c_str()) : IconAction(widget)) {
                                 Enqueue({page.owner, page.id, widget.id, page.generation,
                                          ShipLua::MenuInputKind::Activate, false});
                             }
