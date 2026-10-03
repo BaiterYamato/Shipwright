@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ProviderDirectory = 'build\shovel-demo-native\mod\provider',
     [string]$Validator = 'build\x64\ship-lua\Release\shiplua_manifest_validator.exe',
@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
 Set-StrictMode -Version Latest
 
 function InputFile([string]$Path) {
@@ -33,10 +34,7 @@ Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'provider\linkspan_sh
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = Join-Path $output "LinkSpan-Shovel-Demo-0.1.1-layout-$layout-$dllHash.zip"
 if (Test-Path -LiteralPath $zip) { throw "Pacote já existe: $zip" }
-$fixed = [datetime]::SpecifyKind([datetime]'2000-01-01T00:00:00', [DateTimeKind]::Utc)
-Get-ChildItem -LiteralPath $stage -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = $fixed }
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $stage, $zip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+New-LinkSpanZip -Source $stage -Destination $zip
 & $validatorExe $zip
 if ($LASTEXITCODE -ne 0) { throw 'Pacote inválido.' }
 [ordered]@{ path = $zip; sha256 = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash } |

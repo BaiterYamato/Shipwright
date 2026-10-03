@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$CoreLibrary = '..\NATIVE-001\build\tests\Release\native_core_fixture.dll',
     [string]$ConsumerLibrary = '..\NATIVE-001\build\tests\Release\native_core_consumer.dll',
@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
 Set-StrictMode -Version Latest
 
 function Resolve-InputFile([string]$Path, [string]$Label) {
@@ -66,9 +67,6 @@ assert(require("ship").native.call("read_core", "") == "42")
 '@
 Copy-Item -LiteralPath $consumerDll -Destination (Join-Path $consumerStage 'provider\core-consumer.dll') -Force
 
-$fixed = [datetime]::SpecifyKind([datetime]'2000-01-01T00:00:00', [DateTimeKind]::Utc)
-Get-ChildItem -LiteralPath (Join-Path $packageRoot 'staging') -Recurse -File |
-    ForEach-Object { $_.LastWriteTimeUtc = $fixed }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $coreZip = Join-Path $packageRoot 'linkspan-core-service-demo-1.0.0.zip'
@@ -76,10 +74,8 @@ $consumerZip = Join-Path $packageRoot 'linkspan-core-consumer-demo-1.0.0.zip'
 foreach ($target in @($coreZip, $consumerZip)) {
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Force }
 }
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $coreStage, $coreZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $consumerStage, $consumerZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+New-LinkSpanZip -Source $coreStage -Destination $coreZip
+New-LinkSpanZip -Source $consumerStage -Destination $consumerZip
 
 & $validatorExe $coreZip
 if ($LASTEXITCODE -ne 0) { throw 'Core ZIP inválido.' }

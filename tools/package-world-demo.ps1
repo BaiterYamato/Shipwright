@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ProviderDirectory = 'build\world-demo-native\mod\provider',
     [string]$Validator = 'build\x64\ship-lua\Release\shiplua_manifest_validator.exe',
@@ -9,6 +9,7 @@ param(
 # Packages the world query and collider demo (OOT-CORE-004) as a Link-Span mod named after the host layout id.
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
 Set-StrictMode -Version Latest
 
 function Resolve-InputFile([string]$Path, [string]$Label) {
@@ -26,10 +27,7 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
     if (Test-Path -LiteralPath $Destination) {
         Remove-Item -LiteralPath $Destination -Force
     }
-    $fixed = [datetime]::SpecifyKind([datetime]'2000-01-01T00:00:00', [DateTimeKind]::Utc)
-    Get-ChildItem -LiteralPath $Source -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = $fixed }
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $Source, $Destination, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
 $demoDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_world_demo.dll') 'World demo DLL'

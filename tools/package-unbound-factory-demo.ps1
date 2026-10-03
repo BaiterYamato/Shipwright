@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$CoreLibrary = 'build\unbound-factory-native\mod\provider\linkspan_unbound_core.dll',
     [string]$ConsumerLibrary = 'build\unbound-factory-native\mod\provider\linkspan_unbound_consumer.dll',
@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
 Set-StrictMode -Version Latest
 
 function Resolve-InputFile([string]$Path, [string]$Label) {
@@ -24,10 +25,7 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
     if (Test-Path -LiteralPath $Destination) {
         Remove-Item -LiteralPath $Destination -Force
     }
-    $fixed = [datetime]::SpecifyKind([datetime]'2000-01-01T00:00:00', [DateTimeKind]::Utc)
-    Get-ChildItem -LiteralPath $Source -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = $fixed }
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $Source, $Destination, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
 $coreDll = Resolve-InputFile $CoreLibrary 'DLL da factory Unbound'

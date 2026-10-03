@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$BaseArchive,
     [string]$ProviderDirectory = 'build\unbound-scene-native\mod\provider',
@@ -14,6 +14,7 @@ param(
 # stays in build/: it is never published or committed.
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
 Set-StrictMode -Version Latest
 
 function Resolve-InputFile([string]$Path, [string]$Label) {
@@ -71,8 +72,7 @@ $package = Join-Path $packageRoot "LinkSpan-Unbound-E-Fixtures-0.1.1-layout-$lay
 if (Test-Path -LiteralPath $package) {
     Remove-Item -LiteralPath $package -Force
 }
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $staging, $package, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+New-LinkSpanZip -Source $staging -Destination $package
 & $validatorExe $package
 if ($LASTEXITCODE -ne 0) { throw 'Invalid fixtures package.' }
 [ordered]@{
