@@ -4,7 +4,13 @@ ship.log.info("unbound-core: framework loaded")
 
 local function logLines(prefix, text)
     for line in string.gmatch(text, "[^\n]+") do
-        ship.log.info(prefix .. line)
+        -- Dois mods mudando o mesmo valor de uma cena, ou camada que a checagem não conseguiu ler: aviso antes do
+        -- gameplay, não só informação.
+        if string.sub(line, 1, 9) == "conflito:" or string.sub(line, 1, 6) == "aviso:" then
+            ship.log.warn(prefix .. line)
+        else
+            ship.log.info(prefix .. line)
+        end
     end
 end
 

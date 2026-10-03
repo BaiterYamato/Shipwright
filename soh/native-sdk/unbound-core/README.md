@@ -69,6 +69,17 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
 - **Texto (§5).** `text/<lang>/messages.json` (eng, ger, fra, jpn, staff) mescla por mensagem sobre a
   tabela do jogo (`linkspan.oot.text`): acrescenta, troca e `null` remove. `$replace` em `messages`
   esvazia a tabela antes. Mensagem acima de 8 192 bytes é truncada com aviso.
+- **Conflito entre mods (0.6.1).** No `game.ready`, antes do gameplay, todo arquivo que dois ou mais mods
+  Unbound trazem no mesmo caminho é comparado. Documento que o Unbound mescla (JSON com `$schema`
+  `unbound/...` em alguma camada, `unbound/scenes.json` e `text/**`) é comparado folha a folha pela mesma regra
+  do jogo: se o merge mantém tudo o que cada mod pôs (chaves diferentes, ou o mesmo valor), é um delta
+  mesclável e só fica registrado. Se um mod sobrescreve, remove ou descarta com `$replace` um valor que outro
+  trouxe, sai o aviso `unbound: conflito: <arquivo>: <mod de cima> sobrescreve N valor(es) de <mod de baixo>;
+  vence <mod de cima>`, com até três chaves de exemplo. Qualquer outro arquivo (binário ou JSON sem tipo) o VFS
+  entrega inteiro: conteúdo igual é cópia idêntica; diferente é `conflito: ... substitui o arquivo inteiro de
+  ...`. Vence o archive montado depois (ordem de caminho em `mods/`). O resumo sai em `unbound: mods:
+  camadas=... conflitos=...` e a lista completa vai para `logs/linkspan-unbound.log`. A base convertida não
+  conta como mod.
 
 ## Unbound 0.8 (novo na 0.5.0)
 
@@ -148,7 +159,7 @@ nomes registrados, recursos do jogo, `collision.bin` nem limites que dependem de
 
 | Função | Quando | Resultado |
 |---|---|---|
-| `ready` | `game.ready` | base e registro com as camadas atuais (chamar de novo refaz) |
+| `ready` | `game.ready` | base, registro e conflitos entre mods com as camadas atuais (chamar de novo refaz) |
 | `apply_text` | primeiro `game.frame` | texto; o SoH só carrega as tabelas de mensagens depois do `game.ready` |
 | `unbound_report` | a qualquer momento | estado da base, contagem de documentos e as últimas notas |
 | `load_scene_registry` | compatibilidade 0.2/0.3 | só o registro |

@@ -29,6 +29,7 @@
 #include "oot_scenes.h"
 #include "oot_text.h"
 #include "room_actors.h"
+#include "scene_conflicts.h"
 #include "scene_registry.h"
 #include "transcode.h"
 #include "unbound_docs.h"
@@ -39,12 +40,19 @@ namespace {
 namespace fs = std::filesystem;
 
 constexpr uint32_t MAX_LAYERS = 64;
+// unbound.json de cada camada: um por mod Unbound, então o teto de documento (64) desligava a base e a checagem
+// de conflitos a partir do 64º mod.
+constexpr uint32_t MAX_MANIFEST_LAYERS = 1024;
 constexpr uint32_t MAX_TOTAL_INPUT = 4 * 1024 * 1024;
 // Documentos de cena, colisão e texto: uma sala grande passa fácil dos 64 KiB da factory JSON.
 constexpr uint32_t MAX_DOCUMENT_LAYER = 64 * 1024 * 1024;
 constexpr uint32_t MAX_DOCUMENT_TOTAL = 256 * 1024 * 1024;
 constexpr uint32_t MAX_HANDLES = 1024;
 constexpr size_t MAX_NOTES = 12;
+// Deltas mescláveis entre mods no texto do ready; o resto fica só em logs/linkspan-unbound.log.
+constexpr size_t MAX_DELTA_LINES = 8;
+// Conflitos e avisos no texto do ready (o WriteText corta em 64 KiB); a lista inteira fica no log do Unbound.
+constexpr size_t MAX_WARNING_LINES = 64;
 constexpr const char* ACTOR_PATCH_SCHEMA = "linkspan.unbound.actor-patch/v1";
 constexpr const char* SCENE_REGISTRY_PATH = "unbound/scenes.json";
 constexpr const char* MANIFEST_PATH = "unbound.json";
@@ -98,6 +106,7 @@ struct State {
     std::vector<uint64_t> jsonTypes;
     // Base convertida (oot-unbound.o2r), montada no Init abaixo dos mods.
     uint64_t baseArchive = 0;
+    std::string basePath;  // caminho montado, para separar a base das camadas de mod
     std::string baseReport = "-";
     bool baseActive = false;
     std::vector<std::pair<int32_t, uint8_t>> overrides;
@@ -166,6 +175,7 @@ struct LayerCollector {
     uint32_t totalBytes = 0;
     uint32_t maxLayer = SHIP_NATIVE_MAX_BYTES;
     uint32_t maxTotal = MAX_TOTAL_INPUT;
+    uint32_t maxLayers = MAX_LAYERS;
 };
 
 LayerCollector DocumentCollector() {
@@ -175,12 +185,18 @@ LayerCollector DocumentCollector() {
     return collector;
 }
 
+LayerCollector ManifestCollector() {
+    LayerCollector collector = DocumentCollector();
+    collector.maxLayers = MAX_MANIFEST_LAYERS;
+    return collector;
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL CollectLayer(void* user, const ShipOotResourceLayerV2* layer, const char* archivePath,
                                                const uint8_t* data) {
     auto* collector = static_cast<LayerCollector*>(user);
     if (!collector || !layer || layer->size < sizeof(ShipOotResourceLayerV2) || !archivePath ||
         (!data && layer->data_size) || layer->layer_index != collector->layers.size() ||
-        layer->layer_count > MAX_LAYERS || layer->data_size > collector->maxLayer ||
+        layer->layer_count > collector->maxLayers || layer->data_size > collector->maxLayer ||
         collector->totalBytes > collector->maxTotal - layer->data_size) {
         return SHIP_NATIVE_LIMIT;
     }
@@ -831,6 +847,7 @@ void PrepareBase(const ShipNativeRuntime* runtime, State& state) {
     if (status != SHIP_NATIVE_OK) {
         state.baseArchive = 0;
     }
+    state.basePath = status == SHIP_NATIVE_OK ? archive.string() : std::string{};
 }
 
 void ClearOverrides(State& state) {
@@ -847,7 +864,7 @@ void ClearOverrides(State& state) {
 std::string ActivateBase(State& state) {
     ClearOverrides(state);
     state.baseActive = false;
-    LayerCollector collector = DocumentCollector();
+    LayerCollector collector = ManifestCollector();
     const auto read = state.resources->read_file_layers(MANIFEST_PATH, CollectLayer, &collector);
     uint32_t bases = 0;
     std::string notes;
@@ -997,6 +1014,159 @@ std::string ApplyActorRegistry(State& state) {
            std::to_string(state.actorNames.size()) + " nomes de ator disponíveis";
 }
 
+bool SameArchive(const std::string& a, const std::string& b) {
+    if (a == b) {
+        return true;
+    }
+    std::error_code error;
+    return fs::equivalent(fs::path(a), fs::path(b), error) && !error;
+}
+
+std::string JoinLabels(const std::vector<std::string>& archives) {
+    std::string text;
+    for (const auto& archive : archives) {
+        text += (text.empty() ? "" : " + ") + LinkSpanUnbound::ArchiveLabel(archive);
+    }
+    return text;
+}
+
+// §10.5/§14.3: dois mods no mesmo caminho do VFS, verificado no game.ready, antes do gameplay. Documento JSON que
+// o Unbound mescla é comparado folha a folha pela regra do jogo; delta que mescla sem perda fica registrado e valor
+// de um mod que outro sobrescreve vira "conflito:" (aviso no main.lua), com quem vence. Qualquer outro arquivo o
+// VFS entrega inteiro da camada mais alta: conteúdo diferente também é conflito. As camadas Unbound na raiz do VFS
+// são os .o2r com unbound.json; o bootstrap monta os outros archives de mod sob mod/<id>/, sem sombrear nada.
+std::string CheckSceneConflicts(State& state) {
+    LayerCollector manifests = ManifestCollector();
+    const auto read = state.resources->read_file_layers(MANIFEST_PATH, CollectLayer, &manifests);
+    if (read == SHIP_NATIVE_UNSUPPORTED) {
+        return "mods: nenhuma camada Unbound";
+    }
+    if (read != SHIP_NATIVE_OK) {
+        return std::string("mods: checagem de conflitos não rodou\naviso: unbound.json ilegível nas camadas (") +
+               StatusName(read) + ")";
+    }
+    std::map<std::string, std::vector<std::string>> owners;
+    std::vector<std::string> lines;
+    uint32_t mods = 0;
+    for (const auto& layer : manifests.layers) {
+        if (!state.basePath.empty() && SameArchive(layer.archive, state.basePath)) {
+            continue;
+        }
+        ++mods;
+        std::vector<std::string> names;
+        std::string error;
+        if (!LinkSpanUnbound::ListArchiveNames(layer.archive, names, error)) {
+            lines.push_back("aviso: " + LinkSpanUnbound::ArchiveLabel(layer.archive) + " sem lista de arquivos (" +
+                            error + "); fora da checagem de conflitos");
+            continue;
+        }
+        for (const auto& name : names) {
+            // Entrada repetida no mesmo ZIP não é um segundo mod.
+            auto& list = owners[name];
+            if (LinkSpanUnbound::IsComparableEntry(name) && (list.empty() || list.back() != layer.archive)) {
+                list.push_back(layer.archive);
+            }
+        }
+    }
+    uint32_t shared = 0;
+    uint32_t mergeable = 0;
+    uint32_t identical = 0;
+    uint32_t conflicts = 0;
+    for (const auto& [path, archives] : owners) {
+        if (archives.size() < 2) {
+            continue;
+        }
+        ++shared;
+        LayerCollector collector = ManifestCollector();
+        const auto layers = state.resources->read_file_layers(path.c_str(), CollectLayer, &collector);
+        if (layers != SHIP_NATIVE_OK) {
+            lines.push_back("aviso: " + path + " ilegível nas camadas (" + StatusName(layers) +
+                            "); fora da checagem de conflitos");
+            continue;
+        }
+        const auto rule = LinkSpanUnbound::RuleFor(path, collector.layers);
+        if (rule != LinkSpanUnbound::MergeRule::WholeFile && collector.layers.size() > MAX_LAYERS) {
+            lines.push_back("aviso: " + path + " em " + std::to_string(collector.layers.size()) +
+                            " camadas; o jogo recusa documento com mais de " + std::to_string(MAX_LAYERS));
+        }
+        std::vector<LinkSpanUnbound::LayerDocument> modLayers;
+        for (auto& layer : collector.layers) {
+            if (std::find(archives.begin(), archives.end(), layer.archive) != archives.end()) {
+                modLayers.push_back(std::move(layer));
+            }
+        }
+        const auto analysis = LinkSpanUnbound::AnalyzeDocument(modLayers, rule);
+        for (const auto& note : analysis.notes) {
+            lines.push_back("aviso: " + path + ": " + note);
+        }
+        if (modLayers.size() != archives.size()) {
+            lines.push_back("aviso: " + path + ": " + std::to_string(archives.size()) + " mods listam o arquivo, " +
+                            std::to_string(modLayers.size()) + " camada(s) entregue(s) pelo VFS");
+        }
+        if (analysis.conflicts.empty() && analysis.compared < 2) {
+            lines.push_back("aviso: " + path + " sem duas camadas comparáveis (" + JoinLabels(archives) +
+                            "); cobertura incompleta");
+            continue;
+        }
+        if (analysis.conflicts.empty()) {
+            if (rule == LinkSpanUnbound::MergeRule::WholeFile) {
+                ++identical;
+                lines.push_back("cópia idêntica: " + path + " (" + JoinLabels(archives) + ")");
+            } else {
+                ++mergeable;
+                lines.push_back("delta mesclável: " + path + " (" + JoinLabels(archives) + ")");
+            }
+            continue;
+        }
+        for (const auto& conflict : analysis.conflicts) {
+            ++conflicts;
+            const std::string upper = LinkSpanUnbound::ArchiveLabel(conflict.upper);
+            const std::string lower = LinkSpanUnbound::ArchiveLabel(conflict.lower);
+            if (conflict.wholeFile) {
+                lines.push_back("conflito: " + path + ": " + upper + " substitui o arquivo inteiro de " + lower +
+                                " (sem merge; vale o de " + upper + ", montado depois)");
+                continue;
+            }
+            std::string keys;
+            for (const auto& key : conflict.keys) {
+                keys += (keys.empty() ? "" : ", ") + key;
+            }
+            lines.push_back("conflito: " + path + ": " + upper + " sobrescreve " + std::to_string(conflict.lost) +
+                            " valor(es) de " + lower + " (no par, vale " + upper + ", montado depois); ex.: " + keys);
+        }
+    }
+    std::string text = "mods: camadas=" + std::to_string(mods) + " arquivos em comum=" + std::to_string(shared) +
+                       " mescláveis=" + std::to_string(mergeable) + " idênticos=" + std::to_string(identical) +
+                       " conflitos=" + std::to_string(conflicts);
+    {
+        std::lock_guard lock(state.noteMutex);
+        AppendLog(state, text);
+        for (const auto& line : lines) {
+            AppendLog(state, line);
+        }
+    }
+    // No log do jogo vão até MAX_WARNING_LINES avisos e conflitos e até MAX_DELTA_LINES deltas e cópias idênticas;
+    // o que passar disso fica só em logs/linkspan-unbound.log, com uma linha dizendo quantos.
+    size_t informative = 0;
+    size_t warnings = 0;
+    for (const auto& line : lines) {
+        const bool info = line.compare(0, 6, "delta ") == 0 || line.compare(0, 6, "cópia") == 0;
+        if (info ? ++informative > MAX_DELTA_LINES : ++warnings > MAX_WARNING_LINES) {
+            continue;
+        }
+        text += "\n" + line;
+    }
+    if (warnings > MAX_WARNING_LINES) {
+        text += "\naviso: +" + std::to_string(warnings - MAX_WARNING_LINES) +
+                " conflito(s) ou aviso(s) só em logs/linkspan-unbound.log";
+    }
+    if (informative > MAX_DELTA_LINES) {
+        text += "\n+" + std::to_string(informative - MAX_DELTA_LINES) +
+                " delta(s) ou cópia(s) idêntica(s) em logs/linkspan-unbound.log";
+    }
+    return text;
+}
+
 // game.ready: os archives dos mods já estão montados. Liga a base e registra as cenas. Chamar de novo refaz
 // tudo com as camadas atuais.
 ShipNativeStatus SHIP_NATIVE_CALL Ready(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
@@ -1009,6 +1179,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Ready(void* user, const char*, uint32_t length
         std::string text = ActivateBase(*state);
         text += "\natores: " + ApplyActorRegistry(*state);
         text += "\nregistro: " + (state->scenes ? ApplySceneRegistry(*state) : std::string("sem linkspan.oot.scenes"));
+        text += "\n" + CheckSceneConflicts(*state);
         return WriteText(write, writer, std::move(text));
     } catch (...) {
         return SHIP_NATIVE_FAILURE;

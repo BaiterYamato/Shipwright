@@ -10,7 +10,7 @@ endif()
 include("${OOT_NATIVE_SDK}")
 
 add_library(linkspan_unbound_core SHARED unbound_core.cpp json_merge.cpp scene_registry.cpp room_actors.cpp
-    unbound_format.cpp transcode.cpp converter.cpp unbound_docs.cpp actor_registry.cpp)
+    unbound_format.cpp transcode.cpp converter.cpp unbound_docs.cpp actor_registry.cpp scene_conflicts.cpp)
 add_library(linkspan_unbound_consumer SHARED unbound_consumer.cpp)
 add_executable(linkspan_unbound_json_tests tests.cpp json_merge.cpp scene_registry.cpp room_actors.cpp unbound_format.cpp actor_registry.cpp)
 add_executable(linkspan_unbound_format_tests format_tests.cpp unbound_format.cpp transcode.cpp unbound_docs.cpp actor_registry.cpp)
@@ -18,6 +18,8 @@ add_executable(linkspan_unbound_convert converter_cli.cpp converter.cpp unbound_
     json_merge.cpp scene_registry.cpp actor_registry.cpp)
 add_executable(linkspan_unbound_converter_tests converter_tests.cpp converter.cpp unbound_format.cpp transcode.cpp actor_registry.cpp)
 add_executable(linkspan_unbound_actor_tests actor_tests.cpp actor_registry.cpp transcode.cpp unbound_format.cpp room_actors.cpp)
+add_executable(linkspan_unbound_conflict_tests conflict_tests.cpp scene_conflicts.cpp unbound_format.cpp converter.cpp
+    transcode.cpp actor_registry.cpp)
 # Demo do registro de cenas; reaproveita a busca de assets/ do exemplo Dynamic Movement.
 add_library(linkspan_unbound_scene_demo SHARED scene-demo/scene_demo.cpp ../example/package_assets.cpp)
 target_include_directories(linkspan_unbound_scene_demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../example")
@@ -29,7 +31,7 @@ add_library(linkspan_unbound_e_fixtures SHARED e-fixtures/e_fixtures.cpp ../exam
 target_include_directories(linkspan_unbound_e_fixtures PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../example")
 
 foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_json_tests linkspan_unbound_format_tests
-               linkspan_unbound_actor_tests
+               linkspan_unbound_actor_tests linkspan_unbound_conflict_tests
                linkspan_unbound_converter_tests linkspan_unbound_convert
                linkspan_unbound_scene_demo
                linkspan_unbound_field_demo
@@ -56,3 +58,4 @@ add_test(NAME linkspan_unbound_json_tests COMMAND linkspan_unbound_json_tests)
 add_test(NAME linkspan_unbound_format_tests COMMAND linkspan_unbound_format_tests)
 add_test(NAME linkspan_unbound_converter_tests COMMAND linkspan_unbound_converter_tests)
 add_test(NAME linkspan_unbound_actor_tests COMMAND linkspan_unbound_actor_tests)
+add_test(NAME linkspan_unbound_conflict_tests COMMAND linkspan_unbound_conflict_tests)
