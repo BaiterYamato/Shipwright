@@ -102,6 +102,11 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   com objetos permanentes: gameplay_keep, Link, keep da cena e cavalo), posição de câmera fixa fora de s16
   (o §2 continua embrulhando o valor) e setup acima de 255 (ignorado). O resumo do `ready` traz `ms=` da checagem.
   As fronteiras limite-1/limite/limite+1 estão em `limits_tests.cpp`.
+- **Limite do mundo (0.6.4).** Spawn, ator, transition actor ou `bounds` da colisão com coordenada de módulo
+  acima de 1 048 576 (`BGCHECK_XYZ_ABSMAX`), no valor que o jogo recebe (f32 nas posições, inteiro arredondado nos
+  bounds), saem em nota: lá o jogo apaga os efeitos de partícula `EffectSs` (poeira, faíscas, respingos) em vez de
+  desenhá-los. A colisão continua: o `BgCheck_PosErrorCheck` só registra, e o chão foi provado em jogo até
+  ±1 048 806 na UNBOUND-021.
 
 ## Unbound 0.8 (novo na 0.5.0)
 

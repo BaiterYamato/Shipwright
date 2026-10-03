@@ -31,6 +31,22 @@ int32_t Integral(double v) {
     return static_cast<int32_t>(std::llround(v));
 }
 
+// O XML do jogo é sempre lido com ponto decimal. O snprintf segue o LC_NUMERIC de quem carregou o mod, que num
+// Windows pt-BR escreveria "0,25", então o separador do locale é trocado por ponto aqui.
+std::string DecimalText(double value) {
+    char text[40];
+    std::snprintf(text, sizeof(text), "%.9g", std::isfinite(value) ? value : 0.0);
+    std::string number(text);
+    const char* point = std::localeconv()->decimal_point;
+    if (point != nullptr && *point != '\0' && *point != '.') {
+        const size_t at = number.find(point);
+        if (at != std::string::npos) {
+            number.replace(at, std::strlen(point), ".");
+        }
+    }
+    return number;
+}
+
 class Xml {
   public:
     Xml& Open(const char* name) {
@@ -58,20 +74,8 @@ class Xml {
     Xml& Attr(const char* name, uint32_t value) {
         return Attr(name, std::to_string(value));
     }
-    // O XML do jogo é sempre lido com ponto decimal. O snprintf segue o LC_NUMERIC de quem carregou o mod, que
-    // num Windows pt-BR escreveria "0,25", então o separador do locale é trocado por ponto aqui.
     Xml& Float(const char* name, double value) {
-        char text[40];
-        std::snprintf(text, sizeof(text), "%.9g", std::isfinite(value) ? value : 0.0);
-        std::string number(text);
-        const char* point = std::localeconv()->decimal_point;
-        if (point != nullptr && *point != '\0' && *point != '.') {
-            const size_t at = number.find(point);
-            if (at != std::string::npos) {
-                number.replace(at, std::strlen(point), ".");
-            }
-        }
-        return Attr(name, number);
+        return Attr(name, DecimalText(value));
     }
     Xml& Close() {
         if (mTagOpen) {
@@ -173,6 +177,40 @@ constexpr size_t kMaxRoomActors = 65535; // numSetupActors u16
 // e o keep da cena (Object_Spawn em z_scene.c/z_scene_otr.cpp), mais o cavalo que o host acrescenta à lista nas
 // cenas com cavalo.
 constexpr size_t kMaxObjects = 1020;
+// BGCHECK_XYZ_ABSMAX. Além dele o jogo apaga os efeitos EffectSs (poeira, faíscas, respingos) em vez de desenhá-los
+// (z_effect_soft_sprite.c, |c| > 1 048 576); a colisão continua, e o BgCheck_PosErrorCheck só registra (osSyncPrintf,
+// desligado no build).
+constexpr double kWorldLimit = 1048576.0;
+
+// Posições além de kWorldLimit numa lista: quantas e a primeira, para uma nota só. Compara o valor que o jogo
+// recebe: f32 nas posições (FloatAttribute das fábricas), o inteiro do Integral nos bounds.
+struct WorldLimitCheck {
+    size_t count = 0;
+    std::string first;
+
+    void Add(const std::string& key, const Vec3& pos, bool integral = false) {
+        const auto effective = [integral](double value) {
+            return integral ? static_cast<double>(Integral(value)) : static_cast<double>(static_cast<float>(value));
+        };
+        const double x = effective(pos.x);
+        const double y = effective(pos.y);
+        const double z = effective(pos.z);
+        if (std::fabs(x) <= kWorldLimit && std::fabs(y) <= kWorldLimit && std::fabs(z) <= kWorldLimit) {
+            return;
+        }
+        if (count++ == 0) {
+            first = key + "=" + DecimalText(x) + "," + DecimalText(y) + "," + DecimalText(z);
+        }
+    }
+
+    void Note(TranscodeContext& context, const std::string& where) const {
+        if (count) {
+            context.notes.push_back(where + ": " + std::to_string(count) +
+                                    " posição(ões) além de ±1048576 (ex.: " + first +
+                                    "); lá o jogo apaga os efeitos de partícula (EffectSs) em vez de desenhá-los");
+        }
+    }
+};
 
 std::string Where(const TranscodeContext& context, const std::string& what) {
     return context.path + " " + what;
@@ -633,16 +671,20 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     if (has("spawns")) {
         const Json& list = setup["spawns"];
         xml.Open("SetStartPositionList");
-        for (const auto& item : PositionalItems(list, Where(context, "spawns"))) {
+        WorldLimitCheck outside;
+        for (const auto& [key, item] : PositionalItems(list, Where(context, "spawns"))) {
             xml.Leaf("StartPositionEntry");
-            ActorAttrs(xml, *item.second);
+            ActorAttrs(xml, *item);
             xml.Close();
+            outside.Add(key, ReadVec3(SubArray(*item, "pos")));
         }
+        outside.Note(context, Where(context, "spawns"));
         xml.Close();
     }
     if (has("transitionActors")) {
         const Json& list = setup["transitionActors"];
         xml.Open("SetTransitionActorList");
+        WorldLimitCheck outside;
         for (const auto& [key, item] : PositionalItems(list, Where(context, "transitionActors"))) {
             const Json& t = *item;
             int16_t actorId = -1;
@@ -656,6 +698,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
             else context.notes.push_back(Where(context, "transitionActors/" + key) +
                                          ": id inválido; entrada preservada sem ator");
             const Vec3 pos = ReadVec3(SubArray(t, "pos"));
+            outside.Add(key, pos);
             xml.Leaf("TransitionActorEntry")
                 .Attr("FrontSideRoom", S16(Field(Sub(t, "front"), "room")))
                 .Attr("FrontSideEffects", S8(Field(Sub(t, "front"), "effects")))
@@ -669,6 +712,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
                 .Attr("Params", S16(Field(t, "params")))
                 .Close();
         }
+        outside.Note(context, Where(context, "transitionActors"));
         xml.Close();
     }
     if (has("objects")) {
@@ -714,6 +758,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         const Json& list = setup["actors"];
         xml.Open("SetActorList");
         size_t written = 0;
+        WorldLimitCheck outside;
         for (const auto& [key, item] : ListItems(list)) {
             if (item->is_object()) {
                 int16_t actorId = -1;
@@ -725,12 +770,14 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
                 ActorAttrs(xml, actor);
                 xml.Close();
                 ++written;
+                outside.Add(key, ReadVec3(SubArray(*item, "pos")));
             }
         }
         if (written > kMaxRoomActors) {
             context.notes.push_back(Where(context, "actors") + ": " + std::to_string(written) +
                                     " atores; o jogo carrega os primeiros " + std::to_string(kMaxRoomActors));
         }
+        outside.Note(context, Where(context, "actors"));
         xml.Close();
     }
     if (has("exits")) {
@@ -835,6 +882,10 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
     const Json& bounds = Sub(doc, "bounds");
     const Vec3 min = ReadVec3(SubArray(bounds, "min"));
     const Vec3 max = ReadVec3(SubArray(bounds, "max"));
+    WorldLimitCheck outside;
+    outside.Add("min", min, true);
+    outside.Add("max", max, true);
+    outside.Note(context, Where(context, "bounds"));
     const Json& bulk = Sub(doc, "bulk");
     Xml xml;
     xml.Open("CollisionHeader")

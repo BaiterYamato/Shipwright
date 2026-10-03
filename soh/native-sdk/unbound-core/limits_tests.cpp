@@ -359,6 +359,42 @@ void TestCameraPositions() {
     CHECK(xml.find("RotX=\"-32768\"") != std::string::npos && xml.find("PosX=\"32767\"") != std::string::npos);
 }
 
+// M01: além de ±1 048 576 o jogo apaga os EffectSs (z_effect_soft_sprite.c); spawn, ator, transition actor e bounds
+// avisam. O limiar vale para o valor que o jogo recebe: f32 nas posições, o inteiro arredondado nos bounds.
+void TestWorldLimit() {
+    const auto scene = [](const std::string& spawn, const std::string& actor, const std::string& door) {
+        return R"({"setups":{"0":{"spawns":{"0":{"id":0,"pos":)" + spawn + R"(}},"actors":{"a":{"id":16,"pos":)" +
+               actor + R"(}},"transitionActors":{"0":{"id":9,"pos":)" + door + "}}}}}";
+    };
+    // 1 048 576 exato e 1 048 576,03 (f32 = 1 048 576) ainda desenham os efeitos.
+    TranscodeContext inside = Context();
+    TranscodeScene(ParseJson(scene("[1048576,0,-1048576]", "[1048576.03,0,0]", "[0,-1048576,0]")), true, inside);
+    CHECK(!AnyNote(inside, "além de ±1048576"));
+    TranscodeContext outside = Context();
+    const std::string xml = TranscodeScene(
+        ParseJson(scene("[1048577,0,0]", "[0,0,-1048576.07]", "[0,1048600.5,0]")), true, outside);
+    CHECK(AnyNote(outside, "limites spawns: 1 posição(ões) além de ±1048576 (ex.: 0=1048577,0,0)"));
+    // -1 048 576,07 vira o f32 -1 048 576,125.
+    CHECK(AnyNote(outside, "limites actors: 1 posição(ões) além de ±1048576 (ex.: a=0,0,-1048576.12)"));
+    CHECK(AnyNote(outside, "limites transitionActors: 1 posição(ões) além de ±1048576 (ex.: 0=0,1048600.5,0)"));
+    // A posição continua indo ao XML como veio: a nota não muda o documento.
+    CHECK(xml.find("PosX=\"1048577\"") != std::string::npos);
+
+    const std::string collision = R"({"bulk":{"file":"x.bin"},"bounds":{"min":[-1048576,0,0],"max":)";
+    TranscodeContext edge = Context();
+    TranscodeCollision(ParseJson(collision + R"([1048576.4,10,10]}})"), edge);
+    CHECK(!AnyNote(edge, "bounds"));
+    // 1 048 576,5 arredonda para 1 048 577 no XML (Integral), e o mesmo valor entra na conta.
+    for (const char* max : { "[1048576.5,10,10]", "[10,1048800,10]", "[10,10,-1048577]" }) {
+        TranscodeContext beyond = Context();
+        TranscodeCollision(ParseJson(collision + max + "}}"), beyond);
+        CHECK(AnyNote(beyond, "limites bounds: 1 posição(ões) além de ±1048576 (ex.: max="));
+    }
+    TranscodeContext rounded = Context();
+    TranscodeCollision(ParseJson(collision + R"([1048576.5,10,10]}})"), rounded);
+    CHECK(AnyNote(rounded, "(ex.: max=1048577,10,10)"));
+}
+
 // M03: posição decimal de ator e luz chega ao XML sem perder a fração.
 void TestDecimalPositions() {
     const std::string doc = R"({"setups":{"0":{"actors":{"0":{"id":16,"pos":[32768.5,1.25,-0.5]}},)"
@@ -375,6 +411,7 @@ int main() {
     TestRoomCount();
     TestActorAndObjectCounts();
     TestCameraPositions();
+    TestWorldLimit();
     TestDecimalPositions();
     TestParseEquivalence();
     TestMergeEquivalence();
