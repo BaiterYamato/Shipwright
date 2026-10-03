@@ -65,8 +65,17 @@ std::string Limits(const PlayState* play, const Player* player) {
     }
     const auto& dyna = play->colCtx.dyna;
     int dynaInUse = 0;
+    // UNBOUND-026: soma da geometria dos registros em uso, a mesma que o DynaPoly_Setup compara com as listas.
+    long dynaPolys = 0;
+    long dynaVertices = 0;
     for (int32_t i = 0; dyna.bgActorFlags && i < dyna.bgActorMax; ++i) {
-        dynaInUse += (dyna.bgActorFlags[i] & 1) ? 1 : 0;
+        if (dyna.bgActorFlags[i] & 1) {
+            ++dynaInUse;
+            if (const CollisionHeader* header = dyna.bgActors[i].colHeader) {
+                dynaPolys += static_cast<long>(header->numPolygons);
+                dynaVertices += static_cast<long>(header->numVertices);
+            }
+        }
     }
     unsigned meshEntries = 0;
     if (const MeshHeader* mesh = play->roomCtx.curRoom.meshHeader) {
@@ -78,11 +87,12 @@ std::string Limits(const PlayState* play, const Player* player) {
     }
     char text[256];
     std::snprintf(text, sizeof(text),
-                  " | salas=%u objetos=%u transicao=%u malha=%u dyna=%d/%d polys=%d portas=%u caixas=%u agua=%d "
-                  "nado=%d",
+                  " | salas=%u objetos=%u transicao=%u malha=%u dyna=%d/%d polys=%d vtx=%d dpolys=%ld dvtx=%ld "
+                  "portas=%u caixas=%u agua=%d nado=%d",
                   static_cast<unsigned>(play->numRooms), static_cast<unsigned>(play->objectCtx.num),
                   static_cast<unsigned>(play->transiActorCtx.numActors), meshEntries, dynaInUse, dyna.bgActorMax,
-                  dyna.polyListMax, doors, crates, (player->actor.bgCheckFlags & BGCHECKFLAG_WATER) ? 1 : 0,
+                  dyna.polyListMax, dyna.vtxListMax, dynaPolys, dynaVertices, doors, crates,
+                  (player->actor.bgCheckFlags & BGCHECKFLAG_WATER) ? 1 : 0,
                   (player->stateFlags1 & PLAYER_STATE1_IN_WATER) ? 1 : 0);
     return text;
 }
@@ -125,12 +135,13 @@ std::string Describe(const PlayState* play, const Player* player) {
     char text[640];
     int used = std::snprintf(text, sizeof(text),
                              "scene=%d room=%d pos=%.1f,%.1f,%.1f chao=%d piso=%ld alturaChao=%.1f camSup=%ld cam=%d "
-                             "set=%d atores=%u",
+                             "set=%d bg=%d atores=%u",
                              play->sceneNum, static_cast<int>(play->roomCtx.curRoom.num), player->actor.world.pos.x,
                              player->actor.world.pos.y, player->actor.world.pos.z,
                              (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0, floorIndex,
                              player->actor.floorHeight, surfaceCamera, camera ? camera->camDataIdx : -1,
-                             camera ? camera->setting : -1, static_cast<unsigned>(play->actorCtx.total));
+                             camera ? camera->setting : -1, static_cast<int>(player->actor.floorBgId),
+                             static_cast<unsigned>(play->actorCtx.total));
     if (nearest && used > 0 && used < static_cast<int>(sizeof(text))) {
         used += std::snprintf(text + used, sizeof(text) - used,
                               " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X", items, nearest->world.pos.x,

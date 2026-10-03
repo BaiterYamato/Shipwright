@@ -28,6 +28,12 @@ local PLAN = table.concat({
     "linkspan_e/m19/r0_em_64", -- 024: na room 0 (64 não vira 0: agua=0)
     "linkspan_e/m19/r32766",  -- 024: água da room 32766 na room 32766 (agua=1)
     "linkspan_e/m19/r62_em_32766", -- 024: na room 62, o que 6 bits dariam (agua=0)
+    "linkspan_e/m15/c64",     -- 026: 64 caixas grandes, a tabela DynaPoly cheia (dyna=64/64)
+    "linkspan_e/m15/c65",     -- 026: 65; o Link cai sobre a 65ª, bgId 64 depois de a tabela dobrar (bg=64, 65/128)
+    "linkspan_e/m15/p16380",  -- 026: 1 638 caixas, 16 380 polígonos: a lista fica em 16 384
+    "linkspan_e/m15/p16390",  -- 026: 1 639 caixas, 16 390 polígonos: a lista cresce para 32 768
+    "linkspan_e/m15/v16384",  -- 026: 2 048 caixas, 16 384 vértices: a lista de vértices fica em 16 384
+    "linkspan_e/m15/v16392",  -- 026: 2 049 caixas, 16 392 vértices: cresce para 32 768
     "linkspan_e/house/main",  -- retorno
 }, ";")
 

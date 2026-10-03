@@ -205,6 +205,7 @@ def main():
     make_m12(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_m17(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_m19(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_m15(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
@@ -940,6 +941,57 @@ def make_m19(put, registry, field, field_room, field_collision):
     registry["linkspan_e/m19"] = {"name": "Link-Span E: água por room", "scene": f"{folder}/scene.json",
                                   "drawConfig": 0,
                                   "entrances": {name: {"spawn": i} for i, (name, _, _, _) in enumerate(M19_CASES)}}
+
+
+# M15 (UNBOUND-026): a caixa grande (Obj_Kibako2) registra 10 polígonos e 8 vértices DynaPoly. A tabela de BgActor
+# começa com 64 slots e dobra; as listas de polígonos e de vértices começam em 16 384 e crescem para
+# max(total, 2 x capacidade) quando a soma do quadro passa disso. Salas: (nome, caixas, a última sob o spawn).
+M15_ROOMS = (("c64", 64, False), ("c65", 65, True), ("p16380", 1638, False), ("p16390", 1639, False),
+             ("v16384", 2048, False), ("v16392", 2049, False))
+M15_COLUMNS = 46
+M15_SPAWN = (0, 0, -300)
+
+
+def make_m15(put, registry, field, field_room, field_collision):
+    """M15: uma sala por contagem de caixas grandes (64, 65, 1 638, 1 639, 2 048 e 2 049), em grade à frente do
+    spawn. Na sala de 65, uma caixa fica sob o spawn e o Link cai sobre ela: é o registro de bgId 64 (o primeiro
+    depois de a tabela dobrar). O Init dos atores roda no Actor_UpdateAll, da cabeça da lista da categoria (o mais
+    novo primeiro), então os registros DynaPoly saem na ordem inversa da lista: a caixa do spawn vai na chave 0.
+    1 638/1 639 caixas somam 16 380/16 390 polígonos; 2 048/2 049, 16 384/16 392 vértices."""
+    folder = "scenes/linkspan_e/m15"
+    strips_floor(put, folder, [(-600, 3600, "grid")], width=2000)
+    floor, vertices, polys = band_floor((-600, 3600), (0,), width=2000)
+    put(f"{folder}/collision.bin", floor)
+    collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin", vertices=vertices,
+                               polys=polys)
+    collision["bounds"] = {"min": [-2000, -10, -600], "max": [2000, 10, 3600]}
+    put(f"{folder}/collision.json", collision)
+    setup = outdoor_setup(field, list(M15_SPAWN), 0, 0)
+    # Na sala de 65 o Link nasce acima da caixa (topo em y = 48) e cai sobre ela.
+    setup["spawns"]["1"] = dict(setup["spawns"]["0"], pos=[M15_SPAWN[0], 120, M15_SPAWN[2]])
+    setup["entrances"] = {str(i): {"spawn": 1 if on_top else 0, "room": i}
+                          for i, (_, _, on_top) in enumerate(M15_ROOMS)}
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {str(i): f"{folder}/rooms/{name}.json" for i, (name, _, _) in enumerate(M15_ROOMS)},
+        "setups": {"0": setup},
+    })
+    for name, count, on_top in M15_ROOMS:
+        first = 1 if on_top else 0
+        actors = {str(first + i): {"id": CRATE_ACTOR,
+                                   "pos": [-1800 + (i % M15_COLUMNS) * 80, 0, 300 + (i // M15_COLUMNS) * 70],
+                                   "rot": [0, 0, 0], "params": 0}
+                  for i in range(count - first)}
+        if on_top:
+            actors["0"] = {"id": CRATE_ACTOR, "pos": list(M15_SPAWN), "rot": [0, 0, 0], "params": 0}
+        room = base_room(field_room)
+        room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                     "objects": {"0": CRATE_OBJECT}, "actors": actors})
+        put(f"{folder}/rooms/{name}.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/m15"] = {"name": "Link-Span E: DynaPoly", "scene": f"{folder}/scene.json",
+                                  "drawConfig": 0,
+                                  "entrances": {name: {"spawn": i} for i, (name, _, _) in enumerate(M15_ROOMS)}}
 
 
 def title_card(text):
