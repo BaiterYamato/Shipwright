@@ -206,6 +206,7 @@ def main():
     make_m17(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_m19(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_m15(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_m24(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
@@ -992,6 +993,102 @@ def make_m15(put, registry, field, field_room, field_collision):
     registry["linkspan_e/m15"] = {"name": "Link-Span E: DynaPoly", "scene": f"{folder}/scene.json",
                                   "drawConfig": 0,
                                   "entrances": {name: {"spawn": i} for i, (name, _, _) in enumerate(M15_ROOMS)}}
+
+
+M24_ATLAS = "textures/linkspan_e/m24_atlas"
+M24_SIDE = 128
+M24_COUNT = 8193
+
+
+def m24_texture():
+    """Um atlas OTEX RGBA16; cada janela 1x1 tem endereço próprio."""
+    import random
+    rng = random.Random(24)
+    palette = [0x07C1, 0x003F, 0xFFC1, 0xF83F, 0x07FF, 0xFFFF]
+    pixels = [rng.choice(palette) for _ in range(M24_SIDE ** 2)]
+    pixels[0] = 0x07C1       # A: verde sólido
+    pixels[M24_COUNT - 1] = 0xF801  # B: vermelho sólido
+    # A região não usada tem entropia determinística, evitando ZIP >200:1.
+    for i in range(M24_COUNT, len(pixels)):
+        pixels[i] = rng.randrange(32768) * 2 + 1
+    header = bytes.fromhex("000000005845544f00000000efbeaddeefbeadde").ljust(0x40, b"\0")
+    data = b"".join(struct.pack(">H", p) for p in pixels)
+    return header + struct.pack("<IIII", 2, M24_SIDE, M24_SIDE, len(data)) + data
+
+
+def m24_tile(tile, tmem):
+    return (f'<SetTile Format="G_IM_FMT_RGBA" Size="G_IM_SIZ_16b" Line="1" TMem="{tmem}" '
+            f'Tile="{tile}" Palette="0" Cms0="G_TX_CLAMP" Cms1="G_TX_NOMIRROR" '
+            'Cmt0="G_TX_CLAMP" Cmt1="G_TX_NOMIRROR" MaskS="0" MaskT="0" ShiftS="0" ShiftT="0"/>')
+
+
+def m24_load(index):
+    x, y = index % M24_SIDE, index // M24_SIDE
+    # LoadTile usa T, não Tile. Coordenadas 10.2, mascaradas a 12 bits no comando.
+    return f'<LoadTile T="7" Uls="{x * 4}" Ult="{y * 4}" Lrs="{x * 4}" Lrt="{y * 4}"/>'
+
+
+def m24_combine(slot):
+    # Ciclo 0 escolhe um slot; ciclo 1 conserva COMBINED. Não usa textura no ciclo 1.
+    return (f'<SetCombineLERP A0="G_CCMUX_0" B0="G_CCMUX_0" C0="G_CCMUX_0" D0="G_CCMUX_TEXEL{slot}" '
+            'Aa0="G_ACMUX_0" Ab0="G_ACMUX_0" Ac0="G_ACMUX_0" Ad0="G_ACMUX_1" '
+            'A1="G_CCMUX_0" B1="G_CCMUX_0" C1="G_CCMUX_0" D1="G_CCMUX_COMBINED" '
+            'Aa1="G_ACMUX_0" Ab1="G_ACMUX_0" Ac1="G_ACMUX_0" Ad1="G_ACMUX_1"/>')
+
+
+def m24_quad(x0, y0, x1, y1):
+    # A janela é sólida; todos os UVs ficam no centro do texel, sem bleed do atlas.
+    return [f'<Vtx X="{x}" Y="{y}" Z="200" S="16" T="16" R="255" G="255" B="255" A="255"/>'
+            for x, y in [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]]
+
+
+def m24_draw(path, offset):
+    return [f'<LoadVertices Path="{path}" Count="4" VertexBufferIndex="0" VertexOffset="{offset}"/>',
+            '<Triangle1 V00="0" V01="1" V02="2" Flag0="0"/>',
+            '<Triangle1 V00="0" V01="2" V02="3" Flag0="0"/>']
+
+
+def make_m24(put, registry, field, field_room, field_collision):
+    """M24: 8193 janelas em um atlas; A retida em 0 durante 8192 imports em 1."""
+    put(M24_ATLAS, m24_texture())
+    for key, two_slots in [("m24_seq", False), ("m24_slots", True)]:
+        folder = f"scenes/linkspan_e/{key}"
+        vpath = f"{folder}/vertices"
+        lines = ['<DisplayList Version="0">', '<PipeSync/>',
+                 '<ClearGeometryMode G_LIGHTING="1" G_CULL_BACK="1" G_CULL_FRONT="1" G_TEXTURE_GEN="1" '
+                 'G_TEXTURE_GEN_LINEAR="1" G_FOG="1" G_ZBUFFER="1"/>',
+                 '<SetGeometryMode G_SHADE="1" G_SHADING_SMOOTH="1"/>',
+                 '<SetCycleType G_CYC_2CYCLE="1"/>',
+                 '<SetRenderMode Mode1="G_RM_AA_ZB_OPA_SURF" Mode2="G_RM_AA_ZB_OPA_SURF2"/>',
+                 '<Texture S="65535" T="65535" Level="0" Tile="0" On="1"/>',
+                 f'<SetTextureImage Path="{M24_ATLAS}" Format="G_IM_FMT_RGBA" Size="G_IM_SIZ_16b" Width="128"/>',
+                 m24_tile(0, 0), m24_tile(1, 256), m24_tile(7, 0),
+                 '<SetTileSize T="0" Uls="0" Ult="0" Lrs="0" Lrt="0"/>',
+                 '<SetTileSize T="1" Uls="0" Ult="0" Lrs="0" Lrt="0"/>', m24_combine(0)]
+        rows = []
+        if two_slots:
+            # Tudo que invalida ambos os slots vem ANTES do primeiro lookup de A.
+            lines += ['<LoadSync/>', m24_load(0), m24_tile(7, 256)]
+            rows += m24_quad(-190, 70, -20, 190)  # referência A, x negativo (à direita na tela: a câmera olha para +z)
+            lines += m24_draw(vpath, 0) + [m24_combine(1)]
+            rows += m24_quad(-180, 210, 180, 225)  # amostra slot 1, mesma geometria por carga
+            for i in range(1, M24_COUNT):
+                lines += ['<LoadSync/>', m24_load(i)] + m24_draw(vpath, 4)
+            rows += m24_quad(20, 70, 190, 190)  # resultado A, x positivo (à esquerda na tela)
+            # Não tocar em Texture/SetTile/SetTileSize/LoadTile entre B e este draw.
+            lines += [m24_combine(0)] + m24_draw(vpath, 8)
+        else:
+            for i in range(M24_COUNT):
+                col, row = i % 128, i // 128
+                x, y = -192 + col * 3, 215 - row * 3
+                rows += m24_quad(x, y - 3, x + 3, y)
+                lines += ['<LoadSync/>', m24_load(i)] + m24_draw(vpath, i * 4)
+        lines += ['<EndDisplayList/>', '</DisplayList>']
+        put(vpath, vertex_resource(rows))
+        put(f"{folder}/draw", "\n".join(lines).encode())
+        mesh = {"type": 0, "entries": {"0": {"opa": f"{folder}/draw", "xlu": None}}}
+        small_scene(put, registry, field, field_room, field_collision, key,
+                    "Link-Span E: M24 dois slots" if two_slots else "Link-Span E: M24 8193 janelas", mesh)
 
 
 def title_card(text):

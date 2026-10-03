@@ -34,6 +34,8 @@ local PLAN = table.concat({
     "linkspan_e/m15/p16390",  -- 026: 1 639 caixas, 16 390 polígonos: a lista cresce para 32 768
     "linkspan_e/m15/v16384",  -- 026: 2 048 caixas, 16 384 vértices: a lista de vértices fica em 16 384
     "linkspan_e/m15/v16392",  -- 026: 2 049 caixas, 16 392 vértices: cresce para 32 768
+    "linkspan_e/m24_seq/main", -- 027: 8 193 texturas distintas num quadro (janelas 1x1 de um atlas)
+    "linkspan_e/m24_slots/main", -- 027: A verde no slot 0, 8 192 chaves no slot 1; o painel de x positivo (à esquerda na tela) volta ao slot 0
     "linkspan_e/house/main",  -- retorno
 }, ";")
 
