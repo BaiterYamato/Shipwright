@@ -50,10 +50,40 @@ function Get-TextZipEntry {
     finally { $stream.Dispose() }
 }
 
-function Get-TomlString {
-    param([Parameter(Mandatory = $true)][string]$Toml, [Parameter(Mandatory = $true)][string]$Name)
-    $match = [regex]::Match($Toml, '(?m)^\s*' + [regex]::Escape($Name) + '\s*=\s*"([^"]+)"\s*(?:#.*)?$')
+function Get-Python {
+    $py = Get-Command py -ErrorAction SilentlyContinue
+    if ($py) { return [pscustomobject]@{ Source = $py.Source; Prefix = @('-3') } }
+    $python = Get-Command python -ErrorAction Stop
+    return [pscustomobject]@{ Source = $python.Source; Prefix = @() }
+}
+
+# Regex sobre o TOML aprovava hash citado em comentário e pulava chave entre aspas; o tomllib lê como o host.
+function Read-ManifestToml {
+    param([Parameter(Mandatory = $true)][string]$Toml, [Parameter(Mandatory = $true)][string]$Package)
+    $reader = Join-Path $PSScriptRoot 'read-linkspan-manifest.py'
+    $python = Get-Python
+    $temp = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText($temp, $Toml, (New-Object System.Text.UTF8Encoding($false)))
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try { $output = & $python.Source @($python.Prefix) $reader $temp 2>&1 }
+        finally { $ErrorActionPreference = $previousPreference }
+        if ($LASTEXITCODE -ne 0) { throw "manifest.toml recusado em ${Package}: $(@($output) -join ' ')" }
+        return (@($output) -join "`n") | ConvertFrom-Json
+    }
+    finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+}
+
+# Convenção: <nome>-<semver>[-layout-<id>[-...]].<ext>. O pré-release SemVer pode ter '-', então o -layout- sai antes.
+function Get-FileVersionFromName {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension($Name)
+    $layoutAt = $stem.IndexOf('-layout-', [System.StringComparison]::OrdinalIgnoreCase)
+    if ($layoutAt -ge 0) { $stem = $stem.Substring(0, $layoutAt) }
+    $match = [regex]::Match($stem, '-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$')
     if ($match.Success) { return $match.Groups[1].Value }
+    if ($stem -match '\d+\.\d+\.\d+') { throw "Versão no nome do pacote não segue <nome>-<semver>: $Name" }
     return $null
 }
 
@@ -130,21 +160,17 @@ function Get-ZipInventory {
         $metadataSource = $null
         $fileName = [System.IO.Path]::GetFileName($Path)
         if ($manifest) {
-            $toml = Get-TextZipEntry -Entry $manifest
-            $id = Get-TomlString -Toml $toml -Name 'id'
-            $packageVersion = Get-TomlString -Toml $toml -Name 'version'
+            $fields = Read-ManifestToml -Toml (Get-TextZipEntry -Entry $manifest) -Package $fileName
+            $id = [string]$fields.id
+            $packageVersion = [string]$fields.version
             # O manifesto de mod nativo é gerado no configure do CMake; um build velho chegou a sair com o nome
             # da versão nova e o manifesto (versão e fingerprint) da anterior.
-            $nameVersion = [regex]::Match($fileName, '-(\d+\.\d+\.\d+)(?=-|\.[A-Za-z0-9]+$)')
-            if ($nameVersion.Success -and $packageVersion -and $nameVersion.Groups[1].Value -ne $packageVersion) {
-                throw "Versão no nome ($($nameVersion.Groups[1].Value)) difere do manifest.toml ($packageVersion): $fileName"
+            $nameVersion = Get-FileVersionFromName -Name $fileName
+            if ($nameVersion -and $packageVersion -and $nameVersion -cne $packageVersion) {
+                throw "Versão no nome ($nameVersion) difere do manifest.toml ($packageVersion): $fileName"
             }
-            $fingerprintMatch = [regex]::Match($toml, '(?m)^\s*host_fingerprints\s*=\s*\[([^\]]*)\]')
-            if ($fingerprintMatch.Success) {
-                $hostFingerprints = @([regex]::Matches($fingerprintMatch.Groups[1].Value, '[0-9a-fA-F]{64}') | ForEach-Object { $_.Value.ToLowerInvariant() })
-            }
-            $manifestLayout = Get-TomlString -Toml $toml -Name 'oot_layout_id'
-            if (-not $manifestLayout) { $manifestLayout = Get-TomlString -Toml $toml -Name 'layout_id' }
+            $hostFingerprints = @($fields.hostFingerprints)
+            $manifestLayout = [string]$fields.layoutId
             if ($manifestLayout) { $layoutId = $manifestLayout; $layoutSource = 'manifest.toml' }
             $metadataSource = 'manifest.toml'
         }
@@ -197,9 +223,8 @@ function Invoke-ProtectedScanner {
     param([Parameter(Mandatory = $true)][string[]]$Paths, [Parameter(Mandatory = $true)][string]$JsonOut, [Parameter(Mandatory = $true)][string]$TextOut)
     $scanner = Join-Path $PSScriptRoot 'scan-protected-content.py'
     if (-not (Test-Path -LiteralPath $scanner -PathType Leaf)) { throw "Scanner não encontrado: $scanner" }
-    $python = Get-Command py -ErrorAction SilentlyContinue
-    $scannerArgs = @()
-    if ($python) { $scannerArgs += '-3' } else { $python = Get-Command python -ErrorAction Stop }
+    $python = Get-Python
+    $scannerArgs = @($python.Prefix)
     $scannerArgs += @($scanner, '--max-file-bytes', [string]$MaxFileBytes, '--json-out', $JsonOut, '--text-out', $TextOut)
     foreach ($pattern in $AllowLarge) { $scannerArgs += @('--allow-large', $pattern) }
     $scannerArgs += $Paths
