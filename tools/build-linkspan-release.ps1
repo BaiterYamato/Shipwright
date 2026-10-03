@@ -57,6 +57,17 @@ function Get-Python {
     return [pscustomobject]@{ Source = $python.Source; Prefix = @() }
 }
 
+# Antes de montar a release: sem tomllib (Python < 3.11) nem tomli, todo manifesto pareceria inválido.
+function Assert-ManifestReader {
+    $reader = Join-Path $PSScriptRoot 'read-linkspan-manifest.py'
+    $python = Get-Python
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $output = & $python.Source @($python.Prefix) $reader --check 2>&1 }
+    finally { $ErrorActionPreference = $previousPreference }
+    if ($LASTEXITCODE -ne 0) { throw "Leitor de manifest.toml indisponível em $($python.Source): $(@($output) -join ' ')" }
+}
+
 # Regex sobre o TOML aprovava hash citado em comentário e pulava chave entre aspas; o tomllib lê como o host.
 function Read-ManifestToml {
     param([Parameter(Mandatory = $true)][string]$Toml, [Parameter(Mandatory = $true)][string]$Package)
@@ -75,12 +86,12 @@ function Read-ManifestToml {
     finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
 }
 
-# Convenção: <nome>-<semver>[-layout-<id>[-...]].<ext>. O pré-release SemVer pode ter '-', então o -layout- sai antes.
+# Convenção: <nome>-<semver>[-layout-<id hex>[-<hash hex>]].<ext>. O pré-release SemVer pode ter '-', então só o
+# sufixo de layout do fim sai antes; um "-layout-" no meio do nome ou do pré-release fica.
 function Get-FileVersionFromName {
     param([Parameter(Mandatory = $true)][string]$Name)
     $stem = [System.IO.Path]::GetFileNameWithoutExtension($Name)
-    $layoutAt = $stem.IndexOf('-layout-', [System.StringComparison]::OrdinalIgnoreCase)
-    if ($layoutAt -ge 0) { $stem = $stem.Substring(0, $layoutAt) }
+    $stem = [regex]::Replace($stem, '(?i)-layout-[0-9a-f]{8,64}(?:-[0-9a-f]{8,64})?$', '')
     $match = [regex]::Match($stem, '-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$')
     if ($match.Success) { return $match.Groups[1].Value }
     if ($stem -match '\d+\.\d+\.\d+') { throw "Versão no nome do pacote não segue <nome>-<semver>: $Name" }
@@ -288,6 +299,7 @@ $selected = @(
     Sort-Object Name
 )
 if ($selected.Count -eq 0) { throw "Nenhum .zip, .shipmod ou .o2r selecionado em $artifactRoot" }
+Assert-ManifestReader
 $names = @($selected | ForEach-Object { $_.Name })
 if (@($names | Sort-Object -Unique).Count -ne $names.Count) { throw 'Nomes de pacote duplicados não são permitidos.' }
 

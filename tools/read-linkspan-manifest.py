@@ -2,6 +2,7 @@
 """Le o manifest.toml de um pacote Link-Span e imprime em JSON os campos que o construtor da release confere.
 
 Uso: read-linkspan-manifest.py <manifest.toml>
+     read-linkspan-manifest.py --check   (sai com 0 se ha leitor de TOML)
 
 Regex sobre o TOML aprovava hash citado em comentario e ignorava chave entre aspas; aqui o arquivo passa pelo
 tomllib e provider.host_fingerprints segue as mesmas regras do ManifestParser do core (1-32 SHA-256 em hex).
@@ -9,7 +10,14 @@ tomllib e provider.host_fingerprints segue as mesmas regras do ManifestParser do
 import json
 import string
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ImportError:  # Python < 3.11
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
 
 LAYOUT_KEYS = ('oot_layout_id', 'layout_id')
 
@@ -28,6 +36,10 @@ def find_layout(data):
 
 
 def main(argv):
+    if tomllib is None:
+        return fail('sem leitor de TOML: use Python 3.11+ (tomllib) ou instale o pacote tomli')
+    if argv[1:] == ['--check']:
+        return 0
     if len(argv) != 2:
         return fail('uso: read-linkspan-manifest.py <manifest.toml>')
     try:
