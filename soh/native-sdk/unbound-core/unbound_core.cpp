@@ -21,6 +21,7 @@
 #endif
 
 #include "converter.h"
+#include "actor_registry.h"
 #include "include/linkspan/unbound/json_factory.h"
 #include "json_merge.h"
 #include "oot_hooks.h"
@@ -88,6 +89,10 @@ struct State {
     const ShipOotScenesV2* scenesV2 = nullptr;
     const ShipOotScenesV3* scenesV3 = nullptr;
     const ShipOotTextV1* text = nullptr;
+    const ShipOotActorModelsV1* actorModels = nullptr;
+    std::map<std::string, int32_t> actorNames;
+    uint32_t actorTypesLoaded = 0;
+    bool actorsReady = false;
     std::vector<uint64_t> sceneHandles;
     TypeBinding bindings[4];
     std::vector<uint64_t> jsonTypes;
@@ -117,6 +122,11 @@ struct State {
     std::map<uint64_t, Result> results;
     uint64_t nextHandle = 1;
 };
+
+int32_t ResolveActor(const State& state, const std::string& name) {
+    const auto found = state.actorNames.find(name);
+    return found == state.actorNames.end() ? -1 : found->second;
+}
 
 bool IsOwner(const State* state) {
     return state && state->ownerThread == std::this_thread::get_id();
@@ -485,7 +495,7 @@ ShipNativeStatus SHIP_NATIVE_CALL OnRoomActors(void* user, const ShipNativeHookC
         std::string error;
         std::string notes;
         const bool applied = LinkSpanUnbound::ApplyRoomActorLayers(vanilla, payload->layer, collector.layers, result,
-                                                                    error);
+            error, [state](const std::string& name) { return ResolveActor(*state, name); });
         for (const auto& note : result.notes) {
             notes += "; " + note;
         }
@@ -606,6 +616,7 @@ ShipNativeStatus SHIP_NATIVE_CALL TranscodeJson(void* user, const char* path, ui
         LinkSpanUnbound::TranscodeContext context;
         context.path = path;
         context.resolveEntrance = [state](const std::string& name) { return ResolveEntrance(*state, name); };
+        context.resolveActor = [state](const std::string& name) { return ResolveActor(*state, name); };
         std::string xml;
         switch (binding->kind) {
             case DocKind::Scene:
@@ -934,6 +945,58 @@ std::string ApplyText(State& state) {
     return report.empty() ? "texto: nenhum text/<lang>/messages.json" : report;
 }
 
+void SHIP_NATIVE_CALL CollectActorName(void* user, const char* name, int16_t id) {
+    static_cast<State*>(user)->actorNames[name] = id;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL CollectActorFile(void* user, const char* path, uint32_t length) {
+    auto* files = static_cast<std::map<std::string, std::string>*>(user);
+    const std::string full(path, length);
+    const auto name = LinkSpanUnbound::ActorNameFromPath(full);
+    if (!name.empty()) files->emplace(name, full);
+    return SHIP_NATIVE_OK;
+}
+
+std::string ApplyActorRegistry(State& state) {
+    if (state.actorsReady) return std::to_string(state.actorTypesLoaded) + " tipos já registrados";
+    state.actorNames.clear();
+    if (state.actorModels->list_types(CollectActorName, &state) != SHIP_NATIVE_OK)
+        throw std::runtime_error("não foi possível listar os atores do host");
+    std::map<std::string, std::string> files; // ordenação pelo nome, sem a extensão .json
+    if (state.resources->list_files("unbound/actors/*.json", CollectActorFile, &files) != SHIP_NATIVE_OK)
+        throw std::runtime_error("não foi possível listar unbound/actors");
+    for (const auto& [name, path] : files) {
+        LayerCollector collector = DocumentCollector();
+        if (state.resources->read_file_layers(path.c_str(), CollectLayer, &collector) != SHIP_NATIVE_OK) {
+            AddNote(state, path + ": falha na leitura; tipo pulado");
+            continue;
+        }
+        LinkSpanUnbound::Json doc;
+        std::vector<std::string> notes;
+        const bool read = LinkSpanUnbound::MergeActorLayers(collector.layers, doc, notes);
+        LinkSpanUnbound::ActorDefinition definition;
+        if (read && !doc.is_null() && LinkSpanUnbound::ReadActorDefinition(name, doc, definition, notes)) {
+            if (state.actorNames.contains(name)) {
+                notes.push_back("nome já pertence a outro ator; tipo pulado");
+            } else {
+                std::vector<ShipOotActorModelSegmentV1> segments;
+                const auto spec = LinkSpanUnbound::ModelSpec(definition, "linkspan.unbound.framework", segments);
+                int16_t id = -1;
+                const auto status = state.actorModels->register_type(&spec, &id);
+                if (status == SHIP_NATIVE_OK) {
+                    state.actorNames[name] = id;
+                    ++state.actorTypesLoaded;
+                    AppendLog(state, "actor type '" + name + "' -> id " + std::to_string(id));
+                } else notes.push_back(std::string("host recusou o tipo (") + StatusName(status) + ")");
+            }
+        }
+        for (const auto& note : notes) AddNote(state, path + ": " + note);
+    }
+    state.actorsReady = true;
+    return std::to_string(state.actorTypesLoaded) + " tipos personalizados; " +
+           std::to_string(state.actorNames.size()) + " nomes de ator disponíveis";
+}
+
 // game.ready: os archives dos mods já estão montados. Liga a base e registra as cenas. Chamar de novo refaz
 // tudo com as camadas atuais.
 ShipNativeStatus SHIP_NATIVE_CALL Ready(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
@@ -944,6 +1007,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Ready(void* user, const char*, uint32_t length
     }
     try {
         std::string text = ActivateBase(*state);
+        text += "\natores: " + ApplyActorRegistry(*state);
         text += "\nregistro: " + (state->scenes ? ApplySceneRegistry(*state) : std::string("sem linkspan.oot.scenes"));
         return WriteText(write, writer, std::move(text));
     } catch (...) {
@@ -981,6 +1045,8 @@ ShipNativeStatus SHIP_NATIVE_CALL UnboundReport(void* user, const char*, uint32_
                            " collision=" + std::to_string(state->transcoded[2]) +
                            " paths=" + std::to_string(state->transcoded[3]) +
                            " recusados=" + std::to_string(state->transcodeFailures);
+        text += "\natores: tipos=" + std::to_string(state->actorTypesLoaded) +
+                " nomes=" + std::to_string(state->actorNames.size());
         for (const auto& note : state->notes) {
             text += "\nnota: " + note;
         }
@@ -1040,6 +1106,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         return SHIP_NATIVE_FAILURE;
     }
     state->resources = resources;
+    state->actorModels = static_cast<const ShipOotActorModelsV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_ACTOR_MODELS_SERVICE, LINKSPAN_OOT_ACTOR_MODELS_VERSION,
+        sizeof(ShipOotActorModelsV1)));
+    if (!state->actorModels) { delete state; return SHIP_NATIVE_UNSUPPORTED; }
     state->resourcesV3 = static_cast<const ShipOotResourcesV3*>(
         runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_3,
                              sizeof(ShipOotResourcesV3)));
@@ -1121,6 +1191,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
 void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* state = static_cast<State*>(instance);
     if (state && IsOwner(state)) {
+        state->actorModels->remove_owner("linkspan.unbound.framework");
         ResetText(*state);
         ClearOverrides(*state);
         UnregisterScenes(*state);

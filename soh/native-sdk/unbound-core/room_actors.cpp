@@ -1,4 +1,5 @@
 #include "room_actors.h"
+#include "actor_registry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -230,7 +231,8 @@ std::string RoomDocumentPath(const std::string& roomPath, int32_t room) {
 }
 
 bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
-                          const std::vector<LayerDocument>& layers, RoomActorsResult& output, std::string& error) {
+                          const std::vector<LayerDocument>& layers, RoomActorsResult& output, std::string& error,
+                          const std::function<int32_t(const std::string&)>& resolveActor) {
     output = {};
     error.clear();
     const std::string setupKey = std::to_string(setup);
@@ -284,7 +286,7 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
                 continue;
             }
             RoomActor actor;
-            actor.id = ReadField(entry, "id");
+            if (!ResolveRoomActorId(entry, resolveActor, actor.id, output.notes, "actors." + key)) continue;
             ReadPosition(entry, "pos", actor.pos);
             ReadVector(entry, "rot", actor.rot);
             actor.params = ReadField(entry, "params");

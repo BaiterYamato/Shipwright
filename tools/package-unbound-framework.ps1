@@ -25,7 +25,7 @@ function Write-Utf8NoBom([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
 }
 
-$version = '0.5.0'
+$version = '0.6.0'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_unbound_core.dll') 'Unbound framework DLL'
 $tool = Resolve-InputFile (Join-Path $ToolDirectory 'linkspan_unbound_convert.exe') 'Unbound command-line tool'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
@@ -56,7 +56,7 @@ entrypoint = "main.lua"
 games = ["oot"]
 kind = "core_extension"
 load_phase = "pre_game"
-description = "Formato 2 do SoH: Unbound sobre o Link-Span: base convertida, cenas, colisao, paths, texto e registro em JSON."
+description = "Unbound 0.9 for Link-Span: JSON scenes, text, collision and actors with models, animation, dialogue and head tracking."
 
 [provider]
 abi_version = "1.2"
@@ -68,13 +68,15 @@ Copy-Item -LiteralPath $tool -Destination (Join-Path $staging 'tools\linkspan_un
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\unbound\json_factory.h') `
     -Destination (Join-Path $staging 'include\linkspan\unbound\json_factory.h')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'README.md') -Destination (Join-Path $staging 'docs\README.md')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'NOTICE.md') -Destination (Join-Path $staging 'docs\NOTICE.md')
 $notice = @"
 # Licenças
 
 - Framework Unbound do Link-Span (DLL, Lua, ferramenta, header e documentação): licença do repositório
   Link-Span.
 - O formato lido é o da SPEC do SoH: Unbound (``roborich/Shipwright``, ``unbound-docs/SPEC.md``); nenhum
-  arquivo daquele projeto vai neste pacote.
+  arquivo integral daquele projeto vai neste pacote. O leitor de atores é adaptado da versão 0.9;
+  consulte ``docs/NOTICE.md`` para a proveniência.
 - Nenhum dado do jogo vai neste pacote: ``oot-unbound.o2r`` é gerado na máquina de quem joga, a partir dos
   archives dela.
 

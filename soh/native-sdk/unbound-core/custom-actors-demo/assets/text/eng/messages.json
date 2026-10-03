@@ -1,0 +1,20 @@
+{
+  "$schema": "unbound/text/1",
+  "messages": {
+    "0xA001": {
+      "box": 0,
+      "ypos": 0,
+      "text": "I am an actor created in JSON.\u0001My head follows Link.\u0004No C code was needed."
+    },
+    "0xA002": {
+      "box": 0,
+      "ypos": 0,
+      "text": "This pose holds one frame\u0001of Malon's animation."
+    },
+    "0xA003": {
+      "box": 0,
+      "ypos": 0,
+      "text": "I am a static model\u0001with collision and dialogue."
+    }
+  }
+}

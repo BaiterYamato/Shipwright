@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "converter.h"
+#include "actor_registry.h"
 #include "scene_registry.h"
 #include "transcode.h"
 #include "unbound_docs.h"
@@ -63,6 +64,17 @@ void CheckDocument(const std::string& path, const std::string& bytes, CheckResul
             ++result.checked;
             return;
         }
+        if (!ActorNameFromPath(path).empty()) {
+            Json doc;
+            ActorDefinition definition;
+            std::vector<std::string> notes;
+            if (!MergeActorLayers({{"check", bytes, 0}}, doc, notes) ||
+                (!doc.is_null() && !ReadActorDefinition(ActorNameFromPath(path), doc, definition, notes)))
+                throw DocumentError("tipo de ator inválido");
+            for (const auto& note : notes) report(note);
+            ++result.checked;
+            return;
+        }
         if (path.rfind("text/", 0) == 0) {
             TextTable table;
             if (!BuildTextTable({ { "check", bytes, 0 } }, table)) {
@@ -78,6 +90,8 @@ void CheckDocument(const std::string& path, const std::string& bytes, CheckResul
         TranscodeContext context;
         context.path = path;
         context.resolveEntrance = [](const std::string&) { return 0; };
+        // Verificação de estrutura; assets e nomes existentes são checados pelo jogo.
+        context.resolveActor = [](const std::string&) { return LINKSPAN_OOT_ACTOR_MODELS_ID_BASE; };
         if (!MergeLayers({ { "check", bytes, 0 } }, true, merged)) {
             throw DocumentError("não é um objeto JSON que começa com '{'");
         }

@@ -4,7 +4,48 @@
 `roborich/Shipwright`, `unbound-docs/SPEC.md`) sobre o host Link-Span do Shipwright 9.2.3. Não linka
 `soh.exe`: usa só os serviços `linkspan.oot.*`.
 
-## O que a versão 0.5.0 faz
+## O que a versão 0.6.0 faz
+
+### Unbound 0.9: atores declarados em JSON
+
+- Cada tipo fica em `unbound/actors/<nome>.json`; `unbound/actors/meumod/guarda.json`
+  é o tipo `meumod/guarda`. Use esse nome no `id` de um ator da sala.
+- O modelo pode ser um esqueleto normal/flex com animação ou uma display list estática,
+  opaca ou translúcida, do jogo ou de um mod. Os recursos são carregados pelo caminho.
+- Suporta animação em loop, pose em um frame, escala, sombra, distância de desenho,
+  texturas nos segmentos 8–12, juntas ocultas, colisão cilíndrica, diálogo e cabeça
+  acompanhando Link com eixos configuráveis.
+- Tipos no mesmo caminho combinam por chave entre mods; `null` remove o tipo.
+  Nomes de atores existentes, como `En_Kanban`, também funcionam na lista de atores da sala.
+- Nomes desconhecidos, IDs numéricos na faixa dinâmica e `params` em objeto são
+  pulados com diagnóstico. Atores de transição continuam usando IDs numéricos;
+  uma entrada inválida conserva seu índice e não cria ator.
+- Modelos, animações e texturas incompatíveis são recusados antes de chegar ao desenho.
+  O host recusa spawn de IDs inexistentes e remove o limite antigo de 255 instâncias por tipo.
+
+O framework requer o novo serviço `linkspan.oot.actor-models` v1. Os tipos são
+registrados ao iniciar; para trocar arquivos de tipos, reinicie o jogo.
+
+Exemplo:
+
+```json
+{
+  "name": "Guarda",
+  "model": {
+    "skeleton": "objects/object_toryo/object_toryo_Skel_007150",
+    "animation": "objects/object_toryo/object_toryo_Anim_000E50",
+    "shadow": 42
+  },
+  "collision": { "radius": 18, "height": 63 },
+  "talk": { "message": "0xA001" },
+  "look": { "limb": 15 }
+}
+```
+
+Coloque a mensagem em `text/eng/messages.json` e o ator no JSON da sala:
+`"guarda": { "id": "meumod/guarda", "pos": [0, 0, 0], "params": 0 }`.
+O número do ator é atribuído ao carregar e nunca deve ser gravado no mapa.
+Veja [NOTICE.md](./NOTICE.md) para a origem do código.
 
 - **Base convertida (UNBOUND-006).** No init, antes de o SoH montar os mods, converte as cenas vanilla dos
   archives do jogo para o formato 2 e grava `oot-unbound.o2r` ao lado do `oot.o2r`, com a proveniência em
@@ -55,6 +96,25 @@ O formato continua na versão 2 e mod antigo continua carregando. O que mudou (S
   do jogo espera o recurso. Dentro dele valem `has_file`, `read_file`, `read_file_layers` e
   `find_entrance`. O comentário de `oot_resources.h` ainda diz "thread do jogo" e será corrigido na
   próxima mudança de layout do SDK.
+
+### Prelude e arquivos de mapas antigos
+
+O `oot-unbound.o2r` gerado pelo Link-Span é uma camada de cenas para este host. Embora tenha o mesmo nome,
+não é o arquivo base completo produzido pelo executável oficial SoH: Unbound. O Prelude verifica a
+proveniência do arquivo e recusa o conversor `linkspan-unbound-converter 1`. Para usar o Prelude, gere a
+base com [SoH: Unbound 9.2.3-unbound0.8](https://github.com/roborich/Shipwright/releases/tag/9.2.3-unbound0.8)
+a partir do seu próprio `oot.o2r` ou importe sua ROM diretamente no Prelude e escolha Unbound. Não altere
+apenas o nome ou o campo `source.converter`: faltam recursos da base completa.
+
+Um ZIP de distribuição que contenha um `.o2r` precisa ser extraído antes de ser adicionado no botão
+**Add override .o2r or .otr** do editor. A importação no editor só comprova que ele consegue ler e
+mostrar os recursos; não comprova que a alteração será usada pelo jogo. Com uma base Unbound montada,
+as cenas vanilla são lidas de `scenes/<cena>/scene.json`: substituições binárias em
+`scenes/shared/<cena>_scene/` não alteram essas cenas. Uma cena nova também precisa de uma entrada em
+`unbound/scenes.json` para ser acessível no jogo. Veja a [SPEC do Unbound, §§1 e 7](https://github.com/roborich/Shipwright/blob/unbound/unbound-docs/SPEC.md).
+Para usar substituições binárias de cenas vanilla sem conversão, abra o `oot.o2r` normal no Prelude e
+adicione os `.o2r` como camadas; isso executa o SoH normal no navegador. Uma cena nova continua precisando
+de um caminho de entrada próprio no jogo.
 
 ## Ferramenta de linha de comando
 

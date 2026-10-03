@@ -16,6 +16,7 @@ struct TranscodeContext {
     // Nome de entrada (ENTR_* ou "<cena>/<entrada>") para índice; < 0 se não existe.
     std::function<int32_t(const std::string&)> resolveEntrance;
     std::vector<std::string> notes; // entradas descartadas e outros avisos para o log
+    std::function<int32_t(const std::string&)> resolveActor;
 };
 
 // scene.json (room=false) ou rooms/<n>.json (room=true). DocumentError = documento recusado.

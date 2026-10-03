@@ -1,4 +1,5 @@
 #include "transcode.h"
+#include "actor_registry.h"
 
 #include <algorithm>
 #include <clocale>
@@ -593,13 +594,23 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         xml.Open("SetTransitionActorList");
         for (const auto& key : PositionalKeys(list, Where(context, "transitionActors"))) {
             const Json& t = list[key];
+            int16_t actorId = -1;
+            int64_t parsedId = 0;
+            const auto idValue = t.find("id");
+            const bool named = idValue != t.end() && idValue->is_string() &&
+                               !ParseIntString(idValue->get<std::string>(), parsedId);
+            const int64_t numericId = Field(t, "id");
+            if (!named && numericId >= 0 && numericId < LINKSPAN_OOT_ACTOR_MODELS_ID_BASE)
+                actorId = static_cast<int16_t>(numericId);
+            else context.notes.push_back(Where(context, "transitionActors/" + key) +
+                                         ": id inválido; entrada preservada sem ator");
             const Vec3 pos = ReadVec3(SubArray(t, "pos"));
             xml.Leaf("TransitionActorEntry")
                 .Attr("FrontSideRoom", S16(Field(Sub(t, "front"), "room")))
                 .Attr("FrontSideEffects", S8(Field(Sub(t, "front"), "effects")))
                 .Attr("BackSideRoom", S16(Field(Sub(t, "back"), "room")))
                 .Attr("BackSideEffects", S8(Field(Sub(t, "back"), "effects")))
-                .Attr("Id", S16(Field(t, "id")))
+                .Attr("Id", actorId)
                 .Float("PosX", pos.x)
                 .Float("PosY", pos.y)
                 .Float("PosZ", pos.z)
@@ -646,8 +657,13 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         xml.Open("SetActorList");
         for (const auto& key : ListKeys(list)) {
             if (list[key].is_object()) {
+                int16_t actorId = -1;
+                if (!ResolveRoomActorId(list[key], context.resolveActor, actorId, context.notes,
+                                        Where(context, "actors/" + key))) continue;
                 xml.Leaf("ActorEntry");
-                ActorAttrs(xml, list[key]);
+                Json actor = list[key];
+                actor["id"] = actorId;
+                ActorAttrs(xml, actor);
                 xml.Close();
             }
         }

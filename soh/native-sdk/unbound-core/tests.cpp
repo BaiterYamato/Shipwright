@@ -139,12 +139,12 @@ int main() {
           "vetor com menos de 3 elementos vira [0,0,0]");
     const std::vector<LinkSpanUnbound::LayerDocument> replaceLayers{
         { "troca.zip",
-          R"({"setups":{"0":{"actors":{"$replace":true,"a":{"id":70000,"pos":[40000,0,0],"params":-1}}}}})", 1 },
+          R"({"setups":{"0":{"actors":{"$replace":true,"a":{"id":21,"pos":[40000,0,0],"params":65535}}}}})", 1 },
     };
     Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 0, replaceLayers, room, error) && room.actors.size() == 1 &&
-              room.actors[0].id == static_cast<int16_t>(70000 & 0xFFFF) &&
+              room.actors[0].id == 21 &&
               room.actors[0].pos[0] == 40000.0f && room.actors[0].params == -1,
-          "$replace descarta a lista de baixo; inteiros fora da largura fazem wrap, posição é f32");
+          "$replace descarta a lista de baixo; params faz wrap, id deve ser estável, posição é f32");
     Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 2, replaceLayers, room, error) && room.actors.size() == 3,
           "patch de outra camada de cena não mexe na lista atual");
     const std::vector<LinkSpanUnbound::LayerDocument> wrongSchema{

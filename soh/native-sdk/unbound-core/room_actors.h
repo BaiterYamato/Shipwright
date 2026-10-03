@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <functional>
 
 #include "json_merge.h"
 
@@ -34,6 +35,7 @@ struct RoomActorsResult {
 // quando o documento mesclado é rejeitado ($schema ausente ou de outra versão, $order em
 // lista posicional); nesse caso a lista vanilla deve ficar como está.
 bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
-                          const std::vector<LayerDocument>& layers, RoomActorsResult& output, std::string& error);
+                          const std::vector<LayerDocument>& layers, RoomActorsResult& output, std::string& error,
+                          const std::function<int32_t(const std::string&)>& resolveActor = {});
 
 } // namespace LinkSpanUnbound

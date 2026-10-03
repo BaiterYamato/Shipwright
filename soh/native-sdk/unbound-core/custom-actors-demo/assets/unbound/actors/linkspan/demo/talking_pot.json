@@ -1,0 +1,12 @@
+{
+  "name": "Talking pot",
+  "model": {
+    "displayList": "objects/gameplay_dangeon_keep/gPotDL",
+    "scale": 0.15
+  },
+  "collision": {
+    "radius": 12,
+    "height": 30
+  },
+  "talk": {}
+}

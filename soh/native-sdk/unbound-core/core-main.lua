@@ -1,6 +1,6 @@
 local ship = require("ship")
 
-ship.log.info("unbound-core: framework carregado")
+ship.log.info("unbound-core: framework loaded")
 
 local function logLines(prefix, text)
     for line in string.gmatch(text, "[^\n]+") do
@@ -13,7 +13,7 @@ local function callAndLog(name)
     if result then
         logLines("unbound: ", result)
     else
-        ship.log.info("unbound: " .. name .. " falhou: " .. tostring(failure))
+        ship.log.info("unbound: " .. name .. " failed: " .. tostring(failure))
     end
 end
 
