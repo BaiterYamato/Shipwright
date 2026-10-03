@@ -102,7 +102,8 @@ struct MeterHistory {
 
 struct Capture {
     enum class State { Idle, Opening, Capturing, Closing, Failed };
-    std::array<float, kRingSize> ring{};
+    // Elementos atômicos (relaxed): o callback do dispositivo escreve enquanto o worker copia a janela.
+    std::array<std::atomic<float>, kRingSize> ring{};
     std::atomic<std::uint32_t> ringWrite{ 0 };
     std::uint32_t ringRead = 0;
     std::array<float, kTauMax + 2> difference{};
@@ -142,7 +143,8 @@ struct Capture {
             const int count = bytes / static_cast<int>(sizeof(float));
             const auto write = capture.ringWrite.load(std::memory_order_relaxed);
             for (int i = 0; i < count; ++i)
-                capture.ring[(write + static_cast<std::uint32_t>(i)) & (kRingSize - 1)] = samples[i];
+                capture.ring[(write + static_cast<std::uint32_t>(i)) & (kRingSize - 1)].store(
+                    samples[i], std::memory_order_relaxed);
             capture.ringWrite.store(write + static_cast<std::uint32_t>(count), std::memory_order_release);
             capture.capturedSamples.fetch_add(static_cast<std::uint32_t>(count), std::memory_order_relaxed);
         }
@@ -380,7 +382,14 @@ struct Capture {
                 ringRead = write - kWindowSize;
             }
             for (int i = 0; i < kWindowSize; ++i) {
-                window[i] = ring[(ringRead + static_cast<std::uint32_t>(i)) & (kRingSize - 1)];
+                window[i] = ring[(ringRead + static_cast<std::uint32_t>(i)) & (kRingSize - 1)].load(
+                    std::memory_order_relaxed);
+            }
+            // Worker parado no meio da cópia: o callback pode ter dado a volta no anel e sobrescrito a
+            // janela. Descarta e recomeça das amostras mais novas.
+            if (ringWrite.load(std::memory_order_acquire) - ringRead > kRingSize) {
+                ringRead = ringWrite.load(std::memory_order_acquire) - kWindowSize;
+                continue;
             }
             ringRead += kHopSize;
             ProcessWindow(window);

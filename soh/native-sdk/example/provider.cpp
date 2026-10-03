@@ -374,6 +374,14 @@ uint8_t StepItemButton(uint8_t current, int direction, const SaveContext& save) 
     return current;
 }
 
+// Fecha o seletor e descarta o analógico capturado: a próxima abertura não herda a leitura de antes de
+// uma pausa, da ocarina ou da troca de cena.
+void ResetItemMenu(Mod& mod) {
+    mod.itemMenu = {};
+    mod.menuInputCaptured = false;
+    mod.menuLeftX = mod.menuRightX = 0;
+}
+
 // Segurar R abre o menu no botão C equipado; o analógico direito anda para os lados e
 // soltar o R equipa o destacado no ZR. Com o ZR pressionado a troca é recusada: soltaria
 // o item em uso.
@@ -382,7 +390,7 @@ const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
     const auto* play = static_cast<const PlayState*>(mod.engine->get_play_state());
     if (play && play->pauseCtx.state != 0) {
         mod.selectWasDown = down;
-        mod.itemMenu = {};
+        ResetItemMenu(mod);
         return nullptr;
     }
     const bool pressed = down && !mod.selectWasDown;
@@ -390,7 +398,7 @@ const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
     mod.selectWasDown = down;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
     if (!save) {
-        mod.itemMenu = {};
+        ResetItemMenu(mod);
         return nullptr;
     }
     if (pressed) {
@@ -1020,7 +1028,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         mod.shortcutWasDown = false;
         mod.shortcutHoldFired = false;
         mod.selectWasDown = false;
-        mod.itemMenu = {};
+        ResetItemMenu(mod);
         mod.ocarinaWasDown = false;
         mod.tunic.wasDown = mod.tunic.quickSwap = false;
         mod.boots.wasDown = mod.boots.quickSwap = false;
@@ -1035,7 +1043,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     if (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) {
         // Ocarina owns L/R/Y/X/A. In particular, R must not open the item selector
         // and X must not queue a jump after the instrument closes.
-        mod.itemMenu = {};
+        ResetItemMenu(mod);
         mod.selectWasDown = (physical & PhysicalButton(SDL_BUTTON_R)) != 0;
         mod.jumpWasDown = (physical & PhysicalButton(SDL_BUTTON_X_NINTENDO)) != 0;
         mod.shortcutWasDown = (physical & PhysicalButton(SDL_BUTTON_RIGHT_STICK)) != 0;
@@ -1054,7 +1062,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     if (play && play->pauseCtx.state != 0) {
         mod.cameraWaitCenter = true;
         UpdateCamera(mod, play, true);
-        mod.itemMenu = {};
+        ResetItemMenu(mod);
         mod.selectWasDown = (physical & PhysicalButton(SDL_BUTTON_R)) != 0;
         mod.shortcutWasDown = (physical & PhysicalButton(SDL_BUTTON_RIGHT_STICK)) != 0;
         mod.ocarinaWasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_LEFT)) != 0;

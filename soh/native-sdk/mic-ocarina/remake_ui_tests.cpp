@@ -169,7 +169,9 @@ int main() {
     mod.capture.ringWrite.store(0);
     Capture::AudioCallback(&mod.capture, reinterpret_cast<Uint8*>(nativeSamples.data()), sizeof(nativeSamples));
     Check(mod.capture.capturedSamples.load() >= kWindowSize, "Native microphone audio is converted into detector samples");
-    const auto pitch = mod.capture.EstimatePitch(mod.capture.ring.data());
+    std::array<float, kWindowSize> window{};
+    for (int i = 0; i < kWindowSize; ++i) window[i] = mod.capture.ring[i].load();
+    const auto pitch = mod.capture.EstimatePitch(window.data());
     Check(std::abs(pitch.hz - 880) < 8, "Rate conversion preserves the microphone pitch");
     SDL_FreeAudioStream(mod.capture.conversion); mod.capture.conversion = nullptr;
     activeMod = nullptr;
