@@ -1,5 +1,6 @@
 #include "room_actors.h"
 #include "actor_registry.h"
+#include "unbound_format.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,6 +8,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <unordered_map>
 
 #include <nlohmann/json.hpp>
 
@@ -19,7 +21,66 @@ constexpr const char* ROOM_SCHEMA = "unbound/room/1";
 
 // SPEC §3: objetos mesclam por chave, null apaga, arrays e escalares substituem e
 // "$replace": true descarta o valor das camadas de baixo (a chave sai do resultado).
+void MergeLayer(Json& base, const Json& patch);
+
+// Objeto grande: mesma regra do MergeLayer com índice das chaves (lista de atores com milhares de entradas).
+void MergeLayerIndexed(Json& base, const Json& patch) {
+    auto& object = base.get_ref<Json::object_t&>();
+    std::unordered_map<std::string, size_t> index;
+    index.reserve(object.size() + patch.size());
+    for (size_t i = 0; i < object.size(); ++i) {
+        index.emplace(object.data()[i].first, i);
+    }
+    std::vector<bool> removed(object.size(), false);
+    bool anyRemoved = false;
+    for (const auto& [key, value] : patch.items()) {
+        const auto found = index.find(key);
+        const bool present = found != index.end() && !removed[found->second];
+        if (value.is_null()) {
+            if (present) {
+                removed[found->second] = true;
+                anyRemoved = true;
+            }
+            continue;
+        }
+        size_t at = present ? found->second : object.size();
+        if (!present) {
+            object.emplace_back(key, value.is_object() ? Json::object() : value);
+            removed.push_back(false);
+            index[key] = at;
+            if (!value.is_object()) {
+                continue;
+            }
+        } else if (!value.is_object()) {
+            object.data()[at].second = value;
+            continue;
+        }
+        Json& current = object.data()[at].second;
+        const auto replace = value.find("$replace");
+        if (!current.is_object() || (replace != value.end() && replace->is_boolean() && replace->get<bool>())) {
+            current = Json::object();
+        }
+        MergeLayer(current, value);
+        current.erase("$replace");
+    }
+    if (anyRemoved) {
+        Json kept = Json::object();
+        auto& keptObject = kept.get_ref<Json::object_t&>();
+        keptObject.reserve(object.size());
+        for (size_t i = 0; i < object.size(); ++i) {
+            if (!removed[i]) {
+                keptObject.emplace_back(object.data()[i].first, std::move(object.data()[i].second));
+            }
+        }
+        base = std::move(kept);
+    }
+}
+
 void MergeLayer(Json& base, const Json& patch) {
+    if (base.is_object() && base.size() + patch.size() > 16) {
+        MergeLayerIndexed(base, patch);
+        return;
+    }
     for (const auto& [key, value] : patch.items()) {
         if (value.is_null()) {
             base.erase(key);
@@ -180,25 +241,35 @@ bool KeyLess(const std::string& a, const std::string& b) {
     return a < b;
 }
 
-std::vector<std::string> EngineOrder(const Json& list) {
-    std::vector<std::string> order;
+// Chave e valor na ordem do motor; o valor vem do próprio objeto, sem procurar a chave de novo.
+std::vector<std::pair<std::string, const Json*>> EngineOrder(const Json& list) {
+    std::vector<std::pair<std::string, const Json*>> order;
+    std::unordered_map<std::string, const Json*> byKey;
+    byKey.reserve(list.size());
+    for (const auto& [key, value] : list.get_ref<const Json::object_t&>()) {
+        byKey.emplace(key, &value);
+    }
     std::set<std::string> seen;
     const auto explicitOrder = list.find("$order");
     if (explicitOrder != list.end() && explicitOrder->is_array()) {
         for (const auto& key : *explicitOrder) {
-            if (key.is_string() && list.contains(key.get<std::string>()) && key.get<std::string>()[0] != '$' &&
-                seen.insert(key.get<std::string>()).second) {
-                order.push_back(key.get<std::string>());
+            if (!key.is_string()) {
+                continue;
+            }
+            const std::string& name = key.get_ref<const std::string&>();
+            const auto found = byKey.find(name);
+            if (found != byKey.end() && name[0] != '$' && seen.insert(name).second) {
+                order.emplace_back(name, found->second);
             }
         }
     }
-    std::vector<std::string> rest;
-    for (const auto& [key, value] : list.items()) {
+    std::vector<std::pair<std::string, const Json*>> rest;
+    for (const auto& [key, value] : list.get_ref<const Json::object_t&>()) {
         if (!key.empty() && key[0] != '$' && !seen.count(key)) {
-            rest.push_back(key);
+            rest.emplace_back(key, &value);
         }
     }
-    std::sort(rest.begin(), rest.end(), KeyLess);
+    std::sort(rest.begin(), rest.end(), [](const auto& a, const auto& b) { return KeyLess(a.first, b.first); });
     order.insert(order.end(), rest.begin(), rest.end());
     return order;
 }
@@ -238,12 +309,15 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
     const std::string setupKey = std::to_string(setup);
     try {
         Json actors = Json::object();
+        auto& actorObject = actors.get_ref<Json::object_t&>();
+        actorObject.reserve(vanilla.size());
         for (size_t i = 0; i < vanilla.size(); ++i) {
             const auto& actor = vanilla[i];
-            actors[std::to_string(i)] = Json{ { "id", actor.id },
-                                              { "pos", { actor.pos[0], actor.pos[1], actor.pos[2] } },
-                                              { "rot", { actor.rot[0], actor.rot[1], actor.rot[2] } },
-                                              { "params", actor.params } };
+            actorObject.emplace_back(std::to_string(i),
+                                     Json{ { "id", actor.id },
+                                           { "pos", { actor.pos[0], actor.pos[1], actor.pos[2] } },
+                                           { "rot", { actor.rot[0], actor.rot[1], actor.rot[2] } },
+                                           { "params", actor.params } });
         }
         Json merged = Json{ { "$schema", ROOM_SCHEMA }, { "setups", { { setupKey, { { "actors", actors } } } } } };
         for (const auto& layer : layers) {
@@ -256,7 +330,10 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
                 if (!JsonDepthWithin(layer.json)) {
                     throw std::runtime_error("aninhamento acima de " + std::to_string(kMaxJsonDepth) + " níveis");
                 }
-                parsed = Json::parse(layer.json, nullptr, true, true);
+                parsed = ParseJson(layer.json);
+                if (parsed.is_discarded()) {
+                    throw std::runtime_error("JSON inválido");
+                }
             } catch (const std::exception& exception) {
                 output.notes.push_back(layer.archive + ": camada pulada (" + exception.what() + ")");
                 continue;
@@ -279,8 +356,8 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
         if (list == setupObject.end() || !list->is_object()) {
             return true;
         }
-        for (const auto& key : EngineOrder(*list)) {
-            const auto& entry = (*list)[key];
+        for (const auto& [key, item] : EngineOrder(*list)) {
+            const auto& entry = *item;
             if (!entry.is_object()) {
                 output.notes.push_back("actors." + key + ": entrada ignorada (não é objeto)");
                 continue;

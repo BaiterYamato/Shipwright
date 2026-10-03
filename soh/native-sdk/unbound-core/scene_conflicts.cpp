@@ -381,7 +381,7 @@ MergeRule RuleFor(const std::string& path, const std::vector<LayerDocument>& lay
         if (layer.json.empty() || layer.json.front() != '{' || !JsonDepthWithin(layer.json)) {
             continue;
         }
-        const Json doc = Json::parse(layer.json, nullptr, false, true);
+        const Json doc = ParseJson(layer.json);
         if (!doc.is_object()) {
             continue;
         }
@@ -422,7 +422,7 @@ DocumentAnalysis AnalyzeDocument(const std::vector<LayerDocument>& layers, Merge
             analysis.notes.push_back(label + ": aninhamento demais; o jogo pula esta camada");
             continue;
         }
-        Json doc = Json::parse(layer.json, nullptr, false, true);
+        Json doc = ParseJson(layer.json);
         if (doc.is_discarded() || !doc.is_object()) {
             analysis.notes.push_back(label + (directives ? ": JSON inválido; o jogo pula esta camada"
                                                           : ": JSON inválido; o jogo recusa o registro inteiro"));

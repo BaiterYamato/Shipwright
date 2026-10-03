@@ -23,6 +23,8 @@ add_executable(linkspan_unbound_conflict_tests conflict_tests.cpp scene_conflict
     transcode.cpp actor_registry.cpp)
 add_executable(linkspan_unbound_reference_tests reference_tests.cpp scene_references.cpp unbound_format.cpp transcode.cpp
     actor_registry.cpp)
+add_executable(linkspan_unbound_limits_tests limits_tests.cpp unbound_format.cpp transcode.cpp unbound_docs.cpp
+    room_actors.cpp actor_registry.cpp)
 # Demo do registro de cenas; reaproveita a busca de assets/ do exemplo Dynamic Movement.
 add_library(linkspan_unbound_scene_demo SHARED scene-demo/scene_demo.cpp ../example/package_assets.cpp)
 target_include_directories(linkspan_unbound_scene_demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../example")
@@ -35,6 +37,7 @@ target_include_directories(linkspan_unbound_e_fixtures PRIVATE "${CMAKE_CURRENT_
 
 foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_json_tests linkspan_unbound_format_tests
                linkspan_unbound_actor_tests linkspan_unbound_conflict_tests linkspan_unbound_reference_tests
+               linkspan_unbound_limits_tests
                linkspan_unbound_converter_tests linkspan_unbound_convert
                linkspan_unbound_scene_demo
                linkspan_unbound_field_demo
@@ -63,3 +66,4 @@ add_test(NAME linkspan_unbound_converter_tests COMMAND linkspan_unbound_converte
 add_test(NAME linkspan_unbound_actor_tests COMMAND linkspan_unbound_actor_tests)
 add_test(NAME linkspan_unbound_conflict_tests COMMAND linkspan_unbound_conflict_tests)
 add_test(NAME linkspan_unbound_reference_tests COMMAND linkspan_unbound_reference_tests)
+add_test(NAME linkspan_unbound_limits_tests COMMAND linkspan_unbound_limits_tests)

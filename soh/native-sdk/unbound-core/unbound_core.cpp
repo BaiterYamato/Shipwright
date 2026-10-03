@@ -1070,6 +1070,7 @@ std::string GameVersionsText(const State& state) {
 // gerada do próprio oot.o2r do usuário.
 std::string CheckReferences(State& state, const std::map<std::string, std::vector<std::string>>& owners,
                             std::vector<std::string>& lines) {
+    const auto started = std::chrono::steady_clock::now();
     uint32_t documents = 0;
     uint32_t checked = 0;
     uint32_t missing = 0;
@@ -1100,7 +1101,8 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         }
         ++documents;
         for (const auto& note : report.notes) {
-            notes.push_back(path + ": " + note);
+            // As notas do transcodificador já começam pelo caminho do documento; as da mescla, pelo archive.
+            notes.push_back(note.rfind(path + " ", 0) == 0 ? note : path + ": " + note);
         }
         if (!report.accepted) {
             ++refused;
@@ -1137,7 +1139,11 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
     }
     return "referências: documentos=" + std::to_string(documents) + " conferidas=" + std::to_string(checked) +
            " ausentes=" + std::to_string(missing) + " recusados=" + std::to_string(refused) +
-           (notes.empty() ? "" : " notas=" + std::to_string(notes.size())) + " jogo=" + GameVersionsText(state);
+           (notes.empty() ? "" : " notas=" + std::to_string(notes.size())) + " ms=" +
+           std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                                started)
+                              .count()) +
+           " jogo=" + GameVersionsText(state);
 }
 
 // §10.5/§14.3: dois mods no mesmo caminho do VFS, verificado no game.ready, antes do gameplay. Documento JSON que

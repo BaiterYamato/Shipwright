@@ -165,6 +165,15 @@ void ActorAttrs(Xml& xml, const Json& actor) {
 // Maior índice de setup transcodificado (os alternativos viram um <AlternateHeader> por índice, vazios no meio).
 constexpr int64_t kMaxSetupIndex = 255;
 
+// Tetos do runtime que o XML não carrega (z_scene_otr.cpp e z64object.h): o jogo corta com erro ao entrar na
+// sala; aqui a nota sai antes, já no game.ready (UNBOUND-019) para documento de mod.
+constexpr size_t kMaxRooms = 32768;      // índice de sala s16
+constexpr size_t kMaxRoomActors = 65535; // numSetupActors u16
+// OBJECT_EXCHANGE_BANK_MAX (1024) menos as vagas permanentes antes da lista da sala: gameplay_keep, o objeto do Link
+// e o keep da cena (Object_Spawn em z_scene.c/z_scene_otr.cpp), mais o cavalo que o host acrescenta à lista nas
+// cenas com cavalo.
+constexpr size_t kMaxObjects = 1020;
+
 std::string Where(const TranscodeContext& context, const std::string& what) {
     return context.path + " " + what;
 }
@@ -202,13 +211,13 @@ bool IsStableEntranceIndex(int64_t index) {
 
 void Lighting(Xml& xml, const Json& list, TranscodeContext& context) {
     xml.Open("SetLightingSettings");
-    const auto keys = PositionalKeys(list, Where(context, "lighting"));
-    if (keys.size() > 255) {
-        context.notes.push_back(Where(context, "lighting") + ": " + std::to_string(keys.size()) +
+    const auto items = PositionalItems(list, Where(context, "lighting"));
+    if (items.size() > 255) {
+        context.notes.push_back(Where(context, "lighting") + ": " + std::to_string(items.size()) +
                                 " entradas; o índice de luz é um byte, cortado em 255 (§9)");
     }
-    for (size_t i = 0; i < keys.size() && i < 255; ++i) {
-        const Json& entry = list[keys[i]];
+    for (size_t i = 0; i < items.size() && i < 255; ++i) {
+        const Json& entry = *items[i].second;
         xml.Leaf("LightingSetting");
         Rgb(xml, SubArray(entry, "ambient"), "AmbientColorR", "AmbientColorG", "AmbientColorB");
         Dir(xml, SubArray(entry, "light1Dir"), "Light1DirX", "Light1DirY", "Light1DirZ");
@@ -357,11 +366,11 @@ void MaterialAnims(Xml& xml, const Json& list, TranscodeContext& context) {
     // Uma entrada ruim é descartada com erro e o resto do documento carrega (§4.2). Gera cada entrada
     // num XML à parte para não deixar uma entrada pela metade no documento.
     std::string entries;
-    for (const auto& key : PositionalKeys(list, Where(context, "materialAnims"))) {
+    for (const auto& [key, entry] : PositionalItems(list, Where(context, "materialAnims"))) {
         try {
             Xml one;
             References references;
-            MaterialAnim(one, list[key], references);
+            MaterialAnim(one, *entry, references);
             entries += one.Finish();
             context.references.insert(context.references.end(), references.begin(), references.end());
         } catch (const EntryError& error) {
@@ -422,17 +431,16 @@ void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
         }
         std::vector<const Json*> images;
         const Json& images2 = Sub(mesh, "images");
-        std::vector<std::string> keys;
         if (format == 1) {
             images.push_back(&Sub(mesh, "image"));
         } else {
-            keys = PositionalKeys(images2, Where(context, "mesh/images"));
-            if (keys.size() > 255) {
-                throw DocumentError(Where(context, "mesh") + ": " + std::to_string(keys.size()) +
+            const auto items = PositionalItems(images2, Where(context, "mesh/images"));
+            if (items.size() > 255) {
+                throw DocumentError(Where(context, "mesh") + ": " + std::to_string(items.size()) +
                                     " imagens (no máximo 255)");
             }
-            for (const auto& key : keys) {
-                images.push_back(&images2[key]);
+            for (const auto& item : items) {
+                images.push_back(item.second);
             }
         }
         xml.Open("Polygon")
@@ -463,10 +471,10 @@ void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
         return;
     }
     const Json& entries = Sub(mesh, "entries");
-    const auto keys = PositionalKeys(entries, Where(context, "mesh/entries"));
-    xml.Attr("PolyNum", static_cast<uint32_t>(keys.size()));
-    for (const auto& key : keys) {
-        const Json& entry = entries[key];
+    const auto items = PositionalItems(entries, Where(context, "mesh/entries"));
+    xml.Attr("PolyNum", static_cast<uint32_t>(items.size()));
+    for (const auto& item : items) {
+        const Json& entry = *item.second;
         xml.Leaf("Polygon").Attr("PolyType", type);
         if (type == 2) {
             const Vec3 pos = ReadVec3(SubArray(entry, "pos"));
@@ -495,8 +503,15 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     }
     if (shared.rooms.is_object() && !shared.rooms.empty()) {
         xml.Open("SetRoomList");
-        for (const auto& key : PositionalKeys(shared.rooms, Where(context, "rooms"))) {
-            const Json& room = shared.rooms[key];
+        const auto rooms = PositionalItems(shared.rooms, Where(context, "rooms"));
+        if (rooms.size() > kMaxRooms) {
+            // Sala é s16 nas portas, nas saídas e no índice da sala atual: as de cima não são alcançáveis.
+            context.notes.push_back(Where(context, "rooms") + ": " + std::to_string(rooms.size()) +
+                                    " salas; o índice de sala vai até " + std::to_string(kMaxRooms - 1) +
+                                    " (s16), as de cima não são alcançáveis");
+        }
+        for (const auto& item : rooms) {
+            const Json& room = *item.second;
             xml.Leaf("RoomEntry")
                 .Attr("Path", room.is_string() ? room.get<std::string>() : std::string())
                 .Attr("VromStart", 0)
@@ -607,10 +622,10 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     if (has("entrances")) {
         const Json& list = setup["entrances"];
         xml.Open("SetEntranceList");
-        for (const auto& key : PositionalKeys(list, Where(context, "entrances"))) {
+        for (const auto& item : PositionalItems(list, Where(context, "entrances"))) {
             xml.Leaf("EntranceEntry")
-                .Attr("Spawn", U8(Field(list[key], "spawn")))
-                .Attr("Room", S16(Field(list[key], "room")))
+                .Attr("Spawn", U8(Field(*item.second, "spawn")))
+                .Attr("Room", S16(Field(*item.second, "room")))
                 .Close();
         }
         xml.Close();
@@ -618,9 +633,9 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     if (has("spawns")) {
         const Json& list = setup["spawns"];
         xml.Open("SetStartPositionList");
-        for (const auto& key : PositionalKeys(list, Where(context, "spawns"))) {
+        for (const auto& item : PositionalItems(list, Where(context, "spawns"))) {
             xml.Leaf("StartPositionEntry");
-            ActorAttrs(xml, list[key]);
+            ActorAttrs(xml, *item.second);
             xml.Close();
         }
         xml.Close();
@@ -628,8 +643,8 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     if (has("transitionActors")) {
         const Json& list = setup["transitionActors"];
         xml.Open("SetTransitionActorList");
-        for (const auto& key : PositionalKeys(list, Where(context, "transitionActors"))) {
-            const Json& t = list[key];
+        for (const auto& [key, item] : PositionalItems(list, Where(context, "transitionActors"))) {
+            const Json& t = *item;
             int16_t actorId = -1;
             int64_t parsedId = 0;
             const auto idValue = t.find("id");
@@ -659,16 +674,23 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     if (has("objects")) {
         const Json& list = setup["objects"];
         xml.Open("SetObjectList");
-        for (const auto& key : PositionalKeys(list, Where(context, "objects"))) {
-            xml.Leaf("ObjectEntry").Attr("Id", S16(ToInt(list[key]))).Close();
+        const auto objects = PositionalItems(list, Where(context, "objects"));
+        if (objects.size() > kMaxObjects) {
+            context.notes.push_back(Where(context, "objects") + ": " + std::to_string(objects.size()) +
+                                    " objetos; o banco do jogo tem 1024 vagas, até 4 delas com objetos permanentes "
+                                    "(gameplay_keep, Link, keep da cena e cavalo), e acima de " +
+                                    std::to_string(kMaxObjects) + " os últimos podem ser descartados ao entrar na sala");
+        }
+        for (const auto& item : objects) {
+            xml.Leaf("ObjectEntry").Attr("Id", S16(ToInt(*item.second))).Close();
         }
         xml.Close();
     }
     if (has("lights")) {
         const Json& list = setup["lights"];
         xml.Open("SetLightList");
-        for (const auto& key : PositionalKeys(list, Where(context, "lights"))) {
-            const Json& light = list[key];
+        for (const auto& [key, item] : PositionalItems(list, Where(context, "lights"))) {
+            const Json& light = *item;
             const int64_t type = Field(light, "type");
             if (type < 0 || type > 2) {
                 throw DocumentError(Where(context, "lights/" + key) + ": type " + std::to_string(type) +
@@ -691,25 +713,31 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     if (has("actors")) {
         const Json& list = setup["actors"];
         xml.Open("SetActorList");
-        for (const auto& key : ListKeys(list)) {
-            if (list[key].is_object()) {
+        size_t written = 0;
+        for (const auto& [key, item] : ListItems(list)) {
+            if (item->is_object()) {
                 int16_t actorId = -1;
-                if (!ResolveRoomActorId(list[key], context.resolveActor, actorId, context.notes,
+                if (!ResolveRoomActorId(*item, context.resolveActor, actorId, context.notes,
                                         Where(context, "actors/" + key))) continue;
                 xml.Leaf("ActorEntry");
-                Json actor = list[key];
+                Json actor = *item;
                 actor["id"] = actorId;
                 ActorAttrs(xml, actor);
                 xml.Close();
+                ++written;
             }
+        }
+        if (written > kMaxRoomActors) {
+            context.notes.push_back(Where(context, "actors") + ": " + std::to_string(written) +
+                                    " atores; o jogo carrega os primeiros " + std::to_string(kMaxRoomActors));
         }
         xml.Close();
     }
     if (has("exits")) {
         const Json& list = setup["exits"];
         xml.Open("SetExitList");
-        for (const auto& key : PositionalKeys(list, Where(context, "exits"))) {
-            xml.Leaf("ExitEntry").Attr("Id", S16(ResolveExit(list[key], key, context))).Close();
+        for (const auto& [key, item] : PositionalItems(list, Where(context, "exits"))) {
+            xml.Leaf("ExitEntry").Attr("Id", S16(ResolveExit(*item, key, context))).Close();
         }
         xml.Close();
     }
@@ -827,12 +855,12 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
         .Attr("BulkPolys", static_cast<uint32_t>(Field(bulk, "polys")));
 
     const Json& surfaces = Sub(doc, "surfaceTypes");
-    const auto surfaceKeys = PositionalKeys(surfaces, Where(context, "surfaceTypes"));
-    if (surfaceKeys.size() > 65535) {
+    const auto surfaceItems = PositionalItems(surfaces, Where(context, "surfaceTypes"));
+    if (surfaceItems.size() > 65535) {
         throw DocumentError(Where(context, "surfaceTypes") + ": mais de 65535 tipos de superfície");
     }
-    for (const auto& key : surfaceKeys) {
-        const Json& s = surfaces[key];
+    for (const auto& item : surfaceItems) {
+        const Json& s = *item.second;
         xml.Leaf("SurfaceType")
             .Attr("Camera", S32(Field(s, "camera")))
             .Attr("Exit", S32(Field(s, "exit")))
@@ -854,8 +882,8 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
     }
 
     const Json& cameras = Sub(doc, "cameras");
-    for (const auto& key : PositionalKeys(cameras, Where(context, "cameras"))) {
-        const Json& c = cameras[key];
+    for (const auto& item : PositionalItems(cameras, Where(context, "cameras"))) {
+        const Json& c = *item.second;
         const auto index = c.is_object() ? c.find("positionIndex") : c.end();
         const int64_t position = index != c.end() && !index->is_null() ? ToInt(*index, -1) : -1;
         xml.Leaf("CameraData")
@@ -867,14 +895,22 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
     // O XML agrupa as posições de câmera de 3 em 3 (posição, rotação, fov); o índice de cada vetor
     // continua o mesmo, e o último grupo é completado com zeros.
     const Json& positions = Sub(doc, "cameraPositions");
-    const auto positionKeys = PositionalKeys(positions, Where(context, "cameraPositions"));
-    for (size_t i = 0; i < positionKeys.size(); i += 3) {
+    const auto positionItems = PositionalItems(positions, Where(context, "cameraPositions"));
+    size_t wrapped = 0;
+    std::string firstWrapped;
+    for (size_t i = 0; i < positionItems.size(); i += 3) {
         int64_t v[9] = {};
-        for (size_t j = 0; j < 3 && i + j < positionKeys.size(); ++j) {
-            const Json& vector = positions[positionKeys[i + j]];
+        for (size_t j = 0; j < 3 && i + j < positionItems.size(); ++j) {
+            const Json& vector = *positionItems[i + j].second;
             if (vector.is_array() && vector.size() >= 3) {
                 for (int k = 0; k < 3; ++k) {
                     v[j * 3 + k] = static_cast<int64_t>(std::llround(ToNumber(vector[k])));
+                    if (v[j * 3 + k] < INT16_MIN || v[j * 3 + k] > INT16_MAX) {
+                        if (wrapped++ == 0) {
+                            firstWrapped = positionItems[i + j].first + "[" + std::to_string(k) + "]=" +
+                                           std::to_string(v[j * 3 + k]);
+                        }
+                    }
                 }
             }
         }
@@ -890,15 +926,20 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
             .Attr("Unknown", S16(v[8]))
             .Close();
     }
+    if (wrapped) {
+        // A câmera fixa guarda Vec3s: o §2 embrulha o valor, aqui pelo menos o autor fica sabendo.
+        context.notes.push_back(Where(context, "cameraPositions") + ": " + std::to_string(wrapped) +
+                                " valor(es) fora de -32768..32767 embrulhados (ex.: " + firstWrapped + ")");
+    }
 
     const Json& water = Sub(doc, "waterBoxes");
-    const auto waterKeys = PositionalKeys(water, Where(context, "waterBoxes"));
-    if (waterKeys.size() > 65535) {
-        throw DocumentError(Where(context, "waterBoxes") + ": " + std::to_string(waterKeys.size()) +
+    const auto waterItems = PositionalItems(water, Where(context, "waterBoxes"));
+    if (waterItems.size() > 65535) {
+        throw DocumentError(Where(context, "waterBoxes") + ": " + std::to_string(waterItems.size()) +
                             " water boxes (no máximo 65535)");
     }
-    for (const auto& key : waterKeys) {
-        const Json& w = water[key];
+    for (const auto& item : waterItems) {
+        const Json& w = *item.second;
         xml.Leaf("WaterBox")
             .Attr("XMin", Integral(NumberField(w, "xMin")))
             .Attr("Ysurface", Integral(NumberField(w, "ySurface")))
@@ -918,8 +959,8 @@ std::string TranscodePaths(const Json& doc, TranscodeContext& context) {
     const Json& paths = Sub(doc, "paths");
     Xml xml;
     xml.Open("Path").Attr("Version", 0);
-    for (const auto& key : PositionalKeys(paths, Where(context, "paths"))) {
-        const Json& points = SubArray(Sub(paths, key.c_str()), "points");
+    for (const auto& [key, path] : PositionalItems(paths, Where(context, "paths"))) {
+        const Json& points = SubArray(*path, "points");
         if (points.size() > 255) {
             context.notes.push_back(Where(context, "paths/" + key) + ": " + std::to_string(points.size()) +
                                     " pontos; cortado em 255 (§9)");

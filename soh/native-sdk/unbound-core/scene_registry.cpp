@@ -66,11 +66,7 @@ void NoteNumberIgnored(const Json& definition, const char* key, const std::strin
 
 // Ordem de registro (§3.5): $order, depois chaves inteiras em ordem numérica, depois o resto.
 std::vector<std::pair<std::string, const Json*>> OrderedEntries(const Json& object) {
-    std::vector<std::pair<std::string, const Json*>> ordered;
-    for (const auto& key : ListKeys(object)) {
-        ordered.emplace_back(key, &object[key]);
-    }
-    return ordered;
+    return ListItems(object);
 }
 
 bool ReadEntrance(const std::string& scene, const std::string& key, const Json& definition, RegistryEntrance& entrance,

@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace LinkSpanUnbound {
 namespace {
@@ -35,21 +37,177 @@ bool IsDigitOf(char c, int base) {
     return base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 }
 
+// Objetos até este tamanho procuram chave em ordem (mais barato que montar um índice).
+constexpr size_t kLinearKeys = 16;
+
+// Monta o DOM pelo SAX do nlohmann com um índice de chaves por objeto em construção.
+class DomBuilder {
+  public:
+    Json root;
+
+    bool null() {
+        *Slot() = nullptr;
+        return true;
+    }
+    bool boolean(bool value) {
+        *Slot() = value;
+        return true;
+    }
+    bool number_integer(Json::number_integer_t value) {
+        *Slot() = value;
+        return true;
+    }
+    bool number_unsigned(Json::number_unsigned_t value) {
+        *Slot() = value;
+        return true;
+    }
+    bool number_float(Json::number_float_t value, const Json::string_t&) {
+        *Slot() = value;
+        return true;
+    }
+    bool string(Json::string_t& value) {
+        *Slot() = std::move(value);
+        return true;
+    }
+    bool binary(Json::binary_t& value) {
+        *Slot() = Json::binary(std::move(value));
+        return true;
+    }
+    bool start_object(std::size_t) {
+        Json* slot = Slot();
+        *slot = Json::object();
+        mFrames.push_back({ slot, {}, {} });
+        return true;
+    }
+    bool key(Json::string_t& key) {
+        mFrames.back().key = std::move(key);
+        return true;
+    }
+    bool end_object() {
+        mFrames.pop_back();
+        return true;
+    }
+    bool start_array(std::size_t) {
+        Json* slot = Slot();
+        *slot = Json::array();
+        mFrames.push_back({ slot, {}, {} });
+        return true;
+    }
+    bool end_array() {
+        mFrames.pop_back();
+        return true;
+    }
+    bool parse_error(std::size_t, const std::string&, const nlohmann::detail::exception&) {
+        return false;
+    }
+
+  private:
+    struct Frame {
+        Json* value;
+        std::unordered_map<std::string, size_t> index; // vazio até o objeto passar de kLinearKeys
+        std::string key;
+    };
+    std::vector<Frame> mFrames;
+
+    // Onde vai o próximo valor. O pai não muda enquanto um filho é montado, então o ponteiro do filho vale.
+    Json* Slot() {
+        if (mFrames.empty()) {
+            return &root;
+        }
+        Frame& top = mFrames.back();
+        if (top.value->is_array()) {
+            top.value->push_back(nullptr);
+            return &top.value->back();
+        }
+        auto& object = top.value->get_ref<Json::object_t&>();
+        if (top.index.empty() && object.size() < kLinearKeys) {
+            for (auto& [name, value] : object) {
+                if (name == top.key) {
+                    return &value;
+                }
+            }
+        } else {
+            if (top.index.empty()) {
+                for (size_t i = 0; i < object.size(); ++i) {
+                    top.index.emplace(object.data()[i].first, i);
+                }
+            }
+            const auto [found, inserted] = top.index.try_emplace(top.key, object.size());
+            if (!inserted) {
+                return &object.data()[found->second].second;
+            }
+        }
+        object.emplace_back(std::move(top.key), nullptr);
+        return &object.back().second;
+    }
+};
+
 } // namespace
+
+Json ParseJson(const std::string& text, bool ignoreComments) {
+    DomBuilder builder;
+    if (!Json::sax_parse(text, &builder, Json::input_format_t::json, true, ignoreComments)) {
+        return Json(Json::value_t::discarded);
+    }
+    return std::move(builder.root);
+}
 
 void MergeJson(Json& base, const Json& overlay) {
     if (!base.is_object() || !overlay.is_object() || IsReplace(overlay)) {
         base = overlay;
         return;
     }
-    for (const auto& [key, value] : overlay.items()) {
-        if (value.is_null()) {
-            base.erase(key);
-        } else if (value.is_object() && base.contains(key) && base[key].is_object()) {
-            MergeJson(base[key], value);
-        } else {
-            base[key] = value;
+    if (base.size() + overlay.size() <= kLinearKeys) {
+        for (const auto& [key, value] : overlay.items()) {
+            if (value.is_null()) {
+                base.erase(key);
+            } else if (value.is_object() && base.contains(key) && base[key].is_object()) {
+                MergeJson(base[key], value);
+            } else {
+                base[key] = value;
+            }
         }
+        return;
+    }
+    // Objeto grande (de um lado ou do outro): índice das chaves em vez de uma busca linear por chave de cima. A regra
+    // é a mesma do laço acima, inclusive com chave repetida no overlay: chave removida conta como ausente, e uma
+    // menção seguinte a recria no fim; chave acrescentada entra no índice. As removidas saem numa passada só.
+    auto& object = base.get_ref<Json::object_t&>();
+    std::unordered_map<std::string, size_t> index;
+    index.reserve(object.size() + overlay.size());
+    for (size_t i = 0; i < object.size(); ++i) {
+        index.emplace(object.data()[i].first, i);
+    }
+    std::vector<bool> removed(object.size(), false);
+    bool anyRemoved = false;
+    for (const auto& [key, value] : overlay.items()) {
+        const auto found = index.find(key);
+        const bool present = found != index.end() && !removed[found->second];
+        if (!present) {
+            if (!value.is_null()) {
+                object.emplace_back(key, value);
+                removed.push_back(false);
+                index[key] = object.size() - 1;
+            }
+        } else if (value.is_null()) {
+            removed[found->second] = true;
+            anyRemoved = true;
+        } else if (value.is_object() && object.data()[found->second].second.is_object()) {
+            MergeJson(object.data()[found->second].second, value);
+        } else {
+            object.data()[found->second].second = value;
+        }
+    }
+    if (anyRemoved) {
+        Json kept = Json::object();
+        auto& keptObject = kept.get_ref<Json::object_t&>();
+        keptObject.reserve(object.size());
+        for (size_t i = 0; i < object.size(); ++i) {
+            if (!removed[i]) {
+                keptObject.emplace_back(object.data()[i].first, std::move(object.data()[i].second));
+            }
+        }
+        base = std::move(kept);
     }
 }
 
@@ -57,14 +215,22 @@ void StripDirectives(Json& doc) {
     if (!doc.is_object()) {
         return;
     }
-    doc.erase(kReplace);
-    for (auto it = doc.begin(); it != doc.end();) {
-        if (it->is_null()) {
-            it = doc.erase(it);
-        } else {
-            StripDirectives(*it);
-            ++it;
+    // Uma passada: apagar um a um no ordered_map (um vetor) custava o quadrado do número de nulls.
+    auto& object = doc.get_ref<Json::object_t&>();
+    const auto dropped = [](const auto& entry) { return entry.first == kReplace || entry.second.is_null(); };
+    if (std::any_of(object.begin(), object.end(), dropped)) {
+        Json kept = Json::object();
+        auto& keptObject = kept.get_ref<Json::object_t&>();
+        keptObject.reserve(object.size());
+        for (auto& entry : object) {
+            if (!dropped(entry)) {
+                keptObject.emplace_back(entry.first, std::move(entry.second));
+            }
         }
+        doc = std::move(kept);
+    }
+    for (auto& entry : doc.get_ref<Json::object_t&>()) {
+        StripDirectives(entry.second);
     }
 }
 
@@ -81,7 +247,7 @@ bool MergeLayers(const std::vector<LayerDocument>& layers, bool strictStart, Mer
                                 " níveis; camada pulada");
             continue;
         }
-        Json doc = Json::parse(layer.json, nullptr, false, true);
+        Json doc = ParseJson(layer.json);
         if (doc.is_discarded() || !doc.is_object()) {
             out.notes.push_back(layer.archive + ": JSON inválido ou raiz que não é objeto; camada pulada");
             continue;
@@ -111,50 +277,88 @@ bool MergeLayers(const std::vector<LayerDocument>& layers, bool strictStart, Mer
     return true;
 }
 
-std::vector<std::string> ListKeys(const Json& list) {
-    std::vector<std::string> keys;
+std::vector<ListItem> ListItems(const Json& list) {
+    std::vector<ListItem> items;
     if (!list.is_object()) {
-        return keys;
+        return items;
     }
+    const auto& object = list.get_ref<const Json::object_t&>();
+    std::unordered_set<std::string> ordered;
     const auto order = list.find(kOrder);
     if (order != list.end() && order->is_array()) {
+        std::unordered_map<std::string, const Json*> byKey;
+        byKey.reserve(object.size());
+        for (const auto& [key, value] : object) {
+            byKey.emplace(key, &value);
+        }
         for (const auto& key : *order) {
             if (!key.is_string()) {
                 continue;
             }
-            const std::string name = key.get<std::string>();
-            if (!name.empty() && name[0] != '$' && list.contains(name) &&
-                std::find(keys.begin(), keys.end(), name) == keys.end()) {
-                keys.push_back(name);
+            const std::string& name = key.get_ref<const std::string&>();
+            const auto found = byKey.find(name);
+            if (!name.empty() && name[0] != '$' && found != byKey.end() && ordered.insert(name).second) {
+                items.emplace_back(name, found->second);
             }
         }
     }
-    std::vector<std::pair<bool, std::pair<long long, std::string>>> rest;
-    for (const auto& [key, value] : list.items()) {
-        if ((!key.empty() && key[0] == '$') || std::find(keys.begin(), keys.end(), key) != keys.end()) {
+    struct Rest {
+        bool notInteger;
+        long long number;
+        const std::string* key;
+        const Json* value;
+    };
+    std::vector<Rest> rest;
+    rest.reserve(object.size());
+    for (const auto& [key, value] : object) {
+        if ((!key.empty() && key[0] == '$') || ordered.count(key)) {
             continue;
         }
         long long number = 0;
         const bool isInteger = IsIntegerKey(key, number);
-        rest.push_back({ !isInteger, { isInteger ? number : 0, key } });
+        rest.push_back({ !isInteger, isInteger ? number : 0, &key, &value });
     }
-    std::sort(rest.begin(), rest.end());
+    std::sort(rest.begin(), rest.end(), [](const Rest& a, const Rest& b) {
+        if (a.notInteger != b.notInteger) {
+            return a.notInteger < b.notInteger;
+        }
+        if (a.number != b.number) {
+            return a.number < b.number;
+        }
+        return *a.key < *b.key;
+    });
     for (const auto& entry : rest) {
-        keys.push_back(entry.second.second);
+        items.emplace_back(*entry.key, entry.value);
+    }
+    return items;
+}
+
+std::vector<std::string> ListKeys(const Json& list) {
+    std::vector<std::string> keys;
+    for (auto& item : ListItems(list)) {
+        keys.push_back(std::move(item.first));
     }
     return keys;
 }
 
-std::vector<std::string> PositionalKeys(const Json& list, const std::string& what) {
+std::vector<ListItem> PositionalItems(const Json& list, const std::string& what) {
     if (list.is_object() && list.contains(kOrder)) {
         throw DocumentError(what + ": $order não vale numa lista posicional");
     }
-    std::vector<std::string> keys = ListKeys(list);
-    for (size_t i = 0; i < keys.size(); ++i) {
-        if (keys[i] != std::to_string(i)) {
+    std::vector<ListItem> items = ListItems(list);
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (items[i].first != std::to_string(i)) {
             throw DocumentError(what + ": lista posicional com buraco no índice " + std::to_string(i) +
-                                " (chave '" + keys[i] + "')");
+                                " (chave '" + items[i].first + "')");
         }
+    }
+    return items;
+}
+
+std::vector<std::string> PositionalKeys(const Json& list, const std::string& what) {
+    std::vector<std::string> keys;
+    for (auto& item : PositionalItems(list, what)) {
+        keys.push_back(std::move(item.first));
     }
     return keys;
 }

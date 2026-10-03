@@ -92,6 +92,16 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   é `unbound: referências: documentos=... conferidas=... ausentes=... recusados=... jogo=<versões do oot.o2r>`;
   as notas do transcodificador (atores desconhecidos, entradas descartadas) vão só para o log do Unbound. Até
   4 096 documentos por boot.
+- **Limites do Prelude (0.6.3).** Listas posicionais no teto não custam mais o quadrado do tamanho: o
+  `ordered_json` procura chave em ordem, e um documento com 65 535 surface types levava ~9 s entre parse e
+  transcode. Agora o parse monta o objeto com índice de chaves (`ParseJson`), o merge indexa objetos grandes e o
+  transcode percorre as listas sem procurar chave por chave; o mesmo documento leva ~120 ms, e duas camadas
+  completas, ~330 ms. Vale também para a remoção de diretivas, os atores de sala (`unbound/room/1`) e overlay
+  grande sobre base pequena. Notas novas, antes do gameplay para documento de mod: mais de 32 768 salas (índice
+  s16), mais de 65 535 atores numa sala, mais de 1 020 objetos numa sala (o banco tem 1 024 vagas, até 4 delas
+  com objetos permanentes: gameplay_keep, Link, keep da cena e cavalo), posição de câmera fixa fora de s16
+  (o §2 continua embrulhando o valor) e setup acima de 255 (ignorado). O resumo do `ready` traz `ms=` da checagem.
+  As fronteiras limite-1/limite/limite+1 estão em `limits_tests.cpp`.
 
 ## Unbound 0.8 (novo na 0.5.0)
 
