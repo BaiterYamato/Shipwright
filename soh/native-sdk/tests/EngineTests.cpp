@@ -2358,10 +2358,12 @@ int main(int argc, char** argv) {
         };
         response.fill(0);
         auto configured = (*loaded.value)->Call("configure", "0,5", 3, response.data(), uint32_t(response.size()));
-        Check(configured.code == ShipLua::ErrorCode::Ok && settingValue == 1 &&
+        // DMR 0.2.14+: o configure deixa a câmera livre desligada; ela só liga quando o analógico direito
+        // assume uma vista de gameplay válida.
+        Check(configured.code == ShipLua::ErrorCode::Ok && settingValue == 0 &&
                   otherSettings["gEnhancements.PersistentMasks"] == 1 &&
                   otherSettings["gSettings.FreeLook.InvertYAxis"] == 0,
-              "mod deve ativar câmera livre sem inverter o eixo vertical e PersistentMasks");
+              "configure deve ligar PersistentMasks sem inverter o eixo vertical e esperar o analógico direito");
         Check(otherSettings["gSettings.Controls.RightStickAim"] == 1 &&
                   otherSettings["gSettings.MoveInFirstPerson"] == 1 &&
                   otherSettings["gSettings.Controls.InvertAimingYAxis"] == 0 &&
@@ -2389,8 +2391,17 @@ int main(int argc, char** argv) {
               "corrida deve manter velocidade mínima com direção");
         gamepadButtons = 0;
         Check(callUpdate() == "idle", "soltar A deve rearmar a sequência");
-        play.state.input[0].rel.right_stick_x = 0;
+        // Câmera principal ativa (CameraCanResume). Sem o soh.symbols deste processo, o DMR liga a câmera
+        // livre sem sincronizar pela vista, como antes da 0.2.14.
+        static Camera mainCamera{};
+        mainCamera.status = CAM_STAT_ACTIVE;
+        play.cameraPtrs[CAM_ID_MAIN] = &mainCamera;
+        play.activeCamera = CAM_ID_MAIN;
+        play.state.input[0].rel.right_stick_x = 30;
         play.state.input[0].rel.right_stick_y = 0;
+        Check(callUpdate() == "camera-free" && settingValue == 1,
+              "mover o analógico direito deve ligar a câmera livre");
+        play.state.input[0].rel.right_stick_x = 0;
         std::this_thread::sleep_for(std::chrono::milliseconds(8));
         Check(callUpdate() == "camera-auto" && settingValue == 0,
               "câmera deve voltar a seguir Link quando ele anda após o atraso configurado");
@@ -2436,13 +2447,15 @@ int main(int argc, char** argv) {
         gSaveContext.equips.buttonItems[3] = ITEM_HOOKSHOT;
         Check(itemMenuState() == "none", "menu de itens deve ficar fechado sem segurar o R");
         gamepadButtons = uint32_t{1} << 10;
-        Check(callUpdate() == "item-menu" && itemMenuState() == "1;1:3,3:10" && settingValue == 0,
-              "segurar R deve abrir o menu no C equipado, só com os C que têm item, e pausar a câmera livre");
+        // Formato do seletor (DMR 0.2.14+): os três C ficam no lugar, com o caminho do ícone; sem a tabela
+        // de ícones do host o caminho fica vazio.
+        Check(callUpdate() == "item-menu" && itemMenuState() == "1;1:3:\t2:255:\t3:10:" && settingValue == 0,
+              "segurar R deve abrir o menu no C equipado, com os três C no lugar, e pausar a câmera livre");
         play.state.input[0].rel.right_stick_x = 60;
         callUpdate();
-        Check(itemMenuState() == "3;1:3,3:10", "analógico direito para a direita deve pular o C vazio");
+        Check(itemMenuState() == "3;1:3:\t2:255:\t3:10:", "analógico direito para a direita deve pular o C vazio");
         callUpdate();
-        Check(itemMenuState() == "3;1:3,3:10", "analógico mantido inclinado não deve andar de novo");
+        Check(itemMenuState() == "3;1:3:\t2:255:\t3:10:", "analógico mantido inclinado não deve andar de novo");
         play.state.input[0].rel.right_stick_x = 0;
         gamepadButtons = 0;
         Check(callUpdate() == "item-c-right" && boundAxes.back() == AxisBinding{BTN_CRIGHT, 5, 1} &&

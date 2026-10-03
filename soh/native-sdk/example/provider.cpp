@@ -220,7 +220,8 @@ CameraChange UpdateCamera(Mod& mod, PlayState* play, bool stickBusy) {
     if (stickActive) {
         mod.lastCameraInput = now;
         if (!mod.cameraFreeLookActive || !play->manualCamera) {
-            if (ResumeCameraFromView(*play, *play->cameraPtrs[CAM_ID_MAIN], mod.cameraGeometry) &&
+            // Without the host's conversion (other executable), enable free look unsynced, as before 0.2.14.
+            if ((!mod.cameraGeometry || ResumeCameraFromView(*play, *play->cameraPtrs[CAM_ID_MAIN], mod.cameraGeometry)) &&
                 mod.movement->set_setting_int(FREE_LOOK_SETTING, 1) == SHIP_NATIVE_OK) {
                 mod.cameraFreeLookActive = true;
                 return CameraChange::FreeLook;
@@ -1197,14 +1198,14 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     if (!mod) return SHIP_NATIVE_FAILURE;
     // Host texture table and camera math, protected by the exact executable
     // fingerprint. No dependency on NEI IDs, its registry, or load order.
+    // Optional: on another executable the selector shows no icons and free look
+    // resumes without syncing from the rendered view, but movement still loads.
     uintptr_t icons = 0;
     uintptr_t cameraGeometry = 0;
-    if (runtime->abi_minor < 3 || !runtime->resolve_symbol ||
-        runtime->resolve_symbol(runtime->context, "gItemIcons", &icons) != SHIP_NATIVE_OK || !icons ||
-        runtime->resolve_symbol(runtime->context, "OLib_Vec3fDiffToVecSphGeo", &cameraGeometry) != SHIP_NATIVE_OK ||
-        !cameraGeometry) {
-        delete mod;
-        return SHIP_NATIVE_UNSUPPORTED;
+    if (runtime->abi_minor >= 3 && runtime->resolve_symbol) {
+        if (runtime->resolve_symbol(runtime->context, "gItemIcons", &icons) != SHIP_NATIVE_OK) icons = 0;
+        if (runtime->resolve_symbol(runtime->context, "OLib_Vec3fDiffToVecSphGeo", &cameraGeometry) !=
+            SHIP_NATIVE_OK) cameraGeometry = 0;
     }
     mod->itemIcons = reinterpret_cast<const void* const*>(icons);
     mod->cameraGeometry = reinterpret_cast<CameraGeometryFn>(cameraGeometry);
