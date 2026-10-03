@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unbound/manifest.schema.json",
+  "title": "Unbound 2 manifest",
+  "description": "The archive-root unbound.json read independently for each mounted layer.",
+  "type": "object",
+  "properties": {
+    "format": { "description": "Writer identifier; the current reader does not inspect it." },
+    "formatVersion": { "const": 2, "description": "Only reader format version 2 is accepted; omitted defaults to 2." },
+    "game": { "description": "Optional writer game identifier; ignored by the reader." },
+    "source": { "description": "Free-form converter provenance; ignored by the reader." },
+    "features": { "type": "array", "description": "Kinds supplied by this layer.", "items": { "type": "string" } },
+    "requires": {
+      "type": "object",
+      "description": "Minimum reader requirements.",
+      "properties": { "formatVersion": { "const": 2, "description": "Required reader format version." } },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

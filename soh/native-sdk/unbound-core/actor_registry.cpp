@@ -1,5 +1,6 @@
 // Leitor adaptado de roborich/Shipwright 9.2.3-unbound0.9, commit cf7db7f7f9b65247347d54abea386669ce9c909f.
 #include "actor_registry.h"
+#include "json_merge.h"
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
@@ -103,9 +104,16 @@ void ReadSegments(const std::string& name, const Json& segments, ActorDefinition
 
 // Limbs whose own display list is not drawn: vanilla actors hide spare hands and props their code swaps in.
 void ReadHideLimbs(const std::string& name, const Json& limbs, ActorDefinition& type) {
+    // Mesmo teto do host (linkspan.oot.actor-models): recusa antes de copiar uma lista enorme.
+    constexpr size_t kHideLimbsMax = 4096;
+    if (limbs.is_array() && limbs.size() > kHideLimbsMax) {
+        Note("[Unbound] actor type '{}': hideLimbs ignored ({} entries, limit {})", name, limbs.size(),
+             kHideLimbsMax);
+        return;
+    }
     for (const Json& limb : limbs) {
         int64_t index = ToInt(limb, 0);
-        if (index < 1) {
+        if (index < 1 || index > INT32_MAX) {
             Note("[Unbound] actor type '{}': hideLimbs entry {} ignored (limbs are numbered from 1)", name,
                          limb.dump());
             continue;
@@ -289,6 +297,10 @@ bool MergeActorLayers(const std::vector<LayerDocument>& layers, Json& merged, st
     merged = nullptr;
     bool read = false;
     for (const auto& layer : layers) {
+        if (!JsonDepthWithin(layer.json)) {
+            notes.push_back(layer.archive + ": tipo de ator JSON aninhado demais; camada pulada");
+            continue;
+        }
         Json doc = Json::parse(layer.json, nullptr, false, true);
         if (doc.is_discarded() || (!doc.is_object() && !doc.is_null())) {
             notes.push_back(layer.archive + ": tipo de ator JSON inválido; camada pulada");

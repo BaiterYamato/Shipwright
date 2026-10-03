@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unbound/text.schema.json",
+  "title": "Unbound 2 text document",
+  "description": "A layer for text/<lang>/messages.json; language is selected by the directory.",
+  "type": "object",
+  "properties": { "$schema": { "description": "Tool self-description; the reader removes it without validation." }, "$replace": { "type": "boolean", "description": "Replace the lower-layer message table." }, "messages": { "type": "object", "description": "Message ids mapped to entries or null deletions.", "additionalProperties": { "anyOf": [{ "type": "null", "description": "Delete this message id." }, { "$ref": "#/$defs/message" }] } } },
+  "additionalProperties": true,
+  "$defs": { "message": { "type": "object", "description": "One custom text message.", "properties": { "box": { "$ref": "common.schema.json#/$defs/integer", "description": "Textbox type nibble." }, "ypos": { "$ref": "common.schema.json#/$defs/integer", "description": "Textbox Y-position nibble." }, "text": { "type": "string", "description": "Message bytes encoded as a JSON string." } }, "required": ["text"], "additionalProperties": true } }
+}

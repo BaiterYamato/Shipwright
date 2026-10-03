@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$OutputPath = 'build\unbound-actors-demo\LinkSpan-Unbound09-Atores-Demo.o2r',
     [string]$Converter = 'build\unbound-scene-native\Release\linkspan_unbound_convert.exe'
@@ -11,7 +11,11 @@ $destination = [IO.Path]::GetFullPath($OutputPath)
 if (Test-Path -LiteralPath $destination) { throw 'O pacote de destino já existe.' }
 [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination)) | Out-Null
 Add-Type -AssemblyName System.IO.Compression
-$stream = [IO.File]::Open($destination, [IO.FileMode]::CreateNew)
+# Grava num temporário e só renomeia no fim: uma falha no meio não deixa um .o2r truncado no destino.
+$temporary = $destination + '.tmp'
+if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
+$stream = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew)
+$completed = $false
 try {
     $zip = [IO.Compression.ZipArchive]::new($stream, [IO.Compression.ZipArchiveMode]::Create)
     try {
@@ -24,5 +28,10 @@ try {
             finally { $content.Dispose() }
         }
     } finally { $zip.Dispose() }
-} finally { $stream.Dispose() }
+    $completed = $true
+} finally {
+    $stream.Dispose()
+    if (-not $completed) { Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue }
+}
+Move-Item -LiteralPath $temporary -Destination $destination
 Write-Output $destination

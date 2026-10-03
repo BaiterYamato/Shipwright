@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ProviderDirectory = 'build\unbound-scene-native\mod\provider',
     [string]$ToolDirectory = 'build\unbound-scene-native\Release',
@@ -8,8 +8,8 @@ param(
     [string]$OutputDirectory = 'build\unbound-framework'
 )
 
-# UNBOUND-012: the single Unbound framework .shipmod (core DLL, Lua, command-line tool, C header, author
-# documentation and license notices), validated, with SHA-256 and a content report next to it.
+# UNBOUND-012: the single Unbound framework .shipmod (core DLL, Lua, command-line tool, C header, JSON schemas,
+# author documentation and license notices), validated, with SHA-256 and a content report next to it.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -43,7 +43,7 @@ $staging = Join-Path $packageRoot 'staging'
 if (Test-Path -LiteralPath $staging) {
     Remove-Item -LiteralPath $staging -Recurse -Force
 }
-foreach ($directory in @('provider', 'tools', 'docs', 'include\linkspan\unbound')) {
+foreach ($directory in @('provider', 'tools', 'docs', 'include\linkspan\unbound', 'schemas\unbound')) {
     [System.IO.Directory]::CreateDirectory((Join-Path $staging $directory)) | Out-Null
 }
 
@@ -68,6 +68,10 @@ Copy-Item -LiteralPath $tool -Destination (Join-Path $staging 'tools\linkspan_un
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\unbound\json_factory.h') `
     -Destination (Join-Path $staging 'include\linkspan\unbound\json_factory.h')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'README.md') -Destination (Join-Path $staging 'docs\README.md')
+# Schemas JSON do formato Unbound 2 (draft 2020-12), com o validador de exemplo.
+Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'schemas\unbound') -File | Where-Object { $_.Extension -in '.json', '.md' } |
+    Copy-Item -Destination (Join-Path $staging 'schemas\unbound')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'schemas\validate_schemas.py') -Destination (Join-Path $staging 'schemas\validate_schemas.py')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'NOTICE.md') -Destination (Join-Path $staging 'docs\NOTICE.md')
 $notice = @"
 # Licenças

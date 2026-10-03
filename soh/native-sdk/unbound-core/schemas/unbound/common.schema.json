@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unbound/common.schema.json",
+  "title": "Unbound 2 common values",
+  "description": "Reusable value and list definitions for Unbound 2 JSON layers.",
+  "$defs": {
+    "integer": {
+      "description": "Reader integer: JSON number, boolean, or signed decimal/hex string.",
+      "anyOf": [
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "string", "pattern": "^[+-]?(?:[0-9]+|0[xX][0-9A-Fa-f]+)$" }
+      ]
+    },
+    "number": {
+      "description": "Reader number: JSON number or decimal/exponent/hex integer string.",
+      "anyOf": [
+        { "type": "number" },
+        { "type": "string", "pattern": "^[+-]?(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?|0[xX][0-9A-Fa-f]+)$" }
+      ]
+    },
+    "path": { "type": "string", "description": "Archive-relative resource path." },
+    "nullablePath": {
+      "description": "Resource path or an explicit absent resource.",
+      "type": ["string", "null"]
+    },
+    "vector": {
+      "description": "Three reader numbers; extra values are ignored by the reader.",
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/number" }
+    },
+    "integerVector": {
+      "description": "Three reader integers; extra values are ignored by the reader.",
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/integer" }
+    },
+    "rgb": {
+      "description": "RGB colour values read as integer bytes.",
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/integer" }
+    },
+    "rgba": {
+      "description": "RGBA colour values read as integer bytes.",
+      "type": "array",
+      "minItems": 4,
+      "items": { "$ref": "#/$defs/integer" }
+    },
+    "layerDirectives": {
+      "description": "Unbound merge directives accepted in object layers.",
+      "type": "object",
+      "properties": {
+        "$replace": { "type": "boolean", "description": "Discard the lower-layer object when true." },
+        "$order": { "type": "array", "description": "Order keys in a keyed list.", "items": { "type": "string" } }
+      }
+    },
+    "keyedList": {
+      "description": "Object-keyed list; $order is meaningful for keyed lists.",
+      "type": "object"
+    },
+    "positionalList": {
+      "description": "Object keyed by contiguous decimal indices after merge.",
+      "type": "object",
+      "propertyNames": { "pattern": "^(?:[0-9]+|\\$replace)$" }
+    }
+  }
+}

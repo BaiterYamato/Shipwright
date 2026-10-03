@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unbound/paths.schema.json",
+  "title": "Unbound 2 paths document",
+  "description": "A layer for scenes/<scene>/paths/<name>.json.",
+  "type": "object",
+  "properties": { "$schema": { "const": "unbound/paths/1", "description": "Optional layer schema marker; one merged layer must provide it." }, "paths": { "$ref": "common.schema.json#/$defs/positionalList", "description": "Path entries by contiguous numeric index.", "additionalProperties": { "type": "object", "description": "One path point list.", "properties": { "points": { "type": "array", "description": "World-space point vectors.", "items": { "$ref": "common.schema.json#/$defs/vector" } }, "$replace": { "type": "boolean", "description": "Replace the lower-layer path." } }, "additionalProperties": true } } },
+  "additionalProperties": true
+}

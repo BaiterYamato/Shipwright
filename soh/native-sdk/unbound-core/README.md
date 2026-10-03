@@ -129,6 +129,21 @@ O `--check` passa cada `.json` pelo mesmo caminho do jogo (merge de uma camada, 
 texto, registro e manifesto) e termina com código 1 se algum for recusado. Nomes de entrada não são
 resolvidos fora do jogo.
 
+## Schemas JSON
+
+O pacote traz em `schemas/unbound/` um JSON Schema (draft 2020-12) para cada documento do formato 2:
+`unbound.json`, cena, sala, colisão, paths, textos, registro de cenas (`unbound/scenes.json`) e tipo de ator
+(`unbound/actors/<nome>.json`). Eles seguem o que este leitor aceita; onde a SPEC do Unbound é mais
+permissiva (inteiros como string, `horse` como 0/1), vale o leitor. Cada schema descreve uma camada, não o
+resultado da mescla: camadas parciais e as diretivas `$replace`/`$order` passam.
+
+```text
+python schemas/validate_schemas.py --root <pasta com unbound.json>
+```
+
+O validador precisa do pacote `jsonschema` do Python. Passar no schema é prova só de estrutura: não confere
+nomes registrados, recursos do jogo, `collision.bin` nem limites que dependem de outro documento.
+
 ## Funções nativas (para o `main.lua`)
 
 | Função | Quando | Resultado |
