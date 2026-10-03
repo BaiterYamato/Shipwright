@@ -1,7 +1,9 @@
 #include "scene_references.h"
 
+#include <algorithm>
 #include <set>
 
+#include "actor_registry.h"
 #include "unbound_format.h"
 
 namespace LinkSpanUnbound {
@@ -89,6 +91,8 @@ ReferenceReport CollectReferences(const std::vector<LayerDocument>& layers, Tran
         return report;
     }
     report.typed = true;
+    report.kind = kind;
+    report.path = context.path;
     context.references.clear();
     context.notes.clear();
     try {
@@ -123,7 +127,267 @@ ReferenceReport CollectReferences(const std::vector<LayerDocument>& layers, Tran
             report.references.push_back(std::move(reference));
         }
     }
+    report.document = std::move(merged.doc);
     return report;
+}
+
+namespace {
+
+// Os headers que o TranscodeScene emite: o 0 e os alternativos numéricos de 1 a 255 (o primeiro alias de cada
+// número). Um alternativo {} existe (EndMarker) e não herda o 0; um ausente cai no 0 (ou 3 -> 2 -> 0), que já é
+// conferido (z_scene_otr.cpp).
+std::vector<ListItem> GraphSetups(const Json& document) {
+    std::vector<ListItem> result;
+    const Json& setups = Sub(document, "setups");
+    if (!setups.contains("0")) {
+        return result;
+    }
+    result.emplace_back("0", &setups.at("0"));
+    std::set<int64_t> emitted;
+    for (const auto& [key, value] : ListItems(setups)) {
+        int64_t index = -1;
+        if (key.find_first_not_of("0123456789") == std::string::npos && ParseIntString(key, index) && index > 0 &&
+            index <= 255 && value->is_object() && emitted.insert(index).second) {
+            result.emplace_back(key, value);
+        }
+    }
+    return result;
+}
+
+// Quantos e o primeiro, para uma nota só por lista.
+struct GraphNote {
+    size_t count = 0;
+    std::string example;
+
+    void Add(const std::string& field, int64_t value) {
+        if (count++ == 0) {
+            example = field + "=" + std::to_string(value);
+        }
+    }
+
+    void Write(std::vector<std::string>& notes, const std::string& where, const std::string& what) const {
+        if (count) {
+            notes.push_back(where + ": " + std::to_string(count) + " " + what + " (ex.: " + example + ")");
+        }
+    }
+};
+
+// Room de um lado de porta (s16): ao montar a cena, z_room.c (func_80096FE8) lê roomList[room] para dimensionar o
+// buffer de salas, sem conferir o tamanho, antes de qualquer porta existir. Room negativa não lê.
+void GraphDoorRooms(const ReferenceReport& scene, size_t rooms, std::vector<std::string>& notes) {
+    for (const auto& [setupKey, setup] : GraphSetups(scene.document)) {
+        GraphNote outside;
+        size_t slot = 0;
+        for (const auto& [key, actor] : PositionalItems(Sub(*setup, "transitionActors"), "transitionActors")) {
+            if (slot++ >= 65535) {
+                break; // transiActorCtx.numActors é u16
+            }
+            for (const char* side : { "front", "back" }) {
+                const int32_t room = static_cast<int16_t>(Field(Sub(*actor, side), "room"));
+                if (room >= 0 && static_cast<size_t>(room) >= rooms) {
+                    outside.Add(key + "." + side + ".room", room);
+                }
+            }
+        }
+        outside.Write(notes, scene.path + " setups." + setupKey + ".transitionActors",
+                      "lado(s) de porta com room além das " + std::to_string(rooms) +
+                          " salas da cena; ao montar a cena, o jogo lê fora da lista de salas");
+    }
+}
+
+// Câmera de um lado de porta (`effects`, s8): Camera_ChangeDoorCam (z_camera.c) passa o índice ao
+// Camera_GetBgCamSetting, que lê a tabela da colisão da cena sem conferir. -1 (CAM_SET_DOORC) e -99 não leem.
+void GraphDoorCameras(const ReferenceReport& doc, size_t cameras, std::vector<std::string>& notes) {
+    for (const auto& [setupKey, setup] : GraphSetups(doc.document)) {
+        GraphNote outside;
+        size_t slot = 0;
+        for (const auto& [key, actor] : PositionalItems(Sub(*setup, "transitionActors"), "transitionActors")) {
+            if (slot++ >= 65535) {
+                break;
+            }
+            // Como no TranscodeScene: id por nome ou fora da faixa vira -1 no XML e não cria porta.
+            int64_t parsed = 0;
+            const auto id = actor->find("id");
+            const bool named = id != actor->end() && id->is_string() && !ParseIntString(id->get<std::string>(), parsed);
+            const int64_t numericId = Field(*actor, "id");
+            if (named || numericId < 0 || numericId >= LINKSPAN_OOT_ACTOR_MODELS_ID_BASE) {
+                continue;
+            }
+            for (const char* side : { "front", "back" }) {
+                const int32_t camera = static_cast<int8_t>(Field(Sub(*actor, side), "effects"));
+                if (camera != -1 && camera != -99 && (camera < 0 || static_cast<size_t>(camera) >= cameras)) {
+                    outside.Add(key + "." + side + ".effects", camera);
+                }
+            }
+        }
+        outside.Write(notes, doc.path + " setups." + setupKey + ".transitionActors",
+                      "lado(s) de porta com câmera fora das " + std::to_string(cameras) +
+                          " da colisão da cena; se a porta trocar a câmera, o jogo lê fora da lista");
+    }
+}
+
+// Cada item de uma lista (objeto com chaves ou array) passa por `keep`; chaves de controle ($...) ficam como estão.
+// As chaves já são únicas: emplace_back direto, sem a busca linear do ordered_json (32 770 câmeras viravam 1 s).
+template <typename Keep> Json MapItems(const Json& list, Keep keep) {
+    if (list.is_object()) {
+        Json out = Json::object();
+        auto& items = out.get_ref<Json::object_t&>();
+        const auto& source = list.get_ref<const Json::object_t&>();
+        items.reserve(source.size());
+        for (const auto& [key, value] : source) {
+            items.emplace_back(key, key.rfind('$', 0) == 0 ? value : keep(value));
+        }
+        return out;
+    }
+    if (list.is_array()) {
+        Json out = Json::array();
+        for (const auto& item : list) {
+            out.push_back(keep(item));
+        }
+        return out;
+    }
+    return list;
+}
+
+Json KeepFields(const Json& item, std::initializer_list<const char*> fields) {
+    if (!item.is_object()) {
+        return item;
+    }
+    Json out = Json::object();
+    auto& kept = out.get_ref<Json::object_t&>();
+    for (const char* field : fields) {
+        const auto found = item.find(field);
+        if (found != item.end()) {
+            kept.emplace_back(field, *found);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+Json CompactForGraph(const Json& document, DocumentKind kind) {
+    if (kind == DocumentKind::Scene) {
+        return document;
+    }
+    Json out = Json::object();
+    if (kind == DocumentKind::Paths || !document.is_object()) {
+        return out;
+    }
+    if (kind == DocumentKind::Room) {
+        const auto setups = document.find("setups");
+        if (setups != document.end()) {
+            out["setups"] = MapItems(*setups, [](const Json& setup) {
+                if (!setup.is_object()) {
+                    return setup;
+                }
+                Json kept = Json::object();
+                const auto doors = setup.find("transitionActors");
+                if (doors != setup.end()) {
+                    kept["transitionActors"] =
+                        MapItems(*doors, [](const Json& door) { return KeepFields(door, { "id", "front", "back" }); });
+                }
+                if (setup.contains("exits")) {
+                    kept["exits"] = Json::object(); // só a presença conta
+                }
+                return kept;
+            });
+        }
+        return out;
+    }
+    const auto keep = [&](const char* name, std::initializer_list<const char*> fields) {
+        const auto list = document.find(name);
+        if (list != document.end()) {
+            out[name] = MapItems(*list, [fields](const Json& item) { return KeepFields(item, fields); });
+        }
+    };
+    keep("cameras", {});
+    keep("waterBoxes", { "room" });
+    keep("surfaceTypes", { "exit" });
+    return out;
+}
+
+SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lookup) {
+    SceneGraph graph;
+    if (!scene.accepted || scene.kind != DocumentKind::Scene) {
+        return graph;
+    }
+    const auto rooms = PositionalItems(Sub(scene.document, "rooms"), "rooms");
+    // numRooms é u16 e Room.num é s16: um slot acima de 32 767 não é uma sala alcançável.
+    const size_t roomCount = std::min<size_t>(rooms.size(), 32768);
+    GraphDoorRooms(scene, roomCount, graph.notes);
+
+    const std::string collisionPath = ResourceLookupPath("collision", PathField(scene.document, "collision"));
+    const ReferenceReport* collision = collisionPath.empty() || !lookup ? nullptr : lookup(collisionPath);
+    if (!collision || !collision->accepted || collision->kind != DocumentKind::Collision) {
+        graph.gaps.push_back(scene.path + ": colisão " + (collisionPath.empty() ? "ausente" : collisionPath) +
+                             " sem documento Unbound aceito; câmeras, água e exits não conferidos");
+        return graph;
+    }
+    const size_t cameraCount = PositionalItems(Sub(collision->document, "cameras"), "cameras").size();
+
+    // Room da água (s32): o jogo compara com a sala atual ou -1 (todas). Fora das salas, a água nunca liga.
+    GraphNote water;
+    for (const auto& [key, value] : PositionalItems(Sub(collision->document, "waterBoxes"), "waterBoxes")) {
+        const int32_t room = static_cast<int32_t>(Field(*value, "room", -1));
+        if (room != -1 && (room < 0 || static_cast<size_t>(room) >= roomCount)) {
+            water.Add(key + ".room", room);
+        }
+    }
+    water.Write(graph.notes, collision->path + " waterBoxes (cena " + scene.path + ")",
+                "water box(es) com room fora das " + std::to_string(roomCount) +
+                    " salas da cena; a água não liga em sala nenhuma");
+    GraphDoorCameras(scene, cameraCount, graph.notes);
+
+    // Uma sala pode trazer exits (mesmo vazio) e trocar a lista da cena até outra sala trocar de novo: a lista que o
+    // Player usa depende do percurso. Aí os exits não são conferidos.
+    bool exitsKnown = true;
+    std::set<std::string> seenRooms;
+    size_t slot = 0;
+    for (const auto& [key, value] : rooms) {
+        if (slot++ >= roomCount) {
+            break;
+        }
+        const std::string path = value->is_string() ? ResourceLookupPath("rooms", value->get<std::string>()) : "";
+        if (!seenRooms.insert(path).second) {
+            continue;
+        }
+        const ReferenceReport* room = path.empty() || !lookup ? nullptr : lookup(path);
+        if (!room || !room->accepted || room->kind != DocumentKind::Room) {
+            exitsKnown = false;
+            graph.gaps.push_back(scene.path + ": sala " + (path.empty() ? "rooms." + key : path) +
+                                 " sem documento Unbound aceito; portas da sala e exits não conferidos");
+            continue;
+        }
+        GraphDoorCameras(*room, cameraCount, graph.notes);
+        for (const auto& [setupKey, setup] : GraphSetups(room->document)) {
+            if (setup->contains("exits")) {
+                exitsKnown = false;
+                graph.gaps.push_back(scene.path + ": " + room->path + " setups." + setupKey +
+                                     " troca os exits; a lista depende do percurso, exits não conferidos");
+                break;
+            }
+        }
+    }
+    if (!exitsKnown) {
+        return graph;
+    }
+    // Exit da superfície (s32): z_player.c lê setupExitList[exit - 1] sem conferir. 0 é sem saída.
+    const auto surfaces = PositionalItems(Sub(collision->document, "surfaceTypes"), "surfaceTypes");
+    for (const auto& [setupKey, setup] : GraphSetups(scene.document)) {
+        const size_t exits = PositionalItems(Sub(*setup, "exits"), "exits").size();
+        GraphNote outside;
+        for (const auto& [key, value] : surfaces) {
+            const int32_t exit = static_cast<int32_t>(Field(*value, "exit"));
+            if (exit != 0 && (exit < 0 || static_cast<size_t>(exit) > exits)) {
+                outside.Add(key + ".exit", exit);
+            }
+        }
+        outside.Write(graph.notes, collision->path + " surfaceTypes (cena " + scene.path + " setups." + setupKey + ")",
+                      "superfície(s) com exit fora de 1.." + std::to_string(exits) +
+                          " (saídas da cena); lá o jogo lê fora da lista");
+    }
+    return graph;
 }
 
 } // namespace LinkSpanUnbound

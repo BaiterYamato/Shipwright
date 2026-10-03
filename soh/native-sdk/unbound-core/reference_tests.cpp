@@ -1,5 +1,8 @@
 // Testes da coleta de referências de recurso dos documentos de mod (UNBOUND-019, plano §10.5/§14.3).
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -216,6 +219,216 @@ void TestVersionNames() {
     CHECK(std::string(GameVersionName(0xFFFFFFFF)).empty());
 }
 
+// Lista posicional {"0": item, ..., "n-1": item} como texto.
+std::string PositionalText(size_t n, const std::string& item) {
+    std::string text = "{";
+    for (size_t i = 0; i < n; ++i) {
+        text += (i ? ",\"" : "\"") + std::to_string(i) + "\":" + item;
+    }
+    return text + "}";
+}
+
+// UNBOUND-025: grafo cena -> colisão e salas. Cena com três exits, uma sala, colisão com três câmeras.
+struct GraphFixture {
+    std::map<std::string, ReferenceReport> reports;
+    std::map<std::string, int> reads;
+
+    GraphFixture() {
+        Put("scene.json", R"({"$schema":"unbound/scene/1","collision":"collision.json","rooms":{"0":"room.json"},
+            "setups":{"0":{"exits":{"0":0,"1":0,"2":0}}}})");
+        Put("room.json", R"({"$schema":"unbound/room/1","setups":{"0":{}}})");
+        Put("collision.json", R"({"$schema":"unbound/collision/3","bulk":{"file":"x.bin"},
+            "cameras":{"0":{},"1":{},"2":{}},"surfaceTypes":{"0":{"exit":0}}})");
+    }
+    void Put(const std::string& path, const std::string& json) {
+        reports[path] = Collect({ json }, path);
+        CHECK(reports[path].accepted);
+    }
+    ReferenceReport& Scene() { return reports.at("scene.json"); }
+    Json& SceneDoc() { return reports.at("scene.json").document; }
+    Json& Collision() { return reports.at("collision.json").document; }
+    SceneGraph Graph() {
+        reads.clear();
+        auto graph = CollectSceneGraph(Scene(), [this](const std::string& path) -> const ReferenceReport* {
+            ++reads[path];
+            const auto found = reports.find(path);
+            return found == reports.end() ? nullptr : &found->second;
+        });
+        // O cache do game.ready guarda salas e colisões compactadas: o grafo tem de sair igual em todo caso.
+        std::map<std::string, ReferenceReport> compact;
+        for (const auto& [path, report] : reports) {
+            compact[path] = report;
+            compact[path].document = CompactForGraph(report.document, report.kind);
+        }
+        const auto again = CollectSceneGraph(Scene(), [&](const std::string& path) -> const ReferenceReport* {
+            const auto found = compact.find(path);
+            return found == compact.end() ? nullptr : &found->second;
+        });
+        CHECK(again.notes == graph.notes && again.gaps == graph.gaps);
+        return graph;
+    }
+};
+
+bool AnyText(const std::vector<std::string>& texts, const std::string& fragment) {
+    return std::any_of(texts.begin(), texts.end(),
+                       [&](const std::string& text) { return text.find(fragment) != std::string::npos; });
+}
+
+void TestGraphExits() {
+    // Exit é 1-based: 3 cabe em três saídas, 4 lê fora; 0 é sem saída; negativo e o valor embrulhado em s32 também.
+    for (const int64_t value : { 0LL, 1LL, 3LL, 4LL, -1LL, -2147483648LL, 4294967296LL, 4294967299LL }) {
+        GraphFixture f;
+        f.Collision()["surfaceTypes"]["0"]["exit"] = value;
+        const auto graph = f.Graph();
+        const int32_t exit = static_cast<int32_t>(value);
+        const bool outside = exit != 0 && (exit < 0 || exit > 3);
+        CHECK(AnyText(graph.notes, "superfície(s) com exit fora de 1..3") == outside);
+        CHECK(!outside || AnyText(graph.notes, "(ex.: 0.exit=" + std::to_string(exit) + ")"));
+        CHECK(graph.gaps.empty());
+    }
+    // Cada header emitido tem a sua lista; um {} não herda a do 0. Setup ausente cai num já conferido.
+    GraphFixture f;
+    f.SceneDoc()["setups"]["1"] = Json::object();
+    f.SceneDoc()["setups"]["2"] = ParseJson(R"({"exits":{"0":0,"1":0}})");
+    f.SceneDoc()["setups"]["256"] = Json::object();
+    f.Collision()["surfaceTypes"]["0"]["exit"] = 3;
+    const auto graph = f.Graph();
+    CHECK(graph.notes.size() == 2);
+    CHECK(AnyText(graph.notes, "setups.1): 1 superfície(s) com exit fora de 1..0"));
+    CHECK(AnyText(graph.notes, "setups.2): 1 superfície(s) com exit fora de 1..2"));
+    // Sala que traz exits (mesmo vazio) troca a lista: exits não conferidos, sem nota falsa.
+    for (const bool empty : { false, true }) {
+        GraphFixture g;
+        g.reports["room.json"].document["setups"]["0"]["exits"] = empty ? Json::object() : ParseJson(R"({"0":0})");
+        g.Collision()["surfaceTypes"]["0"]["exit"] = 4;
+        const auto roomExits = g.Graph();
+        CHECK(!AnyText(roomExits.notes, "superfície(s)"));
+        CHECK(AnyText(roomExits.gaps, "room.json setups.0 troca os exits"));
+    }
+}
+
+void TestGraphWater() {
+    // Três salas: -1 é todas; 0..2 valem; 3, 63 e negativos não ligam em sala nenhuma.
+    for (const int64_t value : { -2LL, -1LL, 0LL, 2LL, 3LL, 63LL, 4294967295LL }) {
+        GraphFixture f;
+        f.SceneDoc()["rooms"] = ParseJson(R"({"0":"room.json","1":"room.json","2":"room.json"})");
+        f.Collision()["waterBoxes"] = Json{ { "0", Json{ { "room", value } } } };
+        const auto graph = f.Graph();
+        const int32_t room = static_cast<int32_t>(value);
+        CHECK(AnyText(graph.notes, "water box(es) com room fora das 3 salas") == (room != -1 && (room < 0 || room >= 3)));
+        CHECK(f.reads["room.json"] == 1); // três slots, uma sala
+    }
+    // Room.num é s16: com 32 769 slots, 32 767 é a última sala alcançável.
+    GraphFixture f;
+    f.SceneDoc()["rooms"] = ParseJson(PositionalText(32769, R"("room.json")"));
+    f.Collision()["waterBoxes"] = ParseJson(R"({"0":{"room":32767},"1":{"room":32768}})");
+    const auto graph = f.Graph();
+    CHECK(graph.notes.size() == 1 && AnyText(graph.notes, "1 water box(es) com room fora das 32768 salas"));
+}
+
+void TestGraphDoors() {
+    // Câmera da porta (s8): -1 (0xFF) e -99 (157) não leem a tabela; 3 de 3 lê fora; 128 vira -128.
+    for (const int64_t value : { 2LL, 3LL, -1LL, 255LL, -99LL, 157LL, -2LL, 128LL }) {
+        GraphFixture f;
+        f.SceneDoc()["setups"]["0"]["transitionActors"] =
+            Json{ { "0", Json{ { "id", 9 }, { "front", Json{ { "effects", value } } },
+                               { "back", Json{ { "effects", -1 } } } } } };
+        const auto graph = f.Graph();
+        const int32_t camera = static_cast<int8_t>(value);
+        const bool outside = camera != -1 && camera != -99 && (camera < 0 || camera >= 3);
+        CHECK(AnyText(graph.notes, "lado(s) de porta com câmera fora das 3") == outside);
+        CHECK(!outside || AnyText(graph.notes, "0.front.effects=" + std::to_string(camera)));
+    }
+    // Id inválido ou por nome vira -1 no XML: não é porta.
+    for (const char* id : { "-1", "\"ator/inexistente\"" }) {
+        GraphFixture f;
+        f.SceneDoc()["setups"]["0"]["transitionActors"] =
+            ParseJson(std::string(R"({"0":{"id":)") + id + R"(,"front":{"effects":7},"back":{"effects":7}}})");
+        CHECK(!AnyText(f.Graph().notes, "câmera fora"));
+    }
+    // Porta de uma sala usa a câmera da colisão da cena, inclusive num setup alternativo.
+    GraphFixture f;
+    f.reports["room.json"].document["setups"]["2"] =
+        ParseJson(R"({"transitionActors":{"0":{"id":9,"front":{"effects":3},"back":{"effects":4}}}})");
+    CHECK(AnyText(f.Graph().notes, "room.json setups.2.transitionActors: 2 lado(s) de porta com câmera fora das 3"));
+    // Room do lado (s16): positiva além das salas lê fora ao montar a cena, mesmo sem ator válido; negativa não.
+    for (const int64_t value : { 0LL, 2LL, 3LL, -1LL, -2LL, 32768LL, 65539LL }) {
+        GraphFixture g;
+        g.SceneDoc()["rooms"] = ParseJson(R"({"0":"room.json","1":"room.json","2":"room.json"})");
+        g.SceneDoc()["setups"]["0"]["transitionActors"] =
+            Json{ { "0", Json{ { "id", -1 }, { "front", Json{ { "room", value } } }, { "back", Json{ { "room", -1 } } } } } };
+        const int32_t room = static_cast<int16_t>(value);
+        CHECK(AnyText(g.Graph().notes, "com room além das 3 salas da cena") == (room >= 3));
+    }
+}
+
+void TestGraphGaps() {
+    // Colisão desconhecida, recusada ou de outro tipo nunca vira tabela vazia: só lacuna, sem nota.
+    for (const int mode : { 0, 1, 2 }) {
+        GraphFixture f;
+        f.Collision()["surfaceTypes"]["0"]["exit"] = 9;
+        if (mode == 0) f.reports.erase("collision.json");
+        if (mode == 1) f.reports["collision.json"].accepted = false;
+        if (mode == 2) f.reports["collision.json"].kind = DocumentKind::Room;
+        const auto graph = f.Graph();
+        CHECK(graph.notes.empty());
+        CHECK(graph.gaps.size() == 1 && AnyText(graph.gaps, "colisão collision.json sem documento Unbound aceito"));
+    }
+    // Sala desconhecida: exits não conferidos.
+    GraphFixture f;
+    f.reports.erase("room.json");
+    f.Collision()["surfaceTypes"]["0"]["exit"] = 9;
+    const auto graph = f.Graph();
+    CHECK(!AnyText(graph.notes, "superfície(s)"));
+    CHECK(AnyText(graph.gaps, "sala room.json sem documento Unbound aceito"));
+    // __OTR__ sai antes da busca; a colisão mesclada é a que vale ($replace muda a quantidade de câmeras).
+    GraphFixture m;
+    m.reports["scene.json"] = Collect({ R"({"$schema":"unbound/scene/1","collision":"__OTR__collision.json",
+        "rooms":{"0":"__OTR__room.json"},"setups":{"0":{"exits":{"0":0},
+        "transitionActors":{"0":{"id":9,"pos":[0,0,0],"front":{"effects":1},"back":{"effects":-1}}}}}})" }, "scene.json");
+    CHECK(m.Scene().accepted);
+    m.reports["collision.json"] = Collect({ R"({"$schema":"unbound/collision/3","bulk":{"file":"x.bin"},
+        "cameras":{"0":{},"1":{},"2":{}},"surfaceTypes":{"0":{"exit":0}}})",
+        R"({"cameras":{"$replace":true,"0":{}},"surfaceTypes":{"0":{"exit":2}}})" }, "collision.json");
+    const auto merged = m.Graph();
+    CHECK(m.reads["collision.json"] == 1 && m.reads["room.json"] == 1);
+    CHECK(AnyText(merged.notes, "câmera fora das 1"));
+    CHECK(AnyText(merged.notes, "exit fora de 1..1"));
+    // O grafo não muda o documento.
+    const std::string before = m.Scene().document.dump();
+    m.Graph();
+    CHECK(before == m.Scene().document.dump());
+}
+
+void TestGraphCompact() {
+    // A versão do cache tira atores, geometria e campos que o grafo não lê; chaves e $order das listas ficam.
+    const auto room = Collect({ R"({"$schema":"unbound/room/1","setups":{"0":{"actors":{"0":{"id":9,"pos":[0,0,0]}},
+        "transitionActors":{"0":{"id":9,"pos":[1,2,3],"rotY":0,"params":5,"front":{"room":0,"effects":2},
+        "back":{"room":1,"effects":-1}}},"exits":{"0":0}},"1":{"echo":3}}})" }, "room.json");
+    CHECK(room.accepted);
+    const Json small = CompactForGraph(room.document, DocumentKind::Room);
+    CHECK(!small["setups"]["0"].contains("actors"));
+    CHECK(small["setups"]["0"]["transitionActors"]["0"].dump() ==
+          R"({"id":9,"front":{"room":0,"effects":2},"back":{"room":1,"effects":-1}})");
+    CHECK(small["setups"]["0"]["exits"] == Json::object() && small["setups"]["1"] == Json::object());
+    CHECK(!small.contains("$schema"));
+    const Json collision = ParseJson(R"({"bulk":{"file":"x.bin"},"cameras":{"$order":["1","0"],"1":{"sType":3},
+        "0":{"sType":1}},"waterBoxes":[{"xMin":0,"room":2},{"camera":1}],"surfaceTypes":{"0":{"exit":4,"camera":2}}})");
+    CHECK(CompactForGraph(collision, DocumentKind::Collision).dump() ==
+          R"({"cameras":{"$order":["1","0"],"1":{},"0":{}},"waterBoxes":[{"room":2},{}],"surfaceTypes":{"0":{"exit":4}}})");
+    CHECK(CompactForGraph(collision, DocumentKind::Paths).empty());
+    CHECK(CompactForGraph(collision, DocumentKind::Scene) == collision);
+    // Listas no teto (a UB024-A tem 32 770 câmeras): linear, sem a busca por chave do ordered_json.
+    const Json big = ParseJson(R"({"cameras":)" + PositionalText(32770, R"({"sType":1})") + R"(,"surfaceTypes":)" +
+                               PositionalText(65535, R"({"exit":1,"camera":0,"floor":2})") + "}");
+    const auto started = std::chrono::steady_clock::now();
+    const Json compact = CompactForGraph(big, DocumentKind::Collision);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+    CHECK(compact["cameras"].size() == 32770 && compact["surfaceTypes"].size() == 65535);
+    CHECK(compact["surfaceTypes"]["65534"].dump() == R"({"exit":1})");
+    CHECK(ms.count() < 2000); // quadrático passa de vários segundos
+}
+
 } // namespace
 
 int main() {
@@ -229,6 +442,11 @@ int main() {
     TestDiscardedCycles();
     TestSparseSetups();
     TestVersionNames();
+    TestGraphExits();
+    TestGraphWater();
+    TestGraphDoors();
+    TestGraphGaps();
+    TestGraphCompact();
     if (gFailures) {
         std::fprintf(stderr, "%d falha(s)\n", gFailures);
         return 1;

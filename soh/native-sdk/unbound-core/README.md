@@ -119,6 +119,20 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   crawlspace lê `count` pontos), `count` sem `positionIndex` (a fábrica dá um único vetor zero) e `count` fora de
   0–32 767. Não se confere qual preset usa as posições: `count` 0 sem `positionIndex` num preset que as lê passa sem
   nota. O XML não muda. Nenhum dos 101 documentos de colisão do jogo base gera essas notas.
+- **Grafo cena ↔ colisão e salas (0.6.7).** No `game.ready`, cada cena de mod é cruzada com a colisão e as salas
+  dela (mescladas, de mod ou da base), onde o host usa um índice de um documento para ler a lista de outro sem
+  conferir. Saem em nota: exit de superfície fora de 1..N saídas de cada setup emitido (`z_player.c` lê
+  `setupExitList[exit - 1]`), room de water box fora das salas (a água não liga em sala nenhuma; -1 é todas), room
+  de lado de porta além das salas (`z_room.c` lê `roomList[room]` ao montar a cena) e câmera de lado de porta fora
+  da tabela da colisão (`Camera_ChangeDoorCam`; -1 e -99 não leem). O que não dá para conferir sai como "grafo
+  incompleto" e não conta como nota: dependência ausente, recusada, alias `.meta` (o jogo carrega o alvo; vale
+  também para documento de mod e para a própria cena) ou além do orçamento (4 096 leituras e 64 MB disparadas pelo
+  grafo, de mod ou da base), e sala que traz `exits` (troca a lista conforme o percurso). O cache da checagem guarda
+  só o que o grafo lê de salas e colisões. Num delta sobre uma cena da base, o grafo também roda na cena só da base, e o que
+  sai igual nas duas fica fora, contado em `herdadas=`: a `spot04` vanilla tem setups de cutscene com menos saídas
+  que os exits da colisão, e isso não é do mod. O resumo ganha `grafos=`, `incompletos=`, `herdadas=` e
+  `dependencias=`. Só as cenas que um mod traz são raízes; um mod que só troca uma colisão da base não é cruzado
+  com as cenas da base.
 
 ## Unbound 0.8 (novo na 0.5.0)
 

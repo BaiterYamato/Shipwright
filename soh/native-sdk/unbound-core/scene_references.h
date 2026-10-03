@@ -5,6 +5,7 @@
 // famílias de ROM. Aqui o documento é mesclado e transcodificado como o TranscodeJson faria, e sai a lista dos
 // recursos que o XML manda o host carregar; o framework confere cada um no VFS no game.ready. Puro.
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,9 @@ struct ReferenceReport {
     std::string error;
     std::vector<std::pair<std::string, std::string>> references; // (campo, caminho), sem repetição, na ordem
     std::vector<std::string> notes; // camadas puladas na mescla e notas do transcodificador
+    DocumentKind kind = DocumentKind::Scene;
+    std::string path; // context.path
+    Json document;    // só quando accepted: a mescla que foi transcodificada
 };
 
 // Nome da versão de origem do oot.o2r (CRC de soh/soh/GameVersions.h), ou "" se desconhecida.
@@ -43,5 +47,20 @@ std::string ResourceLookupPath(const std::string& field, const std::string& path
 // `layers` da menor para a maior prioridade, como read_file_layers entrega; `context` traz o caminho e os
 // resolvedores de entrada e ator (as referências e notas dele são ignoradas).
 ReferenceReport CollectReferences(const std::vector<LayerDocument>& layers, TranscodeContext context);
+
+// Grafo entre documentos (UNBOUND-025): índices que a cena, as salas e a colisão usam para ler listas uns dos outros,
+// e que o host não confere. Puro; não muda JSON nem XML.
+struct SceneGraph {
+    std::vector<std::string> notes; // o jogo leria fora da lista, ou o valor não teria efeito
+    std::vector<std::string> gaps;  // o que não deu para conferir (dependência ausente ou recusada, exits de sala)
+};
+// Relatório já mesclado de um caminho (sem __OTR__); nullptr é desconhecido, nunca lista vazia. Os ponteiros
+// precisam viver até o retorno.
+using GraphLookup = std::function<const ReferenceReport*(const std::string&)>;
+SceneGraph CollectSceneGraph(const ReferenceReport& scene, const GraphLookup& lookup);
+// Só o que o grafo lê de uma sala (portas e se ela troca os exits) ou de uma colisão (quantas câmeras, room da
+// água, exit da superfície), para o cache do game.ready não reter atores, geometria e o resto. As chaves e a ordem
+// das listas ficam; o grafo sai igual. Cena volta inteira; paths, vazio.
+Json CompactForGraph(const Json& document, DocumentKind kind);
 
 } // namespace LinkSpanUnbound

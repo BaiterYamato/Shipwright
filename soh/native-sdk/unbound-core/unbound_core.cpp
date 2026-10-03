@@ -1077,6 +1077,125 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
     uint32_t refused = 0;
     size_t candidates = 0;
     std::vector<std::string> notes;
+    // UNBOUND-025: relatórios mesclados por caminho. O grafo de uma cena de mod lê a colisão e as salas dela; o que
+    // também é documento de mod sai daqui uma vez só. Toda leitura que o grafo dispara (de mod ou da base) conta num
+    // orçamento próprio, e o cache guarda só o que o grafo lê de salas e colisões (CompactForGraph).
+    struct Loaded {
+        ShipNativeStatus read = SHIP_NATIVE_OK;
+        uint32_t bytes = 0;
+        LinkSpanUnbound::ReferenceReport report;
+        bool modded = false; // alguma camada de mod traz o caminho
+        bool base = false;   // o oot-unbound.o2r também traz
+        bool baseDone = false;
+        LinkSpanUnbound::ReferenceReport baseReport; // só da base, sob demanda
+    };
+    std::map<std::string, Loaded> loaded;
+    std::map<std::string, bool> aliases;
+    size_t dependencyReads = 0; // documentos fora dos mods que o grafo leu (resumo)
+    size_t graphReads = 0;      // leituras que o grafo disparou, de mod ou da base (orçamento)
+    size_t graphBytes = 0;
+    constexpr size_t kGraphBytes = 64 * 1024 * 1024;
+    const auto context = [&state](const std::string& path) {
+        LinkSpanUnbound::TranscodeContext context;
+        context.path = path;
+        context.resolveEntrance = [&state](const std::string& name) { return ResolveEntrance(state, name); };
+        context.resolveActor = [&state](const std::string& name) { return ResolveActor(state, name); };
+        return context;
+    };
+    const auto retain = [](LinkSpanUnbound::ReferenceReport& report) {
+        if (report.accepted && report.kind != LinkSpanUnbound::DocumentKind::Scene) {
+            report.document = LinkSpanUnbound::CompactForGraph(report.document, report.kind);
+        }
+    };
+    // `budget` limita a leitura ao saldo do orçamento antes de ler (o coletor recusa a camada que passaria dele).
+    const auto load = [&](const std::string& path, size_t budget) -> Loaded& {
+        auto [entry, inserted] = loaded.try_emplace(path);
+        if (!inserted) {
+            return entry->second;
+        }
+        LayerCollector collector = DocumentCollector();
+        if (budget < collector.maxTotal) {
+            collector.maxTotal = static_cast<uint32_t>(budget);
+            collector.maxLayer = std::min(collector.maxLayer, collector.maxTotal);
+        }
+        Loaded& loadedEntry = entry->second;
+        loadedEntry.read = state.resources->read_file_layers(path.c_str(), CollectLayer, &collector);
+        loadedEntry.bytes = collector.totalBytes;
+        if (loadedEntry.read == SHIP_NATIVE_OK) {
+            for (const auto& layer : collector.layers) {
+                const bool fromBase = !state.basePath.empty() && SameArchive(layer.archive, state.basePath);
+                (fromBase ? loadedEntry.base : loadedEntry.modded) = true;
+            }
+            loadedEntry.report = LinkSpanUnbound::CollectReferences(collector.layers, context(path));
+            retain(loadedEntry.report);
+        }
+        return loadedEntry;
+    };
+    // O ResourceManager entrega o alvo de um <caminho>.meta; sem o resolvedor dele, o caminho fica desconhecido.
+    const auto aliased = [&](const std::string& path) {
+        auto found = aliases.find(path);
+        if (found == aliases.end()) {
+            found = aliases.emplace(path, state.resources->has_file((path + ".meta").c_str())).first;
+        }
+        return found->second;
+    };
+    // As duas leituras do grafo (mesclada e só da base) passam por aqui: alias, orçamento e cache.
+    const auto resolve = [&](const std::string& path) -> Loaded* {
+        if (aliased(path)) {
+            return nullptr;
+        }
+        auto found = loaded.find(path);
+        if (found == loaded.end()) {
+            if (graphReads >= MAX_REFERENCE_DOCUMENTS || graphBytes >= kGraphBytes) {
+                return nullptr;
+            }
+            ++graphReads;
+            // Documento de mod o laço lê de qualquer jeito: sem corte no meio, só a soma. Fora dos mods, o saldo.
+            const bool owned = owners.find(path) != owners.end();
+            dependencyReads += owned ? 0 : 1;
+            Loaded& entry = load(path, owned ? SIZE_MAX : kGraphBytes - graphBytes);
+            graphBytes += entry.bytes;
+            if (!owned && entry.read == SHIP_NATIVE_LIMIT) {
+                graphBytes = kGraphBytes; // a dependência que não coube esgota o orçamento
+            }
+            return entry.read == SHIP_NATIVE_OK ? &entry : nullptr;
+        }
+        return found->second.read == SHIP_NATIVE_OK ? &found->second : nullptr;
+    };
+    const LinkSpanUnbound::GraphLookup lookup = [&](const std::string& path) -> const LinkSpanUnbound::ReferenceReport* {
+        const Loaded* dependency = resolve(path);
+        return dependency ? &dependency->report : nullptr;
+    };
+    // O mesmo caminho como o oot.o2r do usuário o dá, sem nenhum mod: o que vem só da base é o próprio relatório. A
+    // camada da base de um caminho de mod é relida aqui, só quando uma comparação precisa dela.
+    const LinkSpanUnbound::GraphLookup baseLookup =
+        [&](const std::string& path) -> const LinkSpanUnbound::ReferenceReport* {
+        Loaded* dependency = resolve(path);
+        if (!dependency || !dependency->modded) {
+            return dependency ? &dependency->report : nullptr;
+        }
+        if (!dependency->base) {
+            return nullptr;
+        }
+        if (!dependency->baseDone) {
+            dependency->baseDone = true;
+            LayerCollector collector = DocumentCollector();
+            if (state.resources->read_file_layers(path.c_str(), CollectLayer, &collector) == SHIP_NATIVE_OK) {
+                std::vector<LinkSpanUnbound::LayerDocument> baseLayers;
+                for (auto& layer : collector.layers) {
+                    if (SameArchive(layer.archive, state.basePath)) {
+                        baseLayers.push_back(std::move(layer));
+                    }
+                }
+                dependency->baseReport = LinkSpanUnbound::CollectReferences(baseLayers, context(path));
+                retain(dependency->baseReport);
+            }
+        }
+        return &dependency->baseReport;
+    };
+    size_t graphs = 0;
+    size_t inherited = 0;
+    std::vector<std::string> gaps;
     for (const auto& [path, archives] : owners) {
         if (archives.empty() || !EndsWithJson(path)) {
             continue;
@@ -1084,18 +1203,13 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         if (++candidates > MAX_REFERENCE_DOCUMENTS) {
             continue;
         }
-        LayerCollector collector = DocumentCollector();
-        const auto read = state.resources->read_file_layers(path.c_str(), CollectLayer, &collector);
-        if (read != SHIP_NATIVE_OK) {
-            lines.push_back("aviso: " + path + " ilegível nas camadas (" + StatusName(read) +
+        Loaded& document = load(path, SIZE_MAX);
+        if (document.read != SHIP_NATIVE_OK) {
+            lines.push_back("aviso: " + path + " ilegível nas camadas (" + StatusName(document.read) +
                             "); referências não conferidas");
             continue;
         }
-        LinkSpanUnbound::TranscodeContext context;
-        context.path = path;
-        context.resolveEntrance = [&state](const std::string& name) { return ResolveEntrance(state, name); };
-        context.resolveActor = [&state](const std::string& name) { return ResolveActor(state, name); };
-        const auto report = LinkSpanUnbound::CollectReferences(collector.layers, context);
+        const auto& report = document.report;
         if (!report.typed) {
             continue;
         }
@@ -1112,6 +1226,45 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
             lines.push_back("aviso: " + path + " seria recusado ao carregar: " + reason + " (" + JoinLabels(archives) +
                             ")");
             continue;
+        }
+        if (report.kind == LinkSpanUnbound::DocumentKind::Scene && aliased(path)) {
+            gaps.push_back(path + ": a cena tem alias .meta; o jogo carrega o alvo, grafo não conferido");
+        } else if (report.kind == LinkSpanUnbound::DocumentKind::Scene) {
+            ++graphs;
+            try {
+                auto graph = LinkSpanUnbound::CollectSceneGraph(report, lookup);
+                // Nota ou lacuna que a cena só da base também dá vem do jogo e não do mod (a spot04 vanilla tem
+                // setups de cutscene com menos saídas que os exits da colisão): fica fora, contada em herdadas=.
+                const LinkSpanUnbound::ReferenceReport* base =
+                    graph.notes.empty() && graph.gaps.empty() ? nullptr : baseLookup(path);
+                LinkSpanUnbound::SceneGraph vanilla;
+                if (base && base->accepted && base->kind == LinkSpanUnbound::DocumentKind::Scene) {
+                    try {
+                        vanilla = LinkSpanUnbound::CollectSceneGraph(*base, baseLookup);
+                    } catch (const std::exception&) {
+                        // Sem a comparação, tudo fica como nota do mod.
+                    }
+                    const auto drop = [&](std::vector<std::string>& list, const std::vector<std::string>& known) {
+                        const auto before = list.size();
+                        list.erase(std::remove_if(list.begin(), list.end(),
+                                                  [&](const std::string& item) {
+                                                      return std::find(known.begin(), known.end(), item) !=
+                                                             known.end();
+                                                  }),
+                                   list.end());
+                        inherited += before - list.size();
+                    };
+                    drop(graph.notes, vanilla.notes);
+                    drop(graph.gaps, vanilla.gaps);
+                }
+                notes.insert(notes.end(), graph.notes.begin(), graph.notes.end());
+                gaps.insert(gaps.end(), graph.gaps.begin(), graph.gaps.end());
+            } catch (const std::exception& error) {
+                gaps.push_back(path + ": grafo falhou (" + error.what() + ")");
+            }
+            // A cena não é dependência de outra: o documento inteiro não fica no cache.
+            document.report.document = LinkSpanUnbound::Json();
+            document.baseReport.document = LinkSpanUnbound::Json();
         }
         for (const auto& [field, resource] : report.references) {
             ++checked;
@@ -1136,6 +1289,9 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         for (const auto& note : notes) {
             AppendLog(state, "referências: " + note);
         }
+        for (const auto& gap : gaps) {
+            AppendLog(state, "referências: grafo incompleto: " + gap);
+        }
     }
     return "referências: documentos=" + std::to_string(documents) + " conferidas=" + std::to_string(checked) +
            " ausentes=" + std::to_string(missing) + " recusados=" + std::to_string(refused) +
@@ -1143,7 +1299,8 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
            std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
                                                                                 started)
                               .count()) +
-           " jogo=" + GameVersionsText(state);
+           " grafos=" + std::to_string(graphs) + (gaps.empty() ? "" : " incompletos=" + std::to_string(gaps.size())) +
+           (inherited == 0 ? "" : " herdadas=" + std::to_string(inherited)) + " dependencias="+ std::to_string(dependencyReads) + " jogo=" + GameVersionsText(state);
 }
 
 // §10.5/§14.3: dois mods no mesmo caminho do VFS, verificado no game.ready, antes do gameplay. Documento JSON que
