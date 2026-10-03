@@ -105,8 +105,11 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
 - **Limite do mundo (0.6.4).** Spawn, ator, transition actor ou `bounds` da colisão com coordenada de módulo
   acima de 1 048 576 (`BGCHECK_XYZ_ABSMAX`), no valor que o jogo recebe (f32 nas posições, inteiro arredondado nos
   bounds), saem em nota: lá o jogo apaga os efeitos de partícula `EffectSs` (poeira, faíscas, respingos) em vez de
-  desenhá-los. A colisão continua: o `BgCheck_PosErrorCheck` só registra, e o chão foi provado em jogo até
-  ±1 048 806 na UNBOUND-021.
+  desenhá-los. A colisão continua: o `BgCheck_PosErrorCheck` só registra. Na UNBOUND-021 o piso passa do limite
+  até a borda em ±1 048 800 e o Link anda sobre ele; a sonda registra a perda de chão logo depois da borda.
+- **Malha tipo 2 (0.6.5).** Sala com `mesh.type = 2` e mais de 1 024 entradas sai em nota: o `z_room.c` só
+  considera as primeiras 1 024 (`SHAPE_SORT_MAX`), antes do teste de distância, e não desenha as demais. O aviso
+  do próprio jogo é `osSyncPrintf`, desligado no build. A tipo 0 não tem esse teto.
 
 ## Unbound 0.8 (novo na 0.5.0)
 

@@ -370,6 +370,32 @@ void TestWorldLimit() {
     TranscodeContext inside = Context();
     TranscodeScene(ParseJson(scene("[1048576,0,-1048576]", "[1048576.03,0,0]", "[0,-1048576,0]")), true, inside);
     CHECK(!AnyNote(inside, "além de ±1048576"));
+    // 1 048 576,063: o cast direto daria o f32 1 048 576,125, mas o XML leva "1048576.06" (%.9g) e a fábrica lê
+    // 1 048 576. Os dois sinais, nas três listas e nos três eixos, não têm nota.
+    for (const char* v : { "1048576.063", "-1048576.063" }) {
+        const std::string p = v;
+        const std::string written = p.substr(0, p.size() - 1); // "%.9g": 1048576.06
+        const std::string axes[] = { "PosX", "PosY", "PosZ" };
+        for (int axis = 0; axis < 3; ++axis) {
+            const std::string pos = axis == 0 ? "[" + p + ",0,0]" : axis == 1 ? "[0," + p + ",0]" : "[0,0," + p + "]";
+            TranscodeContext rounding = Context();
+            const std::string xml = TranscodeScene(ParseJson(scene(pos, pos, pos)), true, rounding);
+            CHECK(!AnyNote(rounding, "além de ±1048576"));
+            // Spawn, ator e transition actor, cada um com o valor inteiro no atributo do eixo.
+            CHECK(Count(xml, axes[axis] + "=\"" + written + "\"") == 3);
+        }
+    }
+    // Finito no JSON, além do f32: o FloatAttribute lê ±inf e a nota sai (antes dependia da biblioteca).
+    const std::pair<const char*, const char*> huges[] = { { "1e39", "1e+39" }, { "-1e39", "-1e+39" },
+                                                          { "1e100", "1e+100" } };
+    for (const auto& [v, shown] : huges) {
+        const std::string pos = std::string("[0,") + v + ",0]";
+        TranscodeContext huge = Context();
+        TranscodeScene(ParseJson(scene(pos, pos, pos)), true, huge);
+        CHECK(AnyNote(huge, std::string("limites spawns: 1 posição(ões) além de ±1048576 (ex.: 0=0,") + shown + ",0)"));
+        CHECK(AnyNote(huge, "limites actors: 1 posição(ões)"));
+        CHECK(AnyNote(huge, "limites transitionActors: 1 posição(ões)"));
+    }
     TranscodeContext outside = Context();
     const std::string xml = TranscodeScene(
         ParseJson(scene("[1048577,0,0]", "[0,0,-1048576.07]", "[0,1048600.5,0]")), true, outside);
@@ -395,6 +421,23 @@ void TestWorldLimit() {
     CHECK(AnyNote(rounded, "(ex.: max=1048577,10,10)"));
 }
 
+// M12: a malha tipo 2 só considera as primeiras 1 024 entradas (SHAPE_SORT_MAX, z_room.c); a tipo 0 não tem teto.
+void TestMeshEntries() {
+    for (const int type : { 0, 2 }) {
+        const std::string item = type == 2 ? R"({"pos":[0,0,0],"radius":10,"opa":"limites/dl","xlu":null})"
+                                           : R"({"opa":"limites/dl","xlu":null})";
+        for (const size_t n : { 1023u, 1024u, 1025u }) {
+            const std::string doc = R"({"setups":{"0":{"mesh":{"type":)" + std::to_string(type) + R"(,"entries":)" +
+                                    PositionalText(n, item) + "}}}}";
+            TranscodeContext context = Context();
+            const std::string xml = TranscodeScene(ParseJson(doc), true, context);
+            CHECK(Count(xml, "<Polygon ") == n);
+            CHECK(AnyNote(context, std::to_string(n) + " entradas na malha tipo 2; o jogo só considera as primeiras "
+                                                       "1024 (SHAPE_SORT_MAX)") == (type == 2 && n > 1024));
+        }
+    }
+}
+
 // M03: posição decimal de ator e luz chega ao XML sem perder a fração.
 void TestDecimalPositions() {
     const std::string doc = R"({"setups":{"0":{"actors":{"0":{"id":16,"pos":[32768.5,1.25,-0.5]}},)"
@@ -412,6 +455,7 @@ int main() {
     TestActorAndObjectCounts();
     TestCameraPositions();
     TestWorldLimit();
+    TestMeshEntries();
     TestDecimalPositions();
     TestParseEquivalence();
     TestMergeEquivalence();

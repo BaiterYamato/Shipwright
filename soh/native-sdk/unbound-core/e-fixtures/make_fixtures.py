@@ -200,6 +200,9 @@ def main():
     # vanilla e uma malha de 81 920 unidades numa display list só).
     make_edge(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_span(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_exits(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_r02(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_m12(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
@@ -657,6 +660,171 @@ def make_span(put, registry, field, field_room, field_collision):
     put(f"{folder}/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
     registry["linkspan_e/span"] = {"name": "Link-Span E: malha de 81 920 unidades", "scene": f"{folder}/scene.json",
                                    "drawConfig": 0, "entrances": {"main": {"spawn": 0}, "oeste": {"spawn": 1}}}
+
+
+EXITS_COUNT = 33   # um além do teto de 5 bits do vanilla (o valor 31 da superfície é o último que cabe)
+
+
+def make_exits(put, registry, field, field_room, field_collision):
+    """M16: 33 saídas por nome e a faixa de saída do piso com exit = 33, que usa exits[32] (o valor da superfície é o
+    índice mais um). exits[32] leva à span (x = +40 000); as outras 32 levam à casa. Com o campo de 5 bits do vanilla,
+    33 viraria 1 (exits[0]) e a chegada seria na casa. A faixa vermelha à frente do spawn é a saída."""
+    folder = "scenes/linkspan_e/exits"
+    xs = (-1200, 1200)
+    put(f"{folder}/v_floor", floor_vertices(xs, (-600, LAB_EXIT_Z[0]), 8, 4))
+    put(f"{folder}/v_exit", floor_vertices(xs, LAB_EXIT_Z, 8, 1))
+    put(f"{folder}/v_after", floor_vertices(xs, (LAB_EXIT_Z[1], 1200), 8, 2))
+    put(f"{folder}/floor", quads_display_list([("grid", f"{folder}/v_floor"), ("red", f"{folder}/v_exit"),
+                                               ("grid", f"{folder}/v_after")]))
+    setup = outdoor_setup(field, [0, 0, 0], 0, 0)
+    setup["exits"] = {str(i): "linkspan_e/house/main" for i in range(EXITS_COUNT - 1)}
+    setup["exits"][str(EXITS_COUNT - 1)] = "linkspan_e/span/main"
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {"0": f"{folder}/rooms/0.json"},
+        "setups": {"0": setup},
+    })
+    floor, vertices, polys = lab_floor(with_exit=True)
+    put(f"{folder}/collision.bin", floor)
+    collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin", vertices=vertices,
+                               polys=polys, exit_surface=True)
+    collision["surfaceTypes"]["1"]["exit"] = EXITS_COUNT
+    put(f"{folder}/collision.json", collision)
+    room = base_room(field_room)
+    room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                 "objects": {}, "actors": {}})
+    put(f"{folder}/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/exits"] = {"name": "Link-Span E: 33 saídas", "scene": f"{folder}/scene.json",
+                                    "drawConfig": 0, "entrances": {"main": {"spawn": 0}}}
+
+
+# R02: o LoadVertices XML vira G_VTX_OTR_FILEPATH. A fábrica junta VertexBufferIndex e VertexOffset num OR sem
+# máscara ((buffer << 16) | offset) e o interpretador lê a origem em 16 bits (w1 & 0xFFFF) e o destino em w1 >> 16.
+# Com o buffer 1 em todas as cargas, o bit 16 do offset 65 536 cai no próprio destino e só a origem dá a volta.
+R02_VERTICES = 65540
+R02_QUADS = (  # offset no recurso, centro (x, y) do quad em z = 400, cor primitiva da carga (None: nenhuma carga)
+    (0, (0, 330), None),               # W: só aparece (verde) se a origem do C der a volta para 0
+    (4, (-240, 150), (255, 0, 0)),     # A
+    (65532, (0, 150), (0, 0, 255)),    # B
+    (65536, (240, 150), (0, 255, 0)),  # C
+)
+FIXTURE_Z = 400
+
+
+def vertical_quad_rows(x, y, z, half):
+    corners = [(x - half, y - half, 0, 1024), (x + half, y - half, 1024, 1024), (x + half, y + half, 1024, 0),
+               (x - half, y + half, 0, 0)]
+    return [f'<Vtx X="{vx}" Y="{vy}" Z="{z}" S="{s}" T="{t}" R="255" G="255" B="255" A="255"/>'
+            for vx, vy, s, t in corners]
+
+
+def vertex_resource(rows):
+    return ("\n".join(['<Vertex Version="0">'] + rows + ["</Vertex>"])).encode()
+
+
+def prim_quads_display_list(loads, buffer_index=0):
+    """DL XML opaca sem textura: cada carga (recurso, offset, cor) desenha um quad na cor primitiva, sem depender da
+    cor dos vértices lidos."""
+    lines = ['<DisplayList Version="0">', "<PipeSync/>",
+             '<ClearGeometryMode G_LIGHTING="1" G_CULL_BACK="1" G_CULL_FRONT="1" G_TEXTURE_GEN="1" '
+             'G_TEXTURE_GEN_LINEAR="1" G_FOG="1"/>',
+             '<SetGeometryMode G_ZBUFFER="1" G_SHADE="1" G_SHADING_SMOOTH="1"/>',
+             '<SetCycleType G_CYC_1CYCLE="1"/>',
+             '<SetRenderMode Mode1="G_RM_AA_ZB_OPA_SURF" Mode2="G_RM_AA_ZB_OPA_SURF2"/>',
+             '<Texture S="0" T="0" Level="0" Tile="0" On="0"/>',
+             '<SetCombineLERP A0="G_CCMUX_0" B0="G_CCMUX_0" C0="G_CCMUX_0" D0="G_CCMUX_PRIMITIVE" '
+             'Aa0="G_ACMUX_0" Ab0="G_ACMUX_0" Ac0="G_ACMUX_0" Ad0="G_ACMUX_1" A1="G_CCMUX_0" B1="G_CCMUX_0" '
+             'C1="G_CCMUX_0" D1="G_CCMUX_PRIMITIVE" Aa1="G_ACMUX_0" Ab1="G_ACMUX_0" Ac1="G_ACMUX_0" Ad1="G_ACMUX_1"/>']
+    v = buffer_index
+    for path, offset, (r, g, b) in loads:
+        lines += ["<PipeSync/>", f'<SetPrimColor M="0" L="0" R="{r}" G="{g}" B="{b}" A="255"/>',
+                  f'<LoadVertices Path="{path}" Count="4" VertexBufferIndex="{v}" VertexOffset="{offset}"/>',
+                  f'<Triangle1 V00="{v}" V01="{v + 1}" V02="{v + 2}" Flag0="0"/>',
+                  f'<Triangle1 V00="{v}" V01="{v + 2}" V02="{v + 3}" Flag0="0"/>']
+    lines += ["<EndDisplayList/>", "</DisplayList>"]
+    return "\n".join(lines).encode()
+
+
+def r02_vertex_rows():
+    # Enchimento abaixo do piso e sem repetir linhas: o validador de pacote recusa entrada com razão de compressão
+    # acima de 200:1, e 65 536 linhas iguais passariam disso.
+    rows = [f'<Vtx X="{i % 1000}" Y="-2000" Z="{i // 1000}" S="0" T="0" R="255" G="255" B="255" A="255"/>'
+            for i in range(R02_VERTICES)]
+    for offset, (x, y), _ in R02_QUADS:
+        rows[offset:offset + 4] = vertical_quad_rows(x, y, FIXTURE_Z, 75)
+    assert len(rows) == R02_VERTICES
+    return rows
+
+
+def r02_decode(buffer_index, offset):
+    """(destino, origem) que o interpretador tira do w1 montado pela fábrica."""
+    word = (buffer_index << 16) | offset
+    return word >> 16, word & 0xFFFF
+
+
+def small_scene(put, registry, field, field_room, field_collision, key, name, mesh):
+    """Cena de uma sala sobre o piso do lab (sem saída); spawn em z = -500 olhando para +z."""
+    folder = f"scenes/linkspan_e/{key}"
+    setup = outdoor_setup(field, [0, 0, -500], 0, 0)
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {"0": f"{folder}/rooms/0.json"},
+        "setups": {"0": setup},
+    })
+    floor, vertices, polys = lab_floor(with_exit=False)
+    put(f"{folder}/collision.bin", floor)
+    put(f"{folder}/collision.json", flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin",
+                                                   vertices=vertices, polys=polys))
+    room = base_room(field_room)
+    room.update({"mesh": mesh, "objects": {}, "actors": {}})
+    put(f"{folder}/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry[f"linkspan_e/{key}"] = {"name": name, "scene": f"{folder}/scene.json", "drawConfig": 0,
+                                     "entrances": {"main": {"spawn": 0}}}
+
+
+def make_r02(put, registry, field, field_room, field_collision):
+    """R02: um recurso Vertex XML de 65 540 vértices e uma DL com três cargas: A (offset 4, vermelho), B (65 532,
+    azul) e C (65 536, verde). No host atual a origem do C dá a volta para 0 e o verde sai em W, acima do B, com o
+    lugar do C vazio; corrigido o transporte, o verde sai no C e o W não aparece."""
+    folder = "scenes/linkspan_e/r02"
+    put(f"{folder}/vertices", vertex_resource(r02_vertex_rows()))
+    loads = [(f"{folder}/vertices", offset, color) for offset, _, color in R02_QUADS if color]
+    assert [r02_decode(1, offset) for _, offset, _ in loads] == [(1, 4), (1, 65532), (1, 0)]
+    put(f"{folder}/quads", prim_quads_display_list(loads, buffer_index=1))
+    put(f"{folder}/v_floor", floor_vertices((-1200, 1200), (-600, 1200), 8, 6))
+    put(f"{folder}/floor", quads_display_list([("grid", f"{folder}/v_floor")]))
+    mesh = {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None},
+                                   "1": {"opa": f"{folder}/quads", "xlu": None}}}
+    small_scene(put, registry, field, field_room, field_collision, "r02", "Link-Span E: 65 540 vértices", mesh)
+
+
+M12_SORT_MAX = 1024  # SHAPE_SORT_MAX do z_room.c: a malha tipo 2 só considera as primeiras entradas
+
+
+def make_m12(put, registry, field, field_room, field_collision):
+    """M12: malha tipo 2 com 1 024 e 1 025 entradas. A entrada 0 é o piso, as do meio são uma DL vazia e as duas
+    últimas são um quad amarelo (x = -150) e um magenta (x = +150; olhando para +z, o +x fica à esquerda). Com
+    1 024 os dois aparecem; com 1 025 a entrada 1 024 (magenta) fica fora do corte, que vem antes do teste de
+    distância. As do meio ficam atrás da câmera: contam no corte, mas não entram na lista ordenada de desenho."""
+    folder = "scenes/linkspan_e/m12"
+    put(f"{folder}/v_floor", floor_vertices((-1200, 1200), (-600, 1200), 8, 6))
+    put(f"{folder}/floor", quads_display_list([("grid", f"{folder}/v_floor")]))
+    put(f"{folder}/empty", b'<DisplayList Version="0">\n<EndDisplayList/>\n</DisplayList>')
+    marks = {"yellow": (-150, (255, 255, 0)), "magenta": (150, (255, 0, 255))}
+    for mark, (x, color) in marks.items():
+        put(f"{folder}/v_{mark}", vertex_resource(vertical_quad_rows(x, 150, FIXTURE_Z, 60)))
+        put(f"{folder}/{mark}", prim_quads_display_list([(f"{folder}/v_{mark}", 0, color)]))
+    for count in (M12_SORT_MAX, M12_SORT_MAX + 1):
+        entries = {str(i): {"pos": [0, 0, -30000], "radius": 1, "opa": f"{folder}/empty", "xlu": None}
+                   for i in range(count)}
+        entries["0"] = {"pos": [0, 0, 0], "radius": 3000, "opa": f"{folder}/floor", "xlu": None}
+        for index, mark in ((count - 2, "yellow"), (count - 1, "magenta")):
+            entries[str(index)] = {"pos": [marks[mark][0], 150, FIXTURE_Z], "radius": 120,
+                                   "opa": f"{folder}/{mark}", "xlu": None}
+        small_scene(put, registry, field, field_room, field_collision, f"m12_{count}",
+                    f"Link-Span E: malha tipo 2 com {count} entradas", {"type": 2, "entries": entries})
 
 
 def title_card(text):

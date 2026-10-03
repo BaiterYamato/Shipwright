@@ -14,6 +14,10 @@ local PLAN = table.concat({
     "linkspan_e/edge_neg/main", -- 021: o mesmo no canto (-x, +z)
     "linkspan_e/span/main",   -- 021: malha de 81 920 unidades numa DL só; spawn em x=+40 000
     "linkspan_e/span/oeste",  -- 021: spawn em x=-40 000
+    "linkspan_e/exits/main",  -- 023: 33 saídas; a faixa vermelha à frente usa exits[32] (vai à span, não à casa)
+    "linkspan_e/r02/main",    -- 023: 65 540 vértices; offset 65 536 dá a volta (verde em W, acima do azul)
+    "linkspan_e/m12_1024/main", -- 023: malha tipo 2 com 1 024 entradas (amarelo e magenta visíveis)
+    "linkspan_e/m12_1025/main", -- 023: 1 025 entradas; a última (magenta) fica fora do SHAPE_SORT_MAX
     "linkspan_e/house/main",  -- retorno
 }, ";")
 

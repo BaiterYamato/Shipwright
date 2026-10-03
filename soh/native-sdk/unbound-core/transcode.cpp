@@ -2,6 +2,7 @@
 #include "actor_registry.h"
 
 #include <algorithm>
+#include <charconv>
 #include <clocale>
 #include <cmath>
 #include <cstdio>
@@ -177,20 +178,36 @@ constexpr size_t kMaxRoomActors = 65535; // numSetupActors u16
 // e o keep da cena (Object_Spawn em z_scene.c/z_scene_otr.cpp), mais o cavalo que o host acrescenta à lista nas
 // cenas com cavalo.
 constexpr size_t kMaxObjects = 1020;
+// SHAPE_SORT_MAX (z_room.c): a malha tipo 2 só considera as primeiras entradas, antes do teste de distância.
+constexpr size_t kShapeSortMax = 1024;
 // BGCHECK_XYZ_ABSMAX. Além dele o jogo apaga os efeitos EffectSs (poeira, faíscas, respingos) em vez de desenhá-los
 // (z_effect_soft_sprite.c, |c| > 1 048 576); a colisão continua, e o BgCheck_PosErrorCheck só registra (osSyncPrintf,
 // desligado no build).
 constexpr double kWorldLimit = 1048576.0;
 
 // Posições além de kWorldLimit numa lista: quantas e a primeira, para uma nota só. Compara o valor que o jogo
-// recebe: f32 nas posições (FloatAttribute das fábricas), o inteiro do Integral nos bounds.
+// recebe: nas posições, o f32 que o FloatAttribute das fábricas tira do texto do Xml::Float (%.9g); nos bounds, o
+// inteiro do Integral. O cast direto do double erra perto do limite: 1048576.063 vira o f32 1048576.125, mas o XML
+// leva "1048576.06", que a fábrica lê como 1048576.
 struct WorldLimitCheck {
     size_t count = 0;
     std::string first;
 
+    static double FromXml(double value) {
+        const std::string text = DecimalText(value);
+        float parsed = 0.0f;
+        const auto result = std::from_chars(text.data(), text.data() + text.size(), parsed);
+        if (result.ec == std::errc::result_out_of_range) {
+            // Fora do alcance do f32 o FloatAttribute lê ±inf (estouro) ou ±0 (abaixo do menor subnormal). O valor de
+            // `parsed` nesse caso depende da biblioteca (o MSVC grava inf, o libstdc++ deixa 0).
+            return std::fabs(value) > 1.0 ? std::copysign(HUGE_VAL, value) : std::copysign(0.0, value);
+        }
+        return parsed;
+    }
+
     void Add(const std::string& key, const Vec3& pos, bool integral = false) {
         const auto effective = [integral](double value) {
-            return integral ? static_cast<double>(Integral(value)) : static_cast<double>(static_cast<float>(value));
+            return integral ? static_cast<double>(Integral(value)) : FromXml(value);
         };
         const double x = effective(pos.x);
         const double y = effective(pos.y);
@@ -199,7 +216,11 @@ struct WorldLimitCheck {
             return;
         }
         if (count++ == 0) {
-            first = key + "=" + DecimalText(x) + "," + DecimalText(y) + "," + DecimalText(z);
+            // O exemplo mostra o valor recebido; o infinito (que o DecimalText escreveria como 0) mostra o do JSON.
+            const auto shown = [](double received, double written) {
+                return DecimalText(std::isfinite(received) ? received : written);
+            };
+            first = key + "=" + shown(x, pos.x) + "," + shown(y, pos.y) + "," + shown(z, pos.z);
         }
     }
 
@@ -510,6 +531,11 @@ void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
     }
     const Json& entries = Sub(mesh, "entries");
     const auto items = PositionalItems(entries, Where(context, "mesh/entries"));
+    if (type == 2 && items.size() > kShapeSortMax) {
+        context.notes.push_back(Where(context, "mesh/entries") + ": " + std::to_string(items.size()) +
+                                " entradas na malha tipo 2; o jogo só considera as primeiras " +
+                                std::to_string(kShapeSortMax) + " (SHAPE_SORT_MAX) e não desenha as demais");
+    }
     xml.Attr("PolyNum", static_cast<uint32_t>(items.size()));
     for (const auto& item : items) {
         const Json& entry = *item.second;

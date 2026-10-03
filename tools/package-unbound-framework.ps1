@@ -25,7 +25,7 @@ function Write-Utf8NoBom([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
 }
 
-$version = '0.6.4'
+$version = '0.6.5'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_unbound_core.dll') 'Unbound framework DLL'
 $tool = Resolve-InputFile (Join-Path $ToolDirectory 'linkspan_unbound_convert.exe') 'Unbound command-line tool'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
