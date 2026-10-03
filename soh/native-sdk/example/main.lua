@@ -109,6 +109,29 @@ local ITEM_ICONS = {
 
 local last_state = nil
 
+local HUD_TEXTURES = "textures/baiteryamato/dynamic_movement_remake/"
+-- Dedicated solid textures keep this panel independent of the engine's meter tile.
+local function selector_fill(name, x, y, width, height, alpha)
+    local offset = 0
+    while offset < width do
+        local part = math.min(64, width - offset)
+        ship.hud.draw_icon(HUD_TEXTURES .. name, x + offset, y, part, height, { alpha = alpha })
+        offset = offset + part
+    end
+end
+
+local function selection_corners(x, y, side, alpha)
+    local arm, line = 5, 1
+    for _, corner in ipairs({ {x, y}, {x + side - arm, y},
+        {x, y + side - line}, {x + side - arm, y + side - line} }) do
+        selector_fill("gSelectorGoldTex", corner[1], corner[2], arm, line, alpha)
+    end
+    for _, corner in ipairs({ {x, y}, {x + side - line, y},
+        {x, y + side - arm}, {x + side - line, y + side - arm} }) do
+        selector_fill("gSelectorGoldTex", corner[1], corner[2], line, arm, alpha)
+    end
+end
+
 local function update_movement()
     local state, failure = ship.native.call("update", "")
     if not state then
@@ -135,8 +158,7 @@ local function draw_item_selection()
     if not x then
         return
     end
-    local half = tonumber(side) / 2
-    ship.hud.draw_ring(tonumber(x) + half, tonumber(y) + half, half + 3, 2, 1.0, 255, 255, 255, tonumber(alpha))
+    selection_corners(tonumber(x) - 2, tonumber(y) - 2, tonumber(side) + 4, tonumber(alpha))
 end
 
 -- Ícone da Navi: PNG convertido por tools/convert-png-to-hud-icon.ps1 (o PNG fica fora do git,
@@ -173,20 +195,35 @@ local function draw_dpad()
     end
 end
 
--- Menu horizontal centralizado na parte de baixo, com anel na opção destacada. O
--- analógico direito anda para os lados e soltar o botão que abriu o menu aplica.
-local function draw_icon_row(icons, selected)
-    local size, gap, y = 24, 8, 176
-    local left = 160 - (#icons * size + (#icons - 1) * gap) / 2
+-- One quiet strip with stable slots, warm selection, and no segmented rings.
+local selector_cursor = nil
+local function draw_icon_row(icons, selected, hint)
+    local size, gap, y = 32, 6, 186
+    local width = #icons * size + (#icons - 1) * gap
+    local left = math.floor(160 - width / 2)
+    selector_fill("gSelectorPanelTex", left - 6, y - 6, width + 12, 46, 205)
     for index, icon in ipairs(icons) do
-        local x = math.floor(left + (index - 1) * (size + gap))
-        ship.hud.draw_rect(x - 3, y - 3, size + 6, size + 6, 0, 0, 0, 150)
+        local x = left + (index - 1) * (size + gap)
+        local active = index == selected
+        selector_fill(active and "gSelectorActiveTex" or "gSelectorSlotTex", x, y, size, size,
+            active and 240 or 180)
         if icon ~= "" then
-            ship.hud.draw_icon(icon, x, y, size, size, { alpha = 255 })
+            local icon_size = active and 28 or 26
+            local inset = (size - icon_size) / 2
+            ship.hud.draw_icon(icon, x + inset, y + inset, icon_size, icon_size,
+                { alpha = active and 255 or 220 })
+        else
+            selector_fill("gSelectorMutedTex", x + 12, y + 15, 8, 2, 95)
         end
-        if index == selected then
-            ship.hud.draw_ring(x + size / 2, y + size / 2, size / 2 + 5, 2, 1.0, 255, 255, 255, 255)
-        end
+        if active then selection_corners(x, y, size, 255) end
+    end
+    if selected then
+        local target = left + (selected - 1) * (size + gap)
+        selector_cursor = selector_cursor and selector_cursor + (target - selector_cursor) * 0.45 or target
+        selector_fill("gSelectorGoldTex", math.floor(selector_cursor) + 7, y + size + 2, size - 14, 1, 255)
+    end
+    if hint then
+        ship.hud.draw_icon(HUD_TEXTURES .. "gSelectorRTex", 153, 228, 14, 8, { alpha = 220 })
     end
 end
 
@@ -217,18 +254,20 @@ local function draw_item_menu()
     if not state or state == "none" then
         return
     end
-    local selected, list = state:match("^(%d);([%d:,]+)$")
+    local selected, list = state:match("^(%d);(.*)$")
     if not selected then
         return
     end
     local icons, selected_index = {}, nil
-    for button, item in list:gmatch("(%d):(%d+)") do
-        icons[#icons + 1] = ITEM_ICONS[tonumber(item)] or ""
+    for entry in list:gmatch("[^\t]+") do
+        local button, _, icon = entry:match("^(%d):(%d+):(.*)$")
+        if not button then return end
+        icons[#icons + 1] = icon
         if button == selected then
             selected_index = #icons
         end
     end
-    draw_icon_row(icons, selected_index)
+    draw_icon_row(icons, selected_index, "Release R to select")
 end
 
 ship.events.on("game.ready", function()

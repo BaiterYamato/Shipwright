@@ -9,8 +9,12 @@
 #include "oot_registry.h"
 #include "oot_resources.h"
 #include "oot_layout_id.h"
+#include "oot_hooks.h"
 #include "z64.h"
 #include "package_assets.h"
+#include "item_icons.h"
+#include "camera_continuity.h"
+#include "menu_input.h"
 
 namespace {
 // SDL usa posições Xbox. No Switch Pro: B->SDL A, A->SDL B, Y->SDL X, X->SDL Y.
@@ -88,6 +92,7 @@ enum class Phase { Ready, Airborne, Rolling, Running };
 struct EquipGesture {
     bool wasDown = false;
     bool quickSwap = false;
+    bool waitRelease = false;
     uint8_t highlight = 0;
     uint8_t last = 0;
     int8_t stickLatch = 0;
@@ -98,7 +103,7 @@ struct EquipGesture {
 struct ItemMenu {
     bool open = false;
     uint8_t highlight = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT;
-    int8_t stickLatch = 0;
+    LinkSpanMenuInput navigation{};
 };
 
 struct Mod {
@@ -106,6 +111,9 @@ struct Mod {
     const ShipOotMovementV2* movement;
     const ShipOotResourcesV2* resources;
     const ShipOotRegistryV1* registry;
+    const void* const* itemIcons = nullptr;
+    CameraGeometryFn cameraGeometry = nullptr;
+    CameraEpoch cameraEpoch{};
     uint64_t registrySpace = 0;
     uint64_t jumpEntry = 0;
     uint64_t sprintEntry = 0;
@@ -140,6 +148,11 @@ struct Mod {
     bool ocarinaWasDown = false;
     EquipGesture tunic{};
     EquipGesture boots{};
+    const ShipNativeRuntime* runtime = nullptr;
+    uint64_t menuInputHook = 0;
+    bool menuInputCaptured = false;
+    int8_t menuLeftX = 0;
+    int8_t menuRightX = 0;
 };
 
 enum class CameraChange { None, FreeLook, Automatic };
@@ -170,18 +183,33 @@ int ReadMenuStep(const Mod& mod, int8_t& latch) {
 // Com um menu aberto ou em primeira pessoa o analógico direito tem outro uso (escolher a
 // opção ou mirar): o FreeLook fica desligado e, depois, o analógico precisa voltar ao
 // centro antes de mover a câmera.
-CameraChange UpdateCamera(Mod& mod, bool stickBusy) {
+void SuspendCamera(Mod& mod, PlayState* play) {
+    if (mod.cameraFreeLookActive && mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
+        mod.cameraFreeLookActive = false;
+    }
+    if (play && !mod.cameraFreeLookActive) play->manualCamera = false;
+}
+
+CameraChange UpdateCamera(Mod& mod, PlayState* play, bool stickBusy) {
     constexpr int CAMERA_DEADZONE = 12;
     constexpr int MOVE_DEADZONE = 20;
     const int x = mod.movement->get_right_stick_x(0);
     const int y = mod.movement->get_right_stick_y(0);
     const auto now = std::chrono::steady_clock::now();
     const bool stickActive = (x * x) + (y * y) >= CAMERA_DEADZONE * CAMERA_DEADZONE;
+    if (mod.cameraEpoch.Observe(play)) {
+        SuspendCamera(mod, play);
+        mod.lastCameraInput = now;
+    }
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    const auto* player = static_cast<const Player*>(mod.engine->get_player());
+    if (!CameraCanResume(play, save, player)) {
+        SuspendCamera(mod, play);
+        return CameraChange::None;
+    }
     if (stickBusy) {
         mod.cameraWaitCenter = true;
-        if (mod.cameraFreeLookActive && mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
-            mod.cameraFreeLookActive = false;
-        }
+        SuspendCamera(mod, play);
         return CameraChange::None;
     }
     if (mod.cameraWaitCenter) {
@@ -191,9 +219,13 @@ CameraChange UpdateCamera(Mod& mod, bool stickBusy) {
     }
     if (stickActive) {
         mod.lastCameraInput = now;
-        if (!mod.cameraFreeLookActive && mod.movement->set_setting_int(FREE_LOOK_SETTING, 1) == SHIP_NATIVE_OK) {
-            mod.cameraFreeLookActive = true;
-            return CameraChange::FreeLook;
+        if (!mod.cameraFreeLookActive || !play->manualCamera) {
+            if (ResumeCameraFromView(*play, *play->cameraPtrs[CAM_ID_MAIN], mod.cameraGeometry) &&
+                mod.movement->set_setting_int(FREE_LOOK_SETTING, 1) == SHIP_NATIVE_OK) {
+                mod.cameraFreeLookActive = true;
+                return CameraChange::FreeLook;
+            }
+            SuspendCamera(mod, play);
         }
         return CameraChange::None;
     }
@@ -205,6 +237,7 @@ CameraChange UpdateCamera(Mod& mod, bool stickBusy) {
             mod.cameraFollowDelayMilliseconds &&
         mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
         mod.cameraFreeLookActive = false;
+        play->manualCamera = false;
         return CameraChange::Automatic;
     }
     return CameraChange::None;
@@ -346,6 +379,12 @@ uint8_t StepItemButton(uint8_t current, int direction, const SaveContext& save) 
 // o item em uso.
 const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
     const bool down = (physical & PhysicalButton(SDL_BUTTON_R)) != 0;
+    const auto* play = static_cast<const PlayState*>(mod.engine->get_play_state());
+    if (play && play->pauseCtx.state != 0) {
+        mod.selectWasDown = down;
+        mod.itemMenu = {};
+        return nullptr;
+    }
     const bool pressed = down && !mod.selectWasDown;
     const bool released = !down && mod.selectWasDown;
     mod.selectWasDown = down;
@@ -358,17 +397,26 @@ const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
         const uint8_t start =
             HasItem(*save, mod.selectedItemButton) ? mod.selectedItemButton : FirstItemButton(*save);
         if (!start) return "item-menu-empty";
-        mod.itemMenu = ItemMenu{ true, start, 0 };
+        mod.itemMenu = ItemMenu{ true, start, {} };
         return "item-menu";
     }
     if (!mod.itemMenu.open) return nullptr;
     if (down) {
-        if (const int step = ReadMenuStep(mod, mod.itemMenu.stickLatch)) {
+        const bool next = (physical & (PhysicalButton(SDL_BUTTON_DPAD_RIGHT) |
+                                      PhysicalButton(SDL_BUTTON_DPAD_UP))) != 0;
+        const bool previous = (physical & (PhysicalButton(SDL_BUTTON_DPAD_LEFT) |
+                                          PhysicalButton(SDL_BUTTON_DPAD_DOWN))) != 0;
+        const int leftX = mod.menuInputCaptured ? mod.menuLeftX : mod.movement->get_stick_x(0);
+        const int rightX = mod.menuInputCaptured ? mod.menuRightX : mod.movement->get_right_stick_x(0);
+        mod.menuInputCaptured = false;
+        if (const int step = LinkSpanMenuStep(&mod.itemMenu.navigation, leftX, rightX,
+                next == previous ? 0 : next ? 1 : -1)) {
             mod.itemMenu.highlight = StepItemButton(mod.itemMenu.highlight, step, *save);
         }
         return nullptr;
     }
     mod.itemMenu.open = false;
+    mod.menuInputCaptured = false;
     const uint8_t target = mod.itemMenu.highlight;
     if (!released || target == mod.selectedItemButton) return nullptr;
     if (mod.movement->get_gamepad_axis(0, SDL_AXIS_ZR) > ZR_HELD) return "item-zr-held";
@@ -382,6 +430,32 @@ const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
     return target == LINKSPAN_OOT_ITEM_BUTTON_C_LEFT   ? "item-c-left"
            : target == LINKSPAN_OOT_ITEM_BUTTON_C_DOWN ? "item-c-down"
                                                        : "item-c-right";
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL CaptureItemMenuInput(void* user, const ShipNativeHookCall* call) {
+    auto& mod = *static_cast<Mod*>(user);
+    auto* play = static_cast<PlayState*>(static_cast<ShipOotPlayHookV1*>(call->payload)->play_state);
+    const auto* player = static_cast<const Player*>(mod.engine->get_player());
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!play || !player || !save || play->pauseCtx.state ||
+        (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) || !mod.movement->has_gamepad(0))
+        return SHIP_NATIVE_OK;
+    const bool rHeld = (mod.movement->get_gamepad_buttons(0) & PhysicalButton(SDL_BUTTON_R)) != 0;
+    if (!mod.itemMenu.open && (!rHeld || !FirstItemButton(*save))) return SHIP_NATIVE_OK;
+    Input& input = play->state.input[0];
+    mod.menuLeftX = input.rel.stick_x;
+    mod.menuRightX = input.rel.right_stick_x;
+    mod.menuInputCaptured = true;
+    // The selector owns navigation. Do not walk Link or enter Navi/first person
+    // while using the left stick or D-pad to choose a hotbar slot.
+    const uint16_t directions = BTN_DUP | BTN_DDOWN | BTN_DLEFT | BTN_DRIGHT | BTN_CUP;
+    input.cur.button &= ~directions;
+    input.press.button &= ~directions;
+    input.cur.stick_x = input.cur.stick_y = 0;
+    input.rel.stick_x = input.rel.stick_y = 0;
+    input.cur.right_stick_x = input.cur.right_stick_y = 0;
+    input.rel.right_stick_x = input.rel.right_stick_y = 0;
+    return SHIP_NATIVE_OK;
 }
 
 // D-pad esquerda tira a ocarina do inventário sem ocupar botão C.
@@ -437,6 +511,11 @@ uint8_t TapTarget(const Mod& mod, const SaveContext& save, uint8_t type, const E
 // analógico direito escolhe para os lados e soltar veste o destacado.
 const char* UpdateEquipGesture(Mod& mod, EquipGesture& gesture, uint32_t physical, uint8_t button, uint8_t type) {
     const bool down = (physical & PhysicalButton(button)) != 0;
+    if (gesture.waitRelease) {
+        gesture.wasDown = down;
+        if (!down) gesture.waitRelease = false;
+        return nullptr;
+    }
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
     if (!save) {
         gesture.wasDown = false;
@@ -528,11 +607,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
     mod.cameraFollowDelayMilliseconds = static_cast<uint32_t>(followDelay);
     if (!mod.freeLookApplied) {
         mod.previousFreeLook = mod.movement->get_setting_int(FREE_LOOK_SETTING, 0);
-        if (mod.movement->set_setting_int(FREE_LOOK_SETTING, 1) != SHIP_NATIVE_OK) {
+        // Enable only when the stick takes control of a valid gameplay view.
+        if (mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) != SHIP_NATIVE_OK) {
             return SHIP_NATIVE_FAILURE;
         }
         mod.freeLookApplied = true;
-        mod.cameraFreeLookActive = true;
+        mod.cameraFreeLookActive = false;
         mod.lastCameraInput = std::chrono::steady_clock::now();
     }
     // Analógico direito para cima olha para cima: o padrão do SoH sem a chave é invertido.
@@ -904,24 +984,26 @@ ShipNativeStatus SHIP_NATIVE_CALL HudDpad(void* user, const char*, uint32_t leng
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
-// Menu do R aberto para o HUD Lua: "<destaque>;<botão>:<item>,..." com os C que têm item, ou "none".
+// Menu do R: "<highlight>;<button>:<item>:<icon path>\t...", or "none".
 ShipNativeStatus SHIP_NATIVE_CALL HudItemMenu(void* user, const char*, uint32_t length,
                                              ShipNativeWriteFn write, void* writer) {
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
     if (!save || !mod.itemMenu.open) return Write(write, writer, "none");
-    char result[48];
-    int size = std::snprintf(result, sizeof(result), "%u;", unsigned(mod.itemMenu.highlight));
-    bool first = true;
-    for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT;
-         button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT && size > 0 && size < int(sizeof(result)) - 9; ++button) {
-        if (!HasItem(*save, button)) continue;
-        size += std::snprintf(result + size, sizeof(result) - size, first ? "%u:%u" : ",%u:%u", unsigned(button),
-                              unsigned(save->equips.buttonItems[button]));
-        first = false;
-    }
-    return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
+    const std::string result = ItemSelectorIcons(mod.itemMenu.highlight, save->equips.buttonItems, mod.itemIcons);
+    return write(writer, result.data(), static_cast<uint32_t>(result.size()));
+}
+
+// Read-only diagnostic, including when the menu is closed.
+ShipNativeStatus SHIP_NATIVE_CALL HudItemIcons(void* user, const char*, uint32_t length,
+                                              ShipNativeWriteFn write, void* writer) {
+    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    auto& mod = *static_cast<Mod*>(user);
+    const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
+    if (!save) return Write(write, writer, "none");
+    const std::string result = ItemSelectorIcons(mod.itemMenu.highlight, save->equips.buttonItems, mod.itemIcons);
+    return write(writer, result.data(), static_cast<uint32_t>(result.size()));
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length,
@@ -929,7 +1011,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     auto* player = static_cast<Player*>(mod.engine->get_player());
+    auto* play = static_cast<PlayState*>(mod.engine->get_play_state());
     if (!player) {
+        UpdateCamera(mod, play, false);
         mod.phase = Phase::Ready;
         mod.jumpWasDown = false;
         mod.observedRoll = false;
@@ -948,18 +1032,61 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         return Write(write, writer, "mapping-error");
     }
     const uint32_t physical = hasGamepad ? mod.movement->get_gamepad_buttons(0) : 0;
+    if (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) {
+        // Ocarina owns L/R/Y/X/A. In particular, R must not open the item selector
+        // and X must not queue a jump after the instrument closes.
+        mod.itemMenu = {};
+        mod.selectWasDown = (physical & PhysicalButton(SDL_BUTTON_R)) != 0;
+        mod.jumpWasDown = (physical & PhysicalButton(SDL_BUTTON_X_NINTENDO)) != 0;
+        mod.shortcutWasDown = (physical & PhysicalButton(SDL_BUTTON_RIGHT_STICK)) != 0;
+        mod.ocarinaWasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_LEFT)) != 0;
+        mod.tunic.wasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_UP)) != 0;
+        mod.boots.wasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_DOWN)) != 0;
+        mod.tunic.waitRelease = mod.tunic.wasDown;
+        mod.boots.waitRelease = mod.boots.wasDown;
+        mod.tunic.quickSwap = mod.boots.quickSwap = false;
+        mod.phase = Phase::Ready;
+        mod.observedRoll = false;
+        mod.cameraWaitCenter = true;
+        UpdateCamera(mod, play, true);
+        return Write(write, writer, "ocarina");
+    }
+    if (play && play->pauseCtx.state != 0) {
+        mod.cameraWaitCenter = true;
+        UpdateCamera(mod, play, true);
+        mod.itemMenu = {};
+        mod.selectWasDown = (physical & PhysicalButton(SDL_BUTTON_R)) != 0;
+        mod.shortcutWasDown = (physical & PhysicalButton(SDL_BUTTON_RIGHT_STICK)) != 0;
+        mod.ocarinaWasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_LEFT)) != 0;
+        mod.tunic.wasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_UP)) != 0;
+        mod.boots.wasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_DOWN)) != 0;
+        return Write(write, writer, "paused");
+    }
     // Todos os gestos avançam a cada frame; o primeiro evento do frame vai para o log.
+    const bool itemMenuWasOpen = mod.itemMenu.open;
+    const char* selection = UpdateItemSelection(mod, physical);
+    const bool selecting = itemMenuWasOpen || mod.itemMenu.open;
+    if (selecting) {
+        // D-pad navigation belongs to this menu. Latch the other shortcuts so
+        // releasing R with D-pad held cannot change clothes or draw the ocarina.
+        mod.ocarinaWasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_LEFT)) != 0;
+        mod.tunic.wasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_UP)) != 0;
+        mod.boots.wasDown = (physical & PhysicalButton(SDL_BUTTON_DPAD_DOWN)) != 0;
+        mod.tunic.waitRelease = mod.tunic.wasDown;
+        mod.boots.waitRelease = mod.boots.wasDown;
+        mod.tunic.quickSwap = mod.boots.quickSwap = false;
+    }
     const char* const events[] = {
-        UpdateItemSelection(mod, physical),
-        UpdateShortcut(mod, *player, physical),
-        UpdateOcarina(mod, physical),
-        UpdateEquipGesture(mod, mod.tunic, physical, SDL_BUTTON_DPAD_UP, EQUIP_TYPE_TUNIC),
-        UpdateEquipGesture(mod, mod.boots, physical, SDL_BUTTON_DPAD_DOWN, EQUIP_TYPE_BOOTS),
+        selection,
+        selecting ? nullptr : UpdateShortcut(mod, *player, physical),
+        selecting ? nullptr : UpdateOcarina(mod, physical),
+        selecting ? nullptr : UpdateEquipGesture(mod, mod.tunic, physical, SDL_BUTTON_DPAD_UP, EQUIP_TYPE_TUNIC),
+        selecting ? nullptr : UpdateEquipGesture(mod, mod.boots, physical, SDL_BUTTON_DPAD_DOWN, EQUIP_TYPE_BOOTS),
     };
     const bool menuOpen = mod.itemMenu.open || mod.tunic.quickSwap || mod.boots.quickSwap;
     // Em primeira pessoa ou com a mira pronta, o analógico direito mira (FIRST_PERSON_SETTINGS).
     const bool aiming = (player->stateFlags1 & (PLAYER_STATE1_FIRST_PERSON | PLAYER_STATE1_READY_TO_FIRE)) != 0;
-    const CameraChange cameraChange = UpdateCamera(mod, menuOpen || aiming);
+    const CameraChange cameraChange = UpdateCamera(mod, play, menuOpen || aiming);
     for (const char* event : events) {
         if (event) return Write(write, writer, event);
     }
@@ -1060,6 +1187,19 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         !registry->read_entry || !registry->list_entries) return SHIP_NATIVE_UNSUPPORTED;
     auto* mod = new (std::nothrow) Mod{engine, movement, resources, registry};
     if (!mod) return SHIP_NATIVE_FAILURE;
+    // Host texture table and camera math, protected by the exact executable
+    // fingerprint. No dependency on NEI IDs, its registry, or load order.
+    uintptr_t icons = 0;
+    uintptr_t cameraGeometry = 0;
+    if (runtime->abi_minor < 3 || !runtime->resolve_symbol ||
+        runtime->resolve_symbol(runtime->context, "gItemIcons", &icons) != SHIP_NATIVE_OK || !icons ||
+        runtime->resolve_symbol(runtime->context, "OLib_Vec3fDiffToVecSphGeo", &cameraGeometry) != SHIP_NATIVE_OK ||
+        !cameraGeometry) {
+        delete mod;
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    mod->itemIcons = reinterpret_cast<const void* const*>(icons);
+    mod->cameraGeometry = reinterpret_cast<CameraGeometryFn>(cameraGeometry);
     *instance = mod;
     if (registry->create_space("example/dynamic_movement/actions", 0x80, 0xFF, 1,
                                &mod->registrySpace) != SHIP_NATIVE_OK) {
@@ -1095,12 +1235,23 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "hud_selection", HudSelection, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_quick_swap", HudQuickSwap, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_item_menu", HudItemMenu, mod) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "hud_item_icons", HudItemIcons, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "hud_dpad", HudDpad, mod) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "update", Update, mod) != SHIP_NATIVE_OK) {
         registry->destroy_space(mod->registrySpace);
         delete mod;
         *instance = nullptr;
         return SHIP_NATIVE_FAILURE;
+    }
+    mod->runtime = runtime;
+    ShipNativeHookSpec menuHook{ sizeof(menuHook), LINKSPAN_OOT_HOOK_PLAY_UPDATE, 1,
+        sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE, 0,
+        CaptureItemMenuInput, mod };
+    if (!runtime->register_hook || runtime->register_hook(runtime->context, &menuHook, &mod->menuInputHook) != SHIP_NATIVE_OK) {
+        registry->destroy_space(mod->registrySpace);
+        delete mod;
+        *instance = nullptr;
+        return SHIP_NATIVE_UNSUPPORTED;
     }
     return SHIP_NATIVE_OK;
 }
@@ -1115,6 +1266,8 @@ bool LensOnItemButton(const Mod& mod, const SaveContext& save) {
 
 void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* mod = static_cast<Mod*>(instance);
+    if (mod && mod->menuInputHook && mod->runtime && mod->runtime->unregister_hook)
+        mod->runtime->unregister_hook(mod->runtime->context, mod->menuInputHook);
     if (mod && mod->faceBindingsApplied) mod->movement->reload_gamepad_mappings(0);
     if (mod && mod->freeLookApplied) mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
     if (mod && mod->invertYApplied)
