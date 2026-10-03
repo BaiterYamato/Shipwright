@@ -18,6 +18,16 @@ local PLAN = table.concat({
     "linkspan_e/r02/main",    -- 023: 65 540 vértices; offset 65 536 dá a volta (verde em W, acima do azul)
     "linkspan_e/m12_1024/main", -- 023: malha tipo 2 com 1 024 entradas (amarelo e magenta visíveis)
     "linkspan_e/m12_1025/main", -- 023: 1 025 entradas; a última (magenta) fica fora do SHAPE_SORT_MAX
+    "linkspan_e/m17/main",    -- 024: 301 câmeras; fora das faixas (câmera 0)
+    "linkspan_e/m17/c255",    -- 024: no centro da faixa da câmera 255 (vista de cima inclinada)
+    "linkspan_e/m17/c256",    -- 024: câmera 256 (quase vertical); com 8 bits seria a 0
+    "linkspan_e/m17/c300",    -- 024: câmera 300 (terceira pessoa); com 8 bits seria a 44
+    "linkspan_e/m19/r63",     -- 024: água da room 63, na room 63 (agua=1)
+    "linkspan_e/m19/r0_em_63", -- 024: a mesma caixa na room 0 (63 não é curinga: agua=0)
+    "linkspan_e/m19/r64",     -- 024: água da room 64 na room 64 (agua=1)
+    "linkspan_e/m19/r0_em_64", -- 024: na room 0 (64 não vira 0: agua=0)
+    "linkspan_e/m19/r32766",  -- 024: água da room 32766 na room 32766 (agua=1)
+    "linkspan_e/m19/r62_em_32766", -- 024: na room 62, o que 6 bits dariam (agua=0)
     "linkspan_e/house/main",  -- retorno
 }, ";")
 

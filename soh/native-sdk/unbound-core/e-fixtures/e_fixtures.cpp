@@ -115,13 +115,22 @@ std::string Describe(const PlayState* play, const Player* player) {
     } else if (player->actor.floorPoly) {
         floorIndex = -2;
     }
+    // UNBOUND-024: câmera da superfície sob o jogador (índice s32 da tabela, -1 sem chão da cena) e o índice e o
+    // setting da câmera principal (cameraPtrs[0]), que o jogo troca ao pisar numa superfície de outra câmera.
+    long surfaceCamera = -1;
+    if (floorIndex >= 0 && header->surfaceTypeList) {
+        surfaceCamera = static_cast<long>(header->surfaceTypeList[player->actor.floorPoly->type].camera);
+    }
+    const Camera* camera = play->cameraPtrs[0];
     char text[640];
     int used = std::snprintf(text, sizeof(text),
-                             "scene=%d room=%d pos=%.1f,%.1f,%.1f chao=%d piso=%ld alturaChao=%.1f atores=%u",
+                             "scene=%d room=%d pos=%.1f,%.1f,%.1f chao=%d piso=%ld alturaChao=%.1f camSup=%ld cam=%d "
+                             "set=%d atores=%u",
                              play->sceneNum, static_cast<int>(play->roomCtx.curRoom.num), player->actor.world.pos.x,
                              player->actor.world.pos.y, player->actor.world.pos.z,
                              (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0, floorIndex,
-                             player->actor.floorHeight, static_cast<unsigned>(play->actorCtx.total));
+                             player->actor.floorHeight, surfaceCamera, camera ? camera->camDataIdx : -1,
+                             camera ? camera->setting : -1, static_cast<unsigned>(play->actorCtx.total));
     if (nearest && used > 0 && used < static_cast<int>(sizeof(text))) {
         used += std::snprintf(text + used, sizeof(text) - used,
                               " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X", items, nearest->world.pos.x,

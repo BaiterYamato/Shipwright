@@ -110,6 +110,15 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
 - **Malha tipo 2 (0.6.5).** Sala com `mesh.type = 2` e mais de 1 024 entradas sai em nota: o `z_room.c` só
   considera as primeiras 1 024 (`SHAPE_SORT_MAX`), antes do teste de distância, e não desenha as demais. O aviso
   do próprio jogo é `osSyncPrintf`, desligado no build. A tipo 0 não tem esse teto.
+- **Câmeras da colisão (0.6.6).** A câmera de uma superfície ou de uma water box é índice da tabela `cameras`, e o
+  jogo não confere o tamanho (`BgCheck_GetBgCamSettingImpl`, `WaterBox_GetCameraSType`): fora da tabela, ele lê fora
+  da lista. A da superfície é lida sempre, até -1; a da água só quando positiva (`Camera_GetWaterBoxDataIdx` trata 0
+  e negativo como sem câmera). Saem em nota a câmera fora da tabela (inclusive qualquer câmera numa tabela vazia), a
+  câmera acima de 32 767 (o estado da câmera do jogo é s16), a câmera cujas posições não cabem nas `cameraPositions`
+  (o jogo lê `max(count, 3)` vetores a partir de `positionIndex`: o `BgCamFuncData` da câmera fixa tem três, o
+  crawlspace lê `count` pontos), `count` sem `positionIndex` (a fábrica dá um único vetor zero) e `count` fora de
+  0–32 767. Não se confere qual preset usa as posições: `count` 0 sem `positionIndex` num preset que as lê passa sem
+  nota. O XML não muda. Nenhum dos 101 documentos de colisão do jogo base gera essas notas.
 
 ## Unbound 0.8 (novo na 0.5.0)
 

@@ -203,6 +203,8 @@ def main():
     make_exits(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_r02(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_m12(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_m17(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_m19(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
@@ -825,6 +827,119 @@ def make_m12(put, registry, field, field_room, field_collision):
                                    "opa": f"{folder}/{mark}", "xlu": None}
         small_scene(put, registry, field, field_room, field_collision, f"m12_{count}",
                     f"Link-Span E: malha tipo 2 com {count} entradas", {"type": 2, "entries": entries})
+
+
+# UNBOUND-024 (M17, M19): rascunho do Codex (codex-m17-m19), integrado com piso desenhado e entradas por caso.
+# M17: a câmera da superfície é índice s32 da tabela `cameras`, sem a máscara de 8 bits do vanilla.
+M17_CAMERAS = 301
+# CameraSettingType (z64camera.h): FOREST_BIRDS_EYE, MEADOW_BIRDS_EYE e NORMAL1; nenhum lê camPosData.
+M17_SETTINGS = {255: 0x27, 256: 0x35, 300: 0x02}
+M17_BANDS = ((400, 1000, 255, "red"), (1000, 1600, 256, "blue"), (1600, 2200, 300, "stripes"))
+# M19: a room da água é s32 no formato novo; 63 não é curinga e 64/32766 não perdem bits (62 = 32766 & 0x3F).
+M19_BOXES = ((400, 800, 63), (1100, 1500, 64), (1800, 2200, 32766))
+# Entradas: (nome, caixa sob o spawn, room atual, água esperada).
+M19_CASES = (("r63", 0, 63, 1), ("r0_em_63", 0, 0, 0), ("r64", 1, 64, 1), ("r0_em_64", 1, 0, 0),
+             ("r32766", 2, 32766, 1), ("r62_em_32766", 2, 62, 0))
+M19_ROOMS = 32767  # índices de sala até 32 766: todos os slots apontam para o mesmo room.json
+
+
+def band_floor(zs, surfaces, width=1200):
+    """collision.bin de um piso em y=0 dividido em faixas z (uma superfície por faixa), normal +y."""
+    assert len(surfaces) == len(zs) - 1
+    vertices = [(x, 0, z) for z in zs for x in (-width, width)]
+    polys = []
+    for row, surface in enumerate(surfaces):
+        a, b, c, d = row * 2, row * 2 + 2, row * 2 + 1, row * 2 + 3
+        polys += [struct.pack("<HHIIIhhhhi", surface, 0, va, vb, vc, 0, 32767, 0, 0, 0)
+                  for va, vb, vc in ((a, b, c), (c, b, d))]
+    return b"".join(struct.pack("<iii", *v) for v in vertices) + b"".join(polys), len(vertices), len(polys)
+
+
+def strips_floor(put, folder, strips, width=1200):
+    """DL do piso em faixas z, uma textura por faixa: [(z0, z1, textura)]."""
+    parts = []
+    for index, (z0, z1, texture) in enumerate(strips):
+        put(f"{folder}/v_strip{index}", floor_vertices((-width, width), (z0, z1), 8, max(1, (z1 - z0) // 300)))
+        parts.append((texture, f"{folder}/v_strip{index}"))
+    put(f"{folder}/floor", quads_display_list(parts))
+
+
+def make_m17(put, registry, field, field_room, field_collision):
+    """M17: 301 câmeras; três faixas à frente do spawn usam as câmeras 255, 256 e 300, cada uma com um setting
+    diferente (vista de cima inclinada, quase vertical e terceira pessoa). As outras usam a câmera 0 do campo. Com a
+    máscara de 8 bits do vanilla, 256 viraria 0 e 300 viraria 44. Entradas: main (fora das faixas) e uma no centro
+    de cada faixa."""
+    folder = "scenes/linkspan_e/m17"
+    zs = (-600, 400, 1000, 1600, 2200, 2800)
+    strips_floor(put, folder, [(-600, 400, "grid")] + [(z0, z1, tex) for z0, z1, _, tex in M17_BANDS] +
+                 [(2200, 2800, "grid")])
+    floor, vertices, polys = band_floor(zs, (0, 1, 2, 3, 0))
+    put(f"{folder}/collision.bin", floor)
+    collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin", vertices=vertices,
+                               polys=polys)
+    collision["bounds"] = {"min": [-1200, -10, -600], "max": [1200, 10, 2800]}
+    base_camera = collision["cameras"]["0"]
+    collision["cameras"] = {str(i): dict(base_camera, sType=M17_SETTINGS.get(i, base_camera["sType"]))
+                            for i in range(M17_CAMERAS)}
+    for surface, (_, _, camera, _) in enumerate(M17_BANDS, start=1):
+        collision["surfaceTypes"][str(surface)] = dict(collision["surfaceTypes"]["0"], camera=camera)
+    put(f"{folder}/collision.json", collision)
+    setup = outdoor_setup(field, [0, 0, -300], 0, 0)
+    entrances = {"main": {"spawn": 0}}
+    for index, (z0, z1, camera, _) in enumerate(M17_BANDS, start=1):
+        setup["spawns"][str(index)] = dict(setup["spawns"]["0"], pos=[0, 0, (z0 + z1) // 2])
+        setup["entrances"][str(index)] = {"spawn": index, "room": 0}
+        entrances[f"c{camera}"] = {"spawn": index}
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {"0": f"{folder}/rooms/0.json"},
+        "setups": {"0": setup},
+    })
+    room = base_room(field_room)
+    room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                 "objects": {}, "actors": {}})
+    put(f"{folder}/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/m17"] = {"name": "Link-Span E: 301 câmeras", "scene": f"{folder}/scene.json",
+                                  "drawConfig": 0, "entrances": entrances}
+
+
+def make_m19(put, registry, field, field_room, field_collision):
+    """M19: três caixas de água rasas (y=20 sobre o piso em y=0) nas rooms 63, 64 e 32766, numa cena de 32 767
+    salas que apontam para o mesmo room.json. Cada entrada põe o Link sobre uma caixa numa room: na room da caixa
+    há água (agua=1 na sonda); na room 0 (em 63 e 64) e na 62 (em 32766, o que a máscara de 6 bits daria) não há."""
+    folder = "scenes/linkspan_e/m19"
+    strips = [(-600, 400, "grid")]
+    for index, (z0, z1, _) in enumerate(M19_BOXES):
+        strips.append((z0, z1, "blue"))
+        strips.append((z1, M19_BOXES[index + 1][0] if index + 1 < len(M19_BOXES) else 2800, "grid"))
+    strips_floor(put, folder, strips)
+    floor, vertices, polys = band_floor((-600, 2800), (0,))
+    put(f"{folder}/collision.bin", floor)
+    water = {str(i): {"xMin": -1200, "ySurface": 20, "zMin": z0, "xLength": 2400, "zLength": z1 - z0, "camera": 0,
+                      "lightSetting": 0, "room": room, "notSwimmable": 0}
+             for i, (z0, z1, room) in enumerate(M19_BOXES)}
+    collision = flat_collision(field_collision, water, bulk_file=f"{folder}/collision.bin", vertices=vertices,
+                               polys=polys)
+    collision["bounds"] = {"min": [-1200, -10, -600], "max": [1200, 40, 2800]}
+    put(f"{folder}/collision.json", collision)
+    setup = outdoor_setup(field, [0, 0, 0], 0, 0)
+    setup["spawns"] = {str(i): dict(setup["spawns"]["0"], pos=[0, 0, (z0 + z1) // 2])
+                       for i, (z0, z1, _) in enumerate(M19_BOXES)}
+    setup["entrances"] = {str(i): {"spawn": box, "room": room} for i, (_, box, room, _) in enumerate(M19_CASES)}
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {str(i): f"{folder}/rooms/0.json" for i in range(M19_ROOMS)},
+        "setups": {"0": setup},
+    })
+    room = base_room(field_room)
+    room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                 "objects": {}, "actors": {}})
+    put(f"{folder}/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/m19"] = {"name": "Link-Span E: água por room", "scene": f"{folder}/scene.json",
+                                  "drawConfig": 0,
+                                  "entrances": {name: {"spawn": i} for i, (name, _, _, _) in enumerate(M19_CASES)}}
 
 
 def title_card(text):

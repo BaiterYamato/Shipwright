@@ -237,6 +237,27 @@ std::string Where(const TranscodeContext& context, const std::string& what) {
     return context.path + " " + what;
 }
 
+// Itens de uma lista que o jogo lê fora do lugar: quantos e o primeiro, para uma nota só.
+struct ListNote {
+    size_t count = 0;
+    std::string first;
+
+    void Add(const std::string& example) {
+        if (count++ == 0) {
+            first = example;
+        }
+    }
+
+    void Note(TranscodeContext& context, const std::string& where, const std::string& what) const {
+        if (count) {
+            context.notes.push_back(where + ": " + std::to_string(count) + " " + what + " (ex.: " + first + ")");
+        }
+    }
+};
+
+// Estado da câmera do jogo (camDataIdx, nextCamDataIdx em z64camera.h) é s16.
+constexpr int64_t kMaxCameraState = 32767;
+
 using References = std::vector<std::pair<std::string, std::string>>;
 
 void Reference(References& references, const char* field, const std::string& path) {
@@ -931,13 +952,37 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
         .Attr("BulkVertices", static_cast<uint32_t>(Field(bulk, "vertices")))
         .Attr("BulkPolys", static_cast<uint32_t>(Field(bulk, "polys")));
 
+    // Câmera de superfície e de água é índice da tabela `cameras`; o jogo não confere o tamanho
+    // (BgCheck_GetBgCamSettingImpl e WaterBox_GetCameraSType, z_bgcheck.c) e lê fora dela. A da superfície é lida
+    // sempre, até -1; a da água, só positiva (Camera_GetWaterBoxDataIdx, z_camera.c, trata <= 0 como sem câmera).
+    const Json& cameras = Sub(doc, "cameras");
+    const auto cameraItems = PositionalItems(cameras, Where(context, "cameras"));
+    const auto cameraCount = static_cast<int64_t>(cameraItems.size());
+    const auto checkCamera = [cameraCount](ListNote& outside, ListNote& wide, const std::string& key, int64_t camera,
+                                           bool noneUpToZero) {
+        if (noneUpToZero && camera <= 0) {
+            return;
+        }
+        if (camera < 0 || camera >= cameraCount) {
+            outside.Add(key + ".camera=" + std::to_string(camera));
+        } else if (camera > kMaxCameraState) {
+            wide.Add(key + ".camera=" + std::to_string(camera));
+        }
+    };
+    const std::string outsideText =
+        "câmera(s) fora da tabela de " + std::to_string(cameraCount) + "; lá o jogo lê fora da lista de câmeras";
+    const std::string wideText = "câmera(s) acima de 32767; o estado da câmera do jogo é s16";
+
     const Json& surfaces = Sub(doc, "surfaceTypes");
     const auto surfaceItems = PositionalItems(surfaces, Where(context, "surfaceTypes"));
     if (surfaceItems.size() > 65535) {
         throw DocumentError(Where(context, "surfaceTypes") + ": mais de 65535 tipos de superfície");
     }
+    ListNote surfaceOutside;
+    ListNote surfaceWide;
     for (const auto& item : surfaceItems) {
         const Json& s = *item.second;
+        checkCamera(surfaceOutside, surfaceWide, item.first, Field(s, "camera"), false);
         xml.Leaf("SurfaceType")
             .Attr("Camera", S32(Field(s, "camera")))
             .Attr("Exit", S32(Field(s, "exit")))
@@ -957,18 +1002,49 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
             .Attr("IsWallDamage", U8(Field(s, "isWallDamage")))
             .Close();
     }
+    surfaceOutside.Note(context, Where(context, "surfaceTypes"), outsideText);
+    surfaceWide.Note(context, Where(context, "surfaceTypes"), wideText);
 
-    const Json& cameras = Sub(doc, "cameras");
-    for (const auto& item : PositionalItems(cameras, Where(context, "cameras"))) {
+    // As posições de uma câmera são um BgCamFuncData (posição, rotação e fov: três vetores) ou, no crawlspace,
+    // `count` pontos: o jogo lê max(count, 3) vetores a partir de positionIndex, conforme o preset. A fábrica confere
+    // só o início; fora dele, ou sem positionIndex, aponta para um único vetor zero e o jogo lê o que vem depois.
+    // `count` é guardado em s16 e lido como u16 (BgCheck_GetBgCamCount).
+    const auto positionCount = static_cast<int64_t>(PositionalItems(Sub(doc, "cameraPositions"),
+                                                                    Where(context, "cameraPositions")).size());
+    ListNote positionOutside;
+    ListNote positionMissing;
+    ListNote countRange;
+    for (const auto& item : cameraItems) {
         const Json& c = *item.second;
         const auto index = c.is_object() ? c.find("positionIndex") : c.end();
         const int64_t position = index != c.end() && !index->is_null() ? ToInt(*index, -1) : -1;
+        const int64_t count = Field(c, "count");
+        const std::string example =
+            item.first + ": positionIndex=" + (position < 0 ? "null" : std::to_string(position)) +
+            " count=" + std::to_string(count);
+        if (count < 0 || count > INT16_MAX) {
+            countRange.Add(example);
+        }
+        // Por subtração: positionIndex + count pode transbordar.
+        if (position >= 0 && (position >= positionCount || std::max<int64_t>(count, 3) > positionCount - position)) {
+            positionOutside.Add(example);
+        } else if (position < 0 && count > 0) {
+            positionMissing.Add(example);
+        }
         xml.Leaf("CameraData")
             .Attr("SType", U16(Field(c, "sType")))
             .Attr("NumData", S16(Field(c, "count")))
             .Attr("CameraPosDataSeg", S32(position < 0 ? -1 : position))
             .Close();
     }
+    positionOutside.Note(context, Where(context, "cameras"),
+                         "câmera(s) com posições além das " + std::to_string(positionCount) +
+                             " de cameraPositions (o jogo lê max(count, 3)); lá ele usa a posição zero ou lê fora "
+                             "da lista");
+    positionMissing.Note(context, Where(context, "cameras"),
+                         "câmera(s) com count sem positionIndex; lá o jogo lê a partir de um único vetor zero");
+    countRange.Note(context, Where(context, "cameras"),
+                    "câmera(s) com count fora de 0..32767; o jogo guarda s16 e lê como u16");
     // O XML agrupa as posições de câmera de 3 em 3 (posição, rotação, fov); o índice de cada vetor
     // continua o mesmo, e o último grupo é completado com zeros.
     const Json& positions = Sub(doc, "cameraPositions");
@@ -1015,8 +1091,11 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
         throw DocumentError(Where(context, "waterBoxes") + ": " + std::to_string(waterItems.size()) +
                             " water boxes (no máximo 65535)");
     }
+    ListNote waterOutside;
+    ListNote waterWide;
     for (const auto& item : waterItems) {
         const Json& w = *item.second;
+        checkCamera(waterOutside, waterWide, item.first, Field(w, "camera"), true);
         xml.Leaf("WaterBox")
             .Attr("XMin", Integral(NumberField(w, "xMin")))
             .Attr("Ysurface", Integral(NumberField(w, "ySurface")))
@@ -1029,6 +1108,8 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
             .Attr("NotSwimmable", Field(w, "notSwimmable") ? 1 : 0)
             .Close();
     }
+    waterOutside.Note(context, Where(context, "waterBoxes"), outsideText);
+    waterWide.Note(context, Where(context, "waterBoxes"), wideText);
     return xml.Finish();
 }
 

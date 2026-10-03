@@ -438,6 +438,93 @@ void TestMeshEntries() {
     }
 }
 
+// M17: a câmera de superfície e de água é índice da tabela `cameras`. Fora dela o jogo lê fora da lista; acima de
+// 32 767 o estado da câmera (s16) não guarda o índice; positionIndex + count além das posições lê fora. Só notas.
+void TestCollisionCameras() {
+    const auto collision = [](size_t cameras, int64_t surface, int64_t water) {
+        return std::string(R"({"bounds":{"min":[0,0,0],"max":[1,1,1]},"bulk":{"file":"x.bin"},)") +
+               R"("surfaceTypes":{"0":{"camera":)" + std::to_string(surface) + "}}," +
+               R"("cameras":)" + PositionalText(cameras, R"({"sType":1,"count":0,"positionIndex":null})") + "," +
+               R"("waterBoxes":{"0":{"xMin":0,"ySurface":0,"zMin":0,"xLength":1,"zLength":1,"camera":)" +
+               std::to_string(water) + "}}}";
+    };
+    const std::string outside = "câmera(s) fora da tabela de ";
+    for (const int64_t camera : { 299, 300, 301, -1 }) {
+        TranscodeContext context = Context();
+        const std::string xml = TranscodeCollision(ParseJson(collision(301, camera, camera)), context);
+        const bool out = camera < 0 || camera >= 301;
+        CHECK(AnyNote(context, "limites surfaceTypes: 1 " + outside + "301") == out);
+        CHECK(AnyNote(context, "limites waterBoxes: 1 " + outside + "301") == (camera >= 301));
+        CHECK(!out || AnyNote(context, "(ex.: 0.camera=" + std::to_string(camera) + ")"));
+        // O XML leva o índice como veio.
+        CHECK(Count(xml, "Camera=\"" + std::to_string(camera) + "\"") == 2);
+    }
+    // Sem câmeras, até a câmera 0 está fora da tabela.
+    TranscodeContext empty = Context();
+    TranscodeCollision(ParseJson(collision(0, 0, 0)), empty);
+    CHECK(AnyNote(empty, "limites surfaceTypes: 1 " + outside + "0"));
+    // Dentro de uma tabela de 32 770, o índice 32 768 não cabe no estado s16 da câmera; 32 767 cabe.
+    for (const int64_t camera : { 32767, 32768 }) {
+        TranscodeContext wide = Context();
+        TranscodeCollision(ParseJson(collision(32770, camera, camera)), wide);
+        CHECK(!AnyNote(wide, outside));
+        CHECK(AnyNote(wide, "limites surfaceTypes: 1 câmera(s) acima de 32767") == (camera > 32767));
+        CHECK(AnyNote(wide, "limites waterBoxes: 1 câmera(s) acima de 32767") == (camera > 32767));
+    }
+
+    // Água com câmera 0 ou negativa é "sem câmera" (Camera_GetWaterBoxDataIdx não consulta a tabela); a superfície
+    // -1 é lida.
+    for (const int64_t water : { 0, -1 }) {
+        TranscodeContext none = Context();
+        TranscodeCollision(ParseJson(collision(0, -1, water)), none);
+        CHECK(!AnyNote(none, "limites waterBoxes"));
+        CHECK(AnyNote(none, "limites surfaceTypes: 1 " + outside + "0"));
+    }
+    TranscodeContext waterOne = Context();
+    TranscodeCollision(ParseJson(collision(1, 0, 1)), waterOne);
+    CHECK(AnyNote(waterOne, "limites waterBoxes: 1 " + outside + "1;"));
+
+    // Seis vetores em cameraPositions: o jogo lê max(count, 3) a partir de positionIndex (BgCamFuncData são três
+    // vetores; o crawlspace lê `count` pontos). Sem positionIndex, a fábrica dá um único vetor zero.
+    const auto positions = [](const std::string& camera) {
+        return std::string(R"({"bounds":{"min":[0,0,0],"max":[1,1,1]},"bulk":{"file":"x.bin"},"surfaceTypes":{},)") +
+               R"("cameras":{"0":)" + camera + "}," + R"("cameraPositions":)" + PositionalText(6, "[0,0,0]") + "}";
+    };
+    struct PositionCase {
+        const char* camera;
+        bool outside, missing, range;
+    };
+    const PositionCase cases[] = {
+        { R"({"sType":1,"count":3,"positionIndex":3})", false, false, false },
+        { R"({"sType":1,"count":3,"positionIndex":4})", true, false, false },
+        { R"({"sType":1,"count":0,"positionIndex":3})", false, false, false },
+        { R"({"sType":1,"count":0,"positionIndex":4})", true, false, false },
+        { R"({"sType":1,"count":1,"positionIndex":5})", true, false, false },
+        { R"({"sType":1,"count":0,"positionIndex":6})", true, false, false },
+        { R"({"sType":1,"count":6,"positionIndex":0})", false, false, false },
+        { R"({"sType":1,"count":0,"positionIndex":null})", false, false, false },
+        { R"({"sType":1,"count":3,"positionIndex":null})", false, true, false },
+        { R"({"sType":1,"count":-1,"positionIndex":3})", false, false, true },
+        { R"({"sType":1,"count":32767,"positionIndex":null})", false, true, false },
+        { R"({"sType":1,"count":32768,"positionIndex":null})", false, true, true },
+        // positionIndex + count transbordaria int64.
+        { R"({"sType":1,"count":9223372036854775807,"positionIndex":1})", true, false, true },
+    };
+    for (const auto& c : cases) {
+        TranscodeContext context = Context();
+        TranscodeCollision(ParseJson(positions(c.camera)), context);
+        CHECK(AnyNote(context, "limites cameras: 1 câmera(s) com posições além das 6 de cameraPositions") == c.outside);
+        CHECK(AnyNote(context, "limites cameras: 1 câmera(s) com count sem positionIndex") == c.missing);
+        CHECK(AnyNote(context, "limites cameras: 1 câmera(s) com count fora de 0..32767") == c.range);
+    }
+    TranscodeContext example = Context();
+    TranscodeCollision(ParseJson(positions(R"({"sType":1,"count":3,"positionIndex":4})")), example);
+    CHECK(AnyNote(example, "(ex.: 0: positionIndex=4 count=3)"));
+    TranscodeContext nullExample = Context();
+    TranscodeCollision(ParseJson(positions(R"({"sType":1,"count":3,"positionIndex":null})")), nullExample);
+    CHECK(AnyNote(nullExample, "(ex.: 0: positionIndex=null count=3)"));
+}
+
 // M03: posição decimal de ator e luz chega ao XML sem perder a fração.
 void TestDecimalPositions() {
     const std::string doc = R"({"setups":{"0":{"actors":{"0":{"id":16,"pos":[32768.5,1.25,-0.5]}},)"
@@ -456,6 +543,7 @@ int main() {
     TestCameraPositions();
     TestWorldLimit();
     TestMeshEntries();
+    TestCollisionCameras();
     TestDecimalPositions();
     TestParseEquivalence();
     TestMergeEquivalence();
