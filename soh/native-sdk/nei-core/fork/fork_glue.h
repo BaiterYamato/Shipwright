@@ -14,4 +14,7 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry);
 void StopFork();
 bool ForkActive();
 const std::string& ForkStatus();
+std::string ForkLightStatus();
+// Atualiza as células do inventário logo após uma mudança pelo menu, inclusive com o jogo pausado.
+void RefreshForkInventory();
 } // namespace LinkSpanNei

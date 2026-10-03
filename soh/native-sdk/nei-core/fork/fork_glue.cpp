@@ -5,6 +5,7 @@
 #include "fork_glue.h"
 
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -13,21 +14,35 @@
 #include "fork_models.h"
 #include "kaleido_glue.h"
 #include "oot_randomizer.h"
+#include "oot_engine.h"
 #include "overlay_glue.h"
 #include "registry.h"
+#include "lantern_light.h"
+#include "backend_glue.h"
+#include "backend_unit.h"
+#include "z64.h"
+#include "overlays/effects/ovl_Effect_Ss_G_Ripple/z_eff_ss_g_ripple.h"
 
 // actor_guard.c (NEI-006).
 extern "C" void NeiActor_Frame(void);
 extern "C" void NeiActor_Unload(int dryRun);
+extern "C" void NeiBottles_Project(void* state);
+
+extern "C" uint64_t NeiInventory_Milliseconds(void) {
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
 
 namespace LinkSpanNei {
 namespace {
 
 using ActorFn = void (*)(void* actor, void* play);
+using InputFn = void (*)(Input* input);
+using EffectSpawnFn = void (*)(PlayState*, s32, s32, void*);
 
 struct ForkItem {
     uint64_t handle = 0;
-    uint8_t logical = 0;
+    uint16_t logical = 0;
     std::string id;
     uint8_t runtime = 0xFF;
     bool randomizer = false; // oferecido ao linkspan.oot.randomizer
@@ -35,22 +50,61 @@ struct ForkItem {
 
 struct ForkState {
     const ShipNativeRuntime* runtime = nullptr;
+    const ShipOotMovementV2* movement = nullptr;
     Registry* registry = nullptr;
     ActorFn originalUpdate = nullptr;
     ActorFn originalDraw = nullptr;
     uint64_t updatePatch = 0;
     uint64_t drawPatch = 0;
+    InputFn originalInput = nullptr;
+    uint64_t inputPatch = 0;
+    EffectSpawnFn originalRipple = nullptr;
+    uint64_t ripplePatch = 0;
+    Input frameInput{};
     std::vector<ForkItem> items;
+    LanternLight lanternLight;
     const ShipOotRandomizerV1* randomizer = nullptr;
     uint32_t randomized = 0;
     uint32_t withoutAssets = 0; // itens do fork deixados de fora por falta do componente de assets
     bool active = false;
     // Os imports do fork (gPlayState e cia.) só valem depois do nei_host_resolve; antes disso são ponteiros nulos.
     bool resolved = false;
-    std::string status = "desligado";
+    std::string status = "disabled";
 };
 
 ForkState gFork;
+
+extern "C" uint16_t NeiInventory_PadButtons(void) {
+    if (!gFork.movement || !gFork.movement->has_gamepad(0)) return 0;
+    const uint32_t buttons = gFork.movement->get_gamepad_buttons(0);
+    return ((buttons & (1u << 11)) ? BTN_DUP : 0) |
+           ((buttons & (1u << 12)) ? BTN_DDOWN : 0) |
+           ((buttons & (1u << 13)) ? BTN_DLEFT : 0) |
+           ((buttons & (1u << 14)) ? BTN_DRIGHT : 0);
+}
+
+// DMR gives ordinary sword attacks priority over shielding. Four Sword charge
+// and Kite Surf dismount use R+B themselves, so preserve that chord only while
+// one of those pieces is equipped. Flush the host filter's deferred attack with
+// a neutral copy; the other inputs and its ordinary policy keep their behavior.
+void FilterEquipmentInput(Input* input) {
+    if (input && gFork.active && NeiEquipment_UsesShieldCombo() &&
+        (input->cur.button & (BTN_R | BTN_B)) == (BTN_R | BTN_B)) {
+        Input neutral = *input;
+        neutral.cur.button &= ~(BTN_R | BTN_B);
+        neutral.press.button &= ~(BTN_R | BTN_B);
+        gFork.originalInput(&neutral);
+        gFork.frameInput = *input;
+        return;
+    }
+    gFork.originalInput(input);
+    if (input) gFork.frameInput = *input;
+}
+
+extern "C" void NeiLantern_UpdateLight(float x, float y, float z, uint8_t r, uint8_t g, uint8_t b, int16_t radius) {
+    const ShipOotPointLightV1 light{ sizeof(light), {x, y, z}, radius, {r, g, b}, 0 };
+    gFork.lanternLight.Set(light);
+}
 
 int Resolve(void* context, const char* name, uintptr_t* address) {
     return gFork.runtime->resolve_symbol(context, name, address) == SHIP_NATIVE_OK ? 0 : 1;
@@ -58,22 +112,30 @@ int Resolve(void* context, const char* name, uintptr_t* address) {
 
 // A posse do registro (linkspan.nei.items, save "nei.items") é quem manda; a página do NEI (gNeiSave, save
 // "nei.state") é a vitrine que o kaleido do fork desenha. Item recebido por qualquer caminho — get-item, grant de
-// outro mod, save carregado — aparece na célula dele no frame seguinte.
+// outro mod, save carregado — aparece na célula dele no frame seguinte. A remoção também precisa refletir no
+// inventário estendido; só limpar o registro e o botão C deixaria o ícone antigo na página do fork.
 void SyncInventory() {
     for (const ForkItem& item : gFork.items) {
         NeiItemStateV1 state{ sizeof(state) };
-        if (gFork.registry->GetState(item.handle, &state) == SHIP_NATIVE_OK && state.owned) {
-            NeiInv_PlaceItem(item.logical);
+        if (gFork.registry->GetState(item.handle, &state) == SHIP_NATIVE_OK) {
+            if (state.owned) {
+                NeiInv_PlaceItem(item.logical);
+                if (const char* icon = NeiInv_CurrentIcon(item.logical); icon && *icon)
+                    gFork.registry->UpdateIcon(item.handle, icon);
+            } else {
+                NeiInv_RemoveItem(item.logical);
+            }
         }
     }
 }
 
 void PlayerUpdate(void* actor, void* play) {
+    gFork.frameInput = {};
     gFork.originalUpdate(actor, play);
     if (gFork.active) {
         NeiActor_Frame();
         SyncInventory();
-        CustomItems_Update(actor, play);
+        NeiItems_PostUpdate(actor, play, &gFork.frameInput);
     }
 }
 
@@ -84,12 +146,24 @@ void PlayerDraw(void* actor, void* play) {
     }
 }
 
+void PlayerRipple(PlayState* play, s32 type, s32 priority, void* initParams) {
+    // Ondulação dos pés. As chamadas embutidas no Player_Update do host também
+    // passam aqui, sem substituir o update inteiro nem os efeitos de outros atores.
+    if (gFork.active && type == EFFECT_SS_G_RIPPLE && initParams) {
+        const auto* ripple = static_cast<const EffectSsGRippleInitParams*>(initParams);
+        if (ripple->radius == 100 && ripple->radiusMax == 500 &&
+            (ripple->life == 0 || ripple->life == 4 || ripple->life == 8) &&
+            NeiVisual_SuppressRipple(play, &ripple->pos)) return;
+    }
+    gFork.originalRipple(play, type, priority, initParams);
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL IgnoreUse(void*, uint64_t, uint8_t) {
     return SHIP_NATIVE_OK; // o fork lê o botão sozinho (ItemInput_Update)
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Received(void* user, uint64_t) {
-    NeiInv_ReceiveItem(static_cast<uint8_t>(reinterpret_cast<uintptr_t>(user)));
+    NeiInv_ReceiveItem(static_cast<uint16_t>(reinterpret_cast<uintptr_t>(user)));
     return SHIP_NATIVE_OK;
 }
 
@@ -211,8 +285,8 @@ bool RandomizerEligible(const std::string& id, const NeiForkItemInfo& info) {
 }
 
 ShipNativeStatus DefineItems() {
-    uint8_t logical[64];
-    const uint32_t count = NeiFork_ListItems(logical, sizeof(logical));
+    uint16_t logical[64];
+    const uint32_t count = NeiFork_ListItems(logical, 64);
     const bool core = NeiAssets_CoreMounted() != 0;
     for (uint32_t i = 0; i < count; ++i) {
         NeiForkItemInfo info{};
@@ -309,21 +383,43 @@ const ForkItem* FindItem(const std::string& query) {
 
 } // namespace
 
+void RefreshForkInventory() {
+    if (gFork.active) SyncInventory();
+}
+
 void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     gFork = ForkState{};
     gFork.runtime = runtime;
+    gFork.movement = static_cast<const ShipOotMovementV2*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2,
+        sizeof(ShipOotMovementV2)));
+    if (gFork.movement && (!gFork.movement->has_gamepad || !gFork.movement->get_gamepad_buttons))
+        gFork.movement = nullptr;
     gFork.registry = registry;
     if (runtime->abi_minor < 3 || !runtime->resolve_symbol || !runtime->install_patch) {
-        gFork.status = "desligado: host sem escape hatch";
+        gFork.status = "disabled: host has no escape hatch";
         return;
     }
     const char* failed = nullptr;
     if (nei_host_resolve(Resolve, runtime->context, &failed) != 0) {
         // UNSUPPORTED aqui quase sempre é soh.exe fora do host_fingerprints do manifesto.
-        gFork.status = std::string("desligado: símbolo ") + (failed ? failed : "?") + " não resolvido";
+        gFork.status = std::string("disabled: unresolved symbol ") + (failed ? failed : "?");
         return;
     }
     gFork.resolved = true;
+    const auto* lights = static_cast<const ShipOotLightsV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_LIGHTS_SERVICE, LINKSPAN_OOT_LIGHTS_VERSION, sizeof(ShipOotLightsV1)));
+    if (!lights || !lights->create_point_light || !lights->update_point_light ||
+        !lights->destroy_point_light || !lights->get_point_light_info) {
+        gFork.status = "disabled: host has no point-light service";
+        return;
+    }
+    gFork.lanternLight.Bind(lights);
+    if (!StartBackends(runtime)) {
+        StopFork();
+        gFork.status = "disabled: world/actor backends unavailable";
+        return;
+    }
     if (DefineItems() != SHIP_NATIVE_OK) {
         StopFork();
         return;
@@ -337,19 +433,35 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     if (Patch("Player_Update", PlayerUpdate, &gFork.originalUpdate, &gFork.updatePatch) != SHIP_NATIVE_OK ||
         Patch("Player_Draw", PlayerDraw, &gFork.originalDraw, &gFork.drawPatch) != SHIP_NATIVE_OK) {
         StopFork();
-        gFork.status = "desligado: desvio de Player_Update/Player_Draw recusado";
+        gFork.status = "disabled: Player_Update/Player_Draw detour rejected";
+        return;
+    }
+    uintptr_t inputTarget = 0;
+    if (runtime->resolve_symbol(runtime->context, "LinkSpan_FilterPlayerInput", &inputTarget) != SHIP_NATIVE_OK ||
+        runtime->install_patch(runtime->context, inputTarget, reinterpret_cast<void*>(FilterEquipmentInput),
+            reinterpret_cast<void**>(&gFork.originalInput), &gFork.inputPatch) != SHIP_NATIVE_OK) {
+        StopFork();
+        gFork.status = "disabled: equipment input detour rejected";
         return;
     }
     // As funções do host que o fork mudou (Player_ActionToMeleeWeapon, Player_UseItem...) passam a entrar na
     // versão do fork. Desvio recusado deixa aquela função com a versão do host; o status conta.
+    uintptr_t rippleTarget = 0;
+    if (runtime->resolve_symbol(runtime->context, "EffectSs_Spawn", &rippleTarget) != SHIP_NATIVE_OK ||
+        runtime->install_patch(runtime->context, rippleTarget, reinterpret_cast<void*>(PlayerRipple),
+            reinterpret_cast<void**>(&gFork.originalRipple), &gFork.ripplePatch) != SHIP_NATIVE_OK) {
+        StopFork();
+        gFork.status = "disabled: frozen-water ripple detour rejected";
+        return;
+    }
     StartOverlays(runtime);
     gFork.active = true;
     // Só agora: a página de itens do kaleido do fork chama o host pelos mesmos thunks resolvidos
     // acima, e o menu pode abrir no primeiro frame. Se os desvios forem recusados, o fork continua —
     // os itens funcionam, o inventário é que fica o do host (NEI-003).
     StartKaleido(runtime);
-    gFork.status = "ativo (" + std::to_string(gFork.items.size()) + " itens" +
-                   (gFork.withoutAssets ? ", " + std::to_string(gFork.withoutAssets) + " sem assets" : "") +
+    gFork.status = "active (" + std::to_string(gFork.items.size()) + " items" +
+                   (gFork.withoutAssets ? ", " + std::to_string(gFork.withoutAssets) + " missing assets" : "") +
                    ") | randomizer: " +
                    (gFork.randomizer ? std::to_string(gFork.randomized) + " itens" : std::string("sem serviço")) +
                    " | kaleido: " + KaleidoStatus() + " | host: " + OverlayStatus();
@@ -357,15 +469,19 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
 
 void StopFork() {
     gFork.active = false;
+    gFork.lanternLight.Clear();
     // Antes de tirar os desvios: nenhum ator do jogo pode continuar com update/draw/destroy dentro da DLL. Sem os
     // imports resolvidos (host fora do host_fingerprints) o fork nunca tocou num ator, e ler o gPlayState importado
     // derrubava o fechamento do jogo.
     if (gFork.runtime && gFork.resolved) {
+        StopBackends();
         NeiActor_Unload(0);
     }
     StopKaleido();
     StopOverlays();
     if (gFork.runtime && gFork.runtime->remove_patch) {
+        if (gFork.ripplePatch) gFork.runtime->remove_patch(gFork.runtime->context, gFork.ripplePatch);
+        if (gFork.inputPatch) gFork.runtime->remove_patch(gFork.runtime->context, gFork.inputPatch);
         if (gFork.drawPatch) {
             gFork.runtime->remove_patch(gFork.runtime->context, gFork.drawPatch);
         }
@@ -373,7 +489,10 @@ void StopFork() {
             gFork.runtime->remove_patch(gFork.runtime->context, gFork.updatePatch);
         }
     }
-    gFork.drawPatch = gFork.updatePatch = 0;
+    gFork.drawPatch = gFork.updatePatch = gFork.inputPatch = 0;
+    gFork.ripplePatch = 0;
+    gFork.originalRipple = nullptr;
+    gFork.originalInput = nullptr;
     if (gFork.registry) {
         for (const ForkItem& item : gFork.items) {
             if (item.randomizer && gFork.randomizer) {
@@ -392,6 +511,15 @@ bool ForkActive() {
 
 const std::string& ForkStatus() {
     return gFork.status;
+}
+
+std::string ForkLightStatus() {
+    const auto& light = gFork.lanternLight.Last();
+    char status[160];
+    std::snprintf(status, sizeof(status), "lantern: light=%u radius=%d rgb=%u,%u,%u pos=%.1f,%.1f,%.1f",
+                  unsigned(gFork.lanternLight.Active()), int(light.radius), unsigned(light.color[0]),
+                  unsigned(light.color[1]), unsigned(light.color[2]), light.position[0], light.position[1], light.position[2]);
+    return status;
 }
 
 } // namespace LinkSpanNei

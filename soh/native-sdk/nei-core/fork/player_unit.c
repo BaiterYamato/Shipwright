@@ -40,6 +40,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include "backend_unit.h"
 
 // Declared up here because the .c files pasted in below use them before their definitions further
 // down this same translation unit.
@@ -63,6 +64,25 @@ s32 Player_PutAwayHeldItem(PlayState* play, Player* this);
 #include "mods/items/logic/custom_items.c"
 #include "mods/extended_equipment.h"
 #include "mods/extended_equipment.c"
+#include "mods/items/custom_bottles.h"
+#include "motion_visuals.h"
+
+int NeiVisual_SuppressRipple(void* state, const void* position) {
+    PlayState* play = (PlayState*)state;
+    return play != NULL && gSaveContext.gameMode == GAMEMODE_NORMAL &&
+           NeiVisual_SuppressPlayerRipple(GET_PLAYER(play), (const Vec3f*)position);
+}
+
+void NeiLantern_RestoreFire(u8 fireType) {
+    gCustomItemState.lanternFireType = fireType < LANTERN_FIRE_MAX ? fireType : LANTERN_FIRE_NONE;
+    gCustomItemState.lanternEquipped = 0;
+    gCustomItemState.lanternSwinging = 0;
+    Bottle_WheelResetTracking();
+    // A captura pendente também pertence ao arquivo anterior, não ao novo save.
+    u8 pendingWheel, pendingItem;
+    Bottle_ConsumeCatchSync(&pendingWheel, &pendingItem);
+    ExtEquip_Init();
+}
 
 // EnPartner (spawn_boomerang_ivan do fork) e SW97_MEDALLIONS_ENABLED() do Player_UseItem do fork.
 #include "overlays/actors/ovl_En_Partner/z_en_partner.h"
@@ -81,7 +101,7 @@ s32 CustomForms_OverrideLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 #undef C_BTN_ITEM
 #undef DPAD_ITEM
 #define B_BTN_ITEM                                                                                  \
-    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[0] == ITEM_NONE)                    ? ITEM_NONE      \
+    NeiFork_BButtonItem((gSaveContext.buttonStatus[0] == ITEM_NONE)                    ? ITEM_NONE      \
                           : (gSaveContext.equips.buttonItems[0] == ITEM_SWORD_KNIFE) ? ITEM_SWORD_BGS \
                                                                                      : gSaveContext.equips.buttonItems[0])
 #define C_BTN_ITEM(button)                                                                                  \
@@ -96,3 +116,64 @@ s32 CustomForms_OverrideLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 // Funções que o fork acrescentou ao z_player.c do host (fork/extract.txt) e as que ele mudou (overlay.py),
 // extraídas pelo sync.py.
 #include "extracted/unit/z_player.c"
+#include "mods/equipment/kite_surf.c"
+
+u8 FourSword_TotemGrabAllowed(void) {
+    return !IS_RANDO || Flags_GetRandomizerInf(RAND_INF_CAN_GRAB);
+}
+
+// unregister_actor_type desliga os callbacks, inclusive destroy. Libere os
+// colliders/rastros enquanto a DLL ainda está carregada e as instâncias estão vivas.
+void NeiBackends_ClearRuntime(void) {
+    KiteSurf_Abort(gPlayState ? GET_PLAYER(gPlayState) : NULL);
+    for (u8 i = 0; i < FSC_MAX; ++i) {
+        FourSwordClone* clone = FourSwordClone_Live(i);
+        if (clone) {
+            FourSwordClone_Destroy(&clone->actor, gPlayState);
+            clone->colInit = 0;
+            Actor_Kill(&clone->actor);
+        }
+    }
+    FourSwordClone_KillAll();
+    gFourSwordCloneDrawing = -1;
+}
+
+// Player_Update is kept in the host, so the per-frame item calls added at the
+// end of the fork's Player_UpdateCommon are not present in that original.
+// Restore their original order after the player's normal update.
+void NeiItems_TickInput(void* actor, void* state) {
+    Player* player = (Player*)actor;
+    PlayState* play = (PlayState*)state;
+    Slate_TickInput(play, player);
+    Hourglass_TickInput(play, player);
+    Seasons_TickInput(play, player);
+    Wand_TickInput(play, player);
+}
+
+// The host's Player_Update leaves sControlInput pointing at its local Input.
+// Our post-update hooks run after that stack frame has returned. Use the exact
+// filtered frame captured by the mod's input detour for all donor callbacks.
+static u32 sLastSurfGate;
+void NeiItems_PostUpdate(void* actor, void* state, const void* input) {
+    Input frame = *(const Input*)input;
+    Input* previous = sControlInput;
+    sControlInput = &frame;
+    NeiItems_TickInput(actor, state);
+    CustomItems_Update(actor, state);
+    ExtEquip_Update();
+    if (frame.press.button & BTN_R) {
+        Player* player = (Player*)actor;
+        sLastSurfGate = gExtEquipState.currentExtShield |
+            ((player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 0x10 : 0) |
+            (KiteSurf_Allowed(player) ? 0x20 : 0) |
+            (Player_InBlockingCsMode((PlayState*)state, player) ? 0x40 : 0);
+    }
+    ExtEquip_UpdateBehavior((Player*)actor, (PlayState*)state);
+    NeiBottles_Project(state);
+    sControlInput = previous;
+}
+uint32_t NeiEquipment_Describe(char* out, uint32_t capacity) {
+    int n = snprintf(out, capacity, "equipment: sword=%u shield=%u surf=%u lastR=0x%02X",
+        gExtEquipState.currentExtSword, gExtEquipState.currentExtShield, sKSurf.state, sLastSurfGate);
+    return n > 0 && (uint32_t)n < capacity ? (uint32_t)n : 0;
+}

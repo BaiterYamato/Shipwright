@@ -42,6 +42,13 @@ void HarpoonDrops_RequestDropFromPause(s16 item, s16 slot) {
     (void)slot;
 }
 
+// Sem FleetShipCombo, o jogo não participa de uma sessão OoT/MM. O stub gerado
+// retornava 0 (OoT ativo no combo), então FleetWarp_Tick apagava toda transição
+// vanilla e deixava Link correndo sem sair das portas.
+int FleetShipCombo_GetActiveGame(void) {
+    return -1;
+}
+
 // Variáveis do fork lidas pelas funções do host que a DLL sobrepõe (NEI-HOST-001), definidas em C++ fora dela.
 // Os atores da SW97 são registrados no ActorDB pelo sw97_init.cpp; sem ele o id fica -1, como no fork antes do
 // registro — nunca 0, que é o id do Player.
@@ -220,11 +227,6 @@ s32 GerudoMhr_DamageTier(Player* player, s32 tier) {
 s32 GerudoMhr_NextComboMwa(Player* player, s32 requested) {
     (void)player;
     return requested;
-}
-
-s16 Seasons_EnvHazard(PlayState* play, s16 hazard) {
-    (void)play;
-    return hazard;
 }
 
 // Sem a forma do Pikachu nem o mm.o2r, estas devolvem o próprio argumento: o stub gerado devolvia NULL, e o

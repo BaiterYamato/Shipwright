@@ -1,0 +1,297 @@
+--- a/soh/mods/season_scene.cpp
++++ b/soh/mods/season_scene.cpp
+@@ -18,10 +18,10 @@
+  * every actor's Init — that is what makes all of this apply with no transition logic of its own.
+  */
+ 
+-#include <libultraship/bridge.h>
+-#include "soh/Enhancements/game-interactor/GameInteractor.h"
+-#include "soh/ShipInit.hpp"
+-#include "soh/ActorDB.h"
++
++
++
++
+ #include <string>
+ #include <vector>
+ #include <algorithm>
+@@ -46,10 +46,13 @@
+ #include "overlays/actors/ovl_Obj_Makekinsuta/z_obj_makekinsuta.h"
+ #include "objects/object_spot07_object/object_spot07_object.h" // Zora's Domain's frozen-water texture
+ // Unity-built here: the flower only exists for Summer's bean spots, and its ActorDB entry is C++.
+-#include "actors/deku_flower.c"
++
+ 
+ // External linkage in its own overlay.
+-void BgMizuWater_SetWaterBoxesHeight(WaterBox* waterBoxes, s16 height);
++void BgMizuWater_SetWaterBoxesHeight(WaterBox* waterBoxes, s32 height) {
++    static const u32 indexes[] = { 2, 3, 5, 7, 12, 20, 21, 22 };
++    for (u32 i = 0; i < ARRAY_COUNT(indexes); ++i) waterBoxes[indexes[i]].ySurface = height;
++}
+ }
+ 
+ extern PlayState* gPlayState;
+@@ -90,13 +93,10 @@
+  * damage. Turning the season is not a fall. One-shot: the handler unregisters itself after the
+  * single respawn it was armed for (the SwitchAge idiom, which needs it for the same reason).
+  */
+-extern "C" void SeasonScene_SuppressVoidDamage(void) {
+-    static HOOK_ID hookId = 0;
+-
+-    hookId = REGISTER_VB_SHOULD(VB_INFLICT_VOID_DAMAGE, {
+-        *should = false;
+-        GameInteractor::Instance->UnregisterGameHookForID<GameInteractor::OnVanillaBehavior>(hookId);
+-    });
++static bool sSeasonVoidDamage = false;
++extern "C" void SeasonScene_SuppressVoidDamage(void) { sSeasonVoidDamage = true; }
++extern "C" u8 SeasonScene_ConsumeVoidDamage(PlayState* play) {
++    u8 skip = sSeasonVoidDamage; sSeasonVoidDamage = false; return skip;
+ }
+ 
+ // ============================================================================
+@@ -127,6 +127,7 @@
+     }
+ 
+     u8 dry = (Seasons_GetSeason() == SEASON_SUMMER);
++    if (!gPlayState->colCtx.colHeader || gPlayState->colCtx.colHeader->numWaterBoxes <= LHWB_MAIN_2) return;
+     WaterBox* waterBoxes = gPlayState->colCtx.colHeader->waterBoxes;
+ 
+     self->lakeHyliaWaterLevel = dry ? LH_LEVEL_DRY : LH_LEVEL_FULL;
+@@ -160,7 +161,8 @@
+ 
+     self->actor.world.pos.y = self->baseY + ((season == SEASON_SUMMER) ? MIZU_Y_LOWEST : MIZU_Y_HIGHEST);
+     self->targetY = self->actor.world.pos.y;
+-    BgMizuWater_SetWaterBoxesHeight(gPlayState->colCtx.colHeader->waterBoxes, (s16)self->actor.world.pos.y);
++    if (gPlayState->colCtx.colHeader && gPlayState->colCtx.colHeader->numWaterBoxes >= 23)
++        BgMizuWater_SetWaterBoxesHeight(gPlayState->colCtx.colHeader->waterBoxes, (s32)self->actor.world.pos.y);
+ }
+ 
+ /**
+@@ -311,7 +313,7 @@
+     return SeasonScene_WastelandTunic(Seasons_GetSeason()) != EQUIP_VALUE_TUNIC_KOKIRI;
+ }
+ 
+-s16 Seasons_EnvHazard(PlayState* play, s16 hazard) {
++extern "C" s16 Seasons_EnvHazard(PlayState* play, s16 hazard) {
+     if (!SeasonScene_Active()) {
+         return hazard;
+     }
+@@ -428,7 +430,7 @@
+             if (SeasonScene_GroundKind(poly) != kind) {
+                 continue;
+             }
+-            Vec3s* vertices[3] = { &col->vtxList[COLPOLY_VTX_INDEX(poly->flags_vIA)],
++            Vec3i* vertices[3] = { &col->vtxList[COLPOLY_VTX_INDEX(poly->flags_vIA)],
+                                    &col->vtxList[COLPOLY_VTX_INDEX(poly->flags_vIB)],
+                                    &col->vtxList[COLPOLY_VTX_INDEX(poly->vIC)] };
+ 
+@@ -499,22 +501,7 @@
+     play->envCtx.sandstormEnvA = 0;
+ }
+ 
+-static void SeasonScene_RegisterDekuFlower() {
+-    if (gDekuFlowerId != -1) {
+-        return;
+-    }
+-    ActorDBInit init;
+-
+-    init.name = "DekuFlower";
+-    init.desc = "Majora's Mask Deku Flower";
+-    init.category = ACTORCAT_BG;
+-    init.objectId = OBJECT_GAMEPLAY_KEEP;
+-    init.instanceSize = gDekuFlowerStructSize;
+-    init.init = DekuFlower_Init;
+-    init.destroy = DekuFlower_Destroy;
+-    init.update = DekuFlower_Update;
+-    gDekuFlowerId = ActorDB::Instance->AddEntry(init).entry.id;
+-}
++static void SeasonScene_RegisterDekuFlower() {}
+ 
+ /**
+  * Summer turns the spot into Majora's gold Deku Flower, Deku Link's launch pad.
+@@ -529,13 +516,7 @@
+     if (!SeasonScene_Active()) {
+         return;
+     }
+-    if (Seasons_GetSeason() == SEASON_SUMMER) {
+-        SeasonScene_RegisterDekuFlower();
+-        Actor_Spawn(&gPlayState->actorCtx, gPlayState, gDekuFlowerId, self->world.pos.x, self->world.pos.y,
+-                    self->world.pos.z, 0, self->shape.rot.y, 0, DEKU_FLOWER_PARAMS(DEKU_FLOWER_TYPE_GOLD));
+-        Actor_Kill(self);
+-        return;
+-    }
++    if (Seasons_GetSeason() == SEASON_SUMMER) return; // golden flower: Deku-form expansion
+ 
+     const SeasonBeanSite* site = SeasonScene_BeanSite(gPlayState);
+ 
+@@ -634,7 +615,7 @@
+ #define SEASON_MAX_WATERBOXES 32
+ 
+ static CollisionHeader* sSuppressedHeader = NULL;
+-static s16 sWaterSurfaceBackup[SEASON_MAX_WATERBOXES];
++static s32 sWaterSurfaceBackup[SEASON_MAX_WATERBOXES];
+ static s32 sSuppressedCount = 0;
+ 
+ static void SeasonScene_RestoreWaterBoxes(void) {
+@@ -688,6 +669,7 @@
+     }
+     for (s32 i = 0; i < ARRAY_COUNT(sSeasonWaterDLs); i++) {
+         const SeasonWaterDL* row = &sSeasonWaterDLs[i];
++        if (!ResourceMgr_FileExists(row->dlPath) || ResourceGetIsCustomByName(row->dlPath)) continue;
+         // Every patch name carries its instruction: one display list can hold several water sites,
+         // and a shared name would let the second overwrite the first's bookkeeping.
+         std::string textureTag = "seasonWaterTex_" + std::to_string(row->textureInstruction);
+@@ -780,26 +762,28 @@
+     }
+ }
+ 
+-void RegisterSeasonSceneEffects() {
+-    COND_ID_HOOK(OnActorInit, ACTOR_BG_SPOT06_OBJECTS, true, SeasonScene_OnInitLakeHylia);
+-    COND_ID_HOOK(OnActorInit, ACTOR_BG_MIZU_WATER, true, SeasonScene_OnInitWaterTemple);
+-
+-    // One hook per actor the table mentions; the handler is shared and finds its own row.
+-    COND_ID_HOOK(OnActorInit, ACTOR_BG_ICE_SHELTER, true, SeasonScene_ApplyActorRule);
+-    COND_ID_HOOK(OnActorInit, ACTOR_BG_ICE_TURARA, true, SeasonScene_ApplyActorRule);
+-    COND_ID_HOOK(OnActorInit, ACTOR_OBJECT_KANKYO, true, SeasonScene_ApplyActorRule);
+-
+-    COND_ID_HOOK(OnActorInit, ACTOR_OBJ_MAKEKINSUTA, true, SeasonScene_OnInitSoftSoil);
+-    COND_ID_HOOK(OnActorInit, ACTOR_OBJ_BEAN, true, SeasonScene_OnInitBeanSpot);
+-
+-    COND_ID_HOOK(OnActorInit, ACTOR_EN_WEATHER_TAG, true, SeasonScene_OnInitWeatherTag);
+-
+-    // Every other movable body of water: same shape, one handler.
+-    COND_ID_HOOK(OnActorInit, ACTOR_BG_SPOT01_IDOMIZU, true, SeasonScene_OnInitWaterActor);
+-    COND_ID_HOOK(OnActorInit, ACTOR_BG_MORI_IDOMIZU, true, SeasonScene_OnInitWaterActor);
+-    COND_ID_HOOK(OnActorInit, ACTOR_BG_HAKA_WATER, true, SeasonScene_OnInitWaterActor);
+-
+-    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayDrawEnd>(SeasonScene_DrawGround);
+-}
+-
+-static RegisterShipInitFunc initFuncSeasonScene(RegisterSeasonSceneEffects, {});
++extern "C" void NeiWorld_OnActorInit(void* actor, void* play) {
++    Actor* self = (Actor*)actor;
++    if (!self || !play) return;
++    switch (self->id) {
++        case ACTOR_BG_SPOT06_OBJECTS: SeasonScene_OnInitLakeHylia(self); break;
++        case ACTOR_BG_MIZU_WATER: SeasonScene_OnInitWaterTemple(self); break;
++        case ACTOR_BG_ICE_SHELTER: case ACTOR_BG_ICE_TURARA: case ACTOR_OBJECT_KANKYO:
++            SeasonScene_ApplyActorRule(self); break;
++        case ACTOR_OBJ_MAKEKINSUTA: SeasonScene_OnInitSoftSoil(self); break;
++        case ACTOR_OBJ_BEAN: SeasonScene_OnInitBeanSpot(self); break;
++        case ACTOR_EN_WEATHER_TAG: SeasonScene_OnInitWeatherTag(self); break;
++        case ACTOR_BG_SPOT01_IDOMIZU: case ACTOR_BG_MORI_IDOMIZU: case ACTOR_BG_HAKA_WATER:
++            SeasonScene_OnInitWaterActor(self); break;
++    }
++}
++extern "C" void NeiWorld_Draw(void* play) {
++    if (play && ((PlayState*)play)->colCtx.colHeader) SeasonScene_DrawGround();
++}
++extern "C" void NeiWorld_Reset(void) {
++    SeasonScene_RestoreWaterBoxes();
++    SeasonScene_SetWaterLook(SEASON_LOOK_VANILLA);
++    sGroundHeader = NULL; sGroundVtx.clear();
++    for (auto& dl : sGroundDl) dl.clear();
++    sSeasonVoidDamage = false;
++}
+--- a/soh/mods/items/logic/item_rod_of_seasons.c
++++ b/soh/mods/items/logic/item_rod_of_seasons.c
+@@ -340,6 +340,8 @@
+     u16 btnMask;
+ 
+     if (Seasons_SeasonCount() == 0) {
++        SeasonScene_UpdateWater(play);
++        Seasons_Stow(play, player);
+         return;
+     }
+ 
+--- a/soh/mods/equipment/actors/four_sword_clone.c
++++ b/soh/mods/equipment/actors/four_sword_clone.c
+@@ -115,7 +115,16 @@
+     { FSC_BLADE_RADIUS, 60, 30, { 0, 0, 0 } },
+ };
+ 
++extern s16 gFourSwordCloneId;
+ static FourSwordClone* sLiveClones[FSC_MAX];
++static FourSwordClone* FourSwordClone_Live(u8 index) {
++    if (index >= FSC_MAX) return NULL;
++    FourSwordClone* clone = sLiveClones[index];
++    if (clone && (!NeiActor_IsAlive(&clone->actor) || clone->actor.id != gFourSwordCloneId)) {
++        sLiveClones[index] = NULL; clone = NULL;
++    }
++    return clone;
++}
+ static u8 sFormation = FSC_FORM_TRIANGLE;
+ static u8 sVariant = 0;
+ 
+@@ -125,7 +134,7 @@
+ u8 FourSwordClone_Count(void) {
+     u8 n = 0;
+     for (int i = 0; i < FSC_MAX; i++) {
+-        if (sLiveClones[i] != NULL) {
++        if (FourSwordClone_Live((u8)i) != NULL) {
+             n++;
+         }
+     }
+@@ -156,7 +165,7 @@
+ #define FSC_TOTEM_TOP_INDEX (FSC_MAX - 1)
+ // The base clone is a real carryable: Link lifts it like a rock, and the stack rides on it.
+ static FourSwordClone* FourSwordClone_TotemBase(void) {
+-    return (sFormation == FSC_FORM_TOTEM) ? sLiveClones[FSC_TOTEM_BASE_INDEX] : NULL;
++    return (sFormation == FSC_FORM_TOTEM) ? FourSwordClone_Live(FSC_TOTEM_BASE_INDEX) : NULL;
+ }
+ 
+ u8 FourSwordClone_IsTotem(void) {
+@@ -194,7 +203,7 @@
+ }
+ 
+ u8 FourSwordClone_GetPos(u8 index, Vec3f* out) {
+-    if ((index >= FSC_MAX) || (sLiveClones[index] == NULL) || (out == NULL)) {
++    if ((index >= FSC_MAX) || (FourSwordClone_Live(index) == NULL) || (out == NULL)) {
+         return 0;
+     }
+     *out = sLiveClones[index]->actor.world.pos;
+@@ -219,7 +228,7 @@
+ 
+ void FourSwordClone_KillAll(void) {
+     for (int i = 0; i < FSC_MAX; i++) {
+-        if (sLiveClones[i] != NULL) {
++        if (FourSwordClone_Live((u8)i) != NULL) {
+             Actor_Kill(&sLiveClones[i]->actor);
+             sLiveClones[i] = NULL;
+         }
+@@ -228,7 +237,7 @@
+ }
+ 
+ Actor* FourSwordClone_Spawn(PlayState* play, Player* player, u8 index) {
+-    if ((play == NULL) || (player == NULL) || (index >= FSC_MAX) || (sLiveClones[index] != NULL)) {
++    if ((play == NULL) || (player == NULL) || (index >= FSC_MAX) || (FourSwordClone_Live(index) != NULL)) {
+         return NULL;
+     }
+     FourSwordClone_EnsureRegistered();
+@@ -245,7 +254,7 @@
+     u8 mask = gExtEquipBehavior.fourSwordCloneMask;
+ 
+     for (u8 i = 0; i < FSC_MAX; i++) {
+-        if ((mask & (1 << i)) && (sLiveClones[i] == NULL)) {
++        if ((mask & (1 << i)) && (FourSwordClone_Live(i) == NULL)) {
+             FourSwordClone_Spawn(play, player, i);
+         }
+     }
+@@ -295,7 +304,7 @@
+     Vec3f out = player->actor.world.pos;
+ 
+     if (sFormation == FSC_FORM_TOTEM) {
+-        FourSwordClone* base = sLiveClones[FSC_TOTEM_BASE_INDEX];
++        FourSwordClone* base = FourSwordClone_Live(FSC_TOTEM_BASE_INDEX);
+ 
+         if (index == FSC_TOTEM_BASE_INDEX) {
+             out.x += sin * FSC_GRAB_REACH;
+@@ -728,7 +737,7 @@
+     }
+ 
+     for (int i = 0; i < FSC_MAX; i++) {
+-        FourSwordClone* clone = sLiveClones[i];
++        FourSwordClone* clone = FourSwordClone_Live(i);
+ 
+         if ((clone == NULL) || !clone->swordHandMtxValid || (clone->summonTimer != 0)) {
+             continue;

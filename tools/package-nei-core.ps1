@@ -6,6 +6,7 @@ param(
     [string]$JsonLicense = '..\shipwright-limpo\Shipwright\build\x64\vcpkg\installed\x64-windows-static\share\nlohmann-json\copyright',
     [string]$OutputDirectory = 'build\nei-core',
     [string]$HostExecutable = 'x64\Release\soh.exe',
+    [string]$HostSymbols = 'x64\Release\soh.symbols',
     # O mod de exemplo como pacote próprio, para testar o serviço em jogo; o fonte dele já vai no .shipmod.
     [switch]$Demo
 )
@@ -44,7 +45,7 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
         $Source, $Destination, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 }
 
-$version = '0.3.4'
+$version = '0.3.16'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_nei_core.dll') 'NEI core DLL'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
 $jsonCopyright = Resolve-InputFile $JsonLicense 'nlohmann/json license'
@@ -55,6 +56,12 @@ if (-not $layoutMatch.Success) {
 }
 $layout = $layoutMatch.Groups[1].Value.Substring(0, 8)
 $fingerprint = (Get-FileHash -LiteralPath (Resolve-InputFile $HostExecutable 'Host executable') -Algorithm SHA256).Hash.ToLowerInvariant()
+$symbolsFile = Resolve-InputFile $HostSymbols 'Host symbols'
+$symbolsHeader = @(Get-Content -LiteralPath $symbolsFile -TotalCount 2)
+if ($symbolsHeader.Count -ne 2 -or $symbolsHeader[0] -ne 'linkspan-symbols 1' -or
+    $symbolsHeader[1] -ne "sha256 $fingerprint") {
+    throw "soh.symbols não corresponde ao soh.exe ($fingerprint): $symbolsFile"
+}
 
 $sourceRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path 'soh\native-sdk\nei-core'))
 $packageRoot = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $OutputDirectory))
@@ -66,6 +73,7 @@ if (Test-Path -LiteralPath $staging) {
 foreach ($directory in @('provider', 'include\linkspan\nei', 'docs\examples\heart-seeds')) {
     [System.IO.Directory]::CreateDirectory((Join-Path $coreStage $directory)) | Out-Null
 }
+Copy-Item -LiteralPath $symbolsFile -Destination (Join-Path $packageRoot 'soh.symbols') -Force
 
 $coreManifest = @'
 id = "linkspan.nei"
@@ -76,7 +84,7 @@ entrypoint = "main.lua"
 games = ["oot"]
 kind = "core_extension"
 load_phase = "pre_game"
-description = "Itens do fork Not Enough Items, pagina extra do inventario e o servico linkspan.nei.items para add-ons."
+description = "Not Enough Items items, an extra inventory page, and the linkspan.nei.items service for add-ons."
 
 [provider]
 abi_version = "1.3"
@@ -179,6 +187,7 @@ $report = [ordered]@{
     sha256 = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash
     layout = $layoutMatch.Groups[1].Value
     host_fingerprint = $fingerprint
+    host_symbols = 'soh.symbols (instalar ao lado de soh.exe)'
     contents = @($contents)
 }
 Write-Utf8NoBom ([System.IO.Path]::ChangeExtension($package, '.contents.json')) ($report | ConvertTo-Json -Depth 4)

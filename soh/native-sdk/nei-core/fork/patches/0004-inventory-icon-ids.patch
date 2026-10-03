@@ -1,0 +1,44 @@
+diff --git a/soh/mods/extended_inventory.c b/soh/mods/extended_inventory.c
+--- a/soh/mods/extended_inventory.c
++++ b/soh/mods/extended_inventory.c
+@@ -472,4 +472,4 @@ uint8_t Nei_CaneActiveSkill(void);
+ 
+-void* ExtInv_GetItemIcon(uint16_t itemId) {
++static void* ExtInv_GetItemIconImpl(uint16_t itemId, bool useHostRuntimeIcon) {
+ 
+     // Kafei lays SW97 landmines rather than throwing homing mice, so the slot has to read as one
+@@ -715,5 +715,5 @@ void* ExtInv_GetItemIcon(uint16_t itemId) {
+     // como Deku Stick. Se usa ARRAY_COUNT para que no vuelva a desfasarse al crecer el array, y se
+     // salta la entrada vacía (hay huecos "" en 0x82..0x9B) para no mandar basura a la RSP.
+-    if (itemId < ARRAY_COUNT(gItemIcons) && gItemIcons[itemId] != NULL &&
++    if (useHostRuntimeIcon && itemId < ARRAY_COUNT(gItemIcons) && gItemIcons[itemId] != NULL &&
+         ((const char*)gItemIcons[itemId])[0] != '\0') {
+         return gItemIcons[itemId];
+@@ -818,3 +818,17 @@ void* ExtInv_GetItemIcon(uint16_t itemId) {
+     }
+ }
++
++// Runtime ids in the C buttons belong to the host's 256-entry icon table. Page-2 inventory
++// cells instead hold the fork's logical ids, which overlap that table. Keep the two lookups
++// explicit so a logical Deku Leaf cannot pick up an unrelated host icon.
++void* ExtInv_GetItemIcon(uint16_t itemId) {
++    return ExtInv_GetItemIconImpl(itemId, true);
++}
++
++void* ExtInv_GetInventoryItemIcon(uint16_t itemId) {
++    if (itemId == ITEM_ELEMENTAL_WAND) {
++        return Wand_ModeIcon(Wand_GetMode());
++    }
++    return ExtInv_GetItemIconImpl(itemId, Nei_FindByItem(itemId) == NULL);
++}
+ // Returns 1 if the player owns the given MM mask item (extended inventory page 3, slots 48-71).
+diff --git a/soh/mods/extended_inventory.h b/soh/mods/extended_inventory.h
+--- a/soh/mods/extended_inventory.h
++++ b/soh/mods/extended_inventory.h
+@@ -299,5 +299,6 @@ uint8_t ExtInv_GetItemAgeReq(uint16_t itemId);
+  * @return Pointer to item icon texture
+  */
+ void* ExtInv_GetItemIcon(uint16_t itemId);
++void* ExtInv_GetInventoryItemIcon(uint16_t itemId);
+ 
+ /**

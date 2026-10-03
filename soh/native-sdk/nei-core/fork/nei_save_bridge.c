@@ -36,7 +36,8 @@ static const NeiSaveField kFields[] = {
     NEI_SAVE_SCALAR("powerKegCount", powerKegCount),
     NEI_SAVE_SCALAR("powerKegMode", powerKegMode),
     NEI_SAVE_SCALAR("tradeAdultOwned", tradeAdultOwned),
-    // A foto I5 custa 11200 elementos JSON. As flags pequenas continuam no save.
+    // Preserve the original monochrome photo as well as its validation flags.
+    NEI_SAVE_ARRAY("pictoPhotoI5", pictoPhotoI5),
     NEI_SAVE_SCALAR("pictoboxOwned", pictoboxOwned),
     NEI_SAVE_SCALAR("pictoHasPhoto", pictoHasPhoto),
     NEI_SAVE_SCALAR("pictoFlags0", pictoFlags0),
@@ -103,6 +104,7 @@ void NeiSave_Reset(void) {
 
 void NeiSave_AfterLoad(void) {
     NeiSaveData* save = Nei_Save();
+    NeiLantern_RestoreFire(save->lanternFireType);
     // A v2 reordenou a tabela de ecos: bits de uma máscara v1 apontam para outros ecos, então o fork zera.
     if (save->trirodLayoutVersion < 2) {
         save->trirodEchoesLo = 0;

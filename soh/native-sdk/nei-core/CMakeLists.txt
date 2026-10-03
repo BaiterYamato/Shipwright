@@ -30,9 +30,12 @@ endif()
 file(GLOB nei_fork_extracted "${nei_fork_dir}/extracted/*.c")
 
 add_library(nei_fork OBJECT "${fork_src}/player_unit.c" "${fork_src}/actor_guard.c" "${fork_src}/host_additions.c"
-    "${fork_src}/inventory_unit.c" "${fork_src}/fork_items.c"
+    "${fork_src}/inventory_unit.c" "${fork_src}/fork_items.c" "${fork_src}/progression.c"
     "${fork_src}/kaleido_shim.c" "${fork_src}/pipeline_probe.c" "${fork_src}/stubs.c" "${fork_src}/nei_save_bridge.c"
-    "${fork_src}/resource_guard.c"
+    "${fork_src}/resource_guard.c" "${fork_src}/backend_unit.c"
+    "${fork_src}/world_unit.cpp"
+    "${nei_fork_dir}/fork/soh/mods/items/custom_bottles.cpp"
+    "${nei_fork_dir}/fork/soh/mods/items/objects/object_tornado.cpp"
     "${nei_fork_dir}/nei_stubs.c" "${nei_fork_dir}/nei_item_models.c" "${nei_fork_dir}/nei_cmodels.c"
     "${nei_fork_dir}/nei_overlays.c" ${nei_fork_extracted})
 target_include_directories(nei_fork PRIVATE "${fork_src}" "${nei_fork_dir}" "${nei_fork_dir}/compat"
@@ -41,8 +44,7 @@ target_compile_definitions(nei_fork PRIVATE ${OOT_NATIVE_COMPILE_DEFINITIONS})
 # C4047/C4024/C4090/C4133: o jogo passa caminhos de asset como ponteiros de recurso e Player* como Actor*.
 # C4013 é erro: função sem protótipo volta como int e trunca ponteiro ou perde f32 (nei_fork_protos.h).
 target_compile_options(nei_fork PRIVATE /utf-8 /W3 /wd4047 /wd4024 /wd4090 /wd4133 /wd4244 /wd4005 /bigobj
-    /we4013 /Zc:preprocessor /std:c17 "/FI${nei_fork_dir}/compat/nei_compat.h" "/FI${fork_src}/nei_host_overrides.h"
-    "/FI${fork_src}/nei_fork_protos.h")
+    /we4013 /Zc:preprocessor /std:c17 /FI${fork_src}/fork_cpp_compat.h)
 
 # Thunks das funções e ponteiros das variáveis do host que os objetos do fork pedem (gen_imports.py).
 # O .asm fica na raiz do build: o ml64 do MSBuild não cria a subpasta do objeto (nei-fork/) como o cl cria.
@@ -56,15 +58,27 @@ add_custom_command(OUTPUT "${nei_imports_asm}" "${nei_imports_c}"
     DEPENDS nei_fork $<TARGET_OBJECTS:nei_fork> "${fork_src}/gen_imports.py" "${NEI_HOST_SYMBOLS}"
     COMMAND_EXPAND_LISTS VERBATIM)
 
-add_library(linkspan_nei_core SHARED nei_core.cpp assets.cpp registry.cpp text.cpp fork/fork_glue.cpp fork/kaleido_glue.cpp
+add_library(linkspan_nei_core SHARED nei_core.cpp assets.cpp registry.cpp text.cpp fork/fork_glue.cpp fork/backend_glue.cpp fork/kaleido_glue.cpp
     fork/overlay_glue.cpp fork_save.cpp
     $<TARGET_OBJECTS:nei_fork> "${nei_imports_asm}" "${nei_imports_c}")
 # O .map traduz o RVA que o crash handler do host mostra (a DLL não leva PDB) na função do fork.
 target_link_options(linkspan_nei_core PRIVATE /MAP)
 add_library(linkspan_nei_demo SHARED demo/nei_demo.cpp)
 add_executable(linkspan_nei_core_tests tests.cpp registry.cpp fork_save.cpp "${fork_src}/nei_save_bridge.c")
+add_executable(linkspan_nei_lantern_tests lantern_light_tests.cpp)
+add_executable(linkspan_nei_extended_tests extended_items_tests.cpp)
+add_executable(linkspan_nei_inventory_controls_tests inventory_controls_tests.cpp)
+# Exercita o handler real já patchado; remove somente seus includes, cujas
+# dependências são fixtures delimitadas no teste (sem outra implementação).
+file(READ "${nei_fork_dir}/fork/soh/mods/items/logic/item_rocscape.c" rocs_test_source)
+string(REGEX REPLACE "#include[^\n]*\n" "" rocs_test_source "${rocs_test_source}")
+file(WRITE "${CMAKE_BINARY_DIR}/rocscape_under_test.inc" "${rocs_test_source}")
+add_executable(linkspan_nei_motion_visuals_tests motion_visuals_tests.cpp)
+target_include_directories(linkspan_nei_motion_visuals_tests PRIVATE "${CMAKE_BINARY_DIR}")
+add_executable(linkspan_nei_backend_tests backend_tests.cpp "${nei_fork_dir}/fork/soh/mods/items/custom_bottles.cpp")
+target_include_directories(linkspan_nei_backend_tests PRIVATE "${nei_fork_dir}/compat" "${nei_fork_dir}/fork/soh")
 
-foreach(target linkspan_nei_core linkspan_nei_demo linkspan_nei_core_tests)
+foreach(target linkspan_nei_core linkspan_nei_demo linkspan_nei_core_tests linkspan_nei_lantern_tests linkspan_nei_extended_tests linkspan_nei_backend_tests)
     target_include_directories(${target} PRIVATE ${OOT_NATIVE_INCLUDE_DIRS} "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(${target} PRIVATE ${OOT_NATIVE_COMPILE_DEFINITIONS})
     if(MSVC)
@@ -88,3 +102,8 @@ endforeach()
 
 enable_testing()
 add_test(NAME linkspan_nei_core_tests COMMAND linkspan_nei_core_tests)
+add_test(NAME linkspan_nei_lantern_tests COMMAND linkspan_nei_lantern_tests)
+add_test(NAME linkspan_nei_extended_tests COMMAND linkspan_nei_extended_tests)
+add_test(NAME linkspan_nei_backend_tests COMMAND linkspan_nei_backend_tests)
+add_test(NAME linkspan_nei_inventory_controls_tests COMMAND linkspan_nei_inventory_controls_tests)
+add_test(NAME linkspan_nei_motion_visuals_tests COMMAND linkspan_nei_motion_visuals_tests)

@@ -1,0 +1,20 @@
+--- a/soh/mods/items/custom_bottles.cpp
++++ b/soh/mods/items/custom_bottles.cpp
+@@ -227,7 +227,7 @@
+     uint8_t w = (wheel == BOTTLE_WHEEL_B) ? 1 : 0;
+     int base = w * 4;
+     const uint8_t* slots = Nei_Save()->bottleSlots;
+-    if (slotItem != BOTTLE_SLOT_EMPTY) {
++    if (slotItem != BOTTLE_SLOT_EMPTY && (sBottleActive[w] >= 4 || slots[base + sBottleActive[w]] != slotItem)) {
+         for (int i = 0; i < 4; i++) {
+             if (slots[base + i] == slotItem) {
+                 sBottleActive[w] = (uint8_t)i;
+@@ -438,8 +438,6 @@
+             slots[i] = (uint8_t)contentItem;
+             // Owning a bottle converts the row to the NEI layout, exactly as the residue killer did
+             // when bottles still landed in a vanilla slot on their way here.
+-            Bottle_SetNetOwned(1);
+-            Bottle_SetBottomlessOwned(1);
+             return 1;
+         }
+     }

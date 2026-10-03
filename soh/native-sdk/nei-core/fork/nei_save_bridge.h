@@ -17,12 +17,14 @@ typedef struct NeiSaveField {
     uint8_t isSigned;
 } NeiSaveField;
 
-// A tabela preserva as chaves do SaveManager do fork; foto I5 fica deliberadamente fora.
+// Includes the original I5 photo; colour/combo synchronization is separate.
 const NeiSaveField* NeiSave_Fields(uint32_t* count);
 void* NeiSave_Data(void);
 void NeiSave_Reset(void);
 // Migrações que o NeiSave_Load do fork aplica depois de ler os campos (tabela de ecos do Trirod v2).
 void NeiSave_AfterLoad(void);
+// Restores the saved flame into the fork's live item state; defined in player_unit.c.
+void NeiLantern_RestoreFire(uint8_t fireType);
 
 #ifdef __cplusplus
 }

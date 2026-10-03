@@ -1,0 +1,55 @@
+diff --git a/soh/mods/items/logic/item_phantom_hourglass.c b/soh/mods/items/logic/item_phantom_hourglass.c
+--- a/soh/mods/items/logic/item_phantom_hourglass.c
++++ b/soh/mods/items/logic/item_phantom_hourglass.c
+@@ -471,9 +471,9 @@
+ }
+ 
+ static void Hourglass_SetRibbonVtx(Vtx* v, f32 x, f32 y, f32 z) {
+-    v->v.ob[0] = (s16)x;
+-    v->v.ob[1] = (s16)y;
+-    v->v.ob[2] = (s16)z;
++    v->v.ob[0] = (s32)x;
++    v->v.ob[1] = (s32)y;
++    v->v.ob[2] = (s32)z;
+     v->v.flag = 0;
+     v->v.tc[0] = 0;
+     v->v.tc[1] = 0;
+@@ -509,6 +509,12 @@
+         dir.x = b.x - a.x;
+         dir.y = b.y - a.y;
+         dir.z = b.z - a.z;
++        // Idle pose jitter is history, but not a visible trajectory. Otherwise overlapping
++        // camera-facing strips build an opaque fan above a stationary NPC.
++        if (SQ(dir.x) + SQ(dir.y) + SQ(dir.z) < 0.25f) {
++            a = b;
++            continue;
++        }
+         toCam.x = eye.x - a.x;
+         toCam.y = eye.y - a.y;
+         toCam.z = eye.z - a.z;
+@@ -547,8 +553,16 @@
+         return;
+     }
+ 
++    // Preserve this frame's geometry while the host interpolates/renders subsequent frames.
++    Vtx* ribbon = Graph_Alloc(play->state.gfxCtx, quads * 4 * sizeof(Vtx));
++    if (ribbon == NULL) {
++        return;
++    }
++    memcpy(ribbon, sHourglassRibbonVtx, quads * 4 * sizeof(Vtx));
+     OPEN_DISPS(play->state.gfxCtx);
+     POLY_XLU_DISP = Gfx_SetupDL(POLY_XLU_DISP, SETUPDL_25);
++    gDPPipeSync(POLY_XLU_DISP++);
++    gDPSetRenderMode(POLY_XLU_DISP++, G_RM_AA_ZB_XLU_SURF, G_RM_AA_ZB_XLU_SURF2);
+     Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
+     gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+     gSPTexture(POLY_XLU_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_OFF);
+@@ -556,7 +570,7 @@
+     gDPSetCombineMode(POLY_XLU_DISP++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+     gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 255, 220, 40, 110);
+     for (s32 i = 0; i < quads; i++) {
+-        gSPVertex(POLY_XLU_DISP++, &sHourglassRibbonVtx[i * 4], 4, 0);
++        gSPVertex(POLY_XLU_DISP++, &ribbon[i * 4], 4, 0);
+         gSP2Triangles(POLY_XLU_DISP++, 0, 1, 2, 0, 1, 3, 2, 0);
+     }
+     CLOSE_DISPS(play->state.gfxCtx);

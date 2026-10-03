@@ -9,11 +9,16 @@
  *
  * O arquivo guarda também o desvio das caixas de texto (fim do arquivo). */
 #undef ResourceMgr_LoadTexOrDListByName
+#undef ResourceMgr_FileExists
 #undef Message_StartTextbox
 #undef Message_ContinueTextbox
 
 char* ResourceMgr_LoadTexOrDListByName(const char* filePath);
 int NeiAssets_HasFile(const char* path);
+
+u8 NeiResource_FileExists(const char* filePath) {
+    return NeiAssets_HasFile(filePath) ? 1 : 0;
+}
 
 char* NeiResource_LoadTexOrDListByName(const char* filePath) {
     if (!NeiAssets_HasFile(filePath)) {

@@ -1,0 +1,134 @@
+diff --git a/soh/mods/items/logic/item_lantern.c b/soh/mods/items/logic/item_lantern.c
+--- a/soh/mods/items/logic/item_lantern.c
++++ b/soh/mods/items/logic/item_lantern.c
+@@ -15,6 +15,7 @@
+ #include "../helpers/fx_helper.h"
+ #include "macros.h"
+ #include "functions.h"
++#include "variables.h"
+ #include "item_lantern.h"
+ #include "../../nei_save.h" // Skijer's NEI
+ #include "objects/object_poh/object_poh.h"
+@@ -167,6 +168,8 @@
+ // The lit lantern is a real light source: it burns in the flame's own colour, from
+ // the hand that is actually holding it, and flickers like every other flame in the
+ // game instead of sitting at a constant brightness.
++static u8 Lantern_IsInHand(void);
++
+ static void Lantern_UpdateLight(Player* p, PlayState* play) {
+     u8 fireType = gCustomItemState.lanternFireType;
+     f32 flicker;
+@@ -176,7 +179,7 @@
+     u8 g;
+     u8 b;
+ 
+-    if ((fireType == LANTERN_FIRE_NONE) || (fireType >= LANTERN_FIRE_MAX)) {
++    if ((fireType == LANTERN_FIRE_NONE) || (fireType >= LANTERN_FIRE_MAX) || !Lantern_IsInHand()) {
+         if (sLanternLightNode != NULL) {
+             LightContext_RemoveLight(play, &play->lightCtx, sLanternLightNode);
+             sLanternLightNode = NULL;
+@@ -184,14 +187,7 @@
+         return;
+     }
+ 
+-    // While the lantern is drawn in hand the light comes off the lantern itself;
+-    // stowed, it falls back to Link's chest height so the glow does not disappear.
+-    if (gCustomItemState.lanternEquipped || gCustomItemState.lanternSwinging) {
+-        lightPos = p->bodyPartsPos[PLAYER_BODYPART_L_HAND];
+-    } else {
+-        lightPos = p->actor.world.pos;
+-        lightPos.y += 40.0f;
+-    }
++    lightPos = p->bodyPartsPos[PLAYER_BODYPART_L_HAND];
+ 
+     flicker = 0.8f + (Rand_ZeroOne() * 0.2f);
+     r = (u8)(sLanternLightColors[fireType][0] * flicker);
+@@ -546,7 +542,8 @@
+     if (!IsItemEquipped(ITEM_LANTERN)) {
+         return 0;
+     }
+-    return gCustomItemState.lanternEquipped || gCustomItemState.lanternSwinging;
++    return (gCustomItemState.lanternEquipped || gCustomItemState.lanternSwinging) &&
++           (GET_PLAYER(gPlayState)->heldItemAction == PLAYER_IA_LANTERN || gCustomItemState.lanternSwinging);
+ }
+ 
+ // ── Poe fire: reveal ALL invisible Poes ─────────────────────────────────────
+@@ -745,8 +742,11 @@
+     ItemInputState input;
+     ItemInput_Update(&input, ITEM_LANTERN, p, play);
+ 
+-    // Fire type is loaded from save at file load (SaveManager LoadBase).
+-    // Runtime gCustomItemState.lanternFireType is authoritative after that.
++    // First use starts with ordinary light; extinguishing remains persistent.
++    if (gCustomItemState.lanternFireType == LANTERN_FIRE_NONE && Nei_Save()->lanternCapturedTypes == 0) {
++        gCustomItemState.lanternFireType = LANTERN_FIRE_REGULAR;
++        Lantern_SyncToSave();
++    }
+ 
+     // ── Carrying rule ───────────────────────────────────────────────────
+     // A LIT lantern rides in Link's hand for as long as nothing else owns that hand:
+@@ -756,11 +756,7 @@
+     // Any other item action — drawing the sword included — puts it away, and so does
+     // taking the lantern off every button (handled by the draw pass).
+     // Handle_Lantern only runs while the lantern IS on a button, so no extra check here.
+-    if (p->heldItemAction != PLAYER_IA_LANTERN && p->heldItemAction != PLAYER_IA_NONE) {
+-        gCustomItemState.lanternEquipped = 0;
+-    } else if (gCustomItemState.lanternFireType != LANTERN_FIRE_NONE) {
+-        gCustomItemState.lanternEquipped = 1;
+-    }
++    gCustomItemState.lanternEquipped = p->heldItemAction == PLAYER_IA_LANTERN;
+ 
+     // Swing collider/VFX only — the light and the green-fire healing are passive and
+     // run from Lantern_UpdatePassive (CustomItems_Update) so they survive unequipping.
+@@ -812,6 +808,7 @@
+         flicker = 0.8f + (Rand_ZeroOne() * 0.2f);
+ 
+         Gfx_SetupDL_25Opa(play->state.gfxCtx);
++        gSPSegment(POLY_OPA_DISP++, 0x08, &D_80116280[2]);
+         gDPSetEnvColor(POLY_OPA_DISP++, (u8)(sLanternLightColors[fireType][0] * flicker),
+                        (u8)(sLanternLightColors[fireType][1] * flicker),
+                        (u8)(sLanternLightColors[fireType][2] * flicker), 255);
+@@ -836,11 +833,12 @@
+         gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+         gSPDisplayList(POLY_XLU_DISP++, (Gfx*)gEffFire1DL);
+     } else {
+-        // ── UNLIT: Draw semi-transparent, dark tint ──
+-        Gfx_SetupDL_27Xlu(play->state.gfxCtx);
+-        gDPSetEnvColor(POLY_XLU_DISP++, 40, 40, 50, 120);
+-        gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+-        gSPDisplayList(POLY_XLU_DISP++, (Gfx*)gPoeLanternDL);
++        // The lantern body remains opaque when the flame is out.
++        Gfx_SetupDL_25Opa(play->state.gfxCtx);
++        gSPSegment(POLY_OPA_DISP++, 0x08, &D_80116280[2]);
++        gDPSetEnvColor(POLY_OPA_DISP++, 180, 160, 130, 255);
++        gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
++        gSPDisplayList(POLY_OPA_DISP++, (Gfx*)gPoeLanternDL);
+     }
+ 
+     CLOSE_DISPS(play->state.gfxCtx);
+diff --git a/soh/mods/items/logic/item_dominionrod.c b/soh/mods/items/logic/item_dominionrod.c
+--- a/soh/mods/items/logic/item_dominionrod.c
++++ b/soh/mods/items/logic/item_dominionrod.c
+@@ -782,6 +782,10 @@
+ void CustomItems_DrawDominionRod(Player* p, PlayState* play) {
+     if (!domRodActive)
+         return;
++    // The staff and its projectile are separate models.
++    static const ItemHandPose rodPose = { 0.0f, 5.977f, -3.218f, 109.655f, 72.414f, 0.0f, 0.2f };
++    ItemEquip_DrawHeldModel(p, play, "__OTR__objects/object_nei_dominion_rod/gNeiDominionRodDL",
++                            "__OTR__objects/object_nei_dominion_rod/gNeiDominionRodXluDL", &rodPose);
+     if (domRodState != DOMROD_STATE_ORB_FLYING && domRodState != DOMROD_STATE_ORB_RETURN &&
+         domRodState != DOMROD_STATE_CONTROLLING)
+         return;
+diff --git a/soh/mods/items/custom_items_common.c b/soh/mods/items/custom_items_common.c
+--- a/soh/mods/items/custom_items_common.c
++++ b/soh/mods/items/custom_items_common.c
+@@ -1066,7 +1066,7 @@
+             gCustomItemState.lanternSwinging = 0;
+         } else {
+             s32 heldIA = p->heldItemAction;
+-            if (heldIA == PLAYER_IA_NONE || heldIA == PLAYER_IA_LANTERN) {
++            if (heldIA == PLAYER_IA_LANTERN || gCustomItemState.lanternSwinging) {
+                 CustomItems_DrawLantern(p, play);
+             } else {
+                 gCustomItemState.lanternEquipped = 0;

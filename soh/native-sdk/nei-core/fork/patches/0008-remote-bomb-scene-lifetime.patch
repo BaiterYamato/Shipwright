@@ -1,0 +1,45 @@
+diff --git a/soh/mods/actors/remote_bomb.c b/soh/mods/actors/remote_bomb.c
+--- a/soh/mods/actors/remote_bomb.c
++++ b/soh/mods/actors/remote_bomb.c
+@@ -156,17 +156,24 @@
+  * too: a live bomb has to stay inert whatever the player is doing.
+  */
+ void RemoteBomb_Tick(PlayState* play) {
++    static PlayState* sLastPlay = NULL;
+     static s16 sLastScene = -1;
++    static u32 sLastFrames = 0;
++    const u32 frames = play->gameplayFrames;
++    const u8 changed = sLastPlay != play || sLastScene != play->sceneNum || frames < sLastFrames;
++    sLastPlay = play;
++    sLastScene = play->sceneNum;
++    sLastFrames = frames;
+ 
+-    if (sLastScene != play->sceneNum) {
+-        sLastScene = play->sceneNum;
++    // Reloading the same scene may recycle an actor's address. The scene number alone is not a lifetime.
++    if (changed) {
+         RemoteBomb_Drop();
+         return;
+     }
+     if (sRemoteBomb == NULL) {
+         return;
+     }
+-    if (sRemoteBomb->update == NULL) {
++    if (sRemoteBomb->update == NULL || sRemoteBomb->id != ACTOR_EN_BOM) {
+         RemoteBomb_Drop();
+         return;
+     }
+@@ -178,7 +185,12 @@
+     }
+ 
+     // Re-asserted every frame, not set once: En_Bom counts the fuse down inside its own update.
+-    *RemoteBomb_Fuse(sRemoteBomb) = REMOTE_BOMB_INERT;
++    s16* fuse = RemoteBomb_Fuse(sRemoteBomb);
++    if (fuse == NULL) {
++        RemoteBomb_Drop();
++        return;
++    }
++    *fuse = REMOTE_BOMB_INERT;
+     sRemoteBomb->colorFilterParams = 0;
+     RemoteBomb_TintAttach(sRemoteBomb);
+ }

@@ -22,8 +22,8 @@ import sys
 
 # Itens cujo modelo o fork não liga pela coluna drawFunc. Caminho do recurso, escala e camada escolhidos no port.
 OVERRIDES = {
-    # Linha com NEI_NO_RG: o fork desenha pelo caminho antigo do RG (Randomizer_DrawRocsFeather, XLU, sem escala).
-    "ITEM_ROCS_FEATHER_SKIJER": ("objects/object_rocs_feather/gGiRocsFeatherDL", "1.0", "TRANSLUCENT",
+    # O arquivo NEI atual inclui a pena em object_nei_rocs_feather; o caminho antigo do RG não existe nele.
+    "ITEM_ROCS_FEATHER_SKIJER": ("objects/object_nei_rocs_feather/rocs_feather_dl", "1.0", "TRANSLUCENT",
                                  "Randomizer_DrawRocsFeather"),
     # drawFunc NULL na linha, mas o fork tem Randomizer_DrawRocsCape (gNeiRocsCapeDL x0.6).
     "ITEM_ROCS_CAPE": ("objects/object_nei_rocs_cape/rocs_cape_mesh_dl", "0.6", "OPAQUE", "Randomizer_DrawRocsCape"),

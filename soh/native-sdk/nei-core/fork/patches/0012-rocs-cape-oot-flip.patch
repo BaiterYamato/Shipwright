@@ -1,0 +1,43 @@
+--- a/soh/mods/items/logic/item_rocscape.c
++++ b/soh/mods/items/logic/item_rocscape.c
+@@ -36,10 +36,11 @@
+     ItemInputState in;
+     ItemInput_Update(&in, ITEM_ROCS_CAPE, p, play);
+ 
+-    if (!in.wasEquipped)
++    if (!in.wasEquipped || ItemInput_IsBlockedEx(p, play, 1)) {
++        rcMmAnimTimer = 0;
++        sPendingAnimType = 0;
+         return;
+-    if (ItemInput_IsBlockedEx(p, play, 1))
+-        return;
++    }
+ 
+     s32 isOnGround = (p->actor.bgCheckFlags & BGCHECKFLAG_GROUND);
+     s32 inWater = (p->stateFlags1 & PLAYER_STATE1_IN_WATER);
+@@ -57,7 +58,10 @@
+         if (rcMmAnimTimer == 0) {
+             // Delay finished, play the animation now
+             LinkAnimationHeader* mmAnim = NULL;
+-            if (sPendingAnimType == 1) {
++            if (sPendingAnimType == 3) {
++                // OoT's native backflip: no MM archive, transform or sword action.
++                mmAnim = (LinkAnimationHeader*)gPlayerAnim_link_fighter_backturn_jump;
++            } else if (sPendingAnimType == 1) {
+                 mmAnim = MmAnim_Load(MM_ANIM_LINK_FIGHTER_BACKTURN_JUMP);
+             } else if (sPendingAnimType == 2) {
+                 mmAnim = MmAnim_Load(MM_ANIM_LINK_NORMAL_NEWROLL_JUMP_20F);
+@@ -104,9 +108,9 @@
+         FX_SpawnShockwaveSmall(play, &shockwavePos, 60, 150);
+ 
+         // Schedule MM animation after 2 frame delay
+-        if (RocsCape_MmAnimEnabled()) {
+-            rcMmAnimTimer = -2;
+-            sPendingAnimType = CVarGetInteger("gMods.RocsItems.InvertAnims", 0) ? 1 : 2;
+-        }
++        rcMmAnimTimer = -2;
++        sPendingAnimType = RocsCape_MmAnimEnabled()
++            ? (CVarGetInteger("gMods.RocsItems.InvertAnims", 0) ? 1 : 2)
++            : 3; // OoT fallback is always available for the second jump.
+     }
+ }

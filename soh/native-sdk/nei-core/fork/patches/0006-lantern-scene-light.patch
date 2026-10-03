@@ -1,0 +1,46 @@
+diff --git a/soh/mods/items/logic/item_lantern.c b/soh/mods/items/logic/item_lantern.c
+--- a/soh/mods/items/logic/item_lantern.c
++++ b/soh/mods/items/logic/item_lantern.c
+@@ -83,8 +83,6 @@
+ 
+ // ── Light source statics ────────────────────────────────────────────────────
+ 
+-static LightNode* sLanternLightNode = NULL;
+-static LightInfo sLanternLightInfo;
+ 
+ // ── Helpers ─────────────────────────────────────────────────────────────────
+ 
+@@ -180,10 +178,7 @@
+     u8 b;
+ 
+     if ((fireType == LANTERN_FIRE_NONE) || (fireType >= LANTERN_FIRE_MAX) || !Lantern_IsInHand()) {
+-        if (sLanternLightNode != NULL) {
+-            LightContext_RemoveLight(play, &play->lightCtx, sLanternLightNode);
+-            sLanternLightNode = NULL;
+-        }
++        NeiLantern_UpdateLight(0.0f, 0.0f, 0.0f, 0, 0, 0, 0);
+         return;
+     }
+ 
+@@ -195,18 +190,12 @@
+     b = (u8)(sLanternLightColors[fireType][2] * flicker);
+     radius = (s16)(LANTERN_LIGHT_RADIUS * (0.9f + (flicker * 0.1f)));
+ 
+-    Lights_PointNoGlowSetInfo(&sLanternLightInfo, (s16)lightPos.x, (s16)lightPos.y, (s16)lightPos.z, r, g, b, radius);
+-
+-    if (sLanternLightNode == NULL) {
+-        sLanternLightNode = LightContext_InsertLight(play, &play->lightCtx, &sLanternLightInfo);
+-    }
++    // Keep world coordinates as floats (Unbound) and let the host own the scene's light node.
++    NeiLantern_UpdateLight(lightPos.x, lightPos.y + LANTERN_FLAME_Y_OFFSET, lightPos.z, r, g, b, radius);
+ }
+ 
+ static void Lantern_RemoveLight(PlayState* play) {
+-    if (sLanternLightNode != NULL) {
+-        LightContext_RemoveLight(play, &play->lightCtx, sLanternLightNode);
+-        sLanternLightNode = NULL;
+-    }
++    NeiLantern_UpdateLight(0.0f, 0.0f, 0.0f, 0, 0, 0, 0);
+ }
+ 
+ // ── Save sync helpers ───────────────────────────────────────────────────────

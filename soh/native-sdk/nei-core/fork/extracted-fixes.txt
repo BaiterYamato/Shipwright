@@ -6,8 +6,26 @@
 # gravava o id lógico, que o host não conhece e que pode ser o id runtime de outro item (NEI-008).
 z_kaleido_item.c ::: gSaveContext.equips.buttonItems[targetButtonIndex] = pauseCtx->equipTargetItem; ::: gSaveContext.equips.buttonItems[targetButtonIndex] = NeiFork_ToRuntimeItem(pauseCtx->equipTargetItem);
 
+# O macro vanilla le gSlotAgeReqs[slot], que so tem 24 entradas. A pagina do NEI usa 24..71;
+# consulte ExtInv_GetSlotAgeReq pelo helper, preservando o hook de requisito de idade do host.
+z_kaleido_item.c ::: if (!CHECK_AGE_REQ_SLOT(SLOT(item))) { ::: if (!NeiInv_CheckAgeReqSlot(SLOT(item))) {
+z_kaleido_item.c ::: if (!CHECK_AGE_REQ_SLOT(inventorySlot)) { ::: if (!NeiInv_CheckAgeReqSlot(inventorySlot)) {
+z_kaleido_item.c ::: if (CHECK_AGE_REQ_SLOT(inventorySlot) && (cursorItem != ITEM_SOLD_OUT) && ::: if (NeiInv_CheckAgeReqSlot(inventorySlot) && (cursorItem != ITEM_SOLD_OUT) &&
+z_kaleido_item.c ::: if (CHECK_AGE_REQ_SLOT(drawSlot)) { ::: if (NeiInv_CheckAgeReqSlot(drawSlot)) {
+z_kaleido_item.c ::: bool not_acquired = !CHECK_AGE_REQ_SLOT(drawSlot); ::: bool not_acquired = !NeiInv_CheckAgeReqSlot(drawSlot);
+z_kaleido_item.c ::: KaleidoScope_DrawQuadTextureRGBA32(play->state.gfxCtx, ExtInv_GetItemIcon(itemId), 32, 32, 0); ::: KaleidoScope_DrawQuadTextureRGBA32(play->state.gfxCtx, drawSlot >= 24 && drawSlot < 48 ? ExtInv_GetInventoryItemIcon(itemId) : ExtInv_GetItemIcon(itemId), 32, 32, 0);
+z_kaleido_item.c ::: ExtInv_GetItemIcon(leftItem), 32, 32, 0); ::: ExtInv_GetInventoryItemIcon(leftItem), 32, 32, 0);
+z_kaleido_item.c ::: ExtInv_GetItemIcon(rightItem), 32, 32, 4); ::: ExtInv_GetInventoryItemIcon(rightItem), 32, 32, 4);
+z_kaleido_item.c ::: void* lanternTex = ExtInv_GetItemIcon(ITEM_LANTERN); ::: void* lanternTex = ExtInv_GetInventoryItemIcon(ITEM_LANTERN);
+z_kaleido_item.c ::: void* gustTex = ExtInv_GetItemIcon(ITEM_GUST_JAR); ::: void* gustTex = ExtInv_GetInventoryItemIcon(ITEM_GUST_JAR);
+z_kaleido_item.c ::: void* wandTex = ExtInv_GetItemIcon(ITEM_ELEMENTAL_WAND); ::: void* wandTex = ExtInv_GetInventoryItemIcon(ITEM_ELEMENTAL_WAND);
+
 # O host trata a faixa 0xA0-0xEF como item de mod: bloqueia o uso vanilla e zera a ação. O item do fork, que o
 # z_player da DLL recebe como id lógico (player_unit.c), passa direto: o Player_UseItem do fork monta a ação dele.
 unit/z_player.c ::: if (GameInteractor_Should(VB_ITEM_ACTION_BE_NONE, item >= ITEM_NONE_FE, item)) { ::: if (NeiFork_IsForkItem(item) ? (item >= ITEM_NONE_FE) : GameInteractor_Should(VB_ITEM_ACTION_BE_NONE, item >= ITEM_NONE_FE, item)) {
-unit/z_player.c ::: } else if (GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) { ::: } else if (NeiFork_IsForkItem(item) || GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) {
+unit/z_player.c ::: GameInteractor_Should(VB_OVERRIDE_BUTTON_ITEM_USED, true, &i, this, &item); ::: GameInteractor_Should(VB_OVERRIDE_BUTTON_ITEM_USED, true, &i, this, &item); if (NeiFork_IsForeignRuntimeButton(i)) { GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, gSaveContext.equips.buttonItems[i]); return; }
+unit/z_player.c ::: } else if (GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) { ::: } else if (NeiFork_IsForkButtonItem(item, i) || GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) {
 
+unit/z_player.c ::: if (GameInteractor_Should(VB_INFLICT_VOID_DAMAGE, (respawnFlag == 1) || (respawnFlag == -1), respawnFlag)) { ::: if (!SeasonScene_ConsumeVoidDamage(play) && GameInteractor_Should(VB_INFLICT_VOID_DAMAGE, (respawnFlag == 1) || (respawnFlag == -1), respawnFlag)) {
+
+z_player_lib.c ::: sPlayerBodyEnvColor = *color; ::: if (FourSwordClone_ActiveTint(&sTemp)) color = &sTemp; sPlayerBodyEnvColor = *color;

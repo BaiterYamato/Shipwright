@@ -14,10 +14,15 @@
 
 namespace {
 NeiSaveData gForkSave;
+uint8_t gRestoredLanternFire = 0;
 }
 
 extern "C" NeiSaveData* Nei_Save(void) {
     return &gForkSave;
+}
+
+extern "C" void NeiLantern_RestoreFire(uint8_t fireType) {
+    gRestoredLanternFire = fireType;
 }
 
 namespace {
@@ -326,6 +331,17 @@ void TestGiveUseAndLevels() {
     CHECK(registry.GetName(handle, 0, tiny, sizeof(tiny), &size) == SHIP_NATIVE_LIMIT);
     CHECK(registry.SetLevel(handle, 1) == SHIP_NATIVE_OK && registry.SetCount(handle, 12) == SHIP_NATIVE_OK);
 
+    // Changing a rune/mode icon must preserve the item, ammo, level and equipped button.
+    const uint32_t iconWrites = FakeSave::writes;
+    CHECK(registry.UpdateIcon(handle, "textures/rune/stasis") == SHIP_NATIVE_OK);
+    CHECK(FakeItems::items.at(runtime).icon == "textures/rune/stasis");
+    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && state.owned && state.count == 12 &&
+          state.level == 1 && state.button == 3 && state.runtime_id == runtime);
+    CHECK(FakeSave::writes == iconWrites);
+    CHECK(registry.UpdateIcon(handle, "__OTR__textures/bad") == SHIP_NATIVE_INVALID_ARGUMENT);
+    CHECK(registry.UpdateIcon(handle, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT);
+    CHECK(registry.UpdateIcon(0, "textures/a") == SHIP_NATIVE_INVALID_ARGUMENT);
+
     // Revogar tira dos botões e zera o contador.
     CHECK(registry.Revoke(handle) == SHIP_NATIVE_OK);
     CHECK(FakeItems::buttons[3] == 0xFF);
@@ -424,7 +440,12 @@ void TestForkSaveRoundTrip() {
     input["trirodEchoesHi"] = 305419896u;
     input["trirodLayoutVersion"] = 2;
     input["pictoFlags0"] = 17;
-    // Não pertence ao contrato nei.state: a foto I5 não pode inflar o save em 11200 numeros JSON.
+    input["lanternFireType"] = 1;
+    input["lanternCapturedTypes"] = 2;
+    input["wandRodsOwned"] = 63;
+    input["slateRunesOwned"] = 15;
+    input["seasonsOwned"] = 15;
+    // A partial photo array from an older/imported save retains its valid pixels.
     input["pictoPhotoI5"] = Json::array({ 1, 2, 3 });
     FakeSave::block = input.dump();
     FakeSave::hasBlock = true;
@@ -432,10 +453,18 @@ void TestForkSaveRoundTrip() {
     CHECK(gForkSave.ownedItems[0] == 1 && gForkSave.ownedItems[47] == 48);
     CHECK(gForkSave.bottleSlots[0] == 10 && gForkSave.bottleSlots[7] == 17);
     CHECK(gForkSave.caneSkills == 63 && gForkSave.trirodEchoesHi == 305419896u && gForkSave.pictoFlags0 == 17);
+    CHECK(gRestoredLanternFire == 1 && gForkSave.lanternCapturedTypes == 2);
     const Json output = Json::parse(save.SerializeForTests());
     CHECK(output["ownedItems"].is_array() && output["ownedItems"].size() == 48 && output["ownedItems"][47] == 48);
     CHECK(output["bottleSlots"].is_array() && output["bottleSlots"].size() == 8 && output["caneSkills"] == 63);
-    CHECK(!output.contains("pictoPhotoI5"));
+    CHECK(output["pictoPhotoI5"].size() == sizeof(gForkSave.pictoPhotoI5));
+    CHECK(output["pictoPhotoI5"][0] == 1 && output["pictoPhotoI5"][2] == 3);
+    CHECK(output["wandRodsOwned"] == 63 && output["slateRunesOwned"] == 15 && output["seasonsOwned"] == 15);
+    // Full captured image survives writing and reloading, including its final byte.
+    std::memset(gForkSave.pictoPhotoI5, 255, sizeof(gForkSave.pictoPhotoI5));
+    save.OnSaving();
+    save.OnSaveLoaded();
+    CHECK(gForkSave.pictoPhotoI5[0] == 255 && gForkSave.pictoPhotoI5[sizeof(gForkSave.pictoPhotoI5) - 1] == 255);
 
     // Um campo ruim volta ao inicial dele, sem impedir os seguintes de carregarem; array curto preenche o começo.
     FakeSave::block = "{\"ownedItems\":[1,\"x\"],\"bottleSlots\":\"nao\",\"caneSkills\":\"sim\","
@@ -444,6 +473,7 @@ void TestForkSaveRoundTrip() {
     CHECK(gForkSave.ownedItems[0] == 1 && gForkSave.ownedItems[1] == 0xFF && gForkSave.ownedItems[47] == 0xFF);
     CHECK(gForkSave.bottleSlots[0] == 0xFF && gForkSave.caneSkills == 0 && gForkSave.bottomlessContent == 0xFF);
     CHECK(gForkSave.trirodEchoesHi == 7 && gForkSave.season == 3);
+    CHECK(gRestoredLanternFire == 0); // Loading a different save cannot retain the previous flame.
 
     // Máscara de ecos da tabela v1 é descartada, como no NeiSave_Load do fork.
     FakeSave::block = "{\"trirodEchoesLo\":5,\"trirodEchoesHi\":7,\"trirodSel\":2}";

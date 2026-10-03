@@ -100,6 +100,38 @@ def alinhar_redeclaracoes_de_array(raiz, declaracoes):
     return total
 
 
+def aplicar_backends(out):
+    path = os.path.join(out, "extracted", "z_player_lib.c")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    call = "GameInteractor_Should(VB_PLAYER_OVERRIDE_LIMB_DRAW, true, limbIndex, dList, thisx, play);"
+    if text.count(call) != 2:
+        sys.exit("backend tint: expected two gameplay limb callbacks")
+    text = text.replace(call, call + " FourSwordClone_ReapplyTint(play);")
+    write(path, text.encode("utf-8"))
+    path = os.path.join(out, "extracted", "unit", "z_player.c")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    old = "!RocBoots_OnFrozenWater()"
+    if text.count(old) != 2:
+        sys.exit("motion visuals: expected two frozen-water effect/sound gates")
+    text = text.replace(old, "!NeiVisual_OnFrozenWater(this)")
+    write(path, text.encode("utf-8"))
+    path = os.path.join(out, "extracted", "z_parameter.c")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    for original, replacement, count in (
+        ("if (Bottle_GiveBottle(item))", "if (NeiBottles_WheelsEnabled() && Bottle_GiveBottle(item))", 2),
+        ("Bottle_HasFreeSlot()", "(NeiBottles_WheelsEnabled() && Bottle_HasFreeSlot())", 2),
+        ("if (GameInteractor_Should(VB_UPDATE_BOTTLE_ITEM, true, button, item))",
+         "item = NeiBottles_UpdateItem(item, button); if (GameInteractor_Should(VB_UPDATE_BOTTLE_ITEM, true, button, item))", 1),
+    ):
+        if text.count(original) != count:
+            sys.exit("backend bottles: unexpected source shape for " + original)
+        text = text.replace(original, replacement)
+    write(path, text.encode("utf-8"))
+
+
 def aplicar_substituicoes(out):
     """extracted-fixes.txt: troca exata de texto no código extraído (que não passa pelos patches, porque sai do
     commit do fork direto para <out>/extracted). Cada linha é `arquivo ::: original ::: novo`, e o original precisa
@@ -117,7 +149,18 @@ def aplicar_substituicoes(out):
         with open(path, "w", encoding="utf-8", newline="") as f:
             f.write(texto.replace(original, novo))
         total += 1
-    return total
+    # Four pause handlers share this gate. Active NEI wheels must accept D-pad
+    # without requiring the user's unrelated normal-inventory navigation setting.
+    path = os.path.join(out, "extracted", "z_kaleido_item.c")
+    with open(path, encoding="utf-8", newline="") as f:
+        texto = f.read()
+    original = 'bool dpad = (CVarGetInteger(CVAR_SETTING("DPadOnPause"), 0) && !CHECK_BTN_ALL(input->cur.button, BTN_CUP));'
+    if texto.count(original) != 4:
+        sys.exit("inventory controls: expected four pause D-pad gates")
+    novo = original.replace("bool dpad = ", "bool dpad = (gCurrentItemCyclingSlot != -1) || ")
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(texto.replace(original, novo))
+    return total + 4
 
 
 def converter_modelos_c(repo, out):
@@ -388,6 +431,7 @@ def main():
         f.write(macros)
     extracted, sobrepostas, _ = extract(repo, out, symbols)
     substituicoes = aplicar_substituicoes(out)
+    aplicar_backends(out)
     laterais = campos_laterais(out)
     subprocess.run([sys.executable, os.path.join(HERE, "gen_item_models.py"), repo, FORK_COMMIT,
                     os.path.join(out, "nei_item_models.c"), os.path.join(out, "nei_item_models.txt")], check=True)

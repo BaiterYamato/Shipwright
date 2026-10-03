@@ -9,10 +9,9 @@
  *
  * 2. Os ExtButton_* são a ponte do fork para equipar item de id u16 num botão C. O fork guarda o id
  *    real em `gSaveContext.ship.extButtons`, um campo que ele acrescentou ao z64save.h — e mexer nos
- *    headers do host mudaria o layout id da rodada. A DLL fica com a própria tabela: o marcador
- *    ITEM_EXT_BUTTON continua indo para o buttonItems do host, que é o que o jogo lê, e o id real
- *    vive aqui. Consequência conhecida: esse vínculo não entra no save e o código do próprio host
- *    não enxerga o id real, só o marcador. */
+ *    headers do host mudaria o layout id da rodada. Itens registrados usam agora o id runtime do
+ *    serviço genérico: o host salva o vínculo pelo nome e compartilha o ícone com o HUD/DMR.
+ *    A tabela local com ITEM_EXT_BUTTON fica somente como fallback para ids não registrados. */
 #include "z64.h"
 #include "macros.h"
 
@@ -42,6 +41,8 @@ u16 ExtButton_GetItem(s32 btn) {
     if (btn < 0 || btn >= (s32)ARRAY_COUNT(sExtButtonItems)) {
         return ITEM_NONE;
     }
+    const u16 mapped = NeiFork_ExtendedItem(gSaveContext.equips.buttonItems[btn]);
+    if (mapped != ITEM_NONE) return mapped;
     if (gSaveContext.equips.buttonItems[btn] == ITEM_EXT_BUTTON) {
         return sExtButtonItems[btn];
     }
@@ -52,7 +53,8 @@ void ExtButton_SetItem(s32 btn, u16 extId) {
     if (btn < 0 || btn >= (s32)ARRAY_COUNT(sExtButtonItems)) {
         return;
     }
-    gSaveContext.equips.buttonItems[btn] = ITEM_EXT_BUTTON;
+    const u8 runtime = NeiFork_ToRuntimeItem(extId);
+    gSaveContext.equips.buttonItems[btn] = runtime != ITEM_NONE ? runtime : ITEM_EXT_BUTTON;
     sExtButtonItems[btn] = extId;
 }
 

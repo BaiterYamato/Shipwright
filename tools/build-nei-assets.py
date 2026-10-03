@@ -37,7 +37,10 @@ FORK_COMMIT = "c29262b"
 FORK_COMMIT_FULL = "c29262b76ead6f00786885ae4be68916cbee77f5"
 FORK_BASE = "783139310"
 PREFIX = cmodels.ASSET_PREFIX
-VERSION = "0.3.0"
+VERSION = "0.3.6"
+SPINNER_TEXTURE = "objects/object_nei_spinner/sSpinnerTex"
+SPINNER_REPAIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "soh", "native-sdk",
+                              "nei-core", "assets", "spinner-bronze.otex")
 
 # Componente por prefixo de caminho (dentro de soh/assets/custom). O primeiro que casar vale. Tudo que não casar
 # é do núcleo: modelos dos itens, ícones, nomes, animações do Link e o HUD da Cane.
@@ -206,6 +209,20 @@ USER_COMPONENTS = [
     ("soh/soh/Network/", "network"),
 ]
 
+# Referências da expansão MM presentes no código congelado do fork, mesmo quando o OoT é o único host instalado.
+# O gerador do núcleo não deve falhar por elas; caminhos novos fora desta lista continuam sendo erro.
+MM_OPTIONAL_PREFIXES = (
+    "icon_item_static_yar/", "item_name_static/",
+    "objects/gameplay_keep/gDekuFlower", "objects/gameplay_keep/gElegyShell",
+    "objects/gameplay_keep/gGoldDekuFlower", "objects/gameplay_keep/gPinkDekuFlower",
+    "objects/gameplay_keep/gRazorSword", "objects/object_gi_bigbomb/",
+    "objects/object_gi_reserve00/", "objects/object_gi_reserve01/",
+    "objects/object_gi_reserve_b_00/", "objects/object_gi_reserve_b_01/",
+    "objects/object_gi_reserve_c_00/", "objects/object_link_child/gLinkHuman",
+    "objects/object_mask_bu_san/", "objects/object_mkk/", "objects/object_pst/",
+    "objects/object_sek/", "parameter_static/gPictoBox",
+)
+
 
 def user_component(path):
     for prefix, name in USER_COMPONENTS:
@@ -271,6 +288,15 @@ def main():
     for rel_full in files:
         rel = rel_full[len(PREFIX):]
         data = contents[rel_full]
+        repaired = rel == SPINNER_TEXTURE
+        if repaired:
+            # O fork contém uma textura arco-íris de teste. Preservar o modelo e trocar só os pixels
+            # pelo material de bronze local. Mesmo container OTEX, formato RGBA16 e dimensões 32x32.
+            with open(SPINNER_REPAIR, "rb") as f:
+                data = f.read()
+            source = contents[rel_full]
+            if len(data) != len(source) or data[:92] != source[:92] or len(data) != 92 + 32 * 32 * 2:
+                raise SystemExit("spinner-bronze.otex incompatível com sSpinnerTex RGBA16 32x32")
         component = component_of(rel)
         target = os.path.join(stage_root, component, rel)
         os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -278,12 +304,16 @@ def main():
             f.write(data)
         entry = {
             "path": archive_path(rel),
-            "source": rel,
+            "source": "soh/native-sdk/nei-core/assets/spinner-bronze.otex" if repaired else rel,
             "sha256": hashlib.sha256(data).hexdigest(),
             "bytes": len(data),
             "component": component,
             "association": association_of(rel),
         }
+        if repaired:
+            entry["replaces_source"] = rel_full
+            entry["repair"] = "textura de bronze gerada localmente; comportamento e modelo do fork preservados"
+            entry["license"] = "material original gerado para o Link-Span"
         manifest["files"].append(entry)
         by_component.setdefault(component, []).append(entry)
         blobs[entry["path"]] = data
@@ -369,7 +399,7 @@ def main():
                 continue  # prefixo montado em tempo de execução ou texto de exemplo, não caminho
             owners = sorted({user_component(u) for u in users})
             item = {"path": path, "usado_em": sorted(users), "componentes": owners}
-            if path in mm:
+            if path in mm or path.startswith(MM_OPTIONAL_PREFIXES):
                 report["code_mm"].append(item)
             elif "core" in owners:
                 report["code_missing"].append(item)

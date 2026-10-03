@@ -12,6 +12,7 @@
 namespace {
 
 const ShipOotTextV1* gText = nullptr;
+std::string gSensorHint;
 
 // Mesmos códigos do CustomMessage do SoH: %r %g %b %c %p %y %w mudam a cor e & quebra a linha. O terminador 0x02
 // o host acrescenta.
@@ -73,6 +74,7 @@ namespace LinkSpanNei {
 void BindText(const ShipOotTextV1* text) {
     gText = text && text->size >= sizeof(ShipOotTextV1) && text->set_message ? text : nullptr;
 }
+void SetSensorHint(const std::string& hint) { gSensorHint = hint; }
 
 } // namespace LinkSpanNei
 
@@ -81,6 +83,13 @@ extern "C" int NeiText_Prepare(uint16_t id) {
         return 0;
     }
     switch (id) {
+        case 0x9300:
+            if (gSensorHint.empty()) return 0;
+            Set(id, kBoxBlue, gSensorHint.c_str());
+            return 1;
+        case 0x9301:
+            Set(id, kBoxBlack, "Asking costs one %rHeart Container%w,&forever. Ask the slate?\x1B%g&&Yes&No%w");
+            return 1;
         case 0x9216: // TEXT_TIME_GATE_PROMPT (item_time_gate.c); \x1B abre as duas escolhas
             Set(id, kBoxBlack, "Travel through time?\x1B%g&&Yes&No%w");
             return 1;

@@ -37,6 +37,9 @@ class Registry {
     ShipNativeStatus Find(const char* id, uint64_t* handle) const;
     ShipNativeStatus List(NeiItemVisitFn visit, void* user) const;
     ShipNativeStatus GetState(uint64_t handle, NeiItemStateV1* state) const;
+    std::string IconPath(uint64_t handle) const;
+    // Live variant artwork; ownership/level remain unchanged.
+    ShipNativeStatus UpdateIcon(uint64_t handle, const char* path);
     ShipNativeStatus Give(uint64_t handle);
     // Get-item pronto no linkspan.oot.items sem entregar: quem entrega é outro (check do randomizer).
     ShipNativeStatus ArmGetItem(uint64_t handle);

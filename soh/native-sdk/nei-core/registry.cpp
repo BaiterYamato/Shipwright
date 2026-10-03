@@ -363,6 +363,14 @@ ShipNativeStatus Registry::GetState(uint64_t handle, NeiItemStateV1* out) const 
     return SHIP_NATIVE_OK;
 }
 
+std::string Registry::IconPath(uint64_t handle) const {
+    const Item* item = Lookup(handle);
+    if (!item || item->levels.empty()) return {};
+    const SavedState* state = FindState(*item);
+    const size_t level = state ? std::min<size_t>(state->level, item->levels.size() - 1) : 0;
+    return item->levels[level].icon;
+}
+
 ShipNativeStatus Registry::Give(uint64_t handle) {
     const ShipNativeStatus status = ArmGetItem(handle);
     return status == SHIP_NATIVE_OK ? mItems->give_item(Lookup(handle)->runtime) : status;
@@ -400,6 +408,19 @@ ShipNativeStatus Registry::Grant(uint64_t handle) {
     state.count = static_cast<uint16_t>(std::min<uint32_t>(state.count + item->giveCount, MaxCount(*item)));
     Refresh(*item);
     MarkDirty();
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus Registry::UpdateIcon(uint64_t handle, const char* path) {
+    Item* item = Lookup(handle);
+    if (!item || !ValidPath(path)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    const SavedState* state = FindState(*item);
+    const unsigned level = state ? state->level : 0;
+    if (level >= item->levels.size()) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (item->levels[level].icon != path) {
+        item->levels[level].icon = path;
+        Refresh(*item);
+    }
     return SHIP_NATIVE_OK;
 }
 

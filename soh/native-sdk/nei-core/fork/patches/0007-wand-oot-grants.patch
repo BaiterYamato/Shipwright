@@ -1,0 +1,14 @@
+--- a/soh/mods/extended_inventory.c
++++ b/soh/mods/extended_inventory.c
+@@ -1145,7 +1145,10 @@
+             return (Nei_Save()->wandRodsOwned & (1 << mode)) != 0;
+         case WAND_RANDO_MEDALLIONS:
+         default:
+-            return CHECK_QUEST_ITEM(sWandQuest[mode]) != 0;
++            // Normal OoT saves can receive a mode from NEI without acquiring a quest medallion.
++            // Randomizer medallion treatment still follows its original progression.
++            return CHECK_QUEST_ITEM(sWandQuest[mode]) != 0 ||
++                   (!IS_RANDO && (Nei_Save()->wandRodsOwned & (1 << mode)) != 0);
+     }
+ }
+ 

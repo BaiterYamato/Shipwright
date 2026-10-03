@@ -766,7 +766,11 @@ void Interface_Draw(PlayState* play) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, pauseCtx->equipAnimAlpha);
                 gSPVertex(OVERLAY_DISP++, &pauseCtx->cursorVtx[16], 4, 0);
 
-                gDPLoadTextureBlock(OVERLAY_DISP++, ExtInv_GetItemIcon(pauseCtx->equipTargetItem), G_IM_FMT_RGBA,
+                gDPLoadTextureBlock(OVERLAY_DISP++,
+                                    pauseCtx->equipTargetSlot >= 24 && pauseCtx->equipTargetSlot < 48
+                                        ? ExtInv_GetInventoryItemIcon(pauseCtx->equipTargetItem)
+                                        : ExtInv_GetItemIcon(pauseCtx->equipTargetItem),
+                                    G_IM_FMT_RGBA,
                                     G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP,
                                     G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
             } else {
