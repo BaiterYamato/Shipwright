@@ -738,7 +738,9 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterModel(const ShipOotActorModelSpecV1* s
         int id = ActorDB::Instance->RetrieveId(type->name);
         if (id >= 0) {
             const auto existing = sTypes.find(id);
-            if (existing == sTypes.end() || existing->second->active || existing->second->owner != type->owner)
+            // Nome de outro ator do jogo, ou tipo ainda ativo: recusa. Tipo inativo (dono descarregado) é
+            // reaproveitado com o mesmo id, por qualquer dono.
+            if (existing == sTypes.end() || existing->second->active)
                 return SHIP_NATIVE_INVALID_ARGUMENT;
             sChecked.erase(existing->second.get());
         } else {

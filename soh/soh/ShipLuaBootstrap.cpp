@@ -59,6 +59,7 @@
 #include <ship/resource/archive/O2rArchive.h>
 #include <shiplua/generated/ApiBindings.h>
 #include <shiplua/host/ModHost.h>
+#include <shiplua/manifest/ManifestParser.h>
 #include <shiplua/runtime/LuaRuntime.h>
 #include <shiplua/storage/AtomicFile.h>
 #include <shiplua/storage/KeyValueStorage.h>
@@ -6359,7 +6360,12 @@ void MountCrossWorldArchives() {
 }
 
 // PASSO 1 — assets próprios de mod.
-std::vector<std::filesystem::path> gPendingUnboundArchives;
+// Camada Unbound e a pasta do mod que a contém (vazia para .o2r solto na raiz de mods/).
+struct PendingUnboundArchive {
+    std::filesystem::path archive;
+    std::filesystem::path modDirectory;
+};
+std::vector<PendingUnboundArchive> gPendingUnboundArchives;
 
 bool IsUnboundLayerArchive(const std::filesystem::path& path) {
     const auto archive = std::make_shared<Ship::O2rArchive>(path.generic_string());
@@ -6399,6 +6405,7 @@ void MountModAssetArchives() {
     }
 
     std::vector<std::filesystem::path> archives;
+    std::map<std::filesystem::path, std::filesystem::path> archiveModDirectory;
     for (const auto& entry : std::filesystem::directory_iterator(modsRoot, ec)) {
         if (entry.is_regular_file()) {
             const std::string extension = entry.path().extension().string();
@@ -6414,6 +6421,7 @@ void MountModAssetArchives() {
                 const std::string extension = asset.path().extension().string();
                 if (asset.is_regular_file() && (extension == ".o2r" || extension == ".otr")) {
                     archives.push_back(asset.path());
+                    archiveModDirectory[asset.path()] = entry.path();
                 }
             }
         }
@@ -6426,7 +6434,9 @@ void MountModAssetArchives() {
         // camada Unbound pode entrar na raiz: ela precisa mesclar cenas e exits
         // por caminho original antes do game.ready, sem contaminar a conversão.
         if (archivePath.extension() == ".o2r" && IsUnboundLayerArchive(archivePath)) {
-            gPendingUnboundArchives.push_back(archivePath);
+            const auto owner = archiveModDirectory.find(archivePath);
+            gPendingUnboundArchives.push_back(
+                { archivePath, owner == archiveModDirectory.end() ? std::filesystem::path{} : owner->second });
             continue;
         }
         const std::string id = archivePath.stem().string();
@@ -6473,7 +6483,20 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     for (const auto& [modId, reason] : loaded.value->rejected) {
         SPDLOG_WARN("ShipLua rejeitou o mod '{}': {}", modId, reason);
     }
-    for (const auto& archivePath : gPendingUnboundArchives) {
+    for (const auto& [archivePath, modDirectory] : gPendingUnboundArchives) {
+        // Camada dentro da pasta de um mod só entra na raiz do VFS se esse mod carregou: um mod rejeitado não
+        // pode sombrear cenas do jogo. O .o2r solto em mods/ é data mod e não tem manifesto.
+        if (!modDirectory.empty()) {
+            const auto manifest = ShipLua::ParseManifestFile((modDirectory / "manifest.toml").string());
+            const bool accepted =
+                manifest.isOk() && std::find(loaded.value->loadedIds.begin(), loaded.value->loadedIds.end(),
+                                             manifest.value->id) != loaded.value->loadedIds.end();
+            if (!accepted) {
+                SPDLOG_WARN("ShipLua ignorou a camada Unbound '{}': o mod da pasta '{}' nÃ£o carregou",
+                            archivePath.string(), modDirectory.string());
+                continue;
+            }
+        }
         uint64_t handle = 0;
         const auto status = NativeMountResourceArchive(archivePath.string().c_str(), &handle);
         if (status == SHIP_NATIVE_OK) {
