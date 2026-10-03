@@ -6492,7 +6492,7 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
                 manifest.isOk() && std::find(loaded.value->loadedIds.begin(), loaded.value->loadedIds.end(),
                                              manifest.value->id) != loaded.value->loadedIds.end();
             if (!accepted) {
-                SPDLOG_WARN("ShipLua ignorou a camada Unbound '{}': o mod da pasta '{}' nÃ£o carregou",
+                SPDLOG_WARN("ShipLua ignorou a camada Unbound '{}': o mod da pasta '{}' n\xC3\xA3o carregou",
                             archivePath.string(), modDirectory.string());
                 continue;
             }

@@ -24,7 +24,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-if (-not $ReleaseRoot) { $ReleaseRoot = Join-Path $PSScriptRoot '..uildelease' }
+if (-not $ReleaseRoot) { $ReleaseRoot = Join-Path $PSScriptRoot '..\build\release' }
 
 function Write-Utf8NoBom {
     param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Content)
