@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "unbound_format.h"
@@ -17,6 +18,9 @@ struct TranscodeContext {
     std::function<int32_t(const std::string&)> resolveEntrance;
     std::vector<std::string> notes; // entradas descartadas e outros avisos para o log
     std::function<int32_t(const std::string&)> resolveActor;
+    // Recursos que o XML manda o host carregar (campo, caminho), na ordem do documento; entradas descartadas não
+    // entram. A checagem de referências do framework confere cada um no VFS antes do gameplay (UNBOUND-019).
+    std::vector<std::pair<std::string, std::string>> references;
 };
 
 // scene.json (room=false) ou rooms/<n>.json (room=true). DocumentError = documento recusado.

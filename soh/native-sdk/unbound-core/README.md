@@ -74,12 +74,24 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   `unbound/...` em alguma camada, `unbound/scenes.json` e `text/**`) é comparado folha a folha pela mesma regra
   do jogo: se o merge mantém tudo o que cada mod pôs (chaves diferentes, ou o mesmo valor), é um delta
   mesclável e só fica registrado. Se um mod sobrescreve, remove ou descarta com `$replace` um valor que outro
-  trouxe, sai o aviso `unbound: conflito: <arquivo>: <mod de cima> sobrescreve N valor(es) de <mod de baixo>;
-  vence <mod de cima>`, com até três chaves de exemplo. Qualquer outro arquivo (binário ou JSON sem tipo) o VFS
-  entrega inteiro: conteúdo igual é cópia idêntica; diferente é `conflito: ... substitui o arquivo inteiro de
-  ...`. Vence o archive montado depois (ordem de caminho em `mods/`). O resumo sai em `unbound: mods:
-  camadas=... conflitos=...` e a lista completa vai para `logs/linkspan-unbound.log`. A base convertida não
-  conta como mod.
+  trouxe, sai o aviso `unbound: conflito: <arquivo>: <mod de cima> sobrescreve N valor(es) de <mod de baixo>
+  (no par, vale <mod de cima>, montado depois)`, com até três chaves de exemplo. Qualquer outro arquivo (binário
+  ou JSON sem tipo) o VFS entrega inteiro: conteúdo igual é cópia idêntica; diferente é `conflito: ... substitui
+  o arquivo inteiro de ...`. Vence o archive montado depois (ordem de caminho em `mods/`). O resumo sai em
+  `unbound: mods: camadas=... conflitos=...` e a lista completa vai para `logs/linkspan-unbound.log`. A base
+  convertida não conta como mod.
+- **Referências de recurso (0.6.2).** Nomes de recurso mudam entre versões da ROM (display lists e texturas com
+  offset no nome, por exemplo), e uma cena de mod feita sobre outra versão aponta para algo que o `oot.o2r` do
+  usuário não tem; o jogo só descobriria ao entrar na cena. No mesmo `game.ready`, cada `.json` que um mod
+  Unbound traz é mesclado com as camadas de baixo e transcodificado como o jogo faria (só os tipos que o
+  framework registra: `unbound/scene/1`, `room/1`, `collision/3`, `paths/1`), e cada recurso que o XML manda o
+  host carregar é conferido no VFS: `mesh` (`opa`, `xlu`, imagens de fundo), `collision`, `rooms`, `paths`,
+  `cutscene`, texturas do `texCycle`, `sound.song` e o `bulk.file` da colisão. Recurso ausente sai como aviso
+  `unbound: aviso: <documento>: <campo> aponta para <caminho>, que nenhum archive montado tem (<mods>)`;
+  documento que o jogo recusaria sai como `aviso: <documento> seria recusado ao carregar: <motivo>`. O resumo
+  é `unbound: referências: documentos=... conferidas=... ausentes=... recusados=... jogo=<versões do oot.o2r>`;
+  as notas do transcodificador (atores desconhecidos, entradas descartadas) vão só para o log do Unbound. Até
+  4 096 documentos por boot.
 
 ## Unbound 0.8 (novo na 0.5.0)
 
@@ -159,7 +171,7 @@ nomes registrados, recursos do jogo, `collision.bin` nem limites que dependem de
 
 | Função | Quando | Resultado |
 |---|---|---|
-| `ready` | `game.ready` | base, registro e conflitos entre mods com as camadas atuais (chamar de novo refaz) |
+| `ready` | `game.ready` | base, registro, conflitos entre mods e referências de recurso com as camadas atuais (chamar de novo refaz) |
 | `apply_text` | primeiro `game.frame` | texto; o SoH só carrega as tabelas de mensagens depois do `game.ready` |
 | `unbound_report` | a qualquer momento | estado da base, contagem de documentos e as últimas notas |
 | `load_scene_registry` | compatibilidade 0.2/0.3 | só o registro |

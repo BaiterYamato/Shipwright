@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -30,6 +31,7 @@
 #include "oot_text.h"
 #include "room_actors.h"
 #include "scene_conflicts.h"
+#include "scene_references.h"
 #include "scene_registry.h"
 #include "transcode.h"
 #include "unbound_docs.h"
@@ -53,6 +55,8 @@ constexpr size_t MAX_NOTES = 12;
 constexpr size_t MAX_DELTA_LINES = 8;
 // Conflitos e avisos no texto do ready (o WriteText corta em 64 KiB); a lista inteira fica no log do Unbound.
 constexpr size_t MAX_WARNING_LINES = 64;
+// Documentos de mod transcodificados no game.ready para conferir as referências (cada um custa um transcode).
+constexpr size_t MAX_REFERENCE_DOCUMENTS = 4096;
 constexpr const char* ACTOR_PATCH_SCHEMA = "linkspan.unbound.actor-patch/v1";
 constexpr const char* SCENE_REGISTRY_PATH = "unbound/scenes.json";
 constexpr const char* MANIFEST_PATH = "unbound.json";
@@ -1030,6 +1034,112 @@ std::string JoinLabels(const std::vector<std::string>& archives) {
     return text;
 }
 
+bool EndsWithJson(const std::string& name) {
+    if (name.size() < 5) {
+        return false;
+    }
+    std::string tail = name.substr(name.size() - 5);
+    for (auto& c : tail) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return tail == ".json";
+}
+
+std::string GameVersionsText(const State& state) {
+    std::vector<uint32_t> versions(16);
+    uint32_t count = 0;
+    if (state.resources->get_game_versions(versions.data(), static_cast<uint32_t>(versions.size()), &count) !=
+            SHIP_NATIVE_OK ||
+        count == 0) {
+        return "?";
+    }
+    std::string text;
+    for (uint32_t i = 0; i < std::min<uint32_t>(count, static_cast<uint32_t>(versions.size())); ++i) {
+        char hex[16];
+        std::snprintf(hex, sizeof(hex), "%08X", versions[i]);
+        const std::string name = LinkSpanUnbound::GameVersionName(versions[i]);
+        text += (text.empty() ? "" : ",") + (name.empty() ? std::string(hex) : name + " (" + hex + ")");
+    }
+    return text;
+}
+
+// §10.5/§14.3 (UNBOUND-019): nomes de recurso mudam entre famílias de ROM, e uma cena de mod feita sobre outra versão
+// aponta para display lists, imagens, colisão ou salas que o oot.o2r do usuário não tem; o jogo só descobriria ao
+// entrar na cena. Aqui cada documento Unbound que um mod traz é mesclado e transcodificado como o TranscodeJson faria
+// e cada recurso do XML é conferido no VFS. Documento que o jogo recusaria também aparece. A base fica de fora: ela é
+// gerada do próprio oot.o2r do usuário.
+std::string CheckReferences(State& state, const std::map<std::string, std::vector<std::string>>& owners,
+                            std::vector<std::string>& lines) {
+    uint32_t documents = 0;
+    uint32_t checked = 0;
+    uint32_t missing = 0;
+    uint32_t refused = 0;
+    size_t candidates = 0;
+    std::vector<std::string> notes;
+    for (const auto& [path, archives] : owners) {
+        if (archives.empty() || !EndsWithJson(path)) {
+            continue;
+        }
+        if (++candidates > MAX_REFERENCE_DOCUMENTS) {
+            continue;
+        }
+        LayerCollector collector = DocumentCollector();
+        const auto read = state.resources->read_file_layers(path.c_str(), CollectLayer, &collector);
+        if (read != SHIP_NATIVE_OK) {
+            lines.push_back("aviso: " + path + " ilegível nas camadas (" + StatusName(read) +
+                            "); referências não conferidas");
+            continue;
+        }
+        LinkSpanUnbound::TranscodeContext context;
+        context.path = path;
+        context.resolveEntrance = [&state](const std::string& name) { return ResolveEntrance(state, name); };
+        context.resolveActor = [&state](const std::string& name) { return ResolveActor(state, name); };
+        const auto report = LinkSpanUnbound::CollectReferences(collector.layers, context);
+        if (!report.typed) {
+            continue;
+        }
+        ++documents;
+        for (const auto& note : report.notes) {
+            notes.push_back(path + ": " + note);
+        }
+        if (!report.accepted) {
+            ++refused;
+            // A mensagem do transcodificador já começa pelo caminho do documento.
+            const std::string reason =
+                report.error.rfind(path + " ", 0) == 0 ? report.error.substr(path.size() + 1) : report.error;
+            lines.push_back("aviso: " + path + " seria recusado ao carregar: " + reason + " (" + JoinLabels(archives) +
+                            ")");
+            continue;
+        }
+        for (const auto& [field, resource] : report.references) {
+            ++checked;
+            const std::string lookup = LinkSpanUnbound::ResourceLookupPath(field, resource);
+            // O ResourceManager também resolve um alias <caminho>.meta sem arquivo real no caminho; arquivo cru não.
+            const bool alias = !LinkSpanUnbound::IsRawFileReference(field) &&
+                               state.resources->has_file((lookup + ".meta").c_str());
+            if (!state.resources->has_file(lookup.c_str()) && !alias) {
+                ++missing;
+                lines.push_back("aviso: " + path + ": " + field + " aponta para " + resource +
+                                ", que nenhum archive montado tem (" + JoinLabels(archives) + ")");
+            }
+        }
+    }
+    if (candidates > MAX_REFERENCE_DOCUMENTS) {
+        lines.push_back("aviso: " + std::to_string(candidates - MAX_REFERENCE_DOCUMENTS) +
+                        " documento(s) de mod além de " + std::to_string(MAX_REFERENCE_DOCUMENTS) +
+                        "; referências não conferidas");
+    }
+    {
+        std::lock_guard lock(state.noteMutex);
+        for (const auto& note : notes) {
+            AppendLog(state, "referências: " + note);
+        }
+    }
+    return "referências: documentos=" + std::to_string(documents) + " conferidas=" + std::to_string(checked) +
+           " ausentes=" + std::to_string(missing) + " recusados=" + std::to_string(refused) +
+           (notes.empty() ? "" : " notas=" + std::to_string(notes.size())) + " jogo=" + GameVersionsText(state);
+}
+
 // §10.5/§14.3: dois mods no mesmo caminho do VFS, verificado no game.ready, antes do gameplay. Documento JSON que
 // o Unbound mescla é comparado folha a folha pela regra do jogo; delta que mescla sem perda fica registrado e valor
 // de um mod que outro sobrescreve vira "conflito:" (aviso no main.lua), com quem vence. Qualquer outro arquivo o
@@ -1138,13 +1248,16 @@ std::string CheckSceneConflicts(State& state) {
     std::string text = "mods: camadas=" + std::to_string(mods) + " arquivos em comum=" + std::to_string(shared) +
                        " mescláveis=" + std::to_string(mergeable) + " idênticos=" + std::to_string(identical) +
                        " conflitos=" + std::to_string(conflicts);
+    const std::string references = CheckReferences(state, owners, lines);
     {
         std::lock_guard lock(state.noteMutex);
         AppendLog(state, text);
+        AppendLog(state, references);
         for (const auto& line : lines) {
             AppendLog(state, line);
         }
     }
+    text += "\n" + references;
     // No log do jogo vão até MAX_WARNING_LINES avisos e conflitos e até MAX_DELTA_LINES deltas e cópias idênticas;
     // o que passar disso fica só em logs/linkspan-unbound.log, com uma linha dizendo quantos.
     size_t informative = 0;

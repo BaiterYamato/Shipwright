@@ -162,8 +162,19 @@ void ActorAttrs(Xml& xml, const Json& actor) {
         .Attr("Params", S16(Field(actor, "params")));
 }
 
+// Maior índice de setup transcodificado (os alternativos viram um <AlternateHeader> por índice, vazios no meio).
+constexpr int64_t kMaxSetupIndex = 255;
+
 std::string Where(const TranscodeContext& context, const std::string& what) {
     return context.path + " " + what;
+}
+
+using References = std::vector<std::pair<std::string, std::string>>;
+
+void Reference(References& references, const char* field, const std::string& path) {
+    if (!path.empty()) {
+        references.emplace_back(field, path);
+    }
 }
 
 // Faixas do `sound` (SPEC §4.2, Unbound 0.8). O motor indexa tabelas com esses bytes sem conferir, e o 255
@@ -241,7 +252,7 @@ uint32_t PassOf(const Json& entry) {
     throw EntryError("pass '" + pass + "' não é opa, xlu nem both");
 }
 
-void MaterialAnim(Xml& xml, const Json& entry) {
+void MaterialAnim(Xml& xml, const Json& entry, References& references) {
     if (!entry.is_object()) {
         throw EntryError("a entrada não é um objeto");
     }
@@ -318,9 +329,23 @@ void MaterialAnim(Xml& xml, const Json& entry) {
                 throw EntryError("textures tem um valor que não é caminho");
             }
             xml.Leaf("Texture").Attr("Path", texture.get<std::string>()).Close();
+            Reference(references, "materialAnims.textures", texture.get<std::string>());
         }
-        for (const auto& frame : SubArray(entry, "frames")) {
-            xml.Leaf("Frame").Attr("Index", ToInt(frame, -1)).Close();
+        // As mesmas regras do AddCycle da fábrica: entrada que ela descartaria sai descartada aqui, sem referência.
+        const size_t textureCount = SubArray(entry, "textures").size();
+        if (textureCount > 65536) {
+            throw EntryError("mais de 65536 texturas");
+        }
+        const Json& frames = SubArray(entry, "frames");
+        if (frames.empty() || frames.size() > 65535) {
+            throw EntryError("frames precisa de 1 a 65535 entradas");
+        }
+        for (const auto& frame : frames) {
+            const int64_t index = ToInt(frame, -1);
+            if (index < 0 || index >= static_cast<int64_t>(textureCount)) {
+                throw EntryError("frame " + std::to_string(index) + " não é índice de textures");
+            }
+            xml.Leaf("Frame").Attr("Index", index).Close();
         }
         xml.Close();
         return;
@@ -335,8 +360,10 @@ void MaterialAnims(Xml& xml, const Json& list, TranscodeContext& context) {
     for (const auto& key : PositionalKeys(list, Where(context, "materialAnims"))) {
         try {
             Xml one;
-            MaterialAnim(one, list[key]);
+            References references;
+            MaterialAnim(one, list[key], references);
             entries += one.Finish();
+            context.references.insert(context.references.end(), references.begin(), references.end());
         } catch (const EntryError& error) {
             context.notes.push_back(Where(context, "materialAnims/" + key) + ": " + error.what() +
                                     "; entrada descartada");
@@ -414,6 +441,8 @@ void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
             .Attr("BgImageCount", static_cast<uint32_t>(images.size()))
             .Attr("MeshOpa", PathField(mesh, "opa"))
             .Attr("MeshXlu", PathField(mesh, "xlu"));
+        Reference(context.references, "mesh.opa", PathField(mesh, "opa"));
+        Reference(context.references, "mesh.xlu", PathField(mesh, "xlu"));
         for (const Json* image : images) {
             xml.Leaf("BgImage")
                 .Attr("Unknown_00", U16(Field(*image, "unk00")))
@@ -428,6 +457,7 @@ void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
                 .Attr("Mode0", U16(Field(*image, "mode0")))
                 .Attr("TLUTCount", U16(Field(*image, "tlutCount")))
                 .Close();
+            Reference(context.references, "mesh.image.source", PathField(*image, "source"));
         }
         xml.Close().Close();
         return;
@@ -444,6 +474,8 @@ void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
                                                                                   NumberField(entry, "radius"));
         }
         xml.Attr("MeshOpa", PathField(entry, "opa")).Attr("MeshXlu", PathField(entry, "xlu")).Close();
+        Reference(context.references, "mesh.entries.opa", PathField(entry, "opa"));
+        Reference(context.references, "mesh.entries.xlu", PathField(entry, "xlu"));
     }
     xml.Close();
 }
@@ -459,6 +491,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     }
     if (!shared.collision.empty()) {
         xml.Leaf("SetCollisionHeader").Attr("FileName", shared.collision).Close();
+        Reference(context.references, "collision", shared.collision);
     }
     if (shared.rooms.is_object() && !shared.rooms.empty()) {
         xml.Open("SetRoomList");
@@ -469,6 +502,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
                 .Attr("VromStart", 0)
                 .Attr("VromEnd", 0)
                 .Close();
+            Reference(context.references, "rooms", room.is_string() ? room.get<std::string>() : std::string());
         }
         xml.Close();
     }
@@ -538,6 +572,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         const std::string song = PathField(s, "song");
         if (!song.empty()) {
             xml.Attr("Song", song);
+            Reference(context.references, "sound.song", song);
             if (seq == kNoMusicSeq) {
                 // A música toca no lugar do tema, e uma cena sem música nunca pede tema.
                 context.notes.push_back(Where(context, "sound") + ": song " + song + " não toca com seq " +
@@ -564,6 +599,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         for (const auto& file : setup["paths"]) {
             if (file.is_string()) {
                 xml.Leaf("Pathway").Attr("FilePath", file.get<std::string>()).Close();
+                Reference(context.references, "paths", file.get<std::string>());
             }
         }
         xml.Close();
@@ -682,6 +718,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     }
     if (has("cutscene") && setup["cutscene"].is_string()) {
         xml.Leaf("SetCutscenes").Attr("FileName", setup["cutscene"].get<std::string>()).Close();
+        Reference(context.references, "cutscene", setup["cutscene"].get<std::string>());
     }
     xml.Leaf("EndMarker").Close();
 }
@@ -732,6 +769,13 @@ std::string TranscodeScene(const Json& doc, bool room, TranscodeContext& context
         if (!ParseIntString(key, index) || index < 0 || key.find_first_not_of("0123456789") != std::string::npos) {
             continue; // outras chaves são ignoradas (§4.2)
         }
+        if (index > kMaxSetupIndex) {
+            // Um <AlternateHeader> por índice até o maior: um setup "1000000000" num JSON de 60 bytes viraria
+            // gigabytes de XML. O jogo nunca pede cabeçalho tão alto (sceneLayer de cutscene vai até 19).
+            context.notes.push_back(Where(context, "setups/" + key) + ": índice acima de " +
+                                    std::to_string(kMaxSetupIndex) + " ignorado");
+            continue;
+        }
         maxSetup = std::max(maxSetup, index);
         if (index > 0 && setups[key].is_object()) {
             alternates.push_back({ index, key });
@@ -777,6 +821,7 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
     if (bulkFile.empty()) {
         throw DocumentError(Where(context, "bulk.file") + ": falta o collision.bin");
     }
+    Reference(context.references, "bulk.file", bulkFile);
     xml.Attr("BulkFile", bulkFile)
         .Attr("BulkVertices", static_cast<uint32_t>(Field(bulk, "vertices")))
         .Attr("BulkPolys", static_cast<uint32_t>(Field(bulk, "polys")));
