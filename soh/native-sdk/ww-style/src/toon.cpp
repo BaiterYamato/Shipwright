@@ -439,9 +439,10 @@ void ToonFrame(Mod& mod, PlayState* play) {
     ++toon.frame;
     toon.debugUsed = 0;
     if (mod.cfg.debugLightSources && toon.debugGfx.size() < kDebugGfxCap) toon.debugGfx.resize(kDebugGfxCap);
-    if (play != toon.play) {
+    const int16_t scene = play ? play->sceneNum : -1;
+    const uint32_t frames = play ? static_cast<uint32_t>(play->state.frames) : 0;
+    if (ObservePlay(toon.stamp, play, scene, frames)) {
         toon.keys.clear();
-        toon.play = play;
         mod.navi = {};
         mod.litFairies.clear();
     }

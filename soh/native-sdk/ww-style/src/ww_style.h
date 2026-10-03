@@ -12,6 +12,7 @@
 #include "oot_render.h"
 #include "oot_resources.h"
 #include "oot_world.h"
+#include "play_stamp.h"
 #include "settings.h"
 #include "z64.h"
 
@@ -39,7 +40,7 @@ struct ToonKeyState {
 
 struct ToonState {
     std::unordered_map<const Actor*, ToonKeyState> keys;
-    const void* play = nullptr;
+    PlayStamp stamp;
     uint32_t frame = 0;
     float dt = 3.0f / 60.0f; // segundos por frame de jogo
     float alpha = 0.2f;      // fração do slerp por frame; chega a ~99% em transitionTime segundos
@@ -84,7 +85,7 @@ struct WorldLightState {
 
 // Luzes do mundo (world.cpp). Chaves por LightInfo, o node->info da lista play->lightCtx.
 struct LightingState {
-    const void* play = nullptr;
+    PlayStamp stamp;
     std::unordered_map<const void*, FlameFlickerState> flicker;
     std::unordered_map<const void*, WorldLightState> lights;
     // Fada solta → a luz sem brilho dela, vista pelo hook de fada. A luz fica dentro do ator, então o par não muda

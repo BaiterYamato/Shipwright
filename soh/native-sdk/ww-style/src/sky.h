@@ -49,12 +49,6 @@ struct GfxList {
 };
 
 // Marca da última carga de cena vista por quem guarda estado transitório entre frames.
-struct PlayStamp {
-    const void* play = nullptr;
-    int16_t scene = -1;
-    uint32_t frames = 0;
-};
-
 // sky_env.cpp
 // Verdadeiro numa carga nova: outro PlayState, outra cena ou o contador de frames recomeçado (a mesma cena
 // recarregada). Atualiza a marca a cada chamada.

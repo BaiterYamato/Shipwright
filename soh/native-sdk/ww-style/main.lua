@@ -323,13 +323,13 @@ local pending = false
 push = function()
     local result, failure = ship.native.call("configure", snapshot())
     pending = result == nil
-    if pending then ship.log.warn("ww-style: configure falhou: " .. tostring(failure)) end
+    if pending then ship.log.warn("ww-style: configure failed: " .. tostring(failure)) end
 end
 
 for _, page in ipairs(pages) do
     for _, widget in ipairs(page.widgets) do widget.group = nil end
     local ok, failure = pcall(function() return ship.menu.register(page) end)
-    if not ok then ship.log.warn("ww-style: página " .. page.id .. " sem menu: " .. tostring(failure)) end
+    if not ok then ship.log.warn("ww-style: page " .. page.id .. " has no menu: " .. tostring(failure)) end
 end
 
 push()
@@ -339,7 +339,7 @@ ship.events.on("game.frame", function()
     if pending then push() end
 end)
 
-ship.hotkeys.register("ww_style_stats", { label = "Wind Waker Style: stats no log" }, function()
+ship.hotkeys.register("ww_style_stats", { label = "Wind Waker Style: log stats" }, function()
     local stats, failure = ship.native.call("stats", "")
-    ship.log.info("ww-style: " .. (stats or ("falhou: " .. tostring(failure))))
+    ship.log.info("ww-style: " .. (stats or ("failed: " .. tostring(failure))))
 end)

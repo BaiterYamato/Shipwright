@@ -81,12 +81,7 @@ PlayStamp sWeatherStamp;
 } // namespace
 
 bool IsNewPlay(PlayStamp& stamp, const PlayState* play) {
-    const auto frames = static_cast<uint32_t>(play->state.frames);
-    const bool fresh = play != stamp.play || play->sceneNum != stamp.scene || frames < stamp.frames;
-    stamp.play = play;
-    stamp.scene = play->sceneNum;
-    stamp.frames = frames;
-    return fresh;
+    return ObservePlay(stamp, play, play->sceneNum, static_cast<uint32_t>(play->state.frames));
 }
 
 SkyWeather SampleWeather(PlayState* play) {

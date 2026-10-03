@@ -5,6 +5,7 @@
 #include <cstdlib>
 
 #include "settings.h"
+#include "play_stamp.h"
 
 namespace {
 int failures = 0;
@@ -52,6 +53,17 @@ int main() {
         Check(Near(local.rampSoftness, 0.05f), "locale pt-BR não muda o ponto decimal");
         std::setlocale(LC_NUMERIC, "C");
     }
+
+    int firstPlay = 0;
+    int secondPlay = 0;
+    WWStyle::PlayStamp stamp;
+    Check(WWStyle::ObservePlay(stamp, &firstPlay, 1, 100), "primeira carga de cena");
+    Check(!WWStyle::ObservePlay(stamp, &firstPlay, 1, 101), "continuação da mesma cena");
+    Check(WWStyle::ObservePlay(stamp, &firstPlay, 2, 102), "nova cena no mesmo endereço");
+    Check(WWStyle::ObservePlay(stamp, &firstPlay, 2, 0), "mesma cena recarregada no mesmo endereço");
+    Check(WWStyle::ObservePlay(stamp, &secondPlay, 2, 1), "novo PlayState");
+    Check(WWStyle::ObservePlay(stamp, nullptr, -1, 0), "saída do jogo");
+    Check(!WWStyle::ObservePlay(stamp, nullptr, -1, 0), "continua fora do jogo");
 
     if (failures == 0) std::puts("linkspan_ww_style_tests: ok");
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

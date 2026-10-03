@@ -238,10 +238,11 @@ void FlameFlicker(Mod& mod, ShipOotPointLightColorHookV2& light) {
 
 void WorldFrame(Mod& mod, PlayState* play) {
     LightingState& lighting = mod.lighting;
-    if (lighting.play != play) {
-        // Outro game state: as luzes e as fadas são outras. A luz do Deku Stick o host já apagou na troca de cena;
-        // o destroy só solta o handle velho.
-        lighting.play = play;
+    const int16_t scene = play ? play->sceneNum : -1;
+    const uint32_t frames = play ? static_cast<uint32_t>(play->state.frames) : 0;
+    if (ObservePlay(lighting.stamp, play, scene, frames)) {
+        // Outra carga de cena: as luzes e as fadas são outras, mesmo se o PlayState reutilizar o endereço.
+        // A luz do Deku Stick já foi apagada pelo host; o destroy só solta o handle velho.
         lighting.flicker.clear();
         lighting.lights.clear();
         lighting.fairyNoGlow.clear();
