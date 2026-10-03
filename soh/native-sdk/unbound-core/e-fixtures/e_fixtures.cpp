@@ -34,7 +34,12 @@ struct Fixtures {
     int32_t stableScene = -1;
     uint32_t framesInScene = 0;
     size_t reportsDone = 0;
+    // UNBOUND-021: mudanças do flag de chão depois da chegada (sair do piso, cair, voltar).
+    int lastGround = -1;
+    uint32_t groundChanges = 0;
 };
+
+constexpr uint32_t MAX_GROUND_CHANGES = 24;
 
 ShipNativeStatus Write(ShipNativeWriteFn write, void* writer, const std::string& text) {
     return write(writer, text.data(), static_cast<uint32_t>(text.size()));
@@ -102,12 +107,21 @@ std::string Describe(const PlayState* play, const Player* player) {
             }
         }
     }
+    // UNBOUND-021: índice do polígono de chão na colisão estática da cena (-1 sem chão, -2 DynaPoly).
+    long floorIndex = -1;
+    const CollisionHeader* header = play->colCtx.colHeader;
+    if (player->actor.floorPoly && player->actor.floorBgId == BGCHECK_SCENE && header && header->polyList) {
+        floorIndex = static_cast<long>(player->actor.floorPoly - header->polyList);
+    } else if (player->actor.floorPoly) {
+        floorIndex = -2;
+    }
     char text[640];
-    int used = std::snprintf(text, sizeof(text), "scene=%d room=%d pos=%.1f,%.1f,%.1f chao=%d atores=%u",
+    int used = std::snprintf(text, sizeof(text),
+                             "scene=%d room=%d pos=%.1f,%.1f,%.1f chao=%d piso=%ld alturaChao=%.1f atores=%u",
                              play->sceneNum, static_cast<int>(play->roomCtx.curRoom.num), player->actor.world.pos.x,
                              player->actor.world.pos.y, player->actor.world.pos.z,
-                             (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0,
-                             static_cast<unsigned>(play->actorCtx.total));
+                             (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0, floorIndex,
+                             player->actor.floorHeight, static_cast<unsigned>(play->actorCtx.total));
     if (nearest && used > 0 && used < static_cast<int>(sizeof(text))) {
         used += std::snprintf(text + used, sizeof(text) - used,
                               " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X", items, nearest->world.pos.x,
@@ -290,6 +304,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
             fixtures.stableScene = play->sceneNum;
             fixtures.framesInScene = 0;
             fixtures.reportsDone = 0;
+            fixtures.lastGround = -1;
+            fixtures.groundChanges = 0;
             return Write(write, writer, "arrived " + Describe(play, player));
         }
         return Write(write, writer, "idle");
@@ -304,11 +320,21 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         fixtures.stableScene = play->sceneNum;
         fixtures.framesInScene = 0;
         fixtures.reportsDone = 0;
+        fixtures.lastGround = -1;
+        fixtures.groundChanges = 0;
         return Write(write, writer, "arrived por saida " + Describe(play, player));
     }
     ++fixtures.framesInScene;
+    const int ground = (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0;
+    if (fixtures.lastGround != -1 && ground != fixtures.lastGround && fixtures.groundChanges < MAX_GROUND_CHANGES) {
+        fixtures.lastGround = ground;
+        ++fixtures.groundChanges;
+        return Write(write, writer, std::string("chao ") + (ground ? "0->1 " : "1->0 ") + "frame " +
+                                        std::to_string(fixtures.framesInScene) + " " + Describe(play, player));
+    }
+    fixtures.lastGround = ground;
     if (fixtures.reportsDone < std::size(REPORT_FRAMES) &&
-        fixtures.framesInScene == REPORT_FRAMES[fixtures.reportsDone]) {
+        fixtures.framesInScene >= REPORT_FRAMES[fixtures.reportsDone]) {
         ++fixtures.reportsDone;
         return Write(write, writer, "after " + std::to_string(fixtures.framesInScene) + " frames " +
                                         Describe(play, player));

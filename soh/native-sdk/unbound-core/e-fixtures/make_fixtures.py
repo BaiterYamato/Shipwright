@@ -196,6 +196,10 @@ def main():
     # UNBOUND-008/009: 300 salas, 300 entradas de malha, 200 objetos, 100 portas, 60 caixas DynaPoly e água na sala 299.
     make_many(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision,
               object_ids(Path(__file__).resolve().parents[4] / "soh/include/tables/object_table.h"))
+    # UNBOUND-021: recursos próprios nos extremos (piso no limite do mundo, índices de colisão acima dos tetos
+    # vanilla e uma malha de 81 920 unidades numa display list só).
+    make_edge(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    make_span(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
@@ -452,6 +456,194 @@ def make_many(put, registry, field, field_room, field_collision, objects):
     put(room_path, {"$schema": "unbound/room/1", "setups": {"0": room}})
     registry["linkspan_e/many"] = {"name": "Link-Span E: limites", "scene": "scenes/linkspan_e/many/scene.json",
                                    "drawConfig": 0, "entrances": {"main": {"spawn": 0}}}
+
+
+# UNBOUND-021 (Prelude, prioridade 5 da matriz de limites): cenas só com recursos nossos.
+EDGE_LIMIT = 1048576   # BGCHECK_XYZ_ABSMAX: coordenada com |c| >= isso é posição inválida para a colisão
+EDGE_SPAWN = 1048500   # 76 unidades antes do limite, em x e em z
+EDGE_FAR = 1048800     # o piso passa do limite
+EDGE_STRIP = 1048000   # a faixa do spawn vai daqui até EDGE_FAR
+EDGE_NEAR = 1040000
+EDGE_VERTICES = 8193   # um além do índice de 13 bits do vanilla (0x1FFF): o último vértice é o 8192
+EDGE_POLYS = 32769     # um além de s16: o último polígono é o 32768
+SPAN_EXTENT = 40960    # malha de -40 960 a +40 960 (81 920 > 65 535, o alcance de um vértice s16)
+SPAN_SPAWN = 40000
+SPAN_WIDTH = 600
+
+
+def axis_range(sign, near, far):
+    """Faixa [near, far] do lado `sign` do eixo, em ordem crescente."""
+    return (near, far) if sign > 0 else (-far, -near)
+
+
+def quad_polys(a, b, c, d):
+    """Dois triângulos de piso (normal +y) no padrão do floor_grid: a=(x0,z0) b=(x0,z1) c=(x1,z0) d=(x1,z1)."""
+    return [struct.pack("<HHIIIhhhhi", 0, 0, va, vb, vc, 0, 32767, 0, 0, 0) for va, vb, vc in ((a, b, c), (c, b, d))]
+
+
+def floor_vertices(xs, zs, repeats_s, repeats_t):
+    """Quad de piso em y=0 como recurso Vertex XML; a textura de 32 texels repete repeats_s x repeats_t vezes."""
+    s1, t1 = 1024 * repeats_s, 1024 * repeats_t
+    corners = [(xs[0], zs[0], 0, 0), (xs[1], zs[0], s1, 0), (xs[1], zs[1], s1, t1), (xs[0], zs[1], 0, t1)]
+    rows = [f'<Vtx X="{x}" Y="0" Z="{z}" S="{s}" T="{t}" R="255" G="255" B="255" A="255"/>'
+            for x, z, s, t in corners]
+    return ("\n".join(['<Vertex Version="0">'] + rows + ["</Vertex>"])).encode()
+
+
+def wall_vertices(xs, zs, height):
+    """Faixa vertical de `height` unidades entre (xs[0], zs[0]) e (xs[1], zs[1])."""
+    corners = [(xs[0], 0, zs[0], 0, 1024), (xs[1], 0, zs[1], 1024 * 31, 1024),
+               (xs[1], height, zs[1], 1024 * 31, 0), (xs[0], height, zs[0], 0, 0)]
+    rows = [f'<Vtx X="{x}" Y="{y}" Z="{z}" S="{s}" T="{t}" R="255" G="255" B="255" A="255"/>'
+            for x, y, z, s, t in corners]
+    return ("\n".join(['<Vertex Version="0">'] + rows + ["</Vertex>"])).encode()
+
+
+def quads_display_list(parts):
+    """DL XML opaca, sem culling: para cada parte, a textura RGBA16 32x32 e o quad de 4 vértices do recurso."""
+    lines = ['<DisplayList Version="0">', "<PipeSync/>",
+             '<ClearGeometryMode G_LIGHTING="1" G_CULL_BACK="1" G_CULL_FRONT="1" G_TEXTURE_GEN="1" '
+             'G_TEXTURE_GEN_LINEAR="1" G_FOG="1"/>',
+             '<SetGeometryMode G_ZBUFFER="1" G_SHADE="1" G_SHADING_SMOOTH="1"/>',
+             '<SetCycleType G_CYC_1CYCLE="1"/>',
+             '<SetRenderMode Mode1="G_RM_AA_ZB_OPA_SURF" Mode2="G_RM_AA_ZB_OPA_SURF2"/>',
+             '<SetCombineLERP A0="G_CCMUX_TEXEL0" B0="G_CCMUX_0" C0="G_CCMUX_PRIMITIVE" D0="G_CCMUX_0" '
+             'Aa0="G_ACMUX_0" Ab0="G_ACMUX_0" Ac0="G_ACMUX_0" Ad0="G_ACMUX_1" A1="G_CCMUX_TEXEL0" B1="G_CCMUX_0" '
+             'C1="G_CCMUX_PRIMITIVE" D1="G_CCMUX_0" Aa1="G_ACMUX_0" Ab1="G_ACMUX_0" Ac1="G_ACMUX_0" Ad1="G_ACMUX_1"/>',
+             '<Texture S="65535" T="65535" Level="0" Tile="0" On="1"/>',
+             '<SetPrimColor M="0" L="0" R="255" G="255" B="255" A="255"/>']
+    for texture, vertices in parts:
+        lines += [f'<SetTextureImage Path="textures/linkspan_e/{texture}" Format="G_IM_FMT_RGBA" Size="G_IM_SIZ_16b" '
+                  'Width="1"/>',
+                  xml_tile(7, 0), "<LoadSync/>", '<LoadBlock Tile="7" Uls="0" Ult="0" Lrs="1023" Dxt="256"/>',
+                  "<PipeSync/>", xml_tile(0, 8), '<SetTileSize T="0" Uls="0" Ult="0" Lrs="124" Lrt="124"/>',
+                  f'<LoadVertices Path="{vertices}" Count="4" VertexBufferIndex="0" VertexOffset="0"/>',
+                  '<Triangle1 V00="0" V01="1" V02="2" Flag0="0"/>', '<Triangle1 V00="0" V01="2" V02="3" Flag0="0"/>']
+    lines += ["<EndDisplayList/>", "</DisplayList>"]
+    return "\n".join(lines).encode()
+
+
+def edge_collision(sx, sz):
+    """collision.bin do canto (sx, sz) do mundo com exatamente EDGE_VERTICES vértices e EDGE_POLYS polígonos.
+
+    O enchimento (grade 91x89 em x de EDGE_NEAR a EDGE_STRIP, repetida até 32 767 polígonos, e 90 vértices sem uso)
+    ocupa os índices baixos; a faixa do spawn, de EDGE_STRIP a EDGE_FAR em x, usa só os vértices 8189 a 8192 e os
+    polígonos 32767 e 32768, e o chão sob o spawn é o polígono 32768 com o vértice 8192. Se algum índice fosse
+    estreitado (13 bits no vértice, s16 no polígono), o jogador não teria chão no spawn."""
+    fill_x = axis_range(sx, EDGE_NEAR, EDGE_STRIP)
+    strip_x = axis_range(sx, EDGE_STRIP, EDGE_FAR)
+    zs = axis_range(sz, EDGE_NEAR, EDGE_FAR)
+    columns, rows = 91, 89
+    vertices = bytearray()
+    for row in range(rows):
+        for column in range(columns):
+            x = fill_x[0] + (fill_x[1] - fill_x[0]) * column // (columns - 1)
+            z = zs[0] + (zs[1] - zs[0]) * row // (rows - 1)
+            vertices += struct.pack("<iii", x, 0, z)
+    unused = EDGE_VERTICES - 4 - columns * rows
+    vertices += struct.pack("<iii", fill_x[0], 0, zs[0]) * unused
+    fill = []
+    for row in range(rows - 1):
+        for column in range(columns - 1):
+            a = row * columns + column
+            fill += quad_polys(a, a + columns, a + 1, a + columns + 1)
+    polys = [fill[i % len(fill)] for i in range(EDGE_POLYS - 2)]
+    # O triângulo da faixa que fica sob o spawn é o último polígono, e o vértice só dele é o último vértice.
+    corners = {"a": (strip_x[0], zs[0]), "b": (strip_x[0], zs[1]), "c": (strip_x[1], zs[0]), "d": (strip_x[1], zs[1])}
+    spawn = (sx * EDGE_SPAWN, sz * EDGE_SPAWN)
+
+    def side(p, q, r):
+        return (p[0] - r[0]) * (q[1] - r[1]) - (q[0] - r[0]) * (p[1] - r[1])
+
+    def strictly_inside(tri):
+        v1, v2, v3 = (corners[k] for k in tri)
+        signs = (side(spawn, v1, v2), side(spawn, v2, v3), side(spawn, v3, v1))
+        return all(s > 0 for s in signs) or all(s < 0 for s in signs)
+
+    spawn_tri, other_tri = ("abc", "cbd") if strictly_inside("abc") else ("cbd", "abc")
+    assert strictly_inside(spawn_tri)
+    order = [(set(other_tri) - set(spawn_tri)).pop(), "b", "c", (set(spawn_tri) - set(other_tri)).pop()]
+    index = {key: EDGE_VERTICES - 4 + i for i, key in enumerate(order)}
+    for key in order:
+        vertices += struct.pack("<iii", corners[key][0], 0, corners[key][1])
+    for tri in (other_tri, spawn_tri):
+        polys.append(struct.pack("<HHIIIhhhhi", 0, 0, *(index[k] for k in tri), 0, 32767, 0, 0, 0))
+    assert len(vertices) == 12 * EDGE_VERTICES and len(polys) == EDGE_POLYS
+    return bytes(vertices) + b"".join(polys)
+
+
+def make_edge(put, registry, field, field_room, field_collision):
+    """M01/M13/M14: piso no extremo do mundo, nos cantos (+x, -z) e (-x, +z). O spawn fica 76 unidades antes do
+    limite nos dois eixos, olhando para fora em x; o piso continua além do limite, onde a colisão deixa de valer."""
+    for name, pixel in LAB_TEXTURES.items():
+        put(f"textures/linkspan_e/{name}", rgba16_texture(pixel))
+    for name, sx, sz in (("edge_pos", 1, -1), ("edge_neg", -1, 1)):
+        folder = f"scenes/linkspan_e/{name}"
+        fill_x = axis_range(sx, EDGE_NEAR, EDGE_STRIP)
+        strip_x = axis_range(sx, EDGE_STRIP, EDGE_FAR)
+        zs = axis_range(sz, EDGE_NEAR, EDGE_FAR)
+        xs = (min(fill_x + strip_x), max(fill_x + strip_x))
+        limit_x = sx * EDGE_LIMIT
+        limit_z = sz * EDGE_LIMIT
+        put(f"{folder}/v_fill", floor_vertices(fill_x, zs, 31, 31))
+        put(f"{folder}/v_strip", floor_vertices(strip_x, zs, 3, 31))
+        # Marcas do limite: faixa azul em x = ±1 048 576 e em z = ±1 048 576, onde a colisão acaba.
+        put(f"{folder}/v_limit_x", wall_vertices((limit_x, limit_x), zs, 40))
+        put(f"{folder}/v_limit_z", wall_vertices(xs, (limit_z, limit_z), 40))
+        put(f"{folder}/floor", quads_display_list([("grid", f"{folder}/v_fill"), ("red", f"{folder}/v_strip"),
+                                                   ("blue", f"{folder}/v_limit_x"), ("blue", f"{folder}/v_limit_z")]))
+        spawn = [sx * EDGE_SPAWN, 0, sz * EDGE_SPAWN]
+        setup = outdoor_setup(field, spawn, 16384 * sx, 0)
+        put(f"{folder}/scene.json", {
+            "$schema": "unbound/scene/1",
+            "collision": f"{folder}/collision.json",
+            "rooms": {"0": f"{folder}/rooms/0.json"},
+            "setups": {"0": setup},
+        })
+        put(f"{folder}/collision.bin", edge_collision(sx, sz))
+        collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin",
+                                   vertices=EDGE_VERTICES, polys=EDGE_POLYS)
+        collision["bounds"] = {"min": [xs[0], -10, zs[0]], "max": [xs[1], 10, zs[1]]}
+        put(f"{folder}/collision.json", collision)
+        room = base_room(field_room)
+        room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                     "objects": {}, "actors": {}})
+        put(f"{folder}/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+        registry[f"linkspan_e/{name}"] = {"name": f"Link-Span E: limite do mundo ({name})",
+                                          "scene": f"{folder}/scene.json", "drawConfig": 0,
+                                          "entrances": {"main": {"spawn": 0}}}
+
+
+def make_span(put, registry, field, field_room, field_collision):
+    """M02: uma display list com um quad de 81 920 unidades (vértices em x = ±40 960) e o piso de colisão igual.
+    Com vértice s16, x = 40 960 viraria -24 576 e o trecho sob os spawns, em x = ±40 000, não seria desenhado."""
+    folder = "scenes/linkspan_e/span"
+    xs = (-SPAN_EXTENT, SPAN_EXTENT)
+    zs = (-SPAN_WIDTH, SPAN_WIDTH)
+    put(f"{folder}/v_floor", floor_vertices(xs, zs, 31, 1))
+    put(f"{folder}/floor", quads_display_list([("stripes", f"{folder}/v_floor")]))
+    setup = outdoor_setup(field, [SPAN_SPAWN, 0, 0], -16384, 0)
+    # Segundo spawn na outra ponta, olhando para +x.
+    setup["spawns"]["1"] = dict(setup["spawns"]["0"], pos=[-SPAN_SPAWN, 0, 0], rot=[0, 16384, 0])
+    setup["entrances"]["1"] = {"spawn": 1, "room": 0}
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {"0": f"{folder}/rooms/0.json"},
+        "setups": {"0": setup},
+    })
+    vertices = b"".join(struct.pack("<iii", x, 0, z) for x, z in ((xs[0], zs[0]), (xs[0], zs[1]),
+                                                                  (xs[1], zs[0]), (xs[1], zs[1])))
+    put(f"{folder}/collision.bin", vertices + b"".join(quad_polys(0, 1, 2, 3)))
+    collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin", vertices=4, polys=2)
+    collision["bounds"] = {"min": [xs[0], -10, zs[0]], "max": [xs[1], 10, zs[1]]}
+    put(f"{folder}/collision.json", collision)
+    room = base_room(field_room)
+    room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                 "objects": {}, "actors": {}})
+    put(f"{folder}/rooms/0.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/span"] = {"name": "Link-Span E: malha de 81 920 unidades", "scene": f"{folder}/scene.json",
+                                   "drawConfig": 0, "entrances": {"main": {"spawn": 0}, "oeste": {"spawn": 1}}}
 
 
 def title_card(text):

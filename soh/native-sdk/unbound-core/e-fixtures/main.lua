@@ -10,6 +10,10 @@ local PLAN = table.concat({
     "linkspan_e/lab/main",    -- 011: um quad por receita de material (segmentos 8 a 13)
     "linkspan_e/lab_b/main",  -- 013: destino registrado da saída montada do lab
     "linkspan_e/many/main",   -- 008/009: 300 salas, 200 objetos, 100 portas, 60 caixas DynaPoly, água na sala 299
+    "linkspan_e/edge_pos/main", -- 021: piso a 76 unidades de x=+1 048 576 e z=-1 048 576; chão nos índices 8192/32768
+    "linkspan_e/edge_neg/main", -- 021: o mesmo no canto (-x, +z)
+    "linkspan_e/span/main",   -- 021: malha de 81 920 unidades numa DL só; spawn em x=+40 000
+    "linkspan_e/span/oeste",  -- 021: spawn em x=-40 000
     "linkspan_e/house/main",  -- retorno
 }, ";")
 
