@@ -180,6 +180,7 @@ class SaveState {
     std::shared_ptr<SaveStateInfo> info;
 
     void Save(void);
+    void SaveCapture(std::shared_ptr<SaveStateInfo>& info);
     bool Load(void);
     void BackupSeqScriptState(SaveStateInfo* info);
     void LoadSeqScriptState(void);
@@ -449,9 +450,14 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
 }
 
 void SaveState::Save(void) {
-    std::unique_lock<std::mutex> Lock(audio.mutex);
-    // Stage the entire snapshot: no slot data changes until every allocation and copy succeeds.
+    // Stage the entire snapshot: no slot data changes until every allocation and copy succeeds. The large staging
+    // block is allocated before excluding the audio thread, and the previous snapshot is released after.
     auto info = std::make_shared<SaveStateInfo>();
+    SaveCapture(info);
+}
+
+void SaveState::SaveCapture(std::shared_ptr<SaveStateInfo>& info) {
+    std::unique_lock<std::mutex> Lock(audio.mutex);
     SaveStateCollisionTables tables;
     tables.Capture(gPlayState->colCtx);
     info->collisionTables = std::move(tables);

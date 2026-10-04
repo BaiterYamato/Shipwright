@@ -1773,7 +1773,7 @@ extern "C" void Graph_StartFrame() {
 
             switch (stateReturn) {
                 case SaveStateReturn::SUCCESS:
-                    SPDLOG_INFO("[SOH] Saved state to slot {}", slot);
+                    SPDLOG_INFO("[SOH] Save requested for slot {}", slot);
                     break;
                 case SaveStateReturn::FAIL_WRONG_GAMESTATE:
                     SPDLOG_ERROR("[SOH] Can not save a state outside of \"GamePlay\"");

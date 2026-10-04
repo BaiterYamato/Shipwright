@@ -552,7 +552,7 @@ static bool SaveStateHandler(std::shared_ptr<Ship::Console> Console, const std::
 
     switch (rtn) {
         case SaveStateReturn::SUCCESS:
-            INFO_MESSAGE("[SOH] Saved state to slot %u", slot);
+            INFO_MESSAGE("[SOH] Save requested for slot %u", slot);
             return 0;
         case SaveStateReturn::FAIL_WRONG_GAMESTATE:
             ERROR_MESSAGE("[SOH] Can not save a state outside of \"GamePlay\"");
