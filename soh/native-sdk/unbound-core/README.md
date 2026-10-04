@@ -98,7 +98,7 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   transcode percorre as listas sem procurar chave por chave; o mesmo documento leva ~120 ms, e duas camadas
   completas, ~330 ms. Vale também para a remoção de diretivas, os atores de sala (`unbound/room/1`) e overlay
   grande sobre base pequena. Notas novas, antes do gameplay para documento de mod: mais de 32 768 salas (índice
-  s16), mais de 65 535 atores numa sala, mais de 1 020 objetos numa sala (o banco tem 1 024 vagas, até 4 delas
+  s16), mais de 65 535 atores numa sala (8 192 desde a 0.6.9), mais de 1 020 objetos numa sala (o banco tem 1 024 vagas, até 4 delas
   com objetos permanentes: gameplay_keep, Link, keep da cena e cavalo), posição de câmera fixa fora de s16
   (o §2 continua embrulhando o valor) e setup acima de 255 (ignorado). O resumo do `ready` traz `ms=` da checagem.
   As fronteiras limite-1/limite/limite+1 estão em `limits_tests.cpp`.
@@ -151,6 +151,14 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   nota não certifica a pausa, e a guarda é do host. Cena nova não tem minimapa (`Map_Init` e `Minimap_Draw` só
   conhecem as cenas vanilla) e, na pausa, mostra o mapa-múndi na área do `worldMapArea` dela. Nenhuma cena da base
   gera essas notas (as 18 cenas de dungeon cabem no minimapa; as áreas vão de 0 a 22).
+- **Atores e luzes de sala (0.6.9).** Uma sala com mais de 8 192 atores grava só os primeiros 8 192, com nota. O
+  host copia a lista da sala para o buffer do `oot.room.actors` (`LinkSpan_RoomActors`), que tem 8 192 vagas, e
+  com mais escreve além dele: uma sala de 8 200 rúpias corrompeu o heap em jogo (UNBOUND-029). O total de atores
+  vivos também para em 8 192, com o Link na conta, então o excesso nunca nasceria. Antes disso, a arena do jogo
+  pode acabar: na e-fixtures, cabem 4 132 rúpias (En_Item00), e cada uma das outras falha com "Cannot allocate
+  actor" no log. Uma lista `lights` com mais de 32 entradas também sai em nota: o pool de luzes do host
+  (`z_lights.c`) tem 32 vagas para a cena, as salas já carregadas, os atores e o ambiente, e as luzes de lista só
+  voltam ao pool na troca de cena. As que não cabem não acendem.
 
 ## Unbound 0.8 (novo na 0.5.0)
 

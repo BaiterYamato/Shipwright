@@ -5,9 +5,10 @@ Uso: make-unbound-limit-fixtures.py <pasta-de-saida>   (grava UB020-A.o2r, UB022
 
 Os documentos ficam fora de scenes/ e do registro, entao o jogo nao os carrega: so a checagem do game.ready
 (UNBOUND-019) os mescla e transcodifica, e o tempo dela sai no resumo (ms=). Sozinha em mods/, o esperado e
-"referencias: documentos=3 conferidas=3 ausentes=0 recusados=0 notas=4":
+"referencias: documentos=3 conferidas=3 ausentes=0 recusados=0 notas=5":
   custom/ub020/cena.json     32 769 salas (uma acima do indice s16)            -> nota de salas
-  custom/ub020/sala.json     65 536 atores e 1 025 objetos                     -> nota de atores e de objetos
+  custom/ub020/sala.json     65 536 atores, 1 025 objetos e 33 luzes           -> nota de atores, de objetos e de luzes
+                             (desde a 0.6.9 a sala grava so os primeiros 8 192 atores)
   custom/ub020/colisao.json  65 535 surface types e water boxes (no teto) e uma posicao de camera fora de s16
                                                                                -> nota de camera
   custom/ub020/colisao.bin   bulk vazio, para a referencia resolver
@@ -63,6 +64,9 @@ def documents():
             "setups": {"0": {
                 "actors": positional(65536, {"id": 16, "pos": [0, 0, 0]}),
                 "objects": positional(1025, 1),
+                # UNBOUND-030: 33 luzes, uma além das 32 vagas do pool de luzes do host (z_lights.c).
+                "lights": positional(33, {"type": 0, "pos": [0, 0, 0], "color": [255, 255, 255], "glow": 0,
+                                          "radius": 100}),
             }},
         },
         "custom/ub020/colisao.json": {

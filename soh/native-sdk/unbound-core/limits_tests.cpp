@@ -1,5 +1,6 @@
 // Fronteiras da matriz de limites do Prelude (plano §10.3/§14.3, UNBOUND-020): para cada teto que passa pelo
 // framework, os casos limite-1, limite e limite+1, com o que o XML leva e a nota ou recusa que sai.
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <string>
@@ -425,15 +426,38 @@ void TestWorldMapArea() {
     CHECK(AnyNote(context, "1 setup(s) fora de 0..22") == negative);
 }
 
-// M07: atores por sala (numSetupActors u16) e M09: objetos por sala (banco de 1 024).
+// M07: atores por sala (UNBOUND-030: o buffer do oot.room.actors tem 8 192 vagas, e o excesso não é gravado) e M09:
+// objetos por sala (banco de 1 024).
 void TestActorAndObjectCounts() {
-    for (const size_t n : { 65534u, 65535u, 65536u }) {
+    for (const size_t n : { 8191u, 8192u, 8193u, 65536u }) {
         const std::string doc = R"({"setups":{"0":{"actors":)" +
                                 PositionalText(n, R"({"id":16,"pos":[0,0,0]})") + "}}}";
         TranscodeContext context = Context();
         const std::string xml = TranscodeScene(ParseJson(doc), true, context);
-        CHECK(Count(xml, "<ActorEntry ") == n);
-        CHECK(AnyNote(context, "atores; o jogo carrega os primeiros 65535") == (n > 65535));
+        CHECK(Count(xml, "<ActorEntry ") == std::min<size_t>(n, 8192));
+        CHECK(AnyNote(context, std::to_string(n) + " atores; o framework grava só os primeiros 8192") == (n > 8192));
+    }
+    // Ator que não resolve não ocupa vaga: 8 192 válidos depois de um nome desconhecido ainda cabem.
+    {
+        std::string actors = R"({"0":{"id":"mod.desconhecido","pos":[0,0,0]})";
+        for (size_t i = 1; i <= 8192; ++i) {
+            actors += ",\"" + std::to_string(i) + R"(":{"id":16,"pos":[0,0,0]})";
+        }
+        TranscodeContext context = Context();
+        const std::string xml = TranscodeScene(ParseJson(R"({"setups":{"0":{"actors":)" + actors + "}}}}"), true,
+                                               context);
+        CHECK(Count(xml, "<ActorEntry ") == 8192);
+        CHECK(!AnyNote(context, "o framework grava só os primeiros"));
+    }
+    // Luzes: 32 vagas no pool do host (z_lights.c).
+    for (const size_t n : { 32u, 33u }) {
+        const std::string doc = R"({"setups":{"0":{"lights":)" +
+                                PositionalText(n, R"({"type":0,"pos":[0,0,0],"color":[255,255,255],"glow":0,"radius":100})") +
+                                "}}}";
+        TranscodeContext context = Context();
+        const std::string xml = TranscodeScene(ParseJson(doc), true, context);
+        CHECK(Count(xml, "<LightInfo ") == n);
+        CHECK(AnyNote(context, std::to_string(n) + " luzes; o jogo tem 32 vagas de luz") == (n > 32));
     }
     // O banco tem 1 024 vagas, mas até 4 são permanentes (gameplay_keep, Link, keep da cena e cavalo).
     for (const size_t n : { 1019u, 1020u, 1021u }) {

@@ -174,7 +174,12 @@ constexpr int64_t kMaxSetupIndex = 255;
 // Tetos do runtime que o XML não carrega (z_scene_otr.cpp e z64object.h): o jogo corta com erro ao entrar na
 // sala; aqui a nota sai antes, já no game.ready (UNBOUND-019) para documento de mod.
 constexpr size_t kMaxRooms = 32768;      // índice de sala s16
-constexpr size_t kMaxRoomActors = 65535; // numSetupActors u16
+// Atores de uma sala: numSetupActors é u16, mas LinkSpan_RoomActors (OotNativeHooksGame.cpp) copia a lista para o
+// buffer do oot.room.actors, de LINKSPAN_OOT_ROOM_ACTORS_MAX (8 192) vagas, e com mais escreve além dele
+// (UNBOUND-029). O teto de atores vivos (ACTOR_NUMBER_MAX) também é 8 192, com o Link na conta.
+constexpr size_t kMaxRoomActors = 8192;
+// Pool de luzes do host (z_lights.c): 32 nós para LIGHT_LIST de cena e salas, atores e ambiente.
+constexpr size_t kLightSlots = 32;
 // OBJECT_EXCHANGE_BANK_MAX (1024) menos as vagas permanentes antes da lista da sala: gameplay_keep, o objeto do Link
 // e o keep da cena (Object_Spawn em z_scene.c/z_scene_otr.cpp), mais o cavalo que o host acrescenta à lista nas
 // cenas com cavalo.
@@ -781,7 +786,16 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
     if (has("lights")) {
         const Json& list = setup["lights"];
         xml.Open("SetLightList");
-        for (const auto& [key, item] : PositionalItems(list, Where(context, "lights"))) {
+        const auto lights = PositionalItems(list, Where(context, "lights"));
+        // UNBOUND-030: as luzes de lista não voltam ao pool nas trocas de sala, só na próxima cena.
+        if (lights.size() > kLightSlots) {
+            context.notes.push_back(Where(context, "lights") + ": " + std::to_string(lights.size()) +
+                                    " luzes; o jogo tem " + std::to_string(kLightSlots) +
+                                    " vagas de luz (z_lights.c) divididas entre as listas de cena e de sala, os atores "
+                                    "e o ambiente; as luzes de lista não voltam ao pool nas trocas de sala, só na "
+                                    "próxima cena, e as que não cabem não acendem");
+        }
+        for (const auto& [key, item] : lights) {
             const Json& light = *item;
             const int64_t type = Field(light, "type");
             if (type < 0 || type > 2) {
@@ -806,12 +820,18 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         const Json& list = setup["actors"];
         xml.Open("SetActorList");
         size_t written = 0;
+        size_t dropped = 0;
         WorldLimitCheck outside;
         for (const auto& [key, item] : ListItems(list)) {
             if (item->is_object()) {
                 int16_t actorId = -1;
                 if (!ResolveRoomActorId(*item, context.resolveActor, actorId, context.notes,
                                         Where(context, "actors/" + key))) continue;
+                // UNBOUND-030: além do buffer do oot.room.actors o host corrompe o heap; não grava o excesso.
+                if (written == kMaxRoomActors) {
+                    ++dropped;
+                    continue;
+                }
                 xml.Leaf("ActorEntry");
                 Json actor = *item;
                 actor["id"] = actorId;
@@ -821,9 +841,11 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
                 outside.Add(key, ReadVec3(SubArray(*item, "pos")));
             }
         }
-        if (written > kMaxRoomActors) {
-            context.notes.push_back(Where(context, "actors") + ": " + std::to_string(written) +
-                                    " atores; o jogo carrega os primeiros " + std::to_string(kMaxRoomActors));
+        if (dropped) {
+            context.notes.push_back(Where(context, "actors") + ": " + std::to_string(written + dropped) +
+                                    " atores; o framework grava só os primeiros " + std::to_string(kMaxRoomActors) +
+                                    ": é o teto de atores vivos, com o Link na conta, e o host copia a lista da sala "
+                                    "para um buffer desse tamanho (oot.room.actors) e escreve além dele com mais");
         }
         outside.Note(context, Where(context, "actors"));
         xml.Close();
