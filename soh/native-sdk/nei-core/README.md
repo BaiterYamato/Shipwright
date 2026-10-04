@@ -25,7 +25,7 @@ Ao desativar um item equipado, ele também sai do botão C. Pressione **L** na
 página de itens do jogo para chegar à página do NEI. A grade inclui itens de
 add-ons registrados nesta sessão. O resultado aparece em **Status** e no log.
 
-## Itens e habilidades na versão 0.3.17
+## Itens e habilidades na versão 0.3.18
 
 ### Animações e efeitos
 
