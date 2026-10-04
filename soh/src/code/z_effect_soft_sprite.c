@@ -1,4 +1,5 @@
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include "vt.h"
 
 #include "soh/frame_interpolation.h"
@@ -307,9 +308,11 @@ void EffectSs_DrawAll(PlayState* play) {
         if (sEffectSsInfo.table[i].life > -1) {
             Vec3f* pos = &sEffectSsInfo.table[i].pos;
 
-            // SOH [Unbound] was +/-32000
-            if ((pos->x > BGCHECK_XYZ_ABSMAX) || (pos->x < -BGCHECK_XYZ_ABSMAX) || (pos->y > BGCHECK_XYZ_ABSMAX) ||
-                (pos->y < -BGCHECK_XYZ_ABSMAX) || (pos->z > BGCHECK_XYZ_ABSMAX) || (pos->z < -BGCHECK_XYZ_ABSMAX)) {
+            // SOH [Unbound] was +/-32000 (OOT-VANILLA-001: ainda é, sem mod)
+            f32 absMax = LinkSpan_EngineExtended() ? BGCHECK_XYZ_ABSMAX : 32000.0f;
+
+            if ((pos->x > absMax) || (pos->x < -absMax) || (pos->y > absMax) || (pos->y < -absMax) ||
+                (pos->z > absMax) || (pos->z < -absMax)) {
                 osSyncPrintf(VT_FGCOL(RED));
                 // "Since the position is outside the area, delete it.
                 // Effect label No. %d: Please respond by the program.

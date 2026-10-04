@@ -1,6 +1,7 @@
 #include "z_en_bubble.h"
 #include "objects/object_bubble/object_bubble.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_ATTENTION_ENABLED
 
@@ -324,10 +325,10 @@ void func_809CC774(EnBubble* this) {
     src.z = dim->modelSphere.center.z;
 
     Matrix_MultVec3f(&src, &dest);
-    dim->worldSphere.center.x = dest.x;
-    dim->worldSphere.center.y = dest.y;
-    dim->worldSphere.center.z = dest.z;
-    dim->worldSphere.radius = dim->modelSphere.radius * (1.0f + this->expansionWidth);
+    dim->worldSphere.center.x = LinkSpan_S16F(dest.x);
+    dim->worldSphere.center.y = LinkSpan_S16F(dest.y);
+    dim->worldSphere.center.z = LinkSpan_S16F(dest.z);
+    dim->worldSphere.radius = LinkSpan_S16F(dim->modelSphere.radius * (1.0f + this->expansionWidth));
     this->colliderSphere.elements[1].dim = *dim;
 }
 

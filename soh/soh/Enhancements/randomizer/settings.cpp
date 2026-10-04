@@ -9,6 +9,7 @@
 #include "soh/Enhancements/randomizer/randomizerTypes.h"
 #include "soh/Enhancements/randomizer/rng.h"
 #include "soh/OTRGlobals.h"
+#include "../../../src/code/linkspan_vanilla.h"
 
 namespace Rando {
 std::shared_ptr<Settings> Settings::mInstance;
@@ -3179,6 +3180,10 @@ void Settings::RandomizeAllSettings() {
         Option& option = mOptions[key];
 
         if (option.GetOptionCount() == 0) {
+            continue;
+        }
+        // OOT-VANILLA-001: sem mod, a opção do Link-Span fica de fora.
+        if (key == RSK_LINKSPAN_MOD_ITEMS && !LinkSpan_EngineExtended()) {
             continue;
         }
 

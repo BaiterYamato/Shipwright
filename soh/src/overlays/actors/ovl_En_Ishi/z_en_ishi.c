@@ -12,6 +12,7 @@
 #include "soh/Enhancements/savestate_serialize.h"
 
 #include "vt.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_THROW_ONLY
 
@@ -130,7 +131,7 @@ s32 EnIshi_SnapToFloor(EnIshi* this, PlayState* play, f32 arg2) {
     pos.y = this->actor.world.pos.y + 30.0f;
     pos.z = this->actor.world.pos.z;
     floorY = BgCheck_EntityRaycastFloor4(&play->colCtx, &poly, &bgId, &this->actor, &pos);
-    if (floorY > BGCHECK_Y_MIN) {
+    if (floorY > LINKSPAN_BGCHECK_Y_MIN) {
         this->actor.world.pos.y = floorY + arg2;
         Math_Vec3f_Copy(&this->actor.home.pos, &this->actor.world.pos);
         return true;

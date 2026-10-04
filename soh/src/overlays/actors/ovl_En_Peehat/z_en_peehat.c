@@ -3,6 +3,7 @@
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
 #include "overlays/effects/ovl_Effect_Ss_Hahen/z_eff_ss_hahen.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -232,9 +233,9 @@ void EnPeehat_Init(Actor* thisx, PlayState* play) {
         case PEAHAT_TYPE_LARVA:
             this->actor.scale.x = this->actor.scale.z = 0.006f;
             this->actor.scale.y = 0.003f;
-            this->colCylinder.dim.radius = 25;
-            this->colCylinder.dim.height = 15;
-            this->colCylinder.dim.yShift = -5;
+            this->colCylinder.dim.radius = LinkSpan_S16F(25);
+            this->colCylinder.dim.height = LinkSpan_S16F(15);
+            this->colCylinder.dim.yShift = LinkSpan_S16F(-5);
             this->colCylinder.info.bumper.dmgFlags = 0x1F824;
             this->colliderQuad.base.atFlags = AT_ON | AT_TYPE_ENEMY;
             this->colliderQuad.base.acFlags = AC_ON | AC_TYPE_PLAYER;

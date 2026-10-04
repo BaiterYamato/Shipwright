@@ -1,5 +1,6 @@
 #include "z_en_m_thunder.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -70,9 +71,9 @@ void EnMThunder_Init(Actor* thisx, PlayState* play2) {
     Lights_PointNoGlowSetInfo(&this->lightInfo, this->actor.world.pos.x, this->actor.world.pos.y,
                               this->actor.world.pos.z, 255, 255, 255, 0);
     this->lightNode = LightContext_InsertLight(play, &play->lightCtx, &this->lightInfo);
-    this->collider.dim.radius = 0;
-    this->collider.dim.height = 40;
-    this->collider.dim.yShift = -20;
+    this->collider.dim.radius = LinkSpan_S16F(0);
+    this->collider.dim.height = LinkSpan_S16F(40);
+    this->collider.dim.yShift = LinkSpan_S16F(-20);
     this->followPlayerTimer = 8;
     this->spinTrailTexScroll = 0.0f;
     this->actor.world.pos = player->bodyPartsPos[0];
@@ -277,7 +278,7 @@ void EnMThunder_SpinAttacking(EnMThunder* this, PlayState* play) {
     } else {
         Math_SmoothStepToF(&this->actor.scale.x, (s32)this->targetScale, 0.6f, 0.8f, 0.0f);
         Actor_SetScale(&this->actor, this->actor.scale.x);
-        this->collider.dim.radius = (this->actor.scale.x * 25.0f);
+        this->collider.dim.radius = LinkSpan_S16F((this->actor.scale.x * 25.0f));
         Collider_UpdateCylinder(&this->actor, &this->collider);
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);
     }

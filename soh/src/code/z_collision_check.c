@@ -3,6 +3,7 @@
 #include "overlays/effects/ovl_Effect_Ss_HitMark/z_eff_ss_hitmark.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include <assert.h>
+#include "linkspan_vanilla.h"
 
 typedef s32 (*ColChkResetFunc)(PlayState*, Collider*);
 typedef void (*ColChkBloodFunc)(PlayState*, Collider*, Vec3f*);
@@ -861,12 +862,12 @@ s32 Collider_ResetQuadACDist(PlayState* play, ColliderQuadDim* dim) {
 }
 
 void Collider_SetQuadMidpoints(ColliderQuadDim* dim) {
-    dim->dcMid.x = (dim->quad[3].x + dim->quad[2].x) * 0.5f;
-    dim->dcMid.y = (dim->quad[3].y + dim->quad[2].y) * 0.5f;
-    dim->dcMid.z = (dim->quad[3].z + dim->quad[2].z) * 0.5f;
-    dim->baMid.x = (dim->quad[1].x + dim->quad[0].x) * 0.5f;
-    dim->baMid.y = (dim->quad[1].y + dim->quad[0].y) * 0.5f;
-    dim->baMid.z = (dim->quad[1].z + dim->quad[0].z) * 0.5f;
+    dim->dcMid.x = LinkSpan_S16F((dim->quad[3].x + dim->quad[2].x) * 0.5f);
+    dim->dcMid.y = LinkSpan_S16F((dim->quad[3].y + dim->quad[2].y) * 0.5f);
+    dim->dcMid.z = LinkSpan_S16F((dim->quad[3].z + dim->quad[2].z) * 0.5f);
+    dim->baMid.x = LinkSpan_S16F((dim->quad[1].x + dim->quad[0].x) * 0.5f);
+    dim->baMid.y = LinkSpan_S16F((dim->quad[1].y + dim->quad[0].y) * 0.5f);
+    dim->baMid.z = LinkSpan_S16F((dim->quad[1].z + dim->quad[0].z) * 0.5f);
 }
 
 s32 Collider_SetQuadDim(PlayState* play, ColliderQuadDim* dest, ColliderQuadDimInit* src) {
@@ -3211,18 +3212,18 @@ s32 CollisionCheck_LineOCCheck(PlayState* play, CollisionCheckContext* colChkCtx
  * Moves the ColliderCylinder's position to the actor's position
  */
 void Collider_UpdateCylinder(Actor* actor, ColliderCylinder* collider) {
-    collider->dim.pos.x = actor->world.pos.x;
-    collider->dim.pos.y = actor->world.pos.y;
-    collider->dim.pos.z = actor->world.pos.z;
+    collider->dim.pos.x = LinkSpan_S16F(actor->world.pos.x);
+    collider->dim.pos.y = LinkSpan_S16F(actor->world.pos.y);
+    collider->dim.pos.z = LinkSpan_S16F(actor->world.pos.z);
 }
 
 /**
  * Sets the ColliderCylinder's position
  */
 void Collider_SetCylinderPosition(ColliderCylinder* collider, Vec3s* pos) {
-    collider->dim.pos.x = pos->x;
-    collider->dim.pos.y = pos->y;
-    collider->dim.pos.z = pos->z;
+    collider->dim.pos.x = LinkSpan_S16F(pos->x);
+    collider->dim.pos.y = LinkSpan_S16F(pos->y);
+    collider->dim.pos.z = LinkSpan_S16F(pos->z);
 }
 
 /**
@@ -3288,11 +3289,11 @@ void Collider_UpdateSpheres(s32 limb, ColliderJntSph* collider) {
             D_8015E648.y = collider->elements[i].dim.modelSphere.center.y;
             D_8015E648.z = collider->elements[i].dim.modelSphere.center.z;
             Matrix_MultVec3f(&D_8015E648, &D_8015CF00);
-            collider->elements[i].dim.worldSphere.center.x = D_8015CF00.x;
-            collider->elements[i].dim.worldSphere.center.y = D_8015CF00.y;
-            collider->elements[i].dim.worldSphere.center.z = D_8015CF00.z;
-            collider->elements[i].dim.worldSphere.radius =
-                collider->elements[i].dim.modelSphere.radius * collider->elements[i].dim.scale;
+            collider->elements[i].dim.worldSphere.center.x = LinkSpan_S16F(D_8015CF00.x);
+            collider->elements[i].dim.worldSphere.center.y = LinkSpan_S16F(D_8015CF00.y);
+            collider->elements[i].dim.worldSphere.center.z = LinkSpan_S16F(D_8015CF00.z);
+            collider->elements[i].dim.worldSphere.radius = LinkSpan_S16F(
+                collider->elements[i].dim.modelSphere.radius * collider->elements[i].dim.scale);
         }
     }
 }

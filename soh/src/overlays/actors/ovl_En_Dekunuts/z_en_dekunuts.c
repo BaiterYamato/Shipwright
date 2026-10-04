@@ -8,6 +8,7 @@
 #include "overlays/effects/ovl_Effect_Ss_Hahen/z_eff_ss_hahen.h"
 #include "objects/object_dekunuts/object_dekunuts.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -143,7 +144,7 @@ void EnDekunuts_Destroy(Actor* thisx, PlayState* play) {
 void EnDekunuts_SetupWait(EnDekunuts* this) {
     Animation_PlayOnceSetSpeed(&this->skelAnime, &gDekuNutsUpAnim, 0.0f);
     this->animFlagAndTimer = Rand_S16Offset(100, 50);
-    this->collider.dim.height = 5;
+    this->collider.dim.height = LinkSpan_S16F(5);
     Math_Vec3f_Copy(&this->actor.world.pos, &this->actor.home.pos);
     this->collider.base.acFlags &= ~AC_ON;
     this->actionFunc = EnDekunuts_Wait;
@@ -179,7 +180,7 @@ void EnDekunuts_SetupBurrow(EnDekunuts* this) {
 
 void EnDekunuts_SetupBeginRun(EnDekunuts* this) {
     Animation_MorphToPlayOnce(&this->skelAnime, &gDekuNutsUnburrowAnim, -3.0f);
-    this->collider.dim.height = 37;
+    this->collider.dim.height = LinkSpan_S16F(37);
     this->actor.colChkInfo.mass = 0x32;
     Audio_PlayActorSound2(&this->actor, NA_SE_EN_NUTS_DAMAGE);
     this->collider.base.acFlags &= ~AC_ON;
@@ -252,7 +253,7 @@ void EnDekunuts_Wait(EnDekunuts* this, PlayState* play) {
         Audio_PlayActorSound2(&this->actor, NA_SE_EN_NUTS_UP);
     }
 
-    this->collider.dim.height = ((CLAMP(this->skelAnime.curFrame, 9.0f, 12.0f) - 9.0f) * 9.0f) + 5.0f;
+    this->collider.dim.height = LinkSpan_S16F(((CLAMP(this->skelAnime.curFrame, 9.0f, 12.0f) - 9.0f) * 9.0f) + 5.0f);
     if (!hasSlowPlaybackSpeed && (this->actor.xzDistToPlayer < 120.0f)) {
         EnDekunuts_SetupBurrow(this);
     } else if (SkelAnime_Update(&this->skelAnime)) {
@@ -326,7 +327,7 @@ void EnDekunuts_Burrow(EnDekunuts* this, PlayState* play) {
     if (SkelAnime_Update(&this->skelAnime)) {
         EnDekunuts_SetupWait(this);
     } else {
-        this->collider.dim.height = ((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f) + 5.0f;
+        this->collider.dim.height = LinkSpan_S16F(((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f) + 5.0f);
     }
     if (Animation_OnFrame(&this->skelAnime, 4.0f)) {
         this->collider.base.acFlags &= ~AC_ON;

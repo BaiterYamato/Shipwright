@@ -1,4 +1,5 @@
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include "vt.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "textures/parameter_static/parameter_static.h"
@@ -478,7 +479,7 @@ void Map_InitData(PlayState* play, s16 room) {
             // 0xFF0, __FILE__, __LINE__);
 
             // SOH [Unbound] salas sem minimapa não podem atravessar a fatia desta dungeon.
-            if (room < 0 || room >= gMapData->dgnMinimapCount[mapIndex]) {
+            if (LinkSpan_EngineExtended() && (room < 0 || room >= gMapData->dgnMinimapCount[mapIndex])) {
                 interfaceCtx->mapSegment[0] = NULL;
                 interfaceCtx->mapSegmentName[0] = NULL;
                 break;
@@ -538,9 +539,13 @@ void Map_InitRoomData(PlayState* play, s16 room) {
         }
     } else {
         // SOH [Unbound] uma sala negativa também não possui textura ou marcadores.
-        interfaceCtx->mapRoomNum = room;
-        interfaceCtx->mapSegment[0] = NULL;
-        interfaceCtx->mapSegmentName[0] = NULL;
+        if (LinkSpan_EngineExtended()) {
+            interfaceCtx->mapRoomNum = room;
+            interfaceCtx->mapSegment[0] = NULL;
+            interfaceCtx->mapSegmentName[0] = NULL;
+        } else {
+            interfaceCtx->mapRoomNum = 0; // OOT-VANILLA-001
+        }
     }
 
     if (gSaveContext.sunsSongState != SUNSSONG_SPEED_TIME) {
@@ -640,6 +645,14 @@ void Map_Init(PlayState* play) {
     }
 }
 
+// OOT-VANILLA-001: sem mod, a conta do upstream com tempX/tempZ em s16 (trunca a posição e divide como inteiro).
+static f32 Minimap_CompassDiv(f32 value, s32 divisor) {
+    if (LinkSpan_EngineExtended()) {
+        return value / divisor;
+    }
+    return (s16)((s32)(s16)(s32)value / divisor);
+}
+
 void Minimap_DrawCompassIcons(PlayState* play) {
     s32 pad;
     Player* player = GET_PLAYER(play);
@@ -691,10 +704,9 @@ void Minimap_DrawCompassIcons(PlayState* play) {
         // distance to the center of the map, duplicating that result and casting back to a factor of 10
         s16 mirrorOffset = ((mapWidth / 2) - ((R_COMPASS_OFFSET_X / 10) - (mapStartPosX - SCREEN_WIDTH / 2))) * 2 * 10;
 
-        tempX = player->actor.world.pos.x;
-        tempZ = player->actor.world.pos.z;
-        tempX /= R_COMPASS_SCALE_X * (CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) ? -1 : 1);
-        tempZ /= R_COMPASS_SCALE_Y;
+        tempX = Minimap_CompassDiv(player->actor.world.pos.x,
+                                   R_COMPASS_SCALE_X * (CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) ? -1 : 1));
+        tempZ = Minimap_CompassDiv(player->actor.world.pos.z, R_COMPASS_SCALE_Y);
 
         s16 tempXOffset =
             R_COMPASS_OFFSET_X + (CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) ? mirrorOffset : 0);
@@ -747,10 +759,9 @@ void Minimap_DrawCompassIcons(PlayState* play) {
         gSPDisplayList(OVERLAY_DISP++, gCompassArrowDL);
 
         // Player map entry (red arrow)
-        tempX = sPlayerInitialPosX;
-        tempZ = sPlayerInitialPosZ;
-        tempX /= R_COMPASS_SCALE_X * (CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) ? -1 : 1);
-        tempZ /= R_COMPASS_SCALE_Y;
+        tempX = Minimap_CompassDiv(sPlayerInitialPosX,
+                                   R_COMPASS_SCALE_X * (CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) ? -1 : 1));
+        tempZ = Minimap_CompassDiv(sPlayerInitialPosZ, R_COMPASS_SCALE_Y);
         if (CVarGetInteger(CVAR_COSMETIC("HUD.Minimap.PosType"), 0) != ORIGINAL_LOCATION) {
             if (CVarGetInteger(CVAR_COSMETIC("HUD.Minimap.PosType"), 0) == ANCHOR_LEFT) {
                 if (CVarGetInteger(CVAR_COSMETIC("HUD.Minimap.UseMargins"), 0) != 0) {
@@ -847,8 +858,8 @@ void Minimap_Draw(PlayState* play) {
             case SCENE_BOTTOM_OF_THE_WELL:
             case SCENE_ICE_CAVERN:
                 // SOH [Unbound] oculta textura, bússola e marcadores; não altera o toggle do usuário.
-                if (interfaceCtx->mapRoomNum >= 0 &&
-                    interfaceCtx->mapRoomNum < gMapData->dgnMinimapCount[mapIndex] &&
+                if ((!LinkSpan_EngineExtended() || (interfaceCtx->mapRoomNum >= 0 &&
+                                                    interfaceCtx->mapRoomNum < gMapData->dgnMinimapCount[mapIndex])) &&
                     !R_MINIMAP_DISABLED && CVarGetInteger(CVAR_COSMETIC("HUD.Minimap.PosType"), 0) != HIDDEN) {
                     Gfx_SetupDL_39Overlay(play->state.gfxCtx);
                     gDPSetCombineLERP(OVERLAY_DISP++, 1, 0, PRIMITIVE, 0, TEXEL0, 0, PRIMITIVE, 0, 1, 0, PRIMITIVE, 0,

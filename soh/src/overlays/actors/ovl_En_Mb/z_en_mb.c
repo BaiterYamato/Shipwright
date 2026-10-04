@@ -7,6 +7,7 @@
 #include "z_en_mb.h"
 #include "objects/object_mb/object_mb.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 /*
  * This actor can have three behaviors:
@@ -292,8 +293,8 @@ void EnMb_Init(Actor* thisx, PlayState* play) {
             this->actor.colChkInfo.mass = MASS_IMMOVABLE;
             this->actor.colChkInfo.damageTable = &sClubMoblinDamageTable;
             Actor_SetScale(&this->actor, 0.02f);
-            this->hitbox.dim.height = 170;
-            this->hitbox.dim.radius = 45;
+            this->hitbox.dim.height = LinkSpan_S16F(170);
+            this->hitbox.dim.radius = LinkSpan_S16F(45);
             this->actor.uncullZoneForward = 4000.0f;
             this->actor.uncullZoneScale = 800.0f;
             this->actor.uncullZoneDownward = 1800.0f;
@@ -580,8 +581,8 @@ void EnMb_SetupClubDead(EnMb* this) {
     Animation_MorphToPlayOnce(&this->skelAnime, &gEnMbClubFallOnItsBackAnim, -4.0f);
     this->state = ENMB_STATE_CLUB_DEAD;
     this->actor.flags &= ~ACTOR_FLAG_ATTENTION_ENABLED;
-    this->hitbox.dim.height = 80;
-    this->hitbox.dim.radius = 95;
+    this->hitbox.dim.height = LinkSpan_S16F(80);
+    this->hitbox.dim.radius = LinkSpan_S16F(95);
     this->timer1 = 30;
     this->actor.speedXZ = 0.0f;
     Audio_PlayActorSound2(&this->actor, NA_SE_EN_MORIBLIN_DEAD);
@@ -1469,8 +1470,8 @@ void EnMb_Update(Actor* thisx, PlayState* play) {
         Actor_SetFocus(thisx, thisx->scale.x * 4500.0f);
         Collider_UpdateCylinder(thisx, &this->hitbox);
         if (thisx->colChkInfo.health <= 0) {
-            this->hitbox.dim.pos.x += Math_SinS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y);
-            this->hitbox.dim.pos.z += Math_CosS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y);
+            this->hitbox.dim.pos.x = LinkSpan_S16F(this->hitbox.dim.pos.x + (Math_SinS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y)));
+            this->hitbox.dim.pos.z = LinkSpan_S16F(this->hitbox.dim.pos.z + (Math_CosS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y)));
         }
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->hitbox.base);
         if (this->state >= ENMB_STATE_STUNNED &&

@@ -14,6 +14,7 @@
 #include "objects/object_gi_rupy/object_gi_rupy.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/frame_interpolation.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -149,9 +150,9 @@ void EnGSwitch_Init(Actor* thisx, PlayState* play) {
                 // "bank is funny"
                 osSyncPrintf(VT_FGCOL(CYAN) " バンクおかしいしぞ！%d\n" VT_RST "\n", this->actor.params);
             }
-            this->collider.dim.radius = 24;
-            this->collider.dim.height = 74;
-            this->collider.dim.yShift = 0;
+            this->collider.dim.radius = LinkSpan_S16F(24);
+            this->collider.dim.height = LinkSpan_S16F(74);
+            this->collider.dim.yShift = LinkSpan_S16F(0);
             this->actionFunc = EnGSwitch_WaitForObject;
             break;
         case ENGSWITCH_TARGET_RUPEE:
@@ -160,9 +161,9 @@ void EnGSwitch_Init(Actor* thisx, PlayState* play) {
             Collider_InitCylinder(play, &this->collider);
             Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
             this->actor.draw = EnGSwitch_DrawRupee;
-            this->collider.dim.radius = 20;
-            this->collider.dim.height = 60;
-            this->collider.dim.yShift = 5;
+            this->collider.dim.radius = LinkSpan_S16F(20);
+            this->collider.dim.height = LinkSpan_S16F(60);
+            this->collider.dim.yShift = LinkSpan_S16F(5);
             this->actionFunc = EnGSwitch_GalleryRupee;
             break;
     }

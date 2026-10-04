@@ -1,4 +1,5 @@
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include "vt.h"
 #include "textures/parameter_static/parameter_static.h"
 #include "textures/do_action_static/do_action_static.h"
@@ -4175,13 +4176,15 @@ void Interface_DrawItemButtons(PlayState* play) {
         C_Right_BTN_Pos[0] = -9999;
     }
 
-    // Link-Span (OOT-MOVE-004): posição final dos botões C para providers nativos.
-    LinkSpan_CaptureItemButton(play, 1, C_Left_BTN_Pos[0], C_Left_BTN_Pos[1], R_ITEM_BTN_WIDTH(1),
-                               interfaceCtx->cLeftAlpha);
-    LinkSpan_CaptureItemButton(play, 2, C_Down_BTN_Pos[0], C_Down_BTN_Pos[1], R_ITEM_BTN_WIDTH(2),
-                               interfaceCtx->cDownAlpha);
-    LinkSpan_CaptureItemButton(play, 3, C_Right_BTN_Pos[0], C_Right_BTN_Pos[1], R_ITEM_BTN_WIDTH(3),
-                               interfaceCtx->cRightAlpha);
+    // Link-Span (OOT-MOVE-004): posição final dos botões C para providers nativos (OOT-VANILLA-001: só com mod).
+    if (LinkSpan_EngineExtended()) {
+        LinkSpan_CaptureItemButton(play, 1, C_Left_BTN_Pos[0], C_Left_BTN_Pos[1], R_ITEM_BTN_WIDTH(1),
+                                   interfaceCtx->cLeftAlpha);
+        LinkSpan_CaptureItemButton(play, 2, C_Down_BTN_Pos[0], C_Down_BTN_Pos[1], R_ITEM_BTN_WIDTH(2),
+                                   interfaceCtx->cDownAlpha);
+        LinkSpan_CaptureItemButton(play, 3, C_Right_BTN_Pos[0], C_Right_BTN_Pos[1], R_ITEM_BTN_WIDTH(3),
+                                   interfaceCtx->cRightAlpha);
+    }
 
     OPEN_DISPS(play->state.gfxCtx);
 

@@ -1,4 +1,5 @@
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include "soh/OTRGlobals.h"
 #include "z_light_list.h" // SOH [Unbound] Internal C/C++ API.
 #include "vt.h"
@@ -147,7 +148,11 @@ s32 Object_GetIndex(ObjectContext* objectCtx, s16 objectId) {
 }
 
 s32 Object_IsLoaded(ObjectContext* objectCtx, s32 bankIndex) {
-    if ((bankIndex < 0) || (bankIndex >= objectCtx->num) || (bankIndex >= OBJECT_EXCHANGE_BANK_MAX)) {
+    if ((bankIndex < 0) || (bankIndex >= OBJECT_EXCHANGE_BANK_MAX)) {
+        return false; // fora do array: o upstream lia memória vizinha
+    }
+    // OOT-VANILLA-001: sem mod, vaga além de num ainda responde pelo id gravado nela, como no upstream.
+    if (LinkSpan_EngineExtended() && (bankIndex >= objectCtx->num)) {
         return false;
     }
 

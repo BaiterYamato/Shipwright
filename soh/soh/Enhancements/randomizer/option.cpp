@@ -6,6 +6,7 @@
 #include "soh/SohGui/SohMenu.h"
 #include "soh/Enhancements/Lang/Lang.h"
 #include <soh/cvar_prefixes.h>
+#include "../../../src/code/linkspan_vanilla.h"
 
 namespace SohGui {
 extern std::shared_ptr<SohMenu> mSohMenu;
@@ -281,7 +282,9 @@ void Option::AddWidget(WidgetPath& path) {
     auto widget = SohGui::mSohMenu->AddWidget(path, this->GetName() + "##Randomizer", widgetType)
                       .Callback(callback)
                       .PreFunc([this](WidgetInfo& info) {
-                          info.isHidden = this->IsHidden();
+                          // OOT-VANILLA-001: sem mod, a opção do Link-Span não aparece no menu.
+                          info.isHidden = this->IsHidden() ||
+                                          (this->GetKey() == RSK_LINKSPAN_MOD_ITEMS && !LinkSpan_EngineExtended());
                           info.options->disabled = this->disabled;
                           info.options->disabledTooltip = this->disabledText.c_str();
                           info.options->tooltip = this->GetDescription();

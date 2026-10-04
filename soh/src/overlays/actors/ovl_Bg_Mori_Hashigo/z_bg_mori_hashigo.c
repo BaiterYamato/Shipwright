@@ -6,6 +6,7 @@
 
 #include "z_bg_mori_hashigo.h"
 #include "objects/object_mori_objects/object_mori_objects.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -100,10 +101,10 @@ void BgMoriHashigo_InitCollider(BgMoriHashigo* this, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->dyna.actor, &sJntSphInit, this->colliderItems);
 
-    this->collider.elements[0].dim.worldSphere.center.x = (s16)this->dyna.actor.world.pos.x;
-    this->collider.elements[0].dim.worldSphere.center.y = (s16)this->dyna.actor.world.pos.y + 21;
-    this->collider.elements[0].dim.worldSphere.center.z = (s16)this->dyna.actor.world.pos.z;
-    this->collider.elements[0].dim.worldSphere.radius = 19;
+    this->collider.elements[0].dim.worldSphere.center.x = LinkSpan_S16F((s16)this->dyna.actor.world.pos.x);
+    this->collider.elements[0].dim.worldSphere.center.y = LinkSpan_S16F((s16)this->dyna.actor.world.pos.y + 21);
+    this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F((s16)this->dyna.actor.world.pos.z);
+    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(19);
 }
 
 s32 BgMoriHashigo_SpawnLadder(BgMoriHashigo* this, PlayState* play) {

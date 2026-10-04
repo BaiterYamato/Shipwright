@@ -7,6 +7,7 @@
 #include "z_bg_hidan_curtain.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -96,11 +97,11 @@ void BgHidanCurtain_Init(Actor* thisx, PlayState* play) {
     Actor_SetScale(&this->actor, hcParams->scale);
     Collider_InitCylinder(play, &this->collider);
     Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
-    this->collider.dim.pos.x = this->actor.world.pos.x;
-    this->collider.dim.pos.y = this->actor.world.pos.y;
-    this->collider.dim.pos.z = this->actor.world.pos.z;
-    this->collider.dim.radius = hcParams->radius;
-    this->collider.dim.height = hcParams->height;
+    this->collider.dim.pos.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->collider.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y);
+    this->collider.dim.pos.z = LinkSpan_S16F(this->actor.world.pos.z);
+    this->collider.dim.radius = LinkSpan_S16F(hcParams->radius);
+    this->collider.dim.height = LinkSpan_S16F(hcParams->height);
     Collider_UpdateCylinder(&this->actor, &this->collider);
     CollisionCheck_SetInfo(&thisx->colChkInfo, NULL, &sCcInfoInit);
     if (this->type == 0) {
@@ -230,7 +231,7 @@ void BgHidanCurtain_Update(Actor* thisx, PlayState* play2) {
         riseProgress = (hcParams->riseDist - (this->actor.home.pos.y - this->actor.world.pos.y)) / hcParams->riseDist;
         this->alpha = 255.0f * riseProgress;
         if (this->alpha > 50) {
-            this->collider.dim.height = hcParams->height * riseProgress;
+            this->collider.dim.height = LinkSpan_S16F(hcParams->height * riseProgress);
             CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);
             CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
             if (gSaveContext.sceneLayer <= 3) {

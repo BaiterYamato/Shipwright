@@ -16,6 +16,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/savestate_serialize.h"
 #include "soh/z_message_OTR.h"
+#include "linkspan_vanilla.h"
 
 // #region SOH [NTSC] - Allows custom messages to work on japanese
 static bool sDisplayNextMessageAsEnglish = false;
@@ -1112,7 +1113,21 @@ void Message_DrawTextJPN(PlayState* play, Gfx** gfxP) {
                                                 msgCtx->msgMode < MSGMODE_SCARECROW_LONG_RECORDING_START)),
                                           i)) {
                     j = i;
-                    if (!Message_FindQuickTextEnd(msgCtx, &j, true)) {
+                    if (!LinkSpan_EngineExtended()) {
+                        // OOT-VANILLA-001: busca do upstream
+                        while (true) {
+                            character = msgCtx->msgBufDecodedWide[j];
+                            if ((character != MESSAGE_QUICKTEXT_DISABLE_JPN) &&
+                                (character != MESSAGE_PERSISTENT_JPN) && (character != MESSAGE_EVENT_JPN) &&
+                                (character != MESSAGE_BOX_BREAK_DELAYED_JPN) &&
+                                (character != MESSAGE_AWAIT_BUTTON_PRESS_JPN) &&
+                                (character != MESSAGE_BOX_BREAK_JPN) && (character != MESSAGE_END_JPN)) {
+                                j++;
+                            } else {
+                                break;
+                            }
+                        }
+                    } else if (!Message_FindQuickTextEnd(msgCtx, &j, true)) {
                         // SOH [Link-Span] R04: sem parada valida, descartar a caixa.
                         osSyncPrintf("[R04] message %04x: lookahead incompleto; encerrando\n", msgCtx->textId);
                         Message_DiscardDecoded(play, true);
@@ -1446,7 +1461,26 @@ void Message_DrawText(PlayState* play, Gfx** gfxP) {
                                                 msgCtx->msgMode < MSGMODE_SCARECROW_LONG_RECORDING_START)),
                                           i)) {
                     j = i;
-                    if (!Message_FindQuickTextEnd(msgCtx, &j, false)) {
+                    if (!LinkSpan_EngineExtended()) {
+                        // OOT-VANILLA-001: busca do upstream
+                        while (true) {
+                            u16 lookAheadCharacter = msgCtx->msgBufDecoded[j];
+
+                            if (lookAheadCharacter == MESSAGE_SHIFT) {
+                                j += 2;
+                            } else if ((lookAheadCharacter != MESSAGE_QUICKTEXT_DISABLE) &&
+                                       (lookAheadCharacter != MESSAGE_PERSISTENT) &&
+                                       (lookAheadCharacter != MESSAGE_EVENT) &&
+                                       (lookAheadCharacter != MESSAGE_BOX_BREAK_DELAYED) &&
+                                       (lookAheadCharacter != MESSAGE_AWAIT_BUTTON_PRESS) &&
+                                       (lookAheadCharacter != MESSAGE_BOX_BREAK) &&
+                                       (lookAheadCharacter != MESSAGE_END)) {
+                                j++;
+                            } else {
+                                break;
+                            }
+                        }
+                    } else if (!Message_FindQuickTextEnd(msgCtx, &j, false)) {
                         // SOH [Link-Span] R04: sem parada valida, descartar a caixa.
                         osSyncPrintf("[R04] message %04x: lookahead incompleto; encerrando\n", msgCtx->textId);
                         Message_DiscardDecoded(play, false);
@@ -1713,15 +1747,17 @@ void Message_LoadItemIcon(PlayState* play, u16 itemId, s16 y) {
 }
 
 // SOH [Link-Span] R04: conferir antes da escrita e encerrar a caixa no excesso.
+// OOT-VANILLA-001: sem mod, nada é conferido, como no upstream.
 #define MESSAGE_DECODE_REQUIRE_INDEX(index)                                      \
     do {                                                                        \
-        if ((index) < 0 || (index) >= decodedLimit) {                             \
+        if (LinkSpan_EngineExtended() && ((index) < 0 || (index) >= decodedLimit)) { \
             goto decodeOverflow;                                                \
         }                                                                       \
     } while (0)
 #define MESSAGE_DECODE_REQUIRE_GLYPH(index)                                      \
     do {                                                                        \
-        if ((index) < 0 || (index) > ARRAY_COUNT(font->charTexBuf) - FONT_CHAR_TEX_SIZE) { \
+        if (LinkSpan_EngineExtended() &&                                         \
+            ((index) < 0 || (index) > ARRAY_COUNT(font->charTexBuf) - FONT_CHAR_TEX_SIZE)) { \
             goto decodeOverflow;                                                \
         }                                                                       \
     } while (0)
@@ -2062,12 +2098,12 @@ static bool Message_DecodeJPN(PlayState* play) {
 
     while (true) {
         rawTokenStart = msgCtx->msgBufPos;
-        if (!Message_HasRawUnits(font, msgCtx->msgBufPos, 1, true)) {
+        if (LinkSpan_EngineExtended() && !Message_HasRawUnits(font, msgCtx->msgBufPos, 1, true)) {
             goto decodeOverflow;
         }
-        if (!Message_HasRawUnits(font, msgCtx->msgBufPos,
-                                 Message_RawControlUnits((u16)font->msgBufWide[msgCtx->msgBufPos],
-                                                         true), true)) {
+        if (LinkSpan_EngineExtended() &&
+            !Message_HasRawUnits(font, msgCtx->msgBufPos,
+                                 Message_RawControlUnits((u16)font->msgBufWide[msgCtx->msgBufPos], true), true)) {
             goto decodeOverflow;
         }
         MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
@@ -2081,6 +2117,12 @@ static bool Message_DecodeJPN(PlayState* play) {
                 MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 curChar = msgCtx->msgBufDecodedWide[decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos] =
                     MESSAGE_BOX_BREAK_DELAYED_JPN;
+            } else if (curChar == MESSAGE_END_JPN && !LinkSpan_EngineExtended()) {
+                // OOT-VANILLA-001: cauda do upstream (use fade instead of fade2, as fade2 is unimplemented in JP)
+                curChar = msgCtx->msgBufDecodedWide[decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos] =
+                    MESSAGE_FADE_JPN;
+                curChar = msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[++msgCtx->msgBufPos] =
+                    MESSAGE_END_JPN;
             } else if (curChar == MESSAGE_END_JPN) {
                 // SOH [Link-Span] R04: fade completo, sem escrever alem do raw.
                 MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos + 2);
@@ -2115,7 +2157,8 @@ static bool Message_DecodeJPN(PlayState* play) {
             }
             msgCtx->decodedTextLen = decodedBufPos;
             if (sTextboxSkipped) {
-                msgCtx->textDrawPos = msgCtx->decodedTextLen != 0 ? msgCtx->decodedTextLen : 1;
+                msgCtx->textDrawPos =
+                    (msgCtx->decodedTextLen != 0 || !LinkSpan_EngineExtended()) ? msgCtx->decodedTextLen : 1;
             }
             break;
         }
@@ -2484,12 +2527,12 @@ static bool Message_DecodeChecked(PlayState* play) {
 
     while (true) {
         rawTokenStart = msgCtx->msgBufPos;
-        if (!Message_HasRawUnits(font, msgCtx->msgBufPos, 1, false)) {
+        if (LinkSpan_EngineExtended() && !Message_HasRawUnits(font, msgCtx->msgBufPos, 1, false)) {
             goto decodeOverflow;
         }
-        if (!Message_HasRawUnits(font, msgCtx->msgBufPos,
-                                 Message_RawControlUnits((u8)font->msgBuf[msgCtx->msgBufPos],
-                                                         false), false)) {
+        if (LinkSpan_EngineExtended() &&
+            !Message_HasRawUnits(font, msgCtx->msgBufPos,
+                                 Message_RawControlUnits((u8)font->msgBuf[msgCtx->msgBufPos], false), false)) {
             goto decodeOverflow;
         }
         MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
@@ -2503,6 +2546,12 @@ static bool Message_DecodeChecked(PlayState* play) {
                 MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 phi_s1 = temp_s2 = msgCtx->msgBufDecoded[decodedBufPos] = font->msgBuf[msgCtx->msgBufPos] =
                     MESSAGE_BOX_BREAK_DELAYED;
+            } else if (temp_s2 == MESSAGE_END && !LinkSpan_EngineExtended()) {
+                // OOT-VANILLA-001: cauda do upstream
+                phi_s1 = temp_s2 = msgCtx->msgBufDecoded[decodedBufPos] = font->msgBuf[msgCtx->msgBufPos] =
+                    MESSAGE_FADE2;
+                phi_s1 = temp_s2 = msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos] =
+                    MESSAGE_END;
             } else if (temp_s2 == MESSAGE_END) {
                 // SOH [Link-Span] R04: manter o byte alto legado; cauda deterministica.
                 MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos + 3);
@@ -2547,7 +2596,8 @@ static bool Message_DecodeChecked(PlayState* play) {
             }
             msgCtx->decodedTextLen = decodedBufPos;
             if (sTextboxSkipped) {
-                msgCtx->textDrawPos = msgCtx->decodedTextLen != 0 ? msgCtx->decodedTextLen : 1;
+                msgCtx->textDrawPos =
+                    (msgCtx->decodedTextLen != 0 || !LinkSpan_EngineExtended()) ? msgCtx->decodedTextLen : 1;
             }
             break;
         } else if (temp_s2 == MESSAGE_NAME) {
@@ -4812,7 +4862,8 @@ void Message_Update(PlayState* play) {
                 Interface_ChangeHudVisibilityMode(1);
             }
             if (D_80153D74 != 0) {
-                msgCtx->textDrawPos = msgCtx->decodedTextLen != 0 ? msgCtx->decodedTextLen : 1;
+                msgCtx->textDrawPos =
+                    (msgCtx->decodedTextLen != 0 || !LinkSpan_EngineExtended()) ? msgCtx->decodedTextLen : 1;
                 D_80153D74 = 0;
             }
             break;
@@ -4827,7 +4878,8 @@ void Message_Update(PlayState* play) {
                 !msgCtx->textUnskippable) {
                 // SOH [Link-Span] R04: o primeiro skip recupera a fronteira de AWAIT.
                 // B mantido conserva o avanco posterior, inclusive END e o descarte.
-                if ((!sTextboxSkipped && msgCtx->decodedTextLen != 0) ||
+                // OOT-VANILLA-001: sem mod, sempre vai ao fim decodificado, como no upstream.
+                if (!LinkSpan_EngineExtended() || (!sTextboxSkipped && msgCtx->decodedTextLen != 0) ||
                     msgCtx->textDrawPos < msgCtx->decodedTextLen) {
                     msgCtx->textDrawPos = msgCtx->decodedTextLen;
                 }
@@ -4876,7 +4928,13 @@ void Message_Update(PlayState* play) {
                         Audio_PlaySfxGeneral(NA_SE_SY_MESSAGE_PASS, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
                                              &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
                         // SOH [Link-Span] R04: o ID validado independe do cursor de desenho.
-                        Message_ContinueTextbox(play, sNextTextId);
+                        // OOT-VANILLA-001: sem mod, o JPN lê o ID no cursor, como no upstream.
+                        if (!LinkSpan_EngineExtended() && gSaveContext.language == LANGUAGE_JPN && !sTextIsCredits &&
+                            !sDisplayNextMessageAsEnglish) {
+                            Message_ContinueTextbox(play, msgCtx->msgBufDecodedWide[msgCtx->textDrawPos]);
+                        } else {
+                            Message_ContinueTextbox(play, sNextTextId);
+                        }
                     } else {
                         Audio_PlaySfxGeneral(NA_SE_SY_DECIDE, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
                                              &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);

@@ -11,6 +11,7 @@
 #include "scenes/overworld/spot09/spot09_scene.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <assert.h>
+#include "../../../code/linkspan_vanilla.h"
 
 s32 LinkSpan_UsesGeneratedHorseCall(s32 sceneNum);
 
@@ -2923,7 +2924,7 @@ s32 EnHorse_CalcFloorHeight(EnHorse* this, PlayState* play, Vec3f* pos, Collisio
     *floorPoly = NULL;
     *floorHeight = BgCheck_EntityRaycastFloor3(&play->colCtx, floorPoly, &bgId, pos);
 
-    if (*floorHeight == BGCHECK_Y_MIN) {
+    if (*floorHeight == LINKSPAN_BGCHECK_Y_MIN) {
         return 1; // No floor
     }
 
@@ -3310,7 +3311,7 @@ void EnHorse_UpdateBgCheckInfo(EnHorse* this, PlayState* play) {
     obstaclePos.z += intersectDist * Math_CosS(this->actor.world.rot.y);
     obstacleTop = obstaclePos;
     obstacleTop.y = BgCheck_EntityRaycastFloor3(&play->colCtx, &obstacleFloor, &bgId, &obstaclePos);
-    if (obstacleTop.y == BGCHECK_Y_MIN) {
+    if (obstacleTop.y == LINKSPAN_BGCHECK_Y_MIN) {
         return;
     }
     obstacleHeight = obstacleTop.y - this->actor.world.pos.y;
@@ -3360,7 +3361,7 @@ void EnHorse_UpdateBgCheckInfo(EnHorse* this, PlayState* play) {
 
     obstacleTop = obstaclePos;
     obstacleTop.y = BgCheck_EntityRaycastFloor3(&play->colCtx, &obstacleFloor, &bgId, &obstaclePos);
-    if (obstacleTop.y == BGCHECK_Y_MIN) {
+    if (obstacleTop.y == LINKSPAN_BGCHECK_Y_MIN) {
         return;
     }
 
@@ -3630,10 +3631,10 @@ void EnHorse_Update(Actor* thisx, PlayState* play2) {
         Collider_UpdateCylinder(thisx, &this->cyl2);
 
         // Required to match
-        this->cyl1.dim.pos.x = this->cyl1.dim.pos.x + (s16)(Math_SinS(thisx->shape.rot.y) * 11.0f);
-        this->cyl1.dim.pos.z = this->cyl1.dim.pos.z + (s16)(Math_CosS(thisx->shape.rot.y) * 11.0f);
-        this->cyl2.dim.pos.x = this->cyl2.dim.pos.x + (s16)(Math_SinS(thisx->shape.rot.y) * -18.0f);
-        this->cyl2.dim.pos.z = this->cyl2.dim.pos.z + (s16)(Math_CosS(thisx->shape.rot.y) * -18.0f);
+        this->cyl1.dim.pos.x = LinkSpan_S16F(this->cyl1.dim.pos.x + (s16)(Math_SinS(thisx->shape.rot.y) * 11.0f));
+        this->cyl1.dim.pos.z = LinkSpan_S16F(this->cyl1.dim.pos.z + (s16)(Math_CosS(thisx->shape.rot.y) * 11.0f));
+        this->cyl2.dim.pos.x = LinkSpan_S16F(this->cyl2.dim.pos.x + (s16)(Math_SinS(thisx->shape.rot.y) * -18.0f));
+        this->cyl2.dim.pos.z = LinkSpan_S16F(this->cyl2.dim.pos.z + (s16)(Math_CosS(thisx->shape.rot.y) * -18.0f));
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->cyl1.base);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->cyl1.base);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->cyl2.base);
@@ -3883,11 +3884,11 @@ void EnHorse_PostDraw(Actor* thisx, PlayState* play, Skin* skin) {
         center.z = this->jntSph.elements[i].dim.modelSphere.center.z;
 
         Skin_GetLimbPos(skin, this->jntSph.elements[i].dim.limb, &center, &newCenter);
-        this->jntSph.elements[i].dim.worldSphere.center.x = newCenter.x;
-        this->jntSph.elements[i].dim.worldSphere.center.y = newCenter.y;
-        this->jntSph.elements[i].dim.worldSphere.center.z = newCenter.z;
-        this->jntSph.elements[i].dim.worldSphere.radius =
-            this->jntSph.elements[i].dim.modelSphere.radius * this->jntSph.elements[i].dim.scale;
+        this->jntSph.elements[i].dim.worldSphere.center.x = LinkSpan_S16F(newCenter.x);
+        this->jntSph.elements[i].dim.worldSphere.center.y = LinkSpan_S16F(newCenter.y);
+        this->jntSph.elements[i].dim.worldSphere.center.z = LinkSpan_S16F(newCenter.z);
+        this->jntSph.elements[i].dim.worldSphere.radius = LinkSpan_S16F(
+            this->jntSph.elements[i].dim.modelSphere.radius * this->jntSph.elements[i].dim.scale);
     }
 
     //! @bug Setting colliders in a draw function allows for duplicate entries to be added to their respective lists

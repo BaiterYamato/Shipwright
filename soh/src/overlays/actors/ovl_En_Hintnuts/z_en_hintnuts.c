@@ -7,6 +7,7 @@
 #include "z_en_hintnuts.h"
 #include "objects/object_hintnuts/object_hintnuts.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -121,7 +122,7 @@ void EnHintnuts_HitByScrubProjectile1(EnHintnuts* this, PlayState* play) {
 void EnHintnuts_SetupWait(EnHintnuts* this) {
     Animation_PlayOnceSetSpeed(&this->skelAnime, &gHintNutsUpAnim, 0.0f);
     this->animFlagAndTimer = Rand_S16Offset(100, 50);
-    this->collider.dim.height = 5;
+    this->collider.dim.height = LinkSpan_S16F(5);
     this->actor.world.pos = this->actor.home.pos;
     this->collider.base.acFlags &= ~AC_ON;
     this->actionFunc = EnHintnuts_Wait;
@@ -156,7 +157,7 @@ void EnHintnuts_SetupBurrow(EnHintnuts* this) {
 
 void EnHintnuts_HitByScrubProjectile2(EnHintnuts* this) {
     Animation_MorphToPlayOnce(&this->skelAnime, &gHintNutsUnburrowAnim, -3.0f);
-    this->collider.dim.height = 37;
+    this->collider.dim.height = LinkSpan_S16F(37);
     Audio_PlayActorSound2(&this->actor, NA_SE_EN_NUTS_DAMAGE);
     this->collider.base.acFlags &= ~AC_ON;
 
@@ -233,7 +234,7 @@ void EnHintnuts_Wait(EnHintnuts* this, PlayState* play) {
         Audio_PlayActorSound2(&this->actor, NA_SE_EN_NUTS_UP);
     }
 
-    this->collider.dim.height = 5.0f + ((CLAMP(this->skelAnime.curFrame, 9.0f, 12.0f) - 9.0f) * 9.0f);
+    this->collider.dim.height = LinkSpan_S16F(5.0f + ((CLAMP(this->skelAnime.curFrame, 9.0f, 12.0f) - 9.0f) * 9.0f));
     if (!hasSlowPlaybackSpeed && (this->actor.xzDistToPlayer < 120.0f)) {
         EnHintnuts_SetupBurrow(this);
     } else if (SkelAnime_Update(&this->skelAnime)) {
@@ -299,7 +300,7 @@ void EnHintnuts_Burrow(EnHintnuts* this, PlayState* play) {
     if (SkelAnime_Update(&this->skelAnime)) {
         EnHintnuts_SetupWait(this);
     } else {
-        this->collider.dim.height = 5.0f + ((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f);
+        this->collider.dim.height = LinkSpan_S16F(5.0f + ((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f));
     }
     if (Animation_OnFrame(&this->skelAnime, 4.0f)) {
         this->collider.base.acFlags &= ~AC_ON;

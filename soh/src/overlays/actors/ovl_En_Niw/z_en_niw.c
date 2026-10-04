@@ -10,6 +10,7 @@
 #include "vt.h"
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_THROW_ONLY)
 
@@ -987,7 +988,7 @@ void EnNiw_Update(Actor* thisx, PlayState* play) {
     if (play->sceneNum == SCENE_ZORAS_RIVER) {
         Actor_UpdateBgCheckInfo(play, &this->actor, 20.0f, 20.0f, 60.0f, 29);
     }
-    if (thisx->floorHeight <= BGCHECK_Y_MIN || thisx->floorHeight >= 32000.0f) {
+    if (thisx->floorHeight <= LINKSPAN_BGCHECK_Y_MIN || thisx->floorHeight >= 32000.0f) {
         osSyncPrintf(VT_FGCOL(GREEN) "☆☆☆☆☆ 上下？ ☆☆☆☆☆ %f\n" VT_RST, thisx->floorHeight);
         cam.x = play->view.lookAt.x - play->view.eye.x;
         cam.y = play->view.lookAt.y - play->view.eye.y;

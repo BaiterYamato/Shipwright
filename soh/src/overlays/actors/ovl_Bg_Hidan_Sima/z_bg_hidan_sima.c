@@ -6,6 +6,7 @@
 
 #include "z_bg_hidan_sima.h"
 #include "objects/object_hidan_objects/object_hidan_objects.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -98,7 +99,7 @@ void BgHidanSima_Init(Actor* thisx, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->dyna.actor, &sJntSphInit, this->elements);
     for (i = 0; i < ARRAY_COUNT(sJntSphElementsInit); i++) {
-        this->collider.elements[i].dim.worldSphere.radius = this->collider.elements[i].dim.modelSphere.radius;
+        this->collider.elements[i].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[i].dim.modelSphere.radius);
     }
     if (this->dyna.actor.params == 0) {
         this->actionFunc = func_8088E518;
@@ -201,9 +202,9 @@ void func_8088E90C(BgHidanSima* this) {
 
     for (i = 0; i < 2; i++) {
         elem = &this->collider.elements[i];
-        elem->dim.worldSphere.center.x = this->dyna.actor.world.pos.x + sin * elem->dim.modelSphere.center.z;
-        elem->dim.worldSphere.center.y = (s16)this->dyna.actor.world.pos.y + elem->dim.modelSphere.center.y;
-        elem->dim.worldSphere.center.z = this->dyna.actor.world.pos.z + cos * elem->dim.modelSphere.center.z;
+        elem->dim.worldSphere.center.x = LinkSpan_S16F(this->dyna.actor.world.pos.x + sin * elem->dim.modelSphere.center.z);
+        elem->dim.worldSphere.center.y = LinkSpan_S16F((s16)this->dyna.actor.world.pos.y + elem->dim.modelSphere.center.y);
+        elem->dim.worldSphere.center.z = LinkSpan_S16F(this->dyna.actor.world.pos.z + cos * elem->dim.modelSphere.center.z);
     }
 }
 

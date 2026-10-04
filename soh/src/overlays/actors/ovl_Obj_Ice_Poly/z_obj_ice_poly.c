@@ -6,6 +6,7 @@
 
 #include "z_obj_ice_poly.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -94,10 +95,10 @@ void ObjIcePoly_Init(Actor* thisx, PlayState* play) {
     Collider_UpdateCylinder(thisx, &this->colliderHard);
     thisx->colChkInfo.mass = MASS_IMMOVABLE;
     this->alpha = 255;
-    this->colliderIce.dim.radius *= thisx->scale.x;
-    this->colliderIce.dim.height *= thisx->scale.y;
-    this->colliderHard.dim.radius *= thisx->scale.x;
-    this->colliderHard.dim.height *= thisx->scale.y;
+    this->colliderIce.dim.radius = LinkSpan_S16F(this->colliderIce.dim.radius * (thisx->scale.x));
+    this->colliderIce.dim.height = LinkSpan_S16F(this->colliderIce.dim.height * (thisx->scale.y));
+    this->colliderHard.dim.radius = LinkSpan_S16F(this->colliderHard.dim.radius * (thisx->scale.x));
+    this->colliderHard.dim.height = LinkSpan_S16F(this->colliderHard.dim.height * (thisx->scale.y));
     Actor_SetFocus(thisx, thisx->scale.y * 30.0f);
     this->actionFunc = ObjIcePoly_Idle;
 }

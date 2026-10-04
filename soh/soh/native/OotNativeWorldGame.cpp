@@ -12,6 +12,7 @@
 extern "C" {
 #include "functions.h"
 #include "variables.h"
+#include "../../src/code/linkspan_vanilla.h"
 extern PlayState* gPlayState;
 }
 
@@ -41,7 +42,7 @@ ShipNativeStatus RaycastFloor(void* state, float x, float y, float z, ShipOotWor
     s32 bgId = BGCHECK_SCENE;
     Vec3f pos{ x, y, z };
     const f32 floorY = BgCheck_EntityRaycastFloor3(&play->colCtx, &poly, &bgId, &pos);
-    if (poly && floorY > BGCHECK_Y_MIN) {
+    if (poly && floorY > LINKSPAN_BGCHECK_Y_MIN) {
         FillPoly(play, hit, poly, bgId, Vec3f{ x, floorY, z });
     }
     return SHIP_NATIVE_OK;

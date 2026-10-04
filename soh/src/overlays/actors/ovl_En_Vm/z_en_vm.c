@@ -9,6 +9,7 @@
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -296,7 +297,7 @@ void EnVm_Attack(EnVm* this, PlayState* play) {
         Math_SmoothStepToS(&this->beamRot.x, pitch, 10, 0xDAC, 0);
         playerPos = player->actor.world.pos;
 
-        if (player->actor.floorHeight > BGCHECK_Y_MIN) {
+        if (player->actor.floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
             playerPos.y = player->actor.floorHeight;
         }
 

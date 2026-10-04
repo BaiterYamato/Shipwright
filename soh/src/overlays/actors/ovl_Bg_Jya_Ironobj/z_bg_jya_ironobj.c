@@ -7,6 +7,7 @@
 #include "z_bg_jya_ironobj.h"
 #include "objects/object_jya_iron/object_jya_iron.h"
 #include "overlays/actors/ovl_En_Ik/z_en_ik.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -86,8 +87,8 @@ void BgJyaIronobj_InitCylinder(BgJyaIronobj* this, PlayState* play) {
     Collider_InitCylinder(play, colCylinder);
     Collider_SetCylinder(play, colCylinder, &this->dyna.actor, &sCylinderInit);
     if ((this->dyna.actor.params & 1) == 1) {
-        this->colCylinder.dim.radius = 40;
-        this->colCylinder.dim.height = 100;
+        this->colCylinder.dim.radius = LinkSpan_S16F(40);
+        this->colCylinder.dim.height = LinkSpan_S16F(100);
     }
     Collider_UpdateCylinder(&this->dyna.actor, colCylinder);
 }

@@ -9,6 +9,7 @@
 #include "soh/Enhancements/savestate_serialize.h"
 
 #include <string.h>
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -2886,14 +2887,14 @@ void BossTw_Update(Actor* thisx, PlayState* play) {
     this->actionFunc(this, play);
 
     if (this->actionFunc != BossTw_Wait) {
-        this->collider.dim.radius = 45;
+        this->collider.dim.radius = LinkSpan_S16F(45);
 
         if (this->actionFunc == BossTw_Spin) {
-            this->collider.dim.radius *= 2;
+            this->collider.dim.radius = LinkSpan_S16F(this->collider.dim.radius * (2));
         }
 
-        this->collider.dim.height = 120;
-        this->collider.dim.yShift = -30;
+        this->collider.dim.height = LinkSpan_S16F(120);
+        this->collider.dim.yShift = LinkSpan_S16F(-30);
 
         if (this->work[INVINC_TIMER] == 0) {
             if (this->collider.base.acFlags & AC_HIT) {
@@ -3068,14 +3069,14 @@ void BossTw_TwinrovaUpdate(Actor* thisx, PlayState* play2) {
         }
     }
 
-    this->collider.dim.radius = 35;
+    this->collider.dim.radius = LinkSpan_S16F(35);
 
     if (this->actionFunc == BossTw_TwinrovaSpin) {
-        this->collider.dim.radius *= 2;
+        this->collider.dim.radius = LinkSpan_S16F(this->collider.dim.radius * (2));
     }
 
-    this->collider.dim.height = 150;
-    this->collider.dim.yShift = -60;
+    this->collider.dim.height = LinkSpan_S16F(150);
+    this->collider.dim.yShift = LinkSpan_S16F(-60);
     Collider_UpdateCylinder(&this->actor, &this->collider);
 
     if (this->work[INVINC_TIMER] == 0) {

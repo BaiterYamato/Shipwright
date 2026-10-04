@@ -11,6 +11,7 @@
 #include "objects/object_kw1/object_kw1.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -1192,7 +1193,7 @@ void func_80A99048(EnKo* this, PlayState* play) {
                            this->actor.world.pos.y, this->actor.world.pos.z, 0, 0, 0, 3);
         if (ENKO_TYPE == ENKO_TYPE_CHILD_3) {
             if (!GameInteractor_Should(VB_OPEN_KOKIRI_FOREST, CHECK_QUEST_ITEM(QUEST_KOKIRI_EMERALD), this)) {
-                this->collider.dim.height += 200;
+                this->collider.dim.height = LinkSpan_S16F(this->collider.dim.height + (200));
                 this->actionFunc = func_80A995CC;
                 return;
             }

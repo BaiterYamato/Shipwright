@@ -6,6 +6,7 @@
 
 #include "z_en_ice_hono.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -132,8 +133,8 @@ void EnIceHono_InitDroppedFlame(Actor* thisx, PlayState* play) {
     Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInitDroppedFlame);
     Collider_UpdateCylinder(&this->actor, &this->collider);
 
-    this->collider.dim.radius = this->actor.scale.x * 4000.4f;
-    this->collider.dim.height = this->actor.scale.y * 8000.2f;
+    this->collider.dim.radius = LinkSpan_S16F(this->actor.scale.x * 4000.4f);
+    this->collider.dim.height = LinkSpan_S16F(this->actor.scale.y * 8000.2f);
     this->actor.colChkInfo.mass = 253;
     EnIceHono_SetupActionDroppedFlame(this);
 }
@@ -250,8 +251,8 @@ void EnIceHono_DropFlame(EnIceHono* this, PlayState* play) {
     Actor_UpdateBgCheckInfo(play, &this->actor, 10.0f, this->actor.scale.x * 3500.0f, 0.0f, 5);
 
     Collider_UpdateCylinder(&this->actor, &this->collider);
-    this->collider.dim.radius = this->actor.scale.x * 4000.0f;
-    this->collider.dim.height = this->actor.scale.y * 8000.0f;
+    this->collider.dim.radius = LinkSpan_S16F(this->actor.scale.x * 4000.0f);
+    this->collider.dim.height = LinkSpan_S16F(this->actor.scale.y * 8000.0f);
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
 
     if (this->timer <= 0) {
@@ -283,8 +284,8 @@ void EnIceHono_SpreadFlames(EnIceHono* this, PlayState* play) {
 
     if ((this->alpha > 100) && (this->timer < 40)) {
         Collider_UpdateCylinder(&this->actor, &this->collider);
-        this->collider.dim.radius = this->actor.scale.x * 6000.0f;
-        this->collider.dim.height = this->actor.scale.y * 8000.0f;
+        this->collider.dim.radius = LinkSpan_S16F(this->actor.scale.x * 6000.0f);
+        this->collider.dim.height = LinkSpan_S16F(this->actor.scale.y * 8000.0f);
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);
     }
     if (this->timer == 46) {

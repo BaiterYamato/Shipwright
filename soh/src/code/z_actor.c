@@ -1,5 +1,6 @@
 #include "global.h"
 #include "soh/unbound/SceneFlagsExt.h"
+#include "linkspan_vanilla.h"
 #include "vt.h"
 
 #include "overlays/actors/ovl_Arms_Hook/z_arms_hook.h"
@@ -1684,8 +1685,8 @@ s32 func_8002E2AC(PlayState* play, Actor* actor, Vec3f* arg2, s32 arg3) {
     actor->floorHeight = BgCheck_EntityRaycastFloor5(play, &play->colCtx, &actor->floorPoly, &floorBgId, actor, arg2);
     actor->bgCheckFlags &= ~0x0086;
 
-    if (actor->floorHeight <= BGCHECK_Y_MIN) {
-        return func_8002E234(actor, BGCHECK_Y_MIN, arg3);
+    if (actor->floorHeight <= LINKSPAN_BGCHECK_Y_MIN) {
+        return func_8002E234(actor, LINKSPAN_BGCHECK_Y_MIN, arg3);
     }
 
     floorHeightDiff = actor->floorHeight - actor->world.pos.y;
@@ -1804,7 +1805,7 @@ void Actor_UpdateBgCheckInfo(PlayState* play, Actor* actor, f32 wallCheckHeight,
             }
         } else {
             actor->bgCheckFlags &= ~0x60;
-            actor->yDistToWater = BGCHECK_Y_MIN;
+            actor->yDistToWater = LINKSPAN_BGCHECK_Y_MIN;
         }
     }
 
@@ -3488,7 +3489,9 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
         osSyncPrintf("アクタークラス追加 [%d:%s]\n", actorId, dbEntry->name);
     }
 
-    if (actorCtx->total >= ACTOR_NUMBER_MAX) {
+    // OOT-VANILLA-001: sem mod, o limite e a comparação do upstream.
+    if (LinkSpan_EngineExtended() ? actorCtx->total >= ACTOR_NUMBER_MAX
+                                  : actorCtx->total > LINKSPAN_VANILLA_ACTOR_NUMBER_MAX) {
         LUSLOG_WARN("Actor_Spawn: Actor number max exceeded");
         // "Ａｃｔｏｒ set number exceeded"
         osSyncPrintf(VT_COL(YELLOW, BLACK) "Ａｃｔｏｒセット数オーバー\n" VT_RST);

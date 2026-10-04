@@ -19,6 +19,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -1384,7 +1385,7 @@ void BossVa_SetupBodyPhase4(BossVa* this, PlayState* play) {
         this->timer = -30;
     }
 
-    this->colliderBody.dim.radius = 55;
+    this->colliderBody.dim.radius = LinkSpan_S16F(55);
     BossVa_SetupAction(this, BossVa_BodyPhase4);
 }
 

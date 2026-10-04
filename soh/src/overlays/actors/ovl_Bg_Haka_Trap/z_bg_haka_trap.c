@@ -7,6 +7,7 @@
 #include "z_bg_haka_trap.h"
 #include "objects/object_haka_objects/object_haka_objects.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -130,7 +131,7 @@ void BgHakaTrap_Init(Actor* thisx, PlayState* play) {
 
         if ((thisx->params == HAKA_TRAP_GUILLOTINE_SLOW) || (thisx->params == HAKA_TRAP_GUILLOTINE_FAST)) {
             this->timer = 20;
-            this->colliderCylinder.dim.yShift = 10;
+            this->colliderCylinder.dim.yShift = LinkSpan_S16F(10);
             thisx->velocity.y = 0.1f;
 
             if (thisx->params == HAKA_TRAP_GUILLOTINE_FAST) {
@@ -159,8 +160,8 @@ void BgHakaTrap_Init(Actor* thisx, PlayState* play) {
                 thisx->floorHeight = thisx->home.pos.y - 225.0f;
                 this->unk_16A = (thisx->floorHeight + 50.0f) - 25.0f;
 
-                this->colliderCylinder.dim.radius = 10;
-                this->colliderCylinder.dim.height = 40;
+                this->colliderCylinder.dim.radius = LinkSpan_S16F(10);
+                this->colliderCylinder.dim.height = LinkSpan_S16F(40);
             } else {
                 if (thisx->params == HAKA_TRAP_SPIKED_WALL) {
                     CollisionHeader_GetVirtual(&object_haka_objects_Col_0081D0, &colHeader);
@@ -173,8 +174,8 @@ void BgHakaTrap_Init(Actor* thisx, PlayState* play) {
                 Collider_InitTris(play, &this->colliderSpikes);
                 Collider_SetTris(play, &this->colliderSpikes, thisx, &sTrisInit, this->colliderSpikesItem);
 
-                this->colliderCylinder.dim.radius = 18;
-                this->colliderCylinder.dim.height = 115;
+                this->colliderCylinder.dim.radius = LinkSpan_S16F(18);
+                this->colliderCylinder.dim.height = LinkSpan_S16F(115);
 
                 this->colliderCylinder.info.toucherFlags = this->colliderCylinder.info.toucherFlags;
                 this->colliderCylinder.info.toucherFlags |= TOUCH_SFX_WOOD;
@@ -232,8 +233,8 @@ void BgHakaTrap_UpdateBodyColliderPos(BgHakaTrap* this, PlayState* play) {
         sp28.z = zNonNegative * 15.0f;
     }
 
-    this->colliderCylinder.dim.pos.x = this->dyna.actor.world.pos.x + sp28.x * cosine + sp28.z * sine;
-    this->colliderCylinder.dim.pos.z = this->dyna.actor.world.pos.z + sp28.x * sine + sp28.z * cosine;
+    this->colliderCylinder.dim.pos.x = LinkSpan_S16F(this->dyna.actor.world.pos.x + sp28.x * cosine + sp28.z * sine);
+    this->colliderCylinder.dim.pos.z = LinkSpan_S16F(this->dyna.actor.world.pos.z + sp28.x * sine + sp28.z * cosine);
 }
 
 static UNK_TYPE sSpikedWallFlags = 0;
@@ -495,7 +496,7 @@ void BgHakaTrap_Update(Actor* thisx, PlayState* play) {
     this->actionFunc(this, play);
 
     if ((this->dyna.actor.params != HAKA_TRAP_PROPELLER) && (thisx->params != HAKA_TRAP_SPIKED_BOX)) {
-        this->colliderCylinder.dim.pos.y = actorPos->y;
+        this->colliderCylinder.dim.pos.y = LinkSpan_S16F(actorPos->y);
 
         if ((thisx->params == HAKA_TRAP_GUILLOTINE_SLOW) || (thisx->params == HAKA_TRAP_GUILLOTINE_FAST)) {
             CollisionCheck_SetAC(play, &play->colChkCtx, &this->colliderCylinder.base);

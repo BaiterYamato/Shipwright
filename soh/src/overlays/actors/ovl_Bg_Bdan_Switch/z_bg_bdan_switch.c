@@ -7,6 +7,7 @@
 #include "z_bg_bdan_switch.h"
 #include "objects/object_bdan_objects/object_bdan_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -504,7 +505,7 @@ void BgBdanSwitch_Update(Actor* thisx, PlayState* play) {
         }
         this->unk_1DC = this->collider.base.acFlags;
         this->collider.base.acFlags &= ~AC_HIT;
-        this->collider.elements[0].dim.modelSphere.radius = this->unk_1D4 * 370.0f;
+        this->collider.elements[0].dim.modelSphere.radius = LinkSpan_S16F(this->unk_1D4 * 370.0f);
         CollisionCheck_SetAC(play, &play->colChkCtx, &this->collider.base);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
     }

@@ -9,6 +9,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_hidan_objects/object_hidan_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -95,7 +96,7 @@ void BgHidanFwbig_Init(Actor* thisx, PlayState* play2) {
         }
         BgHidanFwbig_UpdatePosition(this);
         Actor_SetScale(&this->actor, 0.15f);
-        this->collider.dim.height = 230;
+        this->collider.dim.height = LinkSpan_S16F(230);
         this->actor.flags |= ACTOR_FLAG_UPDATE_CULLING_DISABLED;
         this->moveState = FWBIG_MOVE;
         this->actionFunc = BgHidanFwbig_WaitForPlayer;
@@ -212,9 +213,9 @@ void BgHidanFwbig_MoveCollider(BgHidanFwbig* this, PlayState* play) {
 
     sn = Math_SinS(this->actor.shape.rot.y);
     cs = Math_CosS(this->actor.shape.rot.y);
-    this->collider.dim.pos.x = this->actor.world.pos.x + (projPos.x * cs) + (projPos.z * sn);
-    this->collider.dim.pos.z = this->actor.world.pos.z - (projPos.x * sn) + (projPos.z * cs);
-    this->collider.dim.pos.y = this->actor.world.pos.y;
+    this->collider.dim.pos.x = LinkSpan_S16F(this->actor.world.pos.x + (projPos.x * cs) + (projPos.z * sn));
+    this->collider.dim.pos.z = LinkSpan_S16F(this->actor.world.pos.z - (projPos.x * sn) + (projPos.z * cs));
+    this->collider.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y);
 
     this->actor.world.rot.y = (projPos.z < 0.0f) ? this->actor.shape.rot.y : this->actor.shape.rot.y + 0x8000;
 }

@@ -6,6 +6,7 @@
 
 #include "z_bg_hidan_sekizou.h"
 #include "objects/object_hidan_objects/object_hidan_objects.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -135,11 +136,11 @@ void func_8088CEC0(BgHidanSekizou* this, s32 arg1, s16 arg2) {
     for (i = start; i < end; i++) {
         ColliderJntSphElement* element = &this->collider.elements[i];
 
-        element->dim.worldSphere.center.x = this->dyna.actor.home.pos.x + (sp2C * element->dim.modelSphere.center.x) +
-                                            (sp30 * element->dim.modelSphere.center.z);
-        element->dim.worldSphere.center.y = (s16)this->dyna.actor.home.pos.y + element->dim.modelSphere.center.y;
-        element->dim.worldSphere.center.z = this->dyna.actor.home.pos.z - (sp30 * element->dim.modelSphere.center.x) +
-                                            (sp2C * element->dim.modelSphere.center.z);
+        element->dim.worldSphere.center.x = LinkSpan_S16F(this->dyna.actor.home.pos.x + (sp2C * element->dim.modelSphere.center.x) +
+                                            (sp30 * element->dim.modelSphere.center.z));
+        element->dim.worldSphere.center.y = LinkSpan_S16F((s16)this->dyna.actor.home.pos.y + element->dim.modelSphere.center.y);
+        element->dim.worldSphere.center.z = LinkSpan_S16F(this->dyna.actor.home.pos.z - (sp30 * element->dim.modelSphere.center.x) +
+                                            (sp2C * element->dim.modelSphere.center.z));
         element->info.toucherFlags |= TOUCH_ON;
         element->info.ocElemFlags |= OCELEM_ON;
     }
@@ -156,7 +157,7 @@ void BgHidanSekizou_Init(Actor* thisx, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->dyna.actor, &sJntSphInit, this->elements);
     for (i = 0; i < ARRAY_COUNT(this->elements); i++) {
-        this->collider.elements[i].dim.worldSphere.radius = this->collider.elements[i].dim.modelSphere.radius;
+        this->collider.elements[i].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[i].dim.modelSphere.radius);
     }
     if (this->dyna.actor.params == 0) {
         this->unk_168[0] = 36;

@@ -2,6 +2,7 @@
 #include "vt.h"
 #include "overlays/actors/ovl_En_Tite/z_en_tite.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_LOCK_ON_DISABLED)
 
@@ -134,7 +135,7 @@ void EnEncount1_SpawnLeevers(EnEncount1* this, PlayState* play) {
                 spawnPos.z = player->actor.world.pos.z + Math_CosS(spawnAngle) * spawnDist;
 
                 floorY = BgCheck_EntityRaycastFloor4(&play->colCtx, &floorPoly, &bgId, &this->actor, &spawnPos);
-                if (floorY <= BGCHECK_Y_MIN) {
+                if (floorY <= LINKSPAN_BGCHECK_Y_MIN) {
                     break;
                 }
                 spawnPos.y = floorY;
@@ -197,7 +198,7 @@ void EnEncount1_SpawnTektites(EnEncount1* this, PlayState* play) {
                 spawnPos.y = this->actor.world.pos.y + 120.0f;
                 spawnPos.z = this->actor.world.pos.z + Rand_CenteredFloat(50.0f);
                 floorY = BgCheck_EntityRaycastFloor4(&play->colCtx, &floorPoly, &bgId, &this->actor, &spawnPos);
-                if (floorY <= BGCHECK_Y_MIN) {
+                if (floorY <= LINKSPAN_BGCHECK_Y_MIN) {
                     return;
                 }
                 spawnPos.y = floorY;
@@ -279,10 +280,10 @@ void EnEncount1_SpawnStalchildOrWolfos(EnEncount1* this, PlayState* play) {
                 spawnPos.z =
                     player->actor.world.pos.z + (Math_CosS(spawnAngle) * spawnDist) + Rand_CenteredFloat(40.0f);
                 floorY = BgCheck_EntityRaycastFloor4(&play->colCtx, &floorPoly, &bgId, &this->actor, &spawnPos);
-                if (floorY <= BGCHECK_Y_MIN) {
+                if (floorY <= LINKSPAN_BGCHECK_Y_MIN) {
                     break;
                 }
-                if ((player->actor.yDistToWater != BGCHECK_Y_MIN) &&
+                if ((player->actor.yDistToWater != LINKSPAN_BGCHECK_Y_MIN) &&
                     (floorY < (player->actor.world.pos.y +
                                player->actor.yDistToWater *
                                    (CVarGetInteger(CVAR_ENHANCEMENT("EnemySpawnsOverWaterboxes"), 0) ? 1 : -1)))) {

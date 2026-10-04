@@ -8,6 +8,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/savestate_serialize.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "linkspan_vanilla.h"
 
 // SOH [Unbound] World-unit fog / draw distance (extent.md). A lighting entry without world fog resolves to its
 // vanilla equivalent so mixed setups (day world-fog, night legacy) blend without reading unset fields.
@@ -1118,7 +1119,7 @@ void Environment_Update(PlayState* play, EnvironmentContext* envCtx, LightContex
                         envCtx->lightSettings.fogFar = LERP16(blend16[0], blend16[1], sp88);
 
                         // SOH [Unbound] world-unit fog / draw distance follow the same two-level blend
-                        {
+                        if (LinkSpan_EngineExtended()) {
                             const EnvLightSettings* a0 = &lightSettingsList[TIME_ENTRY_1F.unk_04];
                             const EnvLightSettings* a1 = &lightSettingsList[TIME_ENTRY_1F.unk_05];
                             const EnvLightSettings* b0 = &lightSettingsList[TIME_ENTRY_20.unk_04];
@@ -1157,7 +1158,9 @@ void Environment_Update(PlayState* play, EnvironmentContext* envCtx, LightContex
                     envCtx->lightSettings.fogNear = lightSettingsList[envCtx->unk_BD].fogNear & 0x3FF;
                     envCtx->lightSettings.fogFar = lightSettingsList[envCtx->unk_BD].fogFar;
                     // SOH [Unbound]
-                    Environment_CopyWorldFog(&envCtx->lightSettings, &lightSettingsList[envCtx->unk_BD]);
+                    if (LinkSpan_EngineExtended()) {
+                        Environment_CopyWorldFog(&envCtx->lightSettings, &lightSettingsList[envCtx->unk_BD]);
+                    }
                     envCtx->unk_D8 = 1.0f;
                 } else {
                     u8 blendRate = (lightSettingsList[envCtx->unk_BD].fogNear >> 0xA) * 4;
@@ -1203,8 +1206,10 @@ void Environment_Update(PlayState* play, EnvironmentContext* envCtx, LightContex
                                lightSettingsList[envCtx->unk_BD].fogNear & 0x3FF, envCtx->unk_D8);
                     envCtx->lightSettings.fogFar = LERP16(lightSettingsList[envCtx->unk_BE].fogFar,
                                                           lightSettingsList[envCtx->unk_BD].fogFar, envCtx->unk_D8);
-                    Environment_LerpWorldFog(&envCtx->lightSettings, &lightSettingsList[envCtx->unk_BE],
-                                             &lightSettingsList[envCtx->unk_BD], envCtx->unk_D8); // SOH [Unbound]
+                    if (LinkSpan_EngineExtended()) { // SOH [Unbound]
+                        Environment_LerpWorldFog(&envCtx->lightSettings, &lightSettingsList[envCtx->unk_BE],
+                                                 &lightSettingsList[envCtx->unk_BD], envCtx->unk_D8);
+                    }
                 }
 
                 if (envCtx->unk_BD >= envCtx->numLightSettings) {
@@ -1284,7 +1289,8 @@ void Environment_Update(PlayState* play, EnvironmentContext* envCtx, LightContex
         }
 
         // SOH [Unbound] World-unit fog and draw distance (extent.md). Vanilla scenes keep zNear 10 / zFar = fogFar.
-        lightCtx->worldFog = envCtx->lightSettings.worldFog;
+        // OOT-VANILLA-001: sem mod a neblina é sempre a do upstream.
+        lightCtx->worldFog = LinkSpan_EngineExtended() ? envCtx->lightSettings.worldFog : 0;
         if (lightCtx->worldFog) {
             f32 start = envCtx->lightSettings.fogStart;
             f32 zFar = envCtx->lightSettings.drawDistance + envCtx->adjFogFar;
@@ -1844,7 +1850,8 @@ void Environment_DrawRain(PlayState* play, View* view, GraphicsContext* gfxCtx) 
 void func_80074CE8(PlayState* play, u32 arg1) {
     if ((play->envCtx.unk_BD != arg1) && (play->envCtx.unk_D8 >= 1.0f) && (play->envCtx.unk_BF == 0xFF)) {
         // SOH [Unbound] The setting list is no longer capped at 31 entries; bound by the scene's count instead.
-        if (arg1 >= play->envCtx.numLightSettings) {
+        // OOT-VANILLA-001: sem mod, o limite do upstream.
+        if (LinkSpan_EngineExtended() ? arg1 >= play->envCtx.numLightSettings : arg1 > 30) {
             arg1 = 0;
         }
 

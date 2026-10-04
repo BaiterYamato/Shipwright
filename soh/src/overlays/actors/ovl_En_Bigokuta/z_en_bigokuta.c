@@ -1,6 +1,7 @@
 #include "z_en_bigokuta.h"
 #include "objects/object_bigokuta/object_bigokuta.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -169,7 +170,7 @@ void EnBigokuta_Init(Actor* thisx, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->actor, &sJntSphInit, &this->element);
 
-    this->collider.elements->dim.worldSphere.radius = this->collider.elements->dim.modelSphere.radius;
+    this->collider.elements->dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements->dim.modelSphere.radius);
 
     for (i = 0; i < ARRAY_COUNT(sCylinderInit); i++) {
         Collider_InitCylinder(play, &this->cylinder[i]);
@@ -699,21 +700,21 @@ void func_809BE568(EnBigokuta* this) {
     f32 sin = Math_SinS(this->actor.shape.rot.y);
     f32 cos = Math_CosS(this->actor.shape.rot.y);
 
-    this->collider.elements->dim.worldSphere.center.x =
+    this->collider.elements->dim.worldSphere.center.x = LinkSpan_S16F(
         (this->collider.elements->dim.modelSphere.center.z * sin) +
-        (this->actor.world.pos.x + (this->collider.elements->dim.modelSphere.center.x * cos));
-    this->collider.elements->dim.worldSphere.center.z =
+        (this->actor.world.pos.x + (this->collider.elements->dim.modelSphere.center.x * cos)));
+    this->collider.elements->dim.worldSphere.center.z = LinkSpan_S16F(
         (this->actor.world.pos.z + (this->collider.elements->dim.modelSphere.center.z * cos)) -
-        (this->collider.elements->dim.modelSphere.center.x * sin);
-    this->collider.elements->dim.worldSphere.center.y =
-        this->collider.elements->dim.modelSphere.center.y + this->actor.world.pos.y;
+        (this->collider.elements->dim.modelSphere.center.x * sin));
+    this->collider.elements->dim.worldSphere.center.y = LinkSpan_S16F(
+        this->collider.elements->dim.modelSphere.center.y + this->actor.world.pos.y);
 
     for (i = 0; i < ARRAY_COUNT(this->cylinder); i++) {
-        this->cylinder[i].dim.pos.x =
-            this->actor.world.pos.x + sCylinderInit[i].dim.pos.z * sin + sCylinderInit[i].dim.pos.x * cos;
-        this->cylinder[i].dim.pos.z =
-            this->actor.world.pos.z + sCylinderInit[i].dim.pos.z * cos - sCylinderInit[i].dim.pos.x * sin;
-        this->cylinder[i].dim.pos.y = this->actor.world.pos.y;
+        this->cylinder[i].dim.pos.x = LinkSpan_S16F(
+            this->actor.world.pos.x + sCylinderInit[i].dim.pos.z * sin + sCylinderInit[i].dim.pos.x * cos);
+        this->cylinder[i].dim.pos.z = LinkSpan_S16F(
+            this->actor.world.pos.z + sCylinderInit[i].dim.pos.z * cos - sCylinderInit[i].dim.pos.x * sin);
+        this->cylinder[i].dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y);
     }
 }
 

@@ -2,6 +2,7 @@
 #include "objects/object_sd/object_sd.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY)
 
@@ -78,17 +79,17 @@ void EnHeishi4_Init(Actor* thisx, PlayState* play) {
     }
     Collider_InitCylinder(play, &this->collider);
     Collider_SetCylinder(play, &this->collider, thisx, &sCylinderInit);
-    this->collider.dim.yShift = 0;
-    this->collider.dim.radius = 15;
-    this->collider.dim.height = 70;
+    this->collider.dim.yShift = LinkSpan_S16F(0);
+    this->collider.dim.radius = LinkSpan_S16F(15);
+    this->collider.dim.height = LinkSpan_S16F(70);
     switch (this->type) {
         case HEISHI4_AT_KAKRIKO_ENTRANCE:
         case HEISHI4_AT_IMPAS_HOUSE:
             this->actionFunc = func_80A56328;
             break;
         case HEISHI4_AT_MARKET_DYING:
-            this->collider.dim.radius = 28;
-            this->collider.dim.height = 5;
+            this->collider.dim.radius = LinkSpan_S16F(28);
+            this->collider.dim.height = LinkSpan_S16F(5);
             this->actionFunc = func_80A5673C;
             break;
         case HEISHI4_AT_MARKET_NIGHT:

@@ -5,6 +5,7 @@
  */
 
 #include "z_en_river_sound.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -177,7 +178,7 @@ void EnRiverSound_Update(Actor* thisx, PlayState* play) {
         pos = &thisx->world.pos;
 
         if (EnRiverSound_GetSoundPos(SEGMENTED_TO_VIRTUAL(path->points), path->count, &player->actor.world.pos, pos)) {
-            if (BgCheck_EntityRaycastFloor4(&play->colCtx, &thisx->floorPoly, &sp34, thisx, pos) != BGCHECK_Y_MIN) {
+            if (BgCheck_EntityRaycastFloor4(&play->colCtx, &thisx->floorPoly, &sp34, thisx, pos) != LINKSPAN_BGCHECK_Y_MIN) {
                 // Get the sound volume pitch based on the speed of the river current under the actor
                 this->soundPitchIndex = SurfaceType_GetConveyorSpeed(&play->colCtx, thisx->floorPoly, sp34);
             } else {

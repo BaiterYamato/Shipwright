@@ -14,6 +14,7 @@
 #include "soh/Enhancements/randomizer/randomizer_grotto.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "../../../code/linkspan_vanilla.h"
 
 void Select_SwitchBetterWarpMode(SelectContext* this, u8 isBetterWarpMode);
 void Sram_InitDebugSave(void);
@@ -1829,8 +1830,13 @@ void Select_SwitchBetterWarpMode(SelectContext* this, u8 isBetterWarpMode) {
 
     if (isBetterWarpMode) {
         s32 currScene = CVarGetInteger(CVAR_GENERAL("BetterDebugWarpScreenCurrentScene"), 0);
-        this->betterScenes =
-            LinkSpan_BuildBetterWarpScenes(sBetterScenes, ARRAY_COUNT(sBetterScenes), Select_LoadGame, &this->count);
+        if (LinkSpan_EngineExtended()) {
+            this->betterScenes = LinkSpan_BuildBetterWarpScenes(sBetterScenes, ARRAY_COUNT(sBetterScenes),
+                                                                Select_LoadGame, &this->count);
+        } else {
+            this->betterScenes = sBetterScenes; // OOT-VANILLA-001: lista do upstream, sem cópia
+            this->count = ARRAY_COUNT(sBetterScenes);
+        }
 
         if (currScene >= 0 && currScene < this->count) {
             this->currentScene = currScene;
@@ -1838,9 +1844,12 @@ void Select_SwitchBetterWarpMode(SelectContext* this, u8 isBetterWarpMode) {
             this->pageDownIndex = CVarGetInteger(CVAR_GENERAL("BetterDebugWarpScreenPageDownIndex"), 0);
             // A janela lembrada pode ter sido salva com outro conjunto de mods. Reancore a seleção antes de o menu
             // desenhar, para ela nunca ficar fora das 19 linhas visíveis depois de a lista mudar de tamanho.
-            this->topDisplayedScene = ((this->topDisplayedScene % this->count) + this->count) % this->count;
-            if ((this->currentScene - this->topDisplayedScene + this->count) % this->count > 18) {
-                this->topDisplayedScene = (this->currentScene - 1 + this->count) % this->count;
+            // OOT-VANILLA-001: sem mod a lista não muda de tamanho; a janela fica como foi lembrada (upstream).
+            if (LinkSpan_EngineExtended()) {
+                this->topDisplayedScene = ((this->topDisplayedScene % this->count) + this->count) % this->count;
+                if ((this->currentScene - this->topDisplayedScene + this->count) % this->count > 18) {
+                    this->topDisplayedScene = (this->currentScene - 1 + this->count) % this->count;
+                }
             }
             if (this->pageDownIndex < 0 ||
                 this->pageDownIndex >= this->betterScenes[this->currentScene].entranceCount) {

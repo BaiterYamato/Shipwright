@@ -9,6 +9,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_IGNORE_POINTLIGHTS
 
@@ -884,7 +885,7 @@ void ObjBean_Update(Actor* thisx, PlayState* play) {
     if (this->stateFlags & BEAN_STATE_DRAW_PLANT) {
         ObjBean_Move(this);
         if (this->dyna.actor.xzDistToPlayer < 150.0f) {
-            this->collider.dim.radius = this->dyna.actor.scale.x * 640.0f + 0.5f;
+            this->collider.dim.radius = LinkSpan_S16F(this->dyna.actor.scale.x * 640.0f + 0.5f);
             Collider_UpdateCylinder(&this->dyna.actor, &this->collider);
             CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
         }

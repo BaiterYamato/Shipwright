@@ -4,6 +4,7 @@
 #include "objects/object_oF1d_map/object_oF1d_map.h"
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                  \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -843,8 +844,8 @@ s32 func_80A44790(EnGo2* this, PlayState* play) {
 void EnGo2_SetColliderDim(EnGo2* this) {
     u8 index = this->actor.params & 0x1F;
 
-    this->collider.dim.radius = D_80A4816C[index].radius;
-    this->collider.dim.height = D_80A4816C[index].height;
+    this->collider.dim.radius = LinkSpan_S16F(D_80A4816C[index].radius);
+    this->collider.dim.height = LinkSpan_S16F(D_80A4816C[index].height);
 }
 
 void EnGo2_SetShape(EnGo2* this) {
@@ -861,13 +862,13 @@ void EnGo2_CheckCollision(EnGo2* this, PlayState* play) {
     Vec3f pos; // SOH [Unbound] collider dims are f32
     f32 xzDist;
 
-    pos.x = this->actor.world.pos.x;
-    pos.y = this->actor.world.pos.y;
-    pos.z = this->actor.world.pos.z;
+    pos.x = LinkSpan_S16F(this->actor.world.pos.x);
+    pos.y = LinkSpan_S16F(this->actor.world.pos.y);
+    pos.z = LinkSpan_S16F(this->actor.world.pos.z);
     xzDist = D_80A4816C[this->actor.params & 0x1F].xzDist;
-    pos.x += (s16)(xzDist * Math_SinS(this->actor.shape.rot.y));
-    pos.z += (s16)(xzDist * Math_CosS(this->actor.shape.rot.y));
-    pos.y += D_80A4816C[this->actor.params & 0x1F].yDist;
+    pos.x = LinkSpan_S16F(pos.x + ((s16)(xzDist * Math_SinS(this->actor.shape.rot.y))));
+    pos.z = LinkSpan_S16F(pos.z + ((s16)(xzDist * Math_CosS(this->actor.shape.rot.y))));
+    pos.y = LinkSpan_S16F(pos.y + (D_80A4816C[this->actor.params & 0x1F].yDist));
     this->collider.dim.pos = pos;
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
     CollisionCheck_SetAC(play, &play->colChkCtx, &this->collider.base);
@@ -1596,14 +1597,14 @@ void EnGo2_Init(Actor* thisx, PlayState* play) {
                 }
             } else {
                 Flags_UnsetInfTable(INFTABLE_STOPPED_GORON_LINKS_ROLLING);
-                this->collider.dim.height = (D_80A4816C[this->actor.params & 0x1F].height * 0.6f);
+                this->collider.dim.height = LinkSpan_S16F((D_80A4816C[this->actor.params & 0x1F].height * 0.6f));
                 EnGo2_SetupRolling(this, play);
                 this->isAwake = true;
             }
             break;
         case GORON_CITY_ROLLING_BIG:
         case GORON_DMT_ROLLING_SMALL:
-            this->collider.dim.height = (D_80A4816C[this->actor.params & 0x1F].height * 0.6f);
+            this->collider.dim.height = LinkSpan_S16F((D_80A4816C[this->actor.params & 0x1F].height * 0.6f));
             EnGo2_SetupRolling(this, play);
             break;
         case GORON_FIRE_GENERIC:
@@ -1658,12 +1659,12 @@ void EnGo2_CurledUp(EnGo2* this, PlayState* play) {
     }
 
     if ((s32)this->skelAnime.curFrame == 0) {
-        this->collider.dim.height = (D_80A4816C[index].height * 0.6f);
+        this->collider.dim.height = LinkSpan_S16F((D_80A4816C[index].height * 0.6f));
     } else {
         height = D_80A4816C[index].height;
-        this->collider.dim.height =
+        this->collider.dim.height = LinkSpan_S16F(
             ((D_80A4816C[index].height * 0.4f * (this->skelAnime.curFrame / this->skelAnime.startFrame)) +
-             (height * 0.6f));
+             (height * 0.6f)));
     }
     if (EnGo2_IsFreeingGoronInFire(this, play)) {
         this->isAwake = false;
@@ -1697,11 +1698,11 @@ void func_80A46B40(EnGo2* this, PlayState* play) {
             }
             func_80A454CC(this);
             this->unk_211 = true;
-            this->collider.dim.height = D_80A4816C[index].height;
+            this->collider.dim.height = LinkSpan_S16F(D_80A4816C[index].height);
         } else {
             height = D_80A4816C[index].height;
-            this->collider.dim.height =
-                (s16)((height * 0.4f * (this->skelAnime.curFrame / this->skelAnime.endFrame)) + (height * 0.6f));
+            this->collider.dim.height = LinkSpan_S16F(
+                (s16)((height * 0.4f * (this->skelAnime.curFrame / this->skelAnime.endFrame)) + (height * 0.6f)));
         }
     }
     if ((!EnGo2_IsCameraModified(this, play)) && (!EnGo2_IsWakingUp(this))) {

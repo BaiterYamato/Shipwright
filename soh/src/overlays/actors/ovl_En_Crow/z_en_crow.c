@@ -1,6 +1,7 @@
 #include "z_en_crow.h"
 #include "objects/object_crow/object_crow.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_IGNORE_QUAKE | ACTOR_FLAG_CAN_ATTACH_TO_ARROW)
@@ -115,7 +116,7 @@ void EnCrow_Init(Actor* thisx, PlayState* play) {
     SkelAnime_InitFlex(play, &this->skelAnime, &gGuaySkel, &gGuayFlyAnim, this->jointTable, this->morphTable, 9);
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->actor, &sJntSphInit, this->colliderItems);
-    this->collider.elements[0].dim.worldSphere.radius = sJntSphInit.elements[0].dim.modelSphere.radius;
+    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(sJntSphInit.elements[0].dim.modelSphere.radius);
     CollisionCheck_SetInfo(&this->actor.colChkInfo, &sDamageTable, &sColChkInfoInit);
     ActorShape_Init(&this->actor.shape, 2000.0f, ActorShadow_DrawCircle, 20.0f);
     sDeathCount = 0;
@@ -209,11 +210,11 @@ void EnCrow_SetupRespawn(EnCrow* this) {
     if (sDeathCount == 10) {
         this->actor.params = 1;
         sDeathCount = 0;
-        this->collider.elements[0].dim.worldSphere.radius =
-            sJntSphInit.elements[0].dim.modelSphere.radius * 0.03f * 100.0f;
+        this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
+            sJntSphInit.elements[0].dim.modelSphere.radius * 0.03f * 100.0f);
     } else {
         this->actor.params = 0;
-        this->collider.elements[0].dim.worldSphere.radius = sJntSphInit.elements[0].dim.modelSphere.radius;
+        this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(sJntSphInit.elements[0].dim.modelSphere.radius);
     }
 
     Animation_PlayLoop(&this->skelAnime, &gGuayFlyAnim);
@@ -338,7 +339,7 @@ void EnCrow_Damaged(EnCrow* this, PlayState* play) {
             Math_ScaledStepToS(&this->actor.shape.rot.x, 0x4000, 0x200);
             this->actor.shape.rot.z += 0x1780;
         }
-        if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || (this->actor.floorHeight == BGCHECK_Y_MIN)) {
+        if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || (this->actor.floorHeight == LINKSPAN_BGCHECK_Y_MIN)) {
             EffectSsDeadDb_Spawn(play, &this->actor.world.pos, &sZeroVecAccel, &sZeroVecAccel,
                                  this->actor.scale.x * 10000.0f, 0, 255, 255, 255, 255, 255, 0, 0, 1, 9, 1);
             EnCrow_SetupDie(this);
@@ -459,9 +460,9 @@ void EnCrow_Update(Actor* thisx, PlayState* play) {
         height = 0.0f;
     }
 
-    this->collider.elements[0].dim.worldSphere.center.x = this->actor.world.pos.x;
-    this->collider.elements[0].dim.worldSphere.center.y = this->actor.world.pos.y + height;
-    this->collider.elements[0].dim.worldSphere.center.z = this->actor.world.pos.z;
+    this->collider.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->collider.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(this->actor.world.pos.y + height);
+    this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
 
     if (this->actionFunc == EnCrow_DiveAttack) {
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);

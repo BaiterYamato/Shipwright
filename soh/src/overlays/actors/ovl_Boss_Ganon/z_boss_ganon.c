@@ -17,6 +17,7 @@
 #include <libultraship/bridge/resourcebridge.h>
 
 #include <string.h>
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -329,9 +330,9 @@ void BossGanonEff_SpawnBlackDot(PlayState* play, Vec3f* pos, f32 scale) {
 }
 
 void BossGanon_SetColliderPos(Vec3f* pos, ColliderCylinder* collider) {
-    collider->dim.pos.x = pos->x;
-    collider->dim.pos.y = pos->y;
-    collider->dim.pos.z = pos->z;
+    collider->dim.pos.x = LinkSpan_S16F(pos->x);
+    collider->dim.pos.y = LinkSpan_S16F(pos->y);
+    collider->dim.pos.z = LinkSpan_S16F(pos->z);
 }
 
 void BossGanon_SetAnimationObject(BossGanon* this, PlayState* play, s32 objectId) {
@@ -4460,9 +4461,9 @@ void func_808E2544(Actor* thisx, PlayState* play) {
             this->unk_1C2 = 0xB;
             this->timers[0] = 14;
 
-            this->collider.dim.radius = 15;
-            this->collider.dim.height = 20;
-            this->collider.dim.yShift = -10;
+            this->collider.dim.radius = LinkSpan_S16F(15);
+            this->collider.dim.height = LinkSpan_S16F(20);
+            this->collider.dim.yShift = LinkSpan_S16F(-10);
 
             this->actor.speedXZ = 20.0f;
             this->fwork[1] = 255.0f;

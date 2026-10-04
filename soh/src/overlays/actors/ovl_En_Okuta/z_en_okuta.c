@@ -2,6 +2,7 @@
 #include "objects/object_okuta/object_okuta.h"
 #include "objects/gameplay_field_keep/gameplay_field_keep.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -487,7 +488,7 @@ void EnOkuta_ProjectileFly(EnOkuta* this, PlayState* play) {
     }
     if ((this->actor.bgCheckFlags & BGCHECKFLAG_WALL) || (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
         (this->collider.base.atFlags & AT_HIT) || this->collider.base.acFlags & AC_HIT ||
-        this->collider.base.ocFlags1 & OC1_HIT || this->actor.floorHeight == BGCHECK_Y_MIN) {
+        this->collider.base.ocFlags1 & OC1_HIT || this->actor.floorHeight == LINKSPAN_BGCHECK_Y_MIN) {
         if ((player->currentShield == PLAYER_SHIELD_DEKU ||
              (player->currentShield == PLAYER_SHIELD_HYLIAN && LINK_IS_ADULT)) &&
             this->collider.base.atFlags & AT_HIT && this->collider.base.atFlags & AT_TYPE_ENEMY &&
@@ -644,9 +645,9 @@ void EnOkuta_Update(Actor* thisx, PlayState* play2) {
         this->actionFunc(this, play);
         if (this->actor.params == 0) {
             EnOkuta_UpdateHeadScale(this);
-            this->collider.dim.height =
+            this->collider.dim.height = LinkSpan_S16F(
                 (((sOctorockColliderInit.dim.height * this->headScale.y) - this->collider.dim.yShift) *
-                 this->actor.scale.y * 100.0f);
+                 this->actor.scale.y * 100.0f));
         } else {
             sp34 = false;
             Actor_MoveXZGravity(&this->actor);
@@ -668,8 +669,8 @@ void EnOkuta_Update(Actor* thisx, PlayState* play2) {
         }
         Collider_UpdateCylinder(&this->actor, &this->collider);
         if ((this->actionFunc == EnOkuta_Appear) || (this->actionFunc == EnOkuta_Hide)) {
-            this->collider.dim.pos.y = this->actor.world.pos.y + (this->skelAnime.jointTable->y * this->actor.scale.y);
-            this->collider.dim.radius = sOctorockColliderInit.dim.radius * this->actor.scale.x * 100.0f;
+            this->collider.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y + (this->skelAnime.jointTable->y * this->actor.scale.y));
+            this->collider.dim.radius = LinkSpan_S16F(sOctorockColliderInit.dim.radius * this->actor.scale.x * 100.0f);
         }
         if (this->actor.params == 0x10) {
             this->actor.flags |= ACTOR_FLAG_SFX_FOR_PLAYER_BODY_HIT;

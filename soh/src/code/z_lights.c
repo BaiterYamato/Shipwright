@@ -8,6 +8,7 @@
 #include "soh/frame_interpolation.h"
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "linkspan_vanilla.h"
 
 // SOH [Link-Span] hook TRANSFORM e chave de serviço; inativos por padrão.
 void LinkSpan_PointLightColor(LightInfo* info, u8* r, u8* g, u8* b, s16 radius);
@@ -37,9 +38,10 @@ SHIP_SAVESTATE_DEFINE(Lights, LIGHTS_SHIP_SAVESTATE_FIELDS)
 
 void Lights_PointSetInfo(LightInfo* info, f32 x, f32 y, f32 z, u8 r, u8 g, u8 b, s16 radius, s32 type) {
     info->type = type;
-    info->params.point.x = x;
-    info->params.point.y = y;
-    info->params.point.z = z;
+    // SOH [Link-Span] OOT-VANILLA-001: sem mod, a posição vira inteira como o parâmetro s16 do upstream.
+    info->params.point.x = LinkSpan_S16F(x);
+    info->params.point.y = LinkSpan_S16F(y);
+    info->params.point.z = LinkSpan_S16F(z);
     Lights_PointSetColorAndRadius(info, r, g, b, radius);
 }
 
@@ -217,6 +219,16 @@ LightNode* Lights_FindBufSlot() {
 
 // return type must not be void to match
 s32 Lights_FreeNode(LightNode* light) {
+    // SOH [Link-Span] OOT-VANILLA-001: sem mod, como o upstream: sem proteção contra liberar duas vezes e com o
+    // searchIndex dividido de novo por sizeof(LightNode).
+    if (!LinkSpan_EngineExtended()) {
+        if (light != NULL) {
+            sLightsBuffer.numOccupied--;
+            light->info = NULL;
+            sLightsBuffer.searchIndex = (light - sLightsBuffer.buf) / sizeof(LightNode);
+        }
+        return 0;
+    }
     // SOH [Unbound] Pointer subtraction already yields an index; ignore a repeated free.
     if (light != NULL && light->info != NULL) {
         s32 index = light - sLightsBuffer.buf;
@@ -305,7 +317,7 @@ static LightNode* LightContext_LinkLight(PlayState* play, LightContext* lightCtx
             lightCtx->listHead->prev = node;
         }
         lightCtx->listHead = node;
-    } else if (!sLightsBuffer.exhaustionWarned) {
+    } else if (!sLightsBuffer.exhaustionWarned && LinkSpan_EngineExtended()) {
         // SOH [Unbound] WARN directly: osSyncPrintf is disabled in release builds.
         lusprintf(__FILE__, __LINE__, 3,
                   "[Unbound M18] cena=%d sala=%d: limite de luzes atingido; listas=%d/%d "
@@ -325,6 +337,11 @@ LightNode* LightContext_InsertLight(PlayState* play, LightContext* lightCtx, Lig
 
 // SOH [Unbound] Each command accepts 255 entries; preserve older lists until scene init.
 LightNode* LightContext_InsertListLight(PlayState* play, LightContext* lightCtx, LightInfo* info, size_t listIndex) {
+    // SOH [Link-Span] OOT-VANILLA-001: sem mod, a lista da cena divide as 32 vagas com atores e ambiente, como no
+    // upstream (Scene_CommandLightList chamava LightContext_InsertLight).
+    if (!LinkSpan_EngineExtended()) {
+        return LightContext_InsertLight(play, lightCtx, info);
+    }
     // SOH [Unbound] Enforce the per-command limit without erasing scene/prevRoom lights.
     if (listIndex >= LIGHTS_LIST_LIMIT) {
         return LightContext_LinkLight(play, lightCtx, info, NULL);
@@ -339,7 +356,8 @@ LightNode* LightContext_InsertListLight(PlayState* play, LightContext* lightCtx,
 
 void LightContext_RemoveLight(PlayState* play, LightContext* lightCtx, LightNode* node) {
     // SOH [Unbound] A retained free node must never modify the list links.
-    if (node != NULL && node->info != NULL) {
+    // SOH [Link-Span] OOT-VANILLA-001: sem mod, como o upstream, que não conferia info.
+    if (node != NULL && (node->info != NULL || !LinkSpan_EngineExtended())) {
         if (node->prev != NULL) {
             node->prev->next = node->next;
         } else {

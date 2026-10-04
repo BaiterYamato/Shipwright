@@ -6,6 +6,7 @@
 
 #include "z_en_horse_link_child.h"
 #include "objects/object_horse_link_child/object_horse_link_child.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_UPDATE_DURING_OCARINA)
 
@@ -590,11 +591,11 @@ void EnHorseLinkChild_PostDraw(Actor* thisx, PlayState* play, Skin* skin) {
         center.y = this->headCollider.elements[i].dim.modelSphere.center.y;
         center.z = this->headCollider.elements[i].dim.modelSphere.center.z;
         Skin_GetLimbPos(skin, this->headCollider.elements[i].dim.limb, &center, &newCenter);
-        this->headCollider.elements[i].dim.worldSphere.center.x = newCenter.x;
-        this->headCollider.elements[i].dim.worldSphere.center.y = newCenter.y;
-        this->headCollider.elements[i].dim.worldSphere.center.z = newCenter.z;
-        this->headCollider.elements[i].dim.worldSphere.radius =
-            this->headCollider.elements[i].dim.modelSphere.radius * this->headCollider.elements[i].dim.scale;
+        this->headCollider.elements[i].dim.worldSphere.center.x = LinkSpan_S16F(newCenter.x);
+        this->headCollider.elements[i].dim.worldSphere.center.y = LinkSpan_S16F(newCenter.y);
+        this->headCollider.elements[i].dim.worldSphere.center.z = LinkSpan_S16F(newCenter.z);
+        this->headCollider.elements[i].dim.worldSphere.radius = LinkSpan_S16F(
+            this->headCollider.elements[i].dim.modelSphere.radius * this->headCollider.elements[i].dim.scale);
     }
 
     //! @bug see relevant comment in `EnHorse_SkinCallback1`

@@ -11,6 +11,7 @@
 #include "objects/object_haka_door/object_haka_door.h"
 #include "objects/object_door_killer/object_door_killer.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -159,10 +160,10 @@ void DoorKiller_Init(Actor* thisx, PlayState* play2) {
             Collider_SetCylinder(play, &this->colliderCylinder, &this->actor, &sCylinderInit);
             Collider_InitJntSph(play, &this->colliderJntSph);
             Collider_SetJntSph(play, &this->colliderJntSph, &this->actor, &sJntSphInit, this->colliderJntSphItems);
-            this->colliderJntSph.elements[0].dim.worldSphere.radius = 80;
-            this->colliderJntSph.elements[0].dim.worldSphere.center.x = (s16)this->actor.world.pos.x;
-            this->colliderJntSph.elements[0].dim.worldSphere.center.y = (s16)this->actor.world.pos.y + 50;
-            this->colliderJntSph.elements[0].dim.worldSphere.center.z = (s16)this->actor.world.pos.z;
+            this->colliderJntSph.elements[0].dim.worldSphere.radius = LinkSpan_S16F(80);
+            this->colliderJntSph.elements[0].dim.worldSphere.center.x = LinkSpan_S16F((s16)this->actor.world.pos.x);
+            this->colliderJntSph.elements[0].dim.worldSphere.center.y = LinkSpan_S16F((s16)this->actor.world.pos.y + 50);
+            this->colliderJntSph.elements[0].dim.worldSphere.center.z = LinkSpan_S16F((s16)this->actor.world.pos.z);
 
             // If tied to a switch flag and that switch flag is already set, kill the actor.
             if ((((this->actor.params >> 8) & 0x3F) != 0x3F) &&

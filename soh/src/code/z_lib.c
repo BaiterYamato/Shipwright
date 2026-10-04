@@ -1,4 +1,5 @@
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include <math.h>
 
 f32 Math_CosS(s16 angle) {
@@ -240,7 +241,16 @@ void Math_Vec3i_ToVec3f(Vec3f* dest, Vec3i* src) {
 
 // SOH [Unbound] Rounds where vanilla's BgCheck_Vec3fToVec3s truncated: the dyna bake writes transformed world
 // positions back into an integral list every frame, and truncation biases every moving platform toward zero.
+// SOH [Link-Span] OOT-VANILLA-001: sem mod, trunca como o upstream (a atribuição a s16 truncava).
 void Math_Vec3f_ToVec3i(Vec3i* dest, Vec3f* src) {
+    if (!LinkSpan_EngineExtended()) {
+        // OOT-VANILLA-001: o upstream gravava em Vec3s (BgCheck_Vec3fToVec3s); o MSVC trunca para 32 bits e fica
+        // com os 16 de baixo.
+        dest->x = (s16)(s32)src->x;
+        dest->y = (s16)(s32)src->y;
+        dest->z = (s16)(s32)src->z;
+        return;
+    }
     dest->x = (s32)lroundf(src->x);
     dest->y = (s32)lroundf(src->y);
     dest->z = (s32)lroundf(src->z);

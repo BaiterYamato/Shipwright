@@ -8,6 +8,7 @@
 #include "vt.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -714,7 +715,7 @@ void EnInsect_Dropped(EnInsect* this, PlayState* play) {
     } else if (sp50 != 0) {
         EnInsect_SetupSlowDown(this);
     } else if ((sp3A == 2 || sp3A == 3) && (this->insectFlags & 1) && this->lifeTimer <= 0 && this->actionTimer <= 0 &&
-               this->actor.floorHeight < BGCHECK_Y_MIN + 10.0f) {
+               this->actor.floorHeight < LINKSPAN_BGCHECK_Y_MIN + 10.0f) {
         osSyncPrintf(VT_COL(YELLOW, BLACK));
         // "BG missing? To do Actor_delete"
         osSyncPrintf("BG 抜け？ Actor_delete します(%s %d)\n", __FILE__, __LINE__);

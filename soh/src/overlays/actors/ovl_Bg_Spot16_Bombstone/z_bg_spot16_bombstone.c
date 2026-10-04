@@ -3,6 +3,7 @@
 #include "objects/object_bombiwa/object_bombiwa.h"
 #include "overlays/actors/ovl_En_Bombf/z_en_bombf.h"
 #include "overlays/effects/ovl_Effect_Ss_Kakera/z_eff_ss_kakera.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -153,10 +154,10 @@ void func_808B4C4C(BgSpot16Bombstone* this, PlayState* play) {
 
     Collider_InitJntSph(play, &this->colliderJntSph);
     Collider_SetJntSph(play, &this->colliderJntSph, &this->actor, &sJntSphInit, this->colliderElements);
-    this->colliderJntSph.elements[0].dim.worldSphere.center.x = this->actor.world.pos.x;
-    this->colliderJntSph.elements[0].dim.worldSphere.center.y = this->actor.world.pos.y + 50.0f;
-    this->colliderJntSph.elements[0].dim.worldSphere.center.z = this->actor.world.pos.z;
-    this->colliderJntSph.elements[0].dim.worldSphere.radius = 120;
+    this->colliderJntSph.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->colliderJntSph.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(this->actor.world.pos.y + 50.0f);
+    this->colliderJntSph.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
+    this->colliderJntSph.elements[0].dim.worldSphere.radius = LinkSpan_S16F(120);
 }
 
 void func_808B4D04(BgSpot16Bombstone* this, PlayState* play) {
@@ -164,9 +165,9 @@ void func_808B4D04(BgSpot16Bombstone* this, PlayState* play) {
 
     Collider_InitCylinder(play, &this->colliderCylinder);
     Collider_SetCylinder(play, &this->colliderCylinder, &this->actor, &sCylinderInit);
-    this->colliderCylinder.dim.pos.x += (s16)this->actor.world.pos.x;
-    this->colliderCylinder.dim.pos.y += (s16)this->actor.world.pos.y;
-    this->colliderCylinder.dim.pos.z += (s16)this->actor.world.pos.z;
+    this->colliderCylinder.dim.pos.x = LinkSpan_S16F(this->colliderCylinder.dim.pos.x + ((s16)this->actor.world.pos.x));
+    this->colliderCylinder.dim.pos.y = LinkSpan_S16F(this->colliderCylinder.dim.pos.y + ((s16)this->actor.world.pos.y));
+    this->colliderCylinder.dim.pos.z = LinkSpan_S16F(this->colliderCylinder.dim.pos.z + ((s16)this->actor.world.pos.z));
 }
 
 s32 func_808B4D9C(BgSpot16Bombstone* this, PlayState* play) {

@@ -9,6 +9,7 @@
 #include "objects/gameplay_dangeon_keep/gameplay_dangeon_keep.h"
 #include "objects/object_tsubo/object_tsubo.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_THROW_ONLY)
 
@@ -110,7 +111,7 @@ s32 ObjTsubo_SnapToFloor(ObjTsubo* this, PlayState* play) {
     pos.y = this->actor.world.pos.y + 20.0f;
     pos.z = this->actor.world.pos.z;
     floorY = BgCheck_EntityRaycastFloor4(&play->colCtx, &floorPoly, &bgID, &this->actor, &pos);
-    if (floorY > BGCHECK_Y_MIN) {
+    if (floorY > LINKSPAN_BGCHECK_Y_MIN) {
         this->actor.world.pos.y = floorY;
         Math_Vec3f_Copy(&this->actor.home.pos, &this->actor.world.pos);
         return true;

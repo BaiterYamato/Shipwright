@@ -3,6 +3,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "overlays/effects/ovl_Effect_Ss_Hahen/z_eff_ss_hahen.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 s32 LinkSpan_RenderSuppressVanillaShadows(void);
 
@@ -241,7 +242,7 @@ void EnDekubaba_Init(Actor* thisx, PlayState* play) {
 
         for (i = 0; i < sJntSphInit.count; i++) {
             this->collider.elements[i].dim.worldSphere.radius = this->collider.elements[i].dim.modelSphere.radius =
-                (sJntSphElementsInit[i].dim.modelSphere.radius * 2.50f);
+                LinkSpan_S16F(sJntSphElementsInit[i].dim.modelSphere.radius * 2.50f);
         }
 
         // This and its counterpart below mean that a Deku Stick jumpslash will not trigger the Deku Stick drop route.
@@ -259,7 +260,7 @@ void EnDekubaba_Init(Actor* thisx, PlayState* play) {
         this->size = 1.0f;
 
         for (i = 0; i < sJntSphInit.count; i++) {
-            this->collider.elements[i].dim.worldSphere.radius = this->collider.elements[i].dim.modelSphere.radius;
+            this->collider.elements[i].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[i].dim.modelSphere.radius);
         }
 
         if (!LINK_IS_ADULT) {
@@ -310,9 +311,9 @@ void EnDekubaba_SetupWait(EnDekubaba* this) {
 
     for (i = 1; i < ARRAY_COUNT(this->colliderElements); i++) {
         element = &this->collider.elements[i];
-        element->dim.worldSphere.center.x = this->actor.world.pos.x;
-        element->dim.worldSphere.center.y = (s16)this->actor.world.pos.y - 7;
-        element->dim.worldSphere.center.z = this->actor.world.pos.z;
+        element->dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+        element->dim.worldSphere.center.y = LinkSpan_S16F((s16)this->actor.world.pos.y - 7);
+        element->dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
     }
 
     this->actionFunc = EnDekubaba_Wait;

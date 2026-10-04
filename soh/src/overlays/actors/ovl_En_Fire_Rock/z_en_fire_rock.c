@@ -2,6 +2,7 @@
 #include "overlays/actors/ovl_En_Encount2/z_en_encount2.h"
 #include "vt.h"
 #include "objects/object_efc_star_field/object_efc_star_field.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -96,9 +97,9 @@ void EnFireRock_Init(Actor* thisx, PlayState* play) {
             Collider_SetCylinder(play, &this->collider, &this->actor, &D_80A12CCC);
             // "☆☆☆☆☆ floor rock ☆☆☆☆☆"
             osSyncPrintf(VT_FGCOL(YELLOW) "☆☆☆☆☆ 床岩 ☆☆☆☆☆ \n" VT_RST);
-            this->collider.dim.radius = 23;
-            this->collider.dim.height = 37;
-            this->collider.dim.yShift = -10;
+            this->collider.dim.radius = LinkSpan_S16F(23);
+            this->collider.dim.height = LinkSpan_S16F(37);
+            this->collider.dim.yShift = LinkSpan_S16F(-10);
             Actor_ChangeCategory(play, &play->actorCtx, &this->actor, ACTORCAT_PROP);
             this->actor.colChkInfo.mass = MASS_IMMOVABLE;
             this->actionFunc = FireRock_WaitOnFloor;

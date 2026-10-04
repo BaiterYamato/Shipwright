@@ -126,6 +126,7 @@
 #include "soh/native/OotNativeWorld.h"
 #include "soh/native/OotNativeSkeletons.h"
 #include "soh/OotHotkeyRegistry.h"
+#include "../src/code/linkspan_vanilla.h"
 
 #ifdef _MSC_VER
 #define strdup _strdup
@@ -1591,7 +1592,10 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     ShipLuaHost::Initialize();
     SaveManager::Instance = new SaveManager();
     // SOH [Link-Span] seção "linkspan" do save; o host inicializa antes do SaveManager existir.
-    ShipLuaHost::RegisterOotSaveSection();
+    // OOT-VANILLA-001: sem mod, o save fica no formato do upstream (a seção de um arquivo salvo com mods é mantida).
+    if (LinkSpan_EngineExtended()) {
+        ShipLuaHost::RegisterOotSaveSection();
+    }
 
     std::shared_ptr<Ship::Config> conf = OTRGlobals::Instance->context->GetConfig();
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion1Updater>());

@@ -6,6 +6,7 @@
 
 #include "z_en_brob.h"
 #include "objects/object_brob/object_brob.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -85,12 +86,12 @@ void EnBrob_Init(Actor* thisx, PlayState* play) {
             thisx->scale.y *= (thisx->params & 0xFF) * (2.0f / 30.0f);
         }
     }
-    this->colliders[0].dim.radius *= thisx->scale.x;
-    this->colliders[0].dim.height = thisx->scale.y * 12000.0f;
-    this->colliders[0].dim.yShift = 0;
-    this->colliders[1].dim.radius *= thisx->scale.x;
-    this->colliders[1].dim.height *= thisx->scale.y;
-    this->colliders[1].dim.yShift *= thisx->scale.y;
+    this->colliders[0].dim.radius = LinkSpan_S16F(this->colliders[0].dim.radius * (thisx->scale.x));
+    this->colliders[0].dim.height = LinkSpan_S16F(thisx->scale.y * 12000.0f);
+    this->colliders[0].dim.yShift = LinkSpan_S16F(0);
+    this->colliders[1].dim.radius = LinkSpan_S16F(this->colliders[1].dim.radius * (thisx->scale.x));
+    this->colliders[1].dim.height = LinkSpan_S16F(this->colliders[1].dim.height * (thisx->scale.y));
+    this->colliders[1].dim.yShift = LinkSpan_S16F(this->colliders[1].dim.yShift * (thisx->scale.y));
     this->actionFunc = NULL;
     thisx->flags &= ~ACTOR_FLAG_ATTENTION_ENABLED;
     EnBrob_SetupIdle(this, play);
@@ -311,13 +312,13 @@ void EnBrob_PostLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot
 
     Matrix_Get(&mtx);
     if (limbIndex == 3) {
-        this->colliders[0].dim.pos.x = mtx.xw;
-        this->colliders[0].dim.pos.y = mtx.yw;
-        this->colliders[0].dim.pos.z = mtx.zw;
+        this->colliders[0].dim.pos.x = LinkSpan_S16F(mtx.xw);
+        this->colliders[0].dim.pos.y = LinkSpan_S16F(mtx.yw);
+        this->colliders[0].dim.pos.z = LinkSpan_S16F(mtx.zw);
     } else if (limbIndex == 8) {
-        this->colliders[1].dim.pos.x = mtx.xw;
-        this->colliders[1].dim.pos.y = (mtx.yw + 7.0f);
-        this->colliders[1].dim.pos.z = mtx.zw;
+        this->colliders[1].dim.pos.x = LinkSpan_S16F(mtx.xw);
+        this->colliders[1].dim.pos.y = LinkSpan_S16F((mtx.yw + 7.0f));
+        this->colliders[1].dim.pos.z = LinkSpan_S16F(mtx.zw);
     }
 }
 

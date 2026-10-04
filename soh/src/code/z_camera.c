@@ -38,6 +38,7 @@ s32 Camera_UpdateWater(Camera* camera);
 #define DISTORTION_UNDERWATER_FISHING (1 << 4)
 
 #include "z_camera_data.inc"
+#include "linkspan_vanilla.h"
 
 /*===============================================================*/
 
@@ -383,7 +384,7 @@ f32 Camera_GetFloorYNorm(Camera* camera, Vec3f* floorNorm, Vec3f* chkPos, s32* b
     CollisionPoly* floorPoly;
     f32 floorY = BgCheck_EntityRaycastFloor3(&camera->play->colCtx, &floorPoly, bgId, chkPos);
 
-    if (floorY == BGCHECK_Y_MIN) {
+    if (floorY == LINKSPAN_BGCHECK_Y_MIN) {
         // no floor
         floorNorm->x = 0.0f;
         floorNorm->y = 1.0f;
@@ -423,13 +424,13 @@ f32 Camera_GetFloorYLayer(Camera* camera, Vec3f* norm, Vec3f* pos, s32* bgId) {
 
     for (i = 3; i > 0; i--) {
         floorY = BgCheck_CameraRaycastFloor2(colCtx, &floorPoly, bgId, pos);
-        if (floorY == BGCHECK_Y_MIN ||
+        if (floorY == LINKSPAN_BGCHECK_Y_MIN ||
             (camera->playerGroundY < floorY && !(COLPOLY_GET_NORMAL(floorPoly->normal.y) > 0.5f))) {
             // no floor, or player is below the floor and floor is not considered steep
             norm->x = 0.0f;
             norm->y = 1.0f;
             norm->z = 0.0f;
-            floorY = BGCHECK_Y_MIN;
+            floorY = LINKSPAN_BGCHECK_Y_MIN;
             break;
         } else if (SurfaceType_GetFloorType(colCtx, floorPoly, *bgId) == 1) {
             // floor is not solid, check below that floor.
@@ -495,7 +496,7 @@ Vec3s* Camera_GetCamBgDataUnderPlayer(Camera* camera, u16* dataCnt) {
 
     Actor_GetWorldPosShapeRot(&playerPosShape, &camera->player->actor);
     playerPosShape.pos.y += Player_GetHeight(camera->player);
-    if (BgCheck_EntityRaycastFloor3(&camera->play->colCtx, &floorPoly, &bgId, &playerPosShape.pos) == BGCHECK_Y_MIN) {
+    if (BgCheck_EntityRaycastFloor3(&camera->play->colCtx, &floorPoly, &bgId, &playerPosShape.pos) == LINKSPAN_BGCHECK_Y_MIN) {
         // no floor
         return NULL;
     }
@@ -554,13 +555,13 @@ f32 Camera_GetWaterSurface(Camera* camera, Vec3f* chkPos, s32* envProp) {
 
     if (!WaterBox_GetSurface1(camera->play, &camera->play->colCtx, chkPos->x, chkPos->z, &waterY, &waterBox)) {
         // chkPos is not within the x/z boundaries of a water box.
-        return BGCHECK_Y_MIN;
+        return LINKSPAN_BGCHECK_Y_MIN;
     }
 
     if (waterY < chkPos->y) {
         // the water's y position is below the check position
         // meaning the position is NOT in the water.
-        return BGCHECK_Y_MIN;
+        return LINKSPAN_BGCHECK_Y_MIN;
     }
 
     *envProp = WaterBox_GetLightSettingIndex(&camera->play->colCtx, waterBox);
@@ -626,11 +627,11 @@ s16 func_80044ADC(Camera* camera, s16 yaw, s16 arg2) {
             D_8015CE54 = Camera_GetFloorYLayer(camera, &floorNorm, &D_8015CE58.pos, &bgId);
         }
 
-        if (D_8015CE50 == BGCHECK_Y_MIN) {
+        if (D_8015CE50 == LINKSPAN_BGCHECK_Y_MIN) {
             D_8015CE50 = camera->playerGroundY;
         }
 
-        if (D_8015CE54 == BGCHECK_Y_MIN) {
+        if (D_8015CE54 == LINKSPAN_BGCHECK_Y_MIN) {
             D_8015CE54 = D_8015CE50;
         }
     }
@@ -2549,7 +2550,7 @@ s32 Camera_Jump2(Camera* camera) {
         anim->floorY = Camera_GetFloorY(camera, &bgChkPos);
         anim->yawTarget = atToEyeNextDir.yaw;
         anim->initYawDiff = 0;
-        if (anim->floorY == BGCHECK_Y_MIN) {
+        if (anim->floorY == LINKSPAN_BGCHECK_Y_MIN) {
             osSyncPrintf(VT_COL(YELLOW, BLACK) "camera: climb: no floor \n" VT_RST);
             anim->onFloor = -1;
             anim->floorY = playerPosRot->pos.y - 1000.0f;
@@ -2618,7 +2619,7 @@ s32 Camera_Jump2(Camera* camera) {
     bgChkPos.z = playerPosRot->pos.z + (Math_CosS(playerPosRot->rot.y) * 25.0f);
 
     sp90 = Camera_GetFloorYNorm(camera, &floorNorm, &bgChkPos, &bgId);
-    if ((sp90 != BGCHECK_Y_MIN) && (playerPosRot->pos.y < sp90)) {
+    if ((sp90 != LINKSPAN_BGCHECK_Y_MIN) && (playerPosRot->pos.y < sp90)) {
         // top of the climb is within 2.2x of the player's height.
         camera->pitchUpdateRateInv = Camera_LERPCeilF(20.0f, camera->pitchUpdateRateInv, PCT(OREG(26)), 0.1f);
         camera->rUpdateRateInv = Camera_LERPCeilF(20.0f, camera->rUpdateRateInv, PCT(OREG(26)), 0.1f);
@@ -5838,7 +5839,7 @@ s32 Camera_Demo3(Camera* camera) {
             camera->fov = demo3->fov;
             camera->roll = anim->animFrame = 0;
             anim->initialAt = camPlayerPosRot->pos;
-            if (camera->playerGroundY != BGCHECK_Y_MIN) {
+            if (camera->playerGroundY != LINKSPAN_BGCHECK_Y_MIN) {
                 anim->initialAt.y = camera->playerGroundY;
             }
             angle = camPlayerPosRot->rot.y;
@@ -7135,7 +7136,7 @@ void Camera_InitPlayerSettings(Camera* camera, Player* player) {
     camera->up.y = 1.0f;
     camera->up.x = upXZ;
 
-    if (Camera_GetFloorYNorm(camera, &floorPos, at, &bgId) != BGCHECK_Y_MIN) {
+    if (Camera_GetFloorYNorm(camera, &floorPos, at, &bgId) != LINKSPAN_BGCHECK_Y_MIN) {
         camera->bgCheckId = bgId;
     }
 
@@ -7338,7 +7339,7 @@ s32 Camera_UpdateWater(Camera* camera) {
         }
     }
 
-    if (waterY = Camera_GetWaterSurface(camera, &camera->eye, &waterLightsIndex), waterY != BGCHECK_Y_MIN) {
+    if (waterY = Camera_GetWaterSurface(camera, &camera->eye, &waterLightsIndex), waterY != LINKSPAN_BGCHECK_Y_MIN) {
         camera->waterYPos = waterY;
         if (!(camera->unk_14C & 0x100)) {
             camera->unk_14C |= 0x100;
@@ -7555,7 +7556,7 @@ Vec3s Camera_Update(Camera* camera) {
 
         playerGroundY = BgCheck_EntityRaycastFloor5(camera->play, &camera->play->colCtx, &playerFloorPoly, &bgId,
                                                     &camera->player->actor, &spAC);
-        if (playerGroundY != BGCHECK_Y_MIN) {
+        if (playerGroundY != LINKSPAN_BGCHECK_Y_MIN) {
             // player is above ground.
             sOOBTimer = 0;
             camera->floorNorm.x = COLPOLY_GET_NORMAL(playerFloorPoly->normal.x);
@@ -7585,7 +7586,7 @@ Vec3s Camera_Update(Camera* camera) {
 
             if ((camera->unk_14C & 1) && (camera->unk_14C & 4) && (!(camera->unk_14C & 0x400)) &&
                 (!(camera->unk_14C & 0x200) || (player->currentBoots == PLAYER_BOOTS_IRON)) &&
-                (!(camera->unk_14C & (s16)0x8000)) && (playerGroundY != BGCHECK_Y_MIN)) {
+                (!(camera->unk_14C & (s16)0x8000)) && (playerGroundY != LINKSPAN_BGCHECK_Y_MIN)) {
                 camDataIdx = Camera_GetDataIdxForPoly(camera, &bgId, playerFloorPoly);
                 if (camDataIdx != -1) {
                     camera->nextBGCheckId = bgId;

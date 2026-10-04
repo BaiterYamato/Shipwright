@@ -7,6 +7,7 @@
 
 #include "z_bg_jya_goroiwa.h"
 #include "objects/object_goroiwa/object_goroiwa.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -86,7 +87,7 @@ void BgJyaGoroiwa_InitCollider(BgJyaGoroiwa* this, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->actor, &sJntSphInit, &this->colliderItem);
     BgJyaGoroiwa_UpdateCollider(this);
-    this->collider.elements[0].dim.worldSphere.radius = 58;
+    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(58);
 }
 
 void BgJyaGoroiwa_UpdateRotation(BgJyaGoroiwa* this) {

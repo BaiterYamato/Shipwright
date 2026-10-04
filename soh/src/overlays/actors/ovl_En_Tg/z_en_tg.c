@@ -6,6 +6,7 @@
 
 #include "z_en_tg.h"
 #include "objects/object_mu/object_mu.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY)
 
@@ -144,9 +145,9 @@ void EnTg_Update(Actor* thisx, PlayState* play) {
     f32 temp;
     Vec3f sp2C; // SOH [Unbound] collider dims are f32
 
-    sp2C.x = this->actor.world.pos.x;
-    sp2C.y = this->actor.world.pos.y;
-    sp2C.z = (s16)this->actor.world.pos.z + 3;
+    sp2C.x = LinkSpan_S16F(this->actor.world.pos.x);
+    sp2C.y = LinkSpan_S16F(this->actor.world.pos.y);
+    sp2C.z = LinkSpan_S16F((s16)this->actor.world.pos.z + 3);
     this->collider.dim.pos = sp2C;
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
     SkelAnime_Update(&this->skelAnime);

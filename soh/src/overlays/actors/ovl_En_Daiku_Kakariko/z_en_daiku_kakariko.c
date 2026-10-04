@@ -6,6 +6,7 @@
 
 #include "z_en_daiku_kakariko.h"
 #include "objects/object_daiku/object_daiku.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -466,9 +467,9 @@ void EnDaikuKakariko_Update(Actor* thisx, PlayState* play) {
     Collider_UpdateCylinder(&this->actor, &this->collider);
 
     if (this->flags & 4) {
-        this->collider.dim.pos.x -= 27;
-        this->collider.dim.pos.z -= 27;
-        this->collider.dim.radius = 63;
+        this->collider.dim.pos.x = LinkSpan_S16F(this->collider.dim.pos.x - (27));
+        this->collider.dim.pos.z = LinkSpan_S16F(this->collider.dim.pos.z - (27));
+        this->collider.dim.radius = LinkSpan_S16F(63);
     }
 
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);

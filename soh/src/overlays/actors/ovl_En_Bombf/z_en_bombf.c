@@ -7,6 +7,7 @@
 #include "z_en_bombf.h"
 #include "objects/object_bombf/object_bombf.h"
 #include "overlays/effects/ovl_Effect_Ss_Dead_Sound/z_eff_ss_dead_sound.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -265,9 +266,9 @@ void EnBombf_Explode(EnBombf* this, PlayState* play) {
         Rumble_Request(this->actor.xzDistToPlayer, 0xFF, 0x14, 0x96);
     }
 
-    this->explosionCollider.elements[0].dim.modelSphere.radius += 8;
-    this->explosionCollider.elements[0].dim.worldSphere.radius =
-        this->explosionCollider.elements[0].dim.modelSphere.radius;
+    this->explosionCollider.elements[0].dim.modelSphere.radius = LinkSpan_S16F(this->explosionCollider.elements[0].dim.modelSphere.radius + (8));
+    this->explosionCollider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
+        this->explosionCollider.elements[0].dim.modelSphere.radius);
 
     if (this->actor.params == BOMBFLOWER_EXPLOSION) {
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->explosionCollider.base);
@@ -416,7 +417,7 @@ void EnBombf_Update(Actor* thisx, PlayState* play) {
                 EffectSsBomb2_SpawnLayered(play, &effPos, &effVelocity, &bomb2Accel, 100, 19);
 
                 effPos.y = thisx->floorHeight;
-                if (thisx->floorHeight > BGCHECK_Y_MIN) {
+                if (thisx->floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
                     EffectSsBlast_SpawnWhiteShockwave(play, &effPos, &effVelocity, &effAccel);
                 }
 

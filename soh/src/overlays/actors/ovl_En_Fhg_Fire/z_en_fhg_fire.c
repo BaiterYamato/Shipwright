@@ -10,6 +10,7 @@
 #include "overlays/actors/ovl_Boss_Ganondrof/z_boss_ganondrof.h"
 #include "overlays/actors/ovl_En_fHG/z_en_fhg.h"
 #include "overlays/effects/ovl_Effect_Ss_Fhg_Flash/z_eff_ss_fhg_flash.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -115,9 +116,9 @@ void EnFhgFire_Init(Actor* thisx, PlayState* play) {
         this->lensFlareTimer = 10;
 
         this->fwork[FHGFIRE_BURST_SCALE] = this->actor.world.rot.x / 100.0f;
-        this->collider.dim.radius = this->actor.world.rot.x * 0.13f;
-        this->collider.dim.height = this->actor.world.rot.x * 0.13f;
-        this->collider.dim.yShift = 0;
+        this->collider.dim.radius = LinkSpan_S16F(this->actor.world.rot.x * 0.13f);
+        this->collider.dim.height = LinkSpan_S16F(this->actor.world.rot.x * 0.13f);
+        this->collider.dim.yShift = LinkSpan_S16F(0);
     } else if (this->actor.params == FHGFIRE_SPEAR_LIGHT) {
         osSyncPrintf("yari hikari ct 1\n"); // "light spear"
         EnFhgFire_SetUpdate(this, EnFhgFire_SpearLight);
@@ -154,9 +155,9 @@ void EnFhgFire_Init(Actor* thisx, PlayState* play) {
         this->actor.world.rot.y = Math_FAtan2F(dxL, dzL) * (0x8000 / M_PI);
         dxzL = sqrtf(SQ(dxL) + SQ(dzL));
         this->actor.world.rot.x = Math_FAtan2F(dyL, dxzL) * (0x8000 / M_PI);
-        this->collider.dim.radius = 40;
-        this->collider.dim.height = 50;
-        this->collider.dim.yShift = -25;
+        this->collider.dim.radius = LinkSpan_S16F(40);
+        this->collider.dim.height = LinkSpan_S16F(50);
+        this->collider.dim.yShift = LinkSpan_S16F(-25);
         this->lightNode = LightContext_InsertLight(play, &play->lightCtx, &this->lightInfo);
         Lights_PointNoGlowSetInfo(&this->lightInfo, this->actor.world.pos.x, this->actor.world.pos.y,
                                   this->actor.world.pos.z, 255, 255, 255, 255);

@@ -3,6 +3,7 @@
 #endif
 
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <string.h>
@@ -147,7 +148,8 @@ void func_80095D04(PlayState* play, Room* room, u32 flags) {
         SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, &sp90, &sp84, &sp80);
         if (-polygonDlist->unk_06 < sp84.z) {
             temp_f2 = sp84.z - polygonDlist->unk_06;
-            if (temp_f2 < play->lightCtx.zFar) { // SOH [Unbound] was fogFar (<= 12800)
+            // SOH [Unbound] was fogFar (<= 12800)
+            if (temp_f2 < (LinkSpan_EngineExtended() ? play->lightCtx.zFar : play->lightCtx.fogFar)) {
                 phi_v0 = spB4;
                 spA4->unk_00 = polygonDlist;
                 spA4->unk_04 = temp_f2;

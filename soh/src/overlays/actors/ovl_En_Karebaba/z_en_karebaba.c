@@ -9,6 +9,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "overlays/effects/ovl_Effect_Ss_Hahen/z_eff_ss_hahen.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 s32 LinkSpan_RenderSuppressVanillaShadows(void);
 
@@ -125,12 +126,12 @@ void EnKarebaba_Destroy(Actor* thisx, PlayState* play) {
 }
 
 void EnKarebaba_ResetCollider(EnKarebaba* this) {
-    this->bodyCollider.dim.radius = 7;
-    this->bodyCollider.dim.height = 25;
+    this->bodyCollider.dim.radius = LinkSpan_S16F(7);
+    this->bodyCollider.dim.height = LinkSpan_S16F(25);
     this->bodyCollider.base.colType = COLTYPE_HARD;
     this->bodyCollider.base.acFlags |= AC_HARD;
     this->bodyCollider.info.bumper.dmgFlags = ~0x00300000;
-    this->headCollider.dim.height = 25;
+    this->headCollider.dim.height = LinkSpan_S16F(25);
 }
 
 void EnKarebaba_SetupGrow(EnKarebaba* this) {
@@ -160,9 +161,9 @@ void EnKarebaba_SetupUpright(EnKarebaba* this) {
         this->bodyCollider.base.colType = COLTYPE_HIT6;
         this->bodyCollider.base.acFlags &= ~AC_HARD;
         this->bodyCollider.info.bumper.dmgFlags = !LINK_IS_ADULT ? 0x07C00710 : 0x0FC00710;
-        this->bodyCollider.dim.radius = 15;
-        this->bodyCollider.dim.height = 80;
-        this->headCollider.dim.height = 80;
+        this->bodyCollider.dim.radius = LinkSpan_S16F(15);
+        this->bodyCollider.dim.height = LinkSpan_S16F(80);
+        this->headCollider.dim.height = LinkSpan_S16F(80);
     }
 
     this->actor.params = 40;
@@ -220,7 +221,7 @@ void EnKarebaba_SetupDead(EnKarebaba* this) {
 void EnKarebaba_SetupRegrow(EnKarebaba* this) {
     this->actor.shape.yOffset = 0.0f;
     this->actor.shape.shadowScale = 22.0f;
-    this->headCollider.dim.radius = sHeadColliderInit.dim.radius;
+    this->headCollider.dim.radius = LinkSpan_S16F(sHeadColliderInit.dim.radius);
     Actor_SetScale(&this->actor, 0.0f);
     this->actionFunc = EnKarebaba_Regrow;
 }
@@ -299,7 +300,7 @@ void EnKarebaba_Spin(EnKarebaba* this, PlayState* play) {
         value = 10;
     }
 
-    this->headCollider.dim.radius = sHeadColliderInit.dim.radius + (value * 2);
+    this->headCollider.dim.radius = LinkSpan_S16F(sHeadColliderInit.dim.radius + (value * 2));
     this->actor.shape.rot.x = 0xC000 - (value * 0x100);
     this->actor.shape.rot.y += value * 0x2C0;
     this->actor.world.pos.y = (Math_SinS(this->actor.shape.rot.x) * -60.0f) + this->actor.home.pos.y;

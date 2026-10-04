@@ -8,6 +8,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_Bb/object_Bb.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -381,7 +382,7 @@ void EnBb_Init(Actor* thisx, PlayState* play) {
                 break;
             case ENBB_GREEN_BIG:
                 this->path = this->actionState >> 4;
-                this->collider.elements[0].dim.modelSphere.radius = 0x16;
+                this->collider.elements[0].dim.modelSphere.radius = LinkSpan_S16F(0x16);
                 Actor_SetScale(thisx, 0.03f);
             case ENBB_GREEN:
                 thisx->naviEnemyId = 0x1E;
@@ -397,8 +398,8 @@ void EnBb_Init(Actor* thisx, PlayState* play) {
     } else {
         EnBb_SetupFlameTrail(this);
     }
-    this->collider.elements[0].dim.worldSphere.radius =
-        this->collider.elements[0].dim.modelSphere.radius * this->collider.elements[0].dim.scale;
+    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
+        this->collider.elements[0].dim.modelSphere.radius * this->collider.elements[0].dim.scale);
 }
 
 void EnBb_Destroy(Actor* thisx, PlayState* play) {
@@ -552,7 +553,7 @@ void EnBb_Blue(EnBb* this, PlayState* play) {
 
     Math_SmoothStepToF(&this->flameScaleY, 80.0f, 1.0f, 10.0f, 0.0f);
     Math_SmoothStepToF(&this->flameScaleX, 100.0f, 1.0f, 10.0f, 0.0f);
-    if (this->actor.floorHeight > BGCHECK_Y_MIN) {
+    if (this->actor.floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
         Math_SmoothStepToF(&this->actor.world.pos.y, this->actor.floorHeight + 50.0f + this->flyHeightMod, 1.0f, 0.5f,
                            0.0f);
     }
@@ -1248,10 +1249,10 @@ void EnBb_Update(Actor* thisx, PlayState* play2) {
             Actor_UpdateBgCheckInfo(play, &this->actor, sp34, 25.0f, 20.0f, 5);
         }
         this->actor.focus.pos = this->actor.world.pos;
-        this->collider.elements->dim.worldSphere.center.x = this->actor.world.pos.x;
-        this->collider.elements->dim.worldSphere.center.y =
-            this->actor.world.pos.y + (this->actor.shape.yOffset * this->actor.scale.y);
-        this->collider.elements->dim.worldSphere.center.z = this->actor.world.pos.z;
+        this->collider.elements->dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+        this->collider.elements->dim.worldSphere.center.y = LinkSpan_S16F(
+            this->actor.world.pos.y + (this->actor.shape.yOffset * this->actor.scale.y));
+        this->collider.elements->dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
 
         if ((this->action > BB_KILL) && ((this->actor.speedXZ != 0.0f) || (this->action == BB_GREEN))) {
             CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);

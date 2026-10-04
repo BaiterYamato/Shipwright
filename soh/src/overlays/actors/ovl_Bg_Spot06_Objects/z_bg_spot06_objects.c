@@ -7,6 +7,7 @@
 #include "z_bg_spot06_objects.h"
 #include "objects/object_spot06_objects/object_spot06_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_HOOKSHOT_PULLS_ACTOR
 
@@ -137,17 +138,17 @@ void BgSpot06Objects_Init(Actor* thisx, PlayState* play) {
                 this->actionFunc = BgSpot06Objects_LockFloat;
                 thisx->world.pos.z -= 100.0f;
                 thisx->home.pos.z = thisx->world.pos.z + 16.0f;
-                this->collider.elements[0].dim.worldSphere.radius =
-                    this->collider.elements[0].dim.modelSphere.radius * 2;
-                this->collider.elements[0].dim.worldSphere.center.z = thisx->world.pos.z + 16.0f;
+                this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
+                    this->collider.elements[0].dim.modelSphere.radius * 2);
+                this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(thisx->world.pos.z + 16.0f);
             } else {
                 this->actionFunc = BgSpot06Objects_LockWait;
-                this->collider.elements[0].dim.worldSphere.radius = this->collider.elements[0].dim.modelSphere.radius;
-                this->collider.elements[0].dim.worldSphere.center.z = thisx->world.pos.z;
+                this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius);
+                this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(thisx->world.pos.z);
             }
 
-            this->collider.elements[0].dim.worldSphere.center.x = thisx->world.pos.x;
-            this->collider.elements[0].dim.worldSphere.center.y = thisx->world.pos.y;
+            this->collider.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(thisx->world.pos.x);
+            this->collider.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(thisx->world.pos.y);
             thisx->colChkInfo.mass = MASS_IMMOVABLE;
             break;
         case LHO_WATER_PLANE:
@@ -324,7 +325,7 @@ void BgSpot06Objects_LockWait(BgSpot06Objects* this, PlayState* play) {
         }
 
         EffectSsGSplash_Spawn(play, &this->dyna.actor.world.pos, NULL, NULL, 1, 700);
-        this->collider.elements->dim.worldSphere.radius = 45;
+        this->collider.elements->dim.worldSphere.radius = LinkSpan_S16F(45);
         this->actionFunc = BgSpot06Objects_LockPullOutward;
         Audio_PlaySfxGeneral(NA_SE_SY_CORRECT_CHIME, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
                              &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
@@ -380,7 +381,7 @@ void BgSpot06Objects_LockSwimToSurface(BgSpot06Objects* this, PlayState* play) {
             this->dyna.actor.world.pos.y = -1993.0f;
             this->timer = 32;
             this->dyna.actor.flags &= ~ACTOR_FLAG_UPDATE_CULLING_DISABLED;
-            this->collider.elements[0].dim.worldSphere.radius = this->collider.elements[0].dim.modelSphere.radius * 2;
+            this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius * 2);
             this->actionFunc = BgSpot06Objects_LockFloat;
         }
     } else {

@@ -7,6 +7,7 @@
 #include "z_bg_haka_zou.h"
 #include "objects/object_hakach_objects/object_hakach_objects.h"
 #include "objects/object_haka_objects/object_haka_objects.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -172,19 +173,19 @@ void BgHakaZou_Wait(BgHakaZou* this, PlayState* play) {
 
             if (this->dyna.actor.params == STA_GIANT_BIRD_STATUE) {
                 CollisionHeader_GetVirtual(&object_haka_objects_Col_006F70, &colHeader);
-                this->collider.dim.radius = 80;
-                this->collider.dim.height = 100;
-                this->collider.dim.yShift = -30;
-                this->collider.dim.pos.x -= 56;
-                this->collider.dim.pos.z += 56;
+                this->collider.dim.radius = LinkSpan_S16F(80);
+                this->collider.dim.height = LinkSpan_S16F(100);
+                this->collider.dim.yShift = LinkSpan_S16F(-30);
+                this->collider.dim.pos.x = LinkSpan_S16F(this->collider.dim.pos.x - (56));
+                this->collider.dim.pos.z = LinkSpan_S16F(this->collider.dim.pos.z + (56));
                 this->dyna.actor.uncullZoneScale = 1500.0f;
             } else if (this->dyna.actor.params == STA_BOMBABLE_SKULL_WALL) {
                 CollisionHeader_GetVirtual(&object_haka_objects_Col_005E30, &colHeader);
-                this->collider.dim.yShift = -50;
+                this->collider.dim.yShift = LinkSpan_S16F(-50);
             } else {
                 CollisionHeader_GetVirtual(&gBotwBombSpotCol, &colHeader);
-                this->collider.dim.radius = 55;
-                this->collider.dim.height = 20;
+                this->collider.dim.radius = LinkSpan_S16F(55);
+                this->collider.dim.height = LinkSpan_S16F(20);
             }
 
             this->dyna.bgId = DynaPoly_SetBgActor(play, &play->colCtx.dyna, &this->dyna.actor, colHeader);

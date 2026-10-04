@@ -25,6 +25,7 @@ extern "C" {
 #include "src/overlays/actors/ovl_En_Vali/z_en_vali.h"
 #include "src/overlays/actors/ovl_En_Skb/z_en_skb.h"
 #include "src/overlays/actors/ovl_En_Tp/z_en_tp.h"
+#include "../../../src/code/linkspan_vanilla.h"
 
 extern PlayState* gPlayState;
 }
@@ -558,7 +559,7 @@ static u8 GetRandomizedEnemy(PlayState* play, s16* actorId, s16* posX, s16* posY
             raycastResult = BgCheck_AnyRaycastFloor1(&play->colCtx, &poly, &pos);
 
             // If ground is found below actor, move actor to that height.
-            if (raycastResult > BGCHECK_Y_MIN) {
+            if (raycastResult > LINKSPAN_BGCHECK_Y_MIN) {
                 *posY = static_cast<s16>(raycastResult);
             }
         }

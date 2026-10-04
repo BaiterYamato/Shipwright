@@ -5,6 +5,7 @@
 #include "overlays/effects/ovl_Effect_Ss_Hahen/z_eff_ss_hahen.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -740,13 +741,13 @@ void EnGoma_Update(Actor* thisx, PlayState* play) {
         EnGoma_UpdateEyeEnvColor(this);
         this->visualState = 1;
         if (player->meleeWeaponState != 0) {
-            this->colCyl2.dim.radius = 35;
-            this->colCyl2.dim.height = 35;
-            this->colCyl2.dim.yShift = 0;
+            this->colCyl2.dim.radius = LinkSpan_S16F(35);
+            this->colCyl2.dim.height = LinkSpan_S16F(35);
+            this->colCyl2.dim.yShift = LinkSpan_S16F(0);
         } else {
-            this->colCyl2.dim.radius = 15;
-            this->colCyl2.dim.height = 30;
-            this->colCyl2.dim.yShift = 10;
+            this->colCyl2.dim.radius = LinkSpan_S16F(15);
+            this->colCyl2.dim.height = LinkSpan_S16F(30);
+            this->colCyl2.dim.yShift = LinkSpan_S16F(10);
         }
         if (this->invincibilityTimer == 0) {
             Collider_UpdateCylinder(&this->actor, &this->colCyl1);

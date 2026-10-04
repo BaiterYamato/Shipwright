@@ -11,6 +11,7 @@
 #include "soh/Enhancements/savestate_serialize.h"
 
 #include <string.h>
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -229,17 +230,17 @@ void EnPoField_SetupAppear(EnPoField* this) {
     this->actor.home.pos.y = this->actor.world.pos.y;
     if (this->actor.params == EN_PO_FIELD_BIG) {
         this->actor.speedXZ = 12.0f;
-        this->collider.dim.radius = 35;
-        this->collider.dim.height = 100;
-        this->collider.dim.yShift = 10;
+        this->collider.dim.radius = LinkSpan_S16F(35);
+        this->collider.dim.height = LinkSpan_S16F(100);
+        this->collider.dim.yShift = LinkSpan_S16F(10);
         this->actor.shape.shadowScale = 45.0f;
         this->scaleModifier = 0.014f;
         this->actor.naviEnemyId = 0x5A;
     } else {
         this->actor.speedXZ = 0.0f;
-        this->collider.dim.radius = D_80AD7080.dim.radius;
-        this->collider.dim.height = D_80AD7080.dim.height;
-        this->collider.dim.yShift = D_80AD7080.dim.yShift;
+        this->collider.dim.radius = LinkSpan_S16F(D_80AD7080.dim.radius);
+        this->collider.dim.height = LinkSpan_S16F(D_80AD7080.dim.height);
+        this->collider.dim.yShift = LinkSpan_S16F(D_80AD7080.dim.yShift);
         this->actor.shape.shadowScale = 37.0f;
         this->scaleModifier = 0.01f;
         this->actor.naviEnemyId = 0x5C;
@@ -347,12 +348,12 @@ void func_80AD42B0(EnPoField* this) {
 void func_80AD4384(EnPoField* this) {
     this->actor.home.pos.y = this->actor.world.pos.y;
     Actor_SetFocus(&this->actor, -10.0f);
-    this->collider.dim.radius = 13;
-    this->collider.dim.height = 30;
-    this->collider.dim.yShift = 0;
-    this->collider.dim.pos.x = this->actor.world.pos.x;
-    this->collider.dim.pos.y = this->actor.world.pos.y - 20.0f;
-    this->collider.dim.pos.z = this->actor.world.pos.z;
+    this->collider.dim.radius = LinkSpan_S16F(13);
+    this->collider.dim.height = LinkSpan_S16F(30);
+    this->collider.dim.yShift = LinkSpan_S16F(0);
+    this->collider.dim.pos.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->collider.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y - 20.0f);
+    this->collider.dim.pos.z = LinkSpan_S16F(this->actor.world.pos.z);
     this->collider.base.ocFlags1 = OC1_ON | OC1_TYPE_PLAYER;
     this->actor.textId = 0x5005;
     this->actionTimer = 400;
@@ -379,7 +380,7 @@ void EnPoField_CorrectYPos(EnPoField* this, PlayState* play) {
     if (this->unk_194 != 0) {
         this->unk_194 -= 1;
     }
-    if (this->actor.floorHeight == BGCHECK_Y_MIN) {
+    if (this->actor.floorHeight == LINKSPAN_BGCHECK_Y_MIN) {
         EnPoField_SetupDisappear(this);
         return;
     }
@@ -442,7 +443,7 @@ void EnPoField_WaitForSpawn(EnPoField* this, PlayState* play) {
                 this->actor.world.pos.y = player->actor.world.pos.y + 1000.0f;
                 this->actor.world.pos.y = BgCheck_EntityRaycastFloor4(&play->colCtx, &this->actor.floorPoly, &bgId,
                                                                       &this->actor, &this->actor.world.pos);
-                if (this->actor.world.pos.y != BGCHECK_Y_MIN) {
+                if (this->actor.world.pos.y != LINKSPAN_BGCHECK_Y_MIN) {
                     this->actor.shape.rot.y = Actor_WorldYawTowardActor(&this->actor, &player->actor);
                     EnPoField_SetupAppear(this);
                 } else {
@@ -687,7 +688,7 @@ void func_80AD58D4(EnPoField* this, PlayState* play) {
     if (this->unk_194 == 0) {
         this->unk_194 = 32;
     }
-    this->collider.dim.pos.y = this->actor.world.pos.y - 20.0f;
+    this->collider.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y - 20.0f);
     Actor_SetFocus(&this->actor, -10.0f);
     Lights_PointNoGlowSetInfo(&this->lightInfo, this->actor.world.pos.x, this->actor.world.pos.y,
                               this->actor.world.pos.z, this->lightInfo.params.point.color[0],
@@ -780,9 +781,9 @@ void EnPoField_UpdateFlame(EnPoField* this, PlayState* play) {
             this->flamePosition.x += 2.5f * Math_SinS(this->flameRotation);
             this->flamePosition.z += 2.5f * Math_CosS(this->flameRotation);
         }
-        this->flameCollider.dim.pos.x = this->flamePosition.x;
-        this->flameCollider.dim.pos.y = this->flamePosition.y;
-        this->flameCollider.dim.pos.z = this->flamePosition.z;
+        this->flameCollider.dim.pos.x = LinkSpan_S16F(this->flamePosition.x);
+        this->flameCollider.dim.pos.y = LinkSpan_S16F(this->flamePosition.y);
+        this->flameCollider.dim.pos.z = LinkSpan_S16F(this->flamePosition.z);
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->flameCollider.base);
     }
 }

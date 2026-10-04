@@ -9,6 +9,7 @@
 #include "overlays/actors/ovl_En_Encount1/z_en_encount1.h"
 #include "objects/object_wf/object_wf.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -1379,9 +1380,9 @@ void EnWf_PostLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, 
 
         bodyPartIndex = -1;
         Matrix_MultVec3f(&colliderVec, &colliderPos);
-        this->colliderCylinderTail.dim.pos.x = colliderPos.x;
-        this->colliderCylinderTail.dim.pos.y = colliderPos.y;
-        this->colliderCylinderTail.dim.pos.z = colliderPos.z;
+        this->colliderCylinderTail.dim.pos.x = LinkSpan_S16F(colliderPos.x);
+        this->colliderCylinderTail.dim.pos.y = LinkSpan_S16F(colliderPos.y);
+        this->colliderCylinderTail.dim.pos.z = LinkSpan_S16F(colliderPos.z);
     }
 
     if ((this->fireTimer != 0) || ((this->actor.colorFilterTimer != 0) && (this->actor.colorFilterParams & 0x4000))) {

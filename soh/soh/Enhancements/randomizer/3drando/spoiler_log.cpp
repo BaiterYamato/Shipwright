@@ -7,6 +7,7 @@
 #include "../trial.h"
 #include "pool_functions.hpp"
 #include "soh/Enhancements/randomizer/randomizer_entrance_tracker.h"
+#include "../../../../src/code/linkspan_vanilla.h"
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -147,6 +148,10 @@ static void WriteSettings() {
     std::array<Rando::Option, RSK_MAX> options = Rando::Settings::GetInstance()->GetAllOptions();
     for (const Rando::Option& option : options) {
         // skip unassigned settings (RSK_NONE)
+        // OOT-VANILLA-001: sem mod, a opção do Link-Span não vai para o spoiler.
+        if (!LinkSpan_EngineExtended() && option.GetKey() == RSK_LINKSPAN_MOD_ITEMS) {
+            continue;
+        }
         if (option.GetOptionCount() > 0) {
             jsonData["settings"][option.GetName()] = option.GetOptionText(ctx->GetOption(option.GetKey()).Get());
         }

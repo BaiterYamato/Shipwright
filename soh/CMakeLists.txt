@@ -263,6 +263,15 @@ if(MSVC)
 endif()
 add_test(NAME oot_unbound_collision_tests COMMAND oot_unbound_collision_tests)
 
+# OOT-VANILLA-001: a chave do motor sem mod (soh/src/code/linkspan_vanilla.h).
+add_executable(oot_vanilla_mode_tests tests/OotVanillaModeTests.cpp)
+target_include_directories(oot_vanilla_mode_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+    set_property(TARGET oot_vanilla_mode_tests PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+add_test(NAME oot_vanilla_mode_tests COMMAND oot_vanilla_mode_tests)
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 endif()

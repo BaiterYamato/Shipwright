@@ -705,8 +705,9 @@ const std::string& SohUtils::GetSceneName(int32_t scene) {
         return invalidString;
     }
 
-    SPDLOG_WARN("Passed invalid scene id to SohUtils::GetSceneName: ({})", scene);
-    return invalidString;
+    // OOT-VANILLA-001: o merge do Unbound (OOT-CORE-007) tinha trocado esta linha pelo aviso de id inválido; sem o
+    // SceneDB do Unbound, as cenas vanilla saem da tabela como no upstream.
+    return sceneNames[scene];
 }
 
 const std::string& SohUtils::GetItemName(int32_t item) {

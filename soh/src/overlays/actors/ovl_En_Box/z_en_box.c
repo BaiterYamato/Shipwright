@@ -6,6 +6,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/randomizer/item_category_adj.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -101,7 +102,7 @@ void EnBox_ClipToGround(EnBox* this, PlayState* play) {
     pos = this->dyna.actor.world.pos;
     pos.y += 1.0f;
     newY = BgCheck_EntityRaycastFloor4(&play->colCtx, &poly, &bgId, &this->dyna.actor, &pos);
-    if (newY != BGCHECK_Y_MIN) {
+    if (newY != LINKSPAN_BGCHECK_Y_MIN) {
         this->dyna.actor.world.pos.y = newY;
     }
 }

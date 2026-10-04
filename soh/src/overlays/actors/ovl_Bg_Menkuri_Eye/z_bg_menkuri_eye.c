@@ -8,6 +8,7 @@
 #include "objects/object_menkuri_objects/object_menkuri_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_DRAW_CULLING_DISABLED
 
@@ -74,11 +75,11 @@ void BgMenkuriEye_Init(Actor* thisx, PlayState* play) {
     Actor_ProcessInitChain(&this->actor, sInitChain);
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->actor, &sJntSphInit, this->colliderItems);
-    this->collider.elements[0].dim.worldSphere.center.x = this->actor.world.pos.x;
-    this->collider.elements[0].dim.worldSphere.center.y = this->actor.world.pos.y;
-    this->collider.elements[0].dim.worldSphere.center.z = this->actor.world.pos.z;
+    this->collider.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->collider.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(this->actor.world.pos.y);
+    this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
     colliderList = this->collider.elements;
-    colliderList->dim.worldSphere.radius = colliderList->dim.modelSphere.radius;
+    colliderList->dim.worldSphere.radius = LinkSpan_S16F(colliderList->dim.modelSphere.radius);
     if (!Flags_GetSwitch(play, this->actor.params)) {
         sNumEyesShot = 0;
     }

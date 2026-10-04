@@ -13,6 +13,7 @@
 #include "overlays/actors/ovl_Bg_Spot15_Saku/z_bg_spot15_saku.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY)
 
@@ -126,9 +127,9 @@ void EnHeishi2_Init(Actor* thisx, PlayState* play) {
         collider = &this->collider;
         Collider_InitCylinder(play, collider);
         Collider_SetCylinder(play, collider, &this->actor, &sCylinderInit);
-        this->collider.dim.yShift = 0;
-        this->collider.dim.radius = 15;
-        this->collider.dim.height = 70;
+        this->collider.dim.yShift = LinkSpan_S16F(0);
+        this->collider.dim.radius = LinkSpan_S16F(15);
+        this->collider.dim.height = LinkSpan_S16F(70);
         this->actor.targetMode = 6;
 
         switch (this->type) {

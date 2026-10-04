@@ -12,6 +12,7 @@
 #include "ResourceManagerHelpers.h"
 #include "soh/SohGui/SohGui.hpp"
 #include "soh/native/OotNativeSave.h"
+#include "../src/code/linkspan_vanilla.h"
 
 extern "C" {
 #include "z64.h"
@@ -124,7 +125,11 @@ SaveManager::SaveManager() {
     AddLoadFunction("randomizer", 1, LoadRandomizer);
     AddSaveFunction("randomizer", 1, SaveRandomizer, true, SECTION_PARENT_NONE);
 
-    SceneFlagsExt_RegisterSaveFunctions(*this); // SOH [Unbound] clear flags for rooms >= 32, keyed by scene name
+    // SOH [Unbound] clear flags for rooms >= 32, keyed by scene name
+    // OOT-VANILLA-001: sem mod, nenhuma cena tem sala >= 32 e o save fica no formato do upstream.
+    if (LinkSpan_EngineExtended()) {
+        SceneFlagsExt_RegisterSaveFunctions(*this);
+    }
 
     AddInitFunction(InitFileImpl);
 
@@ -1358,8 +1363,10 @@ void SaveManager::SaveSection(int fileNum, int sectionID, bool threaded) {
         SPDLOG_ERROR("SaveSection: Section ID not registered.");
         return;
     }
-    // SOH [Link-Span] hooks oot.save.saving e flags de cenas de mod, na thread do jogo.
-    ShipLuaHost::OotBeforeSave(fileNum, sectionID);
+    // SOH [Link-Span] hooks oot.save.saving e flags de cenas de mod, na thread do jogo (OOT-VANILLA-001: só com mod).
+    if (LinkSpan_EngineExtended()) {
+        ShipLuaHost::OotBeforeSave(fileNum, sectionID);
+    }
     auto saveContext = new SaveContext;
     memcpy(saveContext, &gSaveContext, sizeof(gSaveContext));
     if (threaded) {
@@ -2538,7 +2545,9 @@ void SaveManager::CopyZeldaFile(int from, int to) {
     std::filesystem::copy_file(GetFileName(from), GetFileName(to));
 #endif
     fileMetaInfo[to] = fileMetaInfo[from];
-    ShipLuaHost::OotAfterCopy(from, to);
+    if (LinkSpan_EngineExtended()) {
+        ShipLuaHost::OotAfterCopy(from, to);
+    }
 }
 
 void SaveManager::DeleteZeldaFile(int fileNum) {

@@ -1,5 +1,6 @@
 #include "global.h"
 #include "../buffers/heap_sizes.h"
+#include "linkspan_vanilla.h"
 #include "soh/unbound/SceneFlagsExt.h"
 #include "vt.h"
 
@@ -432,7 +433,7 @@ void Play_Init(GameState* thisx) {
     SystemArena_Display();
 
     // SOH [Unbound] Preserva o orçamento de cena e reserva 1 KiB por vaga de ator.
-    GameState_Realloc(&play->state, SOH_PLAY_HEAP_SIZE);
+    GameState_Realloc(&play->state, SOH_PLAY_HEAP_ACTIVE_SIZE);
     KaleidoManager_Init(play);
     View_Init(&play->view, gfxCtx);
     Audio_SetExtraFilter(0);
@@ -612,9 +613,11 @@ void Play_Init(GameState* thisx) {
     zAllocAligned = (zAlloc + 8) & ~0xF;
     ZeldaArena_Init((void*)zAllocAligned, zAllocSize - (zAllocAligned - zAlloc));
     // SOH [Unbound] Expõe o orçamento real após eventual redução pelo SystemArena.
-    LUSLOG_INFO("Unbound Play heap: requested=%zu actual=%zu ZeldaArena=%zu EnItem00=%zu",
-                (size_t)SOH_PLAY_HEAP_SIZE, (size_t)play->state.tha.size,
-                zAllocSize - (zAllocAligned - zAlloc), sizeof(EnItem00));
+    if (LinkSpan_EngineExtended()) {
+        LUSLOG_INFO("Unbound Play heap: requested=%zu actual=%zu ZeldaArena=%zu EnItem00=%zu",
+                    (size_t)SOH_PLAY_HEAP_SIZE, (size_t)play->state.tha.size,
+                    zAllocSize - (zAllocAligned - zAlloc), sizeof(EnItem00));
+    }
     // "Zelda Heap"
     osSyncPrintf("ゼルダヒープ %08x-%08x\n", zAllocAligned,
                  (u8*)zAllocAligned + zAllocSize - (s32)(zAllocAligned - zAlloc));
@@ -1420,7 +1423,11 @@ void Play_Draw(PlayState* play) {
         POLY_XLU_DISP = Play_SetFog(play, POLY_XLU_DISP);
 
         // SOH [Unbound] near/far planes come from lightCtx (vanilla: 10 / fogFar; world-fog scenes set their own)
-        func_800AA460(&play->view, play->view.fovy, play->lightCtx.zNear, play->lightCtx.zFar);
+        if (LinkSpan_EngineExtended()) {
+            func_800AA460(&play->view, play->view.fovy, play->lightCtx.zNear, play->lightCtx.zFar);
+        } else {
+            func_800AA460(&play->view, play->view.fovy, play->view.zNear, play->lightCtx.fogFar);
+        }
         func_800AAA50(&play->view, 15);
 
         // Flip the projections and invert culling for the OPA and XLU display buffers
@@ -1790,7 +1797,7 @@ f32 func_800BFCB8(PlayState* play, MtxF* mf, Vec3f* pos) {
     f32 temp3;
     f32 floorY = BgCheck_AnyRaycastFloor1(&play->colCtx, &poly, pos);
 
-    if (floorY > BGCHECK_Y_MIN) {
+    if (floorY > LINKSPAN_BGCHECK_Y_MIN) {
         f32 nx = COLPOLY_GET_NORMAL(poly.normal.x);
         f32 ny = COLPOLY_GET_NORMAL(poly.normal.y);
         f32 nz = COLPOLY_GET_NORMAL(poly.normal.z);
@@ -2236,7 +2243,7 @@ s32 func_800C0DB4(PlayState* play, Vec3f* pos) {
     if (WaterBox_GetSurface1(play, &play->colCtx, waterSurfacePos.x, waterSurfacePos.z, &waterSurfacePos.y,
                              &waterBox) == true &&
         pos->y < waterSurfacePos.y &&
-        BgCheck_EntityRaycastFloor3(&play->colCtx, &poly, &bgId, &waterSurfacePos) != BGCHECK_Y_MIN) {
+        BgCheck_EntityRaycastFloor3(&play->colCtx, &poly, &bgId, &waterSurfacePos) != LINKSPAN_BGCHECK_Y_MIN) {
         return true;
     } else {
         return false;

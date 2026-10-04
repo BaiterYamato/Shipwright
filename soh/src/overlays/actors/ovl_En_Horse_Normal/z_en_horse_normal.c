@@ -7,6 +7,7 @@
 #include "z_en_horse_normal.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_horse_normal/object_horse_normal.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -609,11 +610,11 @@ void EnHorseNormal_PostDraw(Actor* thisx, PlayState* play, Skin* skin) {
         sp4C.y = this->headCollider.elements[i].dim.modelSphere.center.y;
         sp4C.z = this->headCollider.elements[i].dim.modelSphere.center.z;
         Skin_GetLimbPos(skin, this->headCollider.elements[i].dim.limb, &sp4C, &sp40);
-        this->headCollider.elements[i].dim.worldSphere.center.x = sp40.x;
-        this->headCollider.elements[i].dim.worldSphere.center.y = sp40.y;
-        this->headCollider.elements[i].dim.worldSphere.center.z = sp40.z;
-        this->headCollider.elements[i].dim.worldSphere.radius =
-            this->headCollider.elements[i].dim.modelSphere.radius * this->headCollider.elements[i].dim.scale;
+        this->headCollider.elements[i].dim.worldSphere.center.x = LinkSpan_S16F(sp40.x);
+        this->headCollider.elements[i].dim.worldSphere.center.y = LinkSpan_S16F(sp40.y);
+        this->headCollider.elements[i].dim.worldSphere.center.z = LinkSpan_S16F(sp40.z);
+        this->headCollider.elements[i].dim.worldSphere.radius = LinkSpan_S16F(
+            this->headCollider.elements[i].dim.modelSphere.radius * this->headCollider.elements[i].dim.scale);
     }
 
     //! @bug see relevant comment in `EnHorse_SkinCallback1`
@@ -709,9 +710,9 @@ void EnHorseNormal_Draw(Actor* thisx, PlayState* play) {
         gSPMatrix(POLY_OPA_DISP++, mtx1, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
         func_800A63CC(&this->actor, play, &this->skin, NULL, NULL, true, 0,
                       SKIN_DRAW_FLAG_CUSTOM_TRANSFORMS | SKIN_DRAW_FLAG_CUSTOM_MATRIX);
-        this->cloneCollider.dim.pos.x = clonePos.x;
-        this->cloneCollider.dim.pos.y = clonePos.y;
-        this->cloneCollider.dim.pos.z = clonePos.z;
+        this->cloneCollider.dim.pos.x = LinkSpan_S16F(clonePos.x);
+        this->cloneCollider.dim.pos.y = LinkSpan_S16F(clonePos.y);
+        this->cloneCollider.dim.pos.z = LinkSpan_S16F(clonePos.z);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->cloneCollider.base);
         Gfx_SetupDL_44Xlu(play->state.gfxCtx);
         gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 0, 0, 0, 255);

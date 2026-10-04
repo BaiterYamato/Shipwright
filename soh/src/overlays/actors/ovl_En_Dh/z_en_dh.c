@@ -1,6 +1,7 @@
 #include "z_en_dh.h"
 #include "objects/object_dh/object_dh.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -386,14 +387,14 @@ void EnDh_Burrow(EnDh* this, PlayState* play) {
             this->dirtWaveHeight = Math_SinS(this->dirtWavePhase) * 55.0f;
             this->dirtWaveAlpha = (s16)(Math_SinS(this->dirtWavePhase) * 255.0f);
             EnDh_SpawnDebris(play, this, &this->actor.world.pos, this->dirtWaveSpread, 4, 2.05f, 1.2f);
-            this->collider1.dim.radius = this->dirtWaveSpread * 0.6f;
+            this->collider1.dim.radius = LinkSpan_S16F(this->dirtWaveSpread * 0.6f);
             if (SkelAnime_Update(&this->skelAnime)) {
                 this->actionState++;
             }
             break;
         case 2:
             this->drawDirtWave = false;
-            this->collider1.dim.radius = 35;
+            this->collider1.dim.radius = LinkSpan_S16F(35);
             this->collider1.base.atFlags = this->collider1.info.toucherFlags = AT_NONE; // Also TOUCH_NONE
             this->collider1.info.toucher.dmgFlags = this->collider1.info.toucher.damage = 0;
             EnDh_SetupWait(this);

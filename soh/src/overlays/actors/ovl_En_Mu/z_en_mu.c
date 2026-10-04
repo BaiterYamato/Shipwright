@@ -6,6 +6,7 @@
 
 #include "z_en_mu.h"
 #include "objects/object_mu/object_mu.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY)
 
@@ -158,9 +159,9 @@ void EnMu_Update(Actor* thisx, PlayState* play) {
     f32 talkDist;
     Vec3f pos; // SOH [Unbound] collider dims are f32
 
-    pos.x = this->actor.world.pos.x;
-    pos.y = this->actor.world.pos.y;
-    pos.z = this->actor.world.pos.z;
+    pos.x = LinkSpan_S16F(this->actor.world.pos.x);
+    pos.y = LinkSpan_S16F(this->actor.world.pos.y);
+    pos.z = LinkSpan_S16F(this->actor.world.pos.z);
 
     this->collider.dim.pos = pos;
 

@@ -6,6 +6,7 @@
 
 #include "z_bg_spot15_rrbox.h"
 #include "objects/object_spot15_obj/object_spot15_obj.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -174,7 +175,7 @@ f32 BgSpot15Rrbox_GetFloorHeight(BgSpot15Rrbox* this, PlayState* play) {
     Vec3f scale;
     Actor* actor = &this->dyna.actor;
     f32 yIntersect;
-    f32 returnValue = BGCHECK_Y_MIN;
+    f32 returnValue = LINKSPAN_BGCHECK_Y_MIN;
     s32 bgId;
 
     func_808B3A34(this);
@@ -321,7 +322,7 @@ void func_808B43D0(BgSpot15Rrbox* this, PlayState* play) {
 
     Actor_MoveXZGravity(actor);
 
-    if (actor->world.pos.y <= BGCHECK_Y_MIN + 10.0f) {
+    if (actor->world.pos.y <= LINKSPAN_BGCHECK_Y_MIN + 10.0f) {
         // "Lon Lon wooden crate fell too much"
         osSyncPrintf("Warning : ロンロン木箱落ちすぎた(%s %d)(arg_data 0x%04x)\n", __FILE__, __LINE__, actor->params);
 

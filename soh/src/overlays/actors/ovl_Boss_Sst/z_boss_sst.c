@@ -14,6 +14,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -343,7 +344,7 @@ void BossSst_Init(Actor* thisx, PlayState* play2) {
             SkelAnime_InitFlex(play, &this->skelAnime, &gBongoLeftHandSkel, &gBongoLeftHandIdleAnim, this->jointTable,
                                this->morphTable, 27);
             this->vParity = -1;
-            this->colliderJntSph.elements[0].dim.modelSphere.center.z *= -1;
+            this->colliderJntSph.elements[0].dim.modelSphere.center.z = LinkSpan_S16F(this->colliderJntSph.elements[0].dim.modelSphere.center.z * (-1));
         } else {
             SkelAnime_InitFlex(play, &this->skelAnime, &gBongoRightHandSkel, &gBongoRightHandIdleAnim, this->jointTable,
                                this->morphTable, 27);
@@ -1537,7 +1538,7 @@ void BossSst_HandSlam(BossSst* this, PlayState* play) {
                 BossSst_SpawnShockwave(this);
                 this->colliderCyl.base.atFlags |= AT_ON;
                 Collider_UpdateCylinder(&this->actor, &this->colliderCyl);
-                this->colliderCyl.dim.radius = sCylinderInitHand.dim.radius;
+                this->colliderCyl.dim.radius = LinkSpan_S16F(sCylinderInitHand.dim.radius);
             }
         }
 
@@ -2619,7 +2620,7 @@ void BossSst_UpdateHand(Actor* thisx, PlayState* play) {
             (this->colliderCyl.base.atFlags & AT_HIT)) {
             this->colliderCyl.base.atFlags &= ~(AT_ON | AT_HIT);
         } else {
-            this->colliderCyl.dim.radius = (this->effects[0].scale * 0.01f) * sCylinderInitHand.dim.radius;
+            this->colliderCyl.dim.radius = LinkSpan_S16F((this->effects[0].scale * 0.01f) * sCylinderInitHand.dim.radius);
         }
     }
 
@@ -2889,9 +2890,9 @@ void BossSst_PostHeadDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* ro
     if (limbIndex == 8) {
         Matrix_MultVec3f(&zeroVec, &this->actor.focus.pos);
         Matrix_MultVec3f(&headVec, &headPos);
-        this->colliderCyl.dim.pos.x = headPos.x;
-        this->colliderCyl.dim.pos.y = headPos.y;
-        this->colliderCyl.dim.pos.z = headPos.z;
+        this->colliderCyl.dim.pos.x = LinkSpan_S16F(headPos.x);
+        this->colliderCyl.dim.pos.y = LinkSpan_S16F(headPos.y);
+        this->colliderCyl.dim.pos.z = LinkSpan_S16F(headPos.z);
     }
 
     Collider_UpdateSpheres(limbIndex, &this->colliderJntSph);

@@ -8,6 +8,7 @@
 #include "objects/object_firefly/object_firefly.h"
 #include "overlays/actors/ovl_Obj_Syokudai/z_obj_syokudai.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_IGNORE_QUAKE | ACTOR_FLAG_CAN_ATTACH_TO_ARROW)
@@ -192,7 +193,7 @@ void EnFirefly_Init(Actor* thisx, PlayState* play) {
         }
     }
 
-    this->collider.elements[0].dim.worldSphere.radius = sJntSphInit.elements[0].dim.modelSphere.radius;
+    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(sJntSphInit.elements[0].dim.modelSphere.radius);
 }
 
 void EnFirefly_Destroy(Actor* thisx, PlayState* play) {
@@ -558,7 +559,7 @@ void EnFirefly_Stunned(EnFirefly* this, PlayState* play) {
 }
 
 void EnFirefly_FrozenFall(EnFirefly* this, PlayState* play) {
-    if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || (this->actor.floorHeight == BGCHECK_Y_MIN)) {
+    if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || (this->actor.floorHeight == LINKSPAN_BGCHECK_Y_MIN)) {
         this->actor.colorFilterTimer = 0;
         EnFirefly_SetupDie(this);
     } else {
@@ -700,9 +701,9 @@ void EnFirefly_Update(Actor* thisx, PlayState* play2) {
     }
 
     Actor_UpdateBgCheckInfo(play, &this->actor, 10.0f, 10.0f, 15.0f, 7);
-    this->collider.elements[0].dim.worldSphere.center.x = this->actor.world.pos.x;
-    this->collider.elements[0].dim.worldSphere.center.y = this->actor.world.pos.y + 10.0f;
-    this->collider.elements[0].dim.worldSphere.center.z = this->actor.world.pos.z;
+    this->collider.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->collider.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(this->actor.world.pos.y + 10.0f);
+    this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
 
     if ((this->actionFunc == EnFirefly_DiveAttack) || (this->actionFunc == EnFirefly_DisturbDiveAttack)) {
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);

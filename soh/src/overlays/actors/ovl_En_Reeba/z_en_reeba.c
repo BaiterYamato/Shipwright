@@ -10,6 +10,7 @@
 #include "vt.h"
 #include "objects/object_reeba/object_reeba.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -120,8 +121,8 @@ void EnReeba_Init(Actor* thisx, PlayState* play) {
     this->scale = 0.04f;
 
     if (this->isBig) {
-        this->collider.dim.radius = 35;
-        this->collider.dim.height = 45;
+        this->collider.dim.radius = LinkSpan_S16F(35);
+        this->collider.dim.height = LinkSpan_S16F(45);
         this->scale *= 1.5f;
         osSyncPrintf(VT_FGCOL(YELLOW) "☆☆☆☆☆ リーバぼす登場 ☆☆☆☆☆ %f\n" VT_RST, this->scale);
         this->actor.colChkInfo.health = 20;

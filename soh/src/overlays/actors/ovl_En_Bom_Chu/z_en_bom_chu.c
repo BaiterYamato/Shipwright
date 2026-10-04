@@ -1,6 +1,7 @@
 #include "z_en_bom_chu.h"
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -73,7 +74,7 @@ void EnBomChu_Init(Actor* thisx, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->actor, &sJntSphInit, this->colliderElements);
 
-    this->collider.elements[0].dim.worldSphere.radius = this->collider.elements[0].dim.modelSphere.radius;
+    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius);
 
     for (i = 0; i < 4; i++) {
         blureInit.p1StartColor[i] = p1StartColor[i];
@@ -429,9 +430,9 @@ void EnBomChu_Update(Actor* thisx, PlayState* play2) {
     this->actionFunc(this, play);
     Actor_MoveXYZ(&this->actor);
 
-    this->collider.elements[0].dim.worldSphere.center.x = this->actor.world.pos.x;
-    this->collider.elements[0].dim.worldSphere.center.y = this->actor.world.pos.y;
-    this->collider.elements[0].dim.worldSphere.center.z = this->actor.world.pos.z;
+    this->collider.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->collider.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(this->actor.world.pos.y);
+    this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
 
     CollisionCheck_SetAC(play, &play->colChkCtx, &this->collider.base);
 
@@ -476,7 +477,7 @@ void EnBomChu_Update(Actor* thisx, PlayState* play2) {
             }
         } else {
             this->actor.bgCheckFlags &= ~0x20;
-            this->actor.yDistToWater = BGCHECK_Y_MIN;
+            this->actor.yDistToWater = LINKSPAN_BGCHECK_Y_MIN;
         }
     }
 }

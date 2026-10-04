@@ -10,6 +10,7 @@
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <assert.h>
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -305,9 +306,9 @@ void func_80A3E090(EnGm* this) {
     Matrix_RotateZYX(this->actor.world.rot.x, this->actor.world.rot.y, this->actor.world.rot.z, MTXMODE_APPLY);
     vec1.x = vec1.y = vec1.z = 0.0f;
     Matrix_MultVec3f(&vec1, &vec2);
-    this->collider.dim.pos.x = vec2.x;
-    this->collider.dim.pos.y = vec2.y;
-    this->collider.dim.pos.z = vec2.z;
+    this->collider.dim.pos.x = LinkSpan_S16F(vec2.x);
+    this->collider.dim.pos.y = LinkSpan_S16F(vec2.y);
+    this->collider.dim.pos.z = LinkSpan_S16F(vec2.z);
     Matrix_Pop();
     Matrix_Push();
     Matrix_Translate(0.0f, 0.0f, 4300.0f, MTXMODE_APPLY);

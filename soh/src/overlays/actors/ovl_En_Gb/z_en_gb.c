@@ -8,6 +8,7 @@
 #include "objects/object_ps/object_ps.h"
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY)
 
@@ -239,9 +240,9 @@ void func_80A2F608(EnGb* this) {
     sp48.x = sp48.y = 0.0f;
     sp48.z = 25.0f;
     Matrix_MultVec3f(&sp48, &sp3C);
-    this->collider.dim.pos.x = sp3C.x;
-    this->collider.dim.pos.y = sp3C.y;
-    this->collider.dim.pos.z = sp3C.z;
+    this->collider.dim.pos.x = LinkSpan_S16F(sp3C.x);
+    this->collider.dim.pos.y = LinkSpan_S16F(sp3C.y);
+    this->collider.dim.pos.z = LinkSpan_S16F(sp3C.z);
 
     for (i = 0; i < ARRAY_COUNT(sBottlesPositions); i++) {
         Matrix_Translate(this->dyna.actor.world.pos.x, this->dyna.actor.world.pos.y, this->dyna.actor.world.pos.z,
@@ -249,9 +250,9 @@ void func_80A2F608(EnGb* this) {
         Matrix_RotateZYX(this->dyna.actor.world.rot.x, this->dyna.actor.world.rot.y, this->dyna.actor.world.rot.z,
                          MTXMODE_APPLY);
         Matrix_MultVec3f(&sBottlesPositions[i], &sp3C);
-        this->bottlesColliders[i].dim.pos.x = sp3C.x;
-        this->bottlesColliders[i].dim.pos.y = sp3C.y;
-        this->bottlesColliders[i].dim.pos.z = sp3C.z;
+        this->bottlesColliders[i].dim.pos.x = LinkSpan_S16F(sp3C.x);
+        this->bottlesColliders[i].dim.pos.y = LinkSpan_S16F(sp3C.y);
+        this->bottlesColliders[i].dim.pos.z = LinkSpan_S16F(sp3C.z);
     }
 }
 

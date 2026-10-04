@@ -129,6 +129,12 @@ static void ShipLuaEmitScaledDisplayList(PlayState* play, const char* path, f32 
 }
 }
 
+// OOT-VANILLA-001: lida pelas funções inline de soh/src/code/linkspan_vanilla.h; 1 quando algum mod carregou no boot.
+extern "C" {
+uint8_t gLinkSpanEngineExtended = 0;
+void Fast_SetQuantizeFloatMtx(bool on);
+}
+
 namespace ShipLuaHost {
 namespace {
 
@@ -6455,6 +6461,29 @@ void MountModAssetArchives() {
     }
 }
 
+// SOH [Link-Span] OOT-VANILLA-001: sem mod no boot, o jogo volta ao comportamento do upstream nos pontos que o
+// substrato Unbound alargou. Travada no Initialize, antes do Heaps_Alloc (main.c chama InitOTR primeiro), e nunca
+// desliga na sessão: o que foi alocado no tamanho alargado continua assim.
+bool HasModArchive() {
+    const auto manager = NativeResourceManager();
+    const auto archiveManager = manager ? manager->GetArchiveManager() : nullptr;
+    const auto archives = archiveManager ? archiveManager->GetArchives() : nullptr;
+    if (!archives) return false;
+    for (const auto& archive : *archives) {
+        if (!archive) continue;
+        for (const auto& part : std::filesystem::path(archive->GetPath())) {
+            if (part == "mods") return true;
+        }
+    }
+    return false;
+}
+
+void SetEngineExtended(bool extended) {
+    gLinkSpanEngineExtended = extended ? 1 : 0;
+    // A matriz de interpolação do renderizador segue a mesma chave que o guMtxF2L (gu_pc.c).
+    Fast_SetQuantizeFloatMtx(!extended);
+}
+
 void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     Ship::Context* shipContext = Ship::Context::GetRawInstance();
     if (shipContext == nullptr) {
@@ -6480,6 +6509,7 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
                      loaded.message);
         return;
     }
+    if (!loaded.value->loadedIds.empty()) SetEngineExtended(true);
     for (const auto& [modId, reason] : loaded.value->rejected) {
         SPDLOG_WARN("ShipLua rejeitou o mod '{}': {}", modId, reason);
     }
@@ -6551,6 +6581,8 @@ void Initialize() {
         SPDLOG_WARN("ShipLua j\xC3\xA1 foi inicializado");
         return;
     }
+    // Pacote .o2r/.otr do SoH em mods/ também conta como mod.
+    SetEngineExtended(HasModArchive());
 
     gHotkeys = std::make_shared<OotHotkeyRegistry>();
     gMenuRegistry = std::make_shared<SohGui::SohMenuModRegistry>();
@@ -7070,6 +7102,7 @@ void Initialize() {
     // Só escreve no log; sai daqui assim que a Fase 1 fechar.
     ShipLua::ProbeMmSoundFonts();
     LoadModsAndDispatchReady(context);
+    SPDLOG_INFO("Link-Span: motor {}", gLinkSpanEngineExtended ? "alargado (ha mod)" : "do upstream (sem mods)");
     SPDLOG_INFO("ShipLua inicializado");
 }
 

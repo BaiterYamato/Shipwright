@@ -25,6 +25,7 @@ void EnSt_BounceAround(EnSt* this, PlayState* play);
 void EnSt_FinishBouncing(EnSt* this, PlayState* play);
 
 #include "overlays/ovl_En_St/ovl_En_St.h"
+#include "../../../code/linkspan_vanilla.h"
 
 const ActorInit En_St_InitVars = {
     ACTOR_EN_ST,
@@ -353,9 +354,9 @@ s32 EnSt_SetCylinderOC(EnSt* this, PlayState* play) {
         Matrix_RotateY((this->initalYaw / 32768.0f) * M_PI, MTXMODE_APPLY);
         Matrix_MultVec3f(&cyloffsets[i], &cylPos);
         Matrix_Pop();
-        this->colCylinder[i + 3].dim.pos.x = cylPos.x;
-        this->colCylinder[i + 3].dim.pos.y = cylPos.y;
-        this->colCylinder[i + 3].dim.pos.z = cylPos.z;
+        this->colCylinder[i + 3].dim.pos.x = LinkSpan_S16F(cylPos.x);
+        this->colCylinder[i + 3].dim.pos.y = LinkSpan_S16F(cylPos.y);
+        this->colCylinder[i + 3].dim.pos.z = LinkSpan_S16F(cylPos.z);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->colCylinder[i + 3].base);
     }
 
@@ -520,7 +521,7 @@ void EnSt_SetColliderScale(EnSt* this) {
 
     radius = this->colSph.elements[0].dim.modelSphere.radius;
     radius *= scaleAmount;
-    this->colSph.elements[0].dim.modelSphere.radius = radius;
+    this->colSph.elements[0].dim.modelSphere.radius = LinkSpan_S16F(radius);
 
     for (i = 0; i < 6; i++) {
         yShift = this->colCylinder[i].dim.yShift;
@@ -530,9 +531,9 @@ void EnSt_SetColliderScale(EnSt* this) {
         radius *= scaleAmount;
         height *= scaleAmount;
 
-        this->colCylinder[i].dim.yShift = yShift;
-        this->colCylinder[i].dim.radius = radius;
-        this->colCylinder[i].dim.height = height;
+        this->colCylinder[i].dim.yShift = LinkSpan_S16F(yShift);
+        this->colCylinder[i].dim.radius = LinkSpan_S16F(radius);
+        this->colCylinder[i].dim.height = LinkSpan_S16F(height);
     }
     Actor_SetScale(&this->actor, 0.04f * scaleAmount);
     this->colliderScale = scaleAmount;

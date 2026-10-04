@@ -45,6 +45,7 @@ const ActorInit Magic_Fire_InitVars = {
 };
 
 #include "overlays/ovl_Magic_Fire/ovl_Magic_Fire.h"
+#include "../../../code/linkspan_vanilla.h"
 
 static ColliderCylinderInit sCylinderInit = {
     {
@@ -130,9 +131,9 @@ void MagicFire_Update(Actor* thisx, PlayState* play) {
         this->collider.info.toucher.damage = this->actionTimer;
     }
     Collider_UpdateCylinder(&this->actor, &this->collider);
-    this->collider.dim.radius = (this->actor.scale.x * 325.0f);
-    this->collider.dim.height = (this->actor.scale.y * 450.0f);
-    this->collider.dim.yShift = (this->actor.scale.y * -225.0f);
+    this->collider.dim.radius = LinkSpan_S16F((this->actor.scale.x * 325.0f));
+    this->collider.dim.height = LinkSpan_S16F((this->actor.scale.y * 450.0f));
+    this->collider.dim.yShift = LinkSpan_S16F((this->actor.scale.y * -225.0f));
     CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);
 
     switch (this->action) {

@@ -11,6 +11,7 @@
 #include "objects/object_kusa/object_kusa.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_THROW_ONLY)
 
@@ -111,7 +112,7 @@ s32 EnKusa_SnapToFloor(EnKusa* this, PlayState* play, f32 yOffset) {
 
     floorY = BgCheck_EntityRaycastFloor4(&play->colCtx, &poly, &bgId, &this->actor, &pos);
 
-    if (floorY > BGCHECK_Y_MIN) {
+    if (floorY > LINKSPAN_BGCHECK_Y_MIN) {
         this->actor.world.pos.y = floorY + yOffset;
         Math_Vec3f_Copy(&this->actor.home.pos, &this->actor.world.pos);
         return true;

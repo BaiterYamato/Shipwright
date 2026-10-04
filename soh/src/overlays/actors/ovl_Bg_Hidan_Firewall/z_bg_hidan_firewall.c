@@ -6,6 +6,7 @@
 
 #include "z_bg_hidan_firewall.h"
 #include "objects/object_hidan_objects/object_hidan_objects.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -68,7 +69,7 @@ void BgHidanFirewall_Init(Actor* thisx, PlayState* play) {
     Collider_InitCylinder(play, &this->collider);
     Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
 
-    this->collider.dim.pos.y = this->actor.world.pos.y;
+    this->collider.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y);
 
     CollisionCheck_SetInfo(&this->actor.colChkInfo, NULL, &sColChkInfoInit);
 
@@ -170,8 +171,8 @@ void BgHidanFirewall_ColliderFollowPlayer(BgHidanFirewall* this, PlayState* play
     }
     sp28 = Math_SinS(this->actor.shape.rot.y);
     temp_ret = Math_CosS(this->actor.shape.rot.y);
-    this->collider.dim.pos.x = this->actor.world.pos.x + sp30.x * temp_ret + sp30.z * sp28;
-    this->collider.dim.pos.z = this->actor.world.pos.z - sp30.x * sp28 + sp30.z * temp_ret;
+    this->collider.dim.pos.x = LinkSpan_S16F(this->actor.world.pos.x + sp30.x * temp_ret + sp30.z * sp28);
+    this->collider.dim.pos.z = LinkSpan_S16F(this->actor.world.pos.z - sp30.x * sp28 + sp30.z * temp_ret);
 }
 
 void BgHidanFirewall_Update(Actor* thisx, PlayState* play) {

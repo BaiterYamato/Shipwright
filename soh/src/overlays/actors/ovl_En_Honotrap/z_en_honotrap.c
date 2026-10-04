@@ -7,6 +7,7 @@
 #include "z_en_honotrap.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/gameplay_dangeon_keep/gameplay_dangeon_keep.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -203,8 +204,8 @@ void EnHonotrap_InitFlame(Actor* thisx, PlayState* play) {
     Audio_PlayActorSound2(&this->actor, NA_SE_EV_FLAME_IGNITION);
     if (this->actor.params == HONOTRAP_FLAME_DROP) {
         this->actor.room = -1;
-        this->collider.cyl.dim.radius = 12;
-        this->collider.cyl.dim.height = 30;
+        this->collider.cyl.dim.radius = LinkSpan_S16F(12);
+        this->collider.cyl.dim.height = LinkSpan_S16F(30);
         this->actor.shape.yOffset = -1000.0f;
     }
 }

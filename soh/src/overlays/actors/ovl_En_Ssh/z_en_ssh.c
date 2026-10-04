@@ -32,6 +32,7 @@ void EnSsh_Return(EnSsh* this, PlayState* play);
 void EnSsh_Start(EnSsh* this, PlayState* play);
 
 #include "overlays/ovl_En_Ssh/ovl_En_Ssh.h"
+#include "../../../code/linkspan_vanilla.h"
 
 const ActorInit En_Ssh_InitVars = {
     ACTOR_EN_SSH,
@@ -270,7 +271,7 @@ void EnSsh_SetColliderScale(EnSsh* this, f32 scale, f32 radiusMod) {
 
     radius = this->colSph.elements[0].dim.modelSphere.radius;
     radius *= scale;
-    this->colSph.elements[0].dim.modelSphere.radius = radius;
+    this->colSph.elements[0].dim.modelSphere.radius = LinkSpan_S16F(radius);
 
     for (i = 0; i < 6; i++) {
         yShift = this->colCylinder[i].dim.yShift;
@@ -280,9 +281,9 @@ void EnSsh_SetColliderScale(EnSsh* this, f32 scale, f32 radiusMod) {
         radius *= scale * radiusMod;
         height *= scale;
 
-        this->colCylinder[i].dim.yShift = yShift;
-        this->colCylinder[i].dim.radius = radius;
-        this->colCylinder[i].dim.height = height;
+        this->colCylinder[i].dim.yShift = LinkSpan_S16F(yShift);
+        this->colCylinder[i].dim.radius = LinkSpan_S16F(radius);
+        this->colCylinder[i].dim.height = LinkSpan_S16F(height);
     }
     Actor_SetScale(&this->actor, 0.04f * scale);
     this->floorHeightOffset = 40.0f * scale;
@@ -584,9 +585,9 @@ s32 EnSsh_SetCylinderOC(EnSsh* this, PlayState* play) {
         Matrix_RotateY((this->initialYaw / (f32)0x8000) * M_PI, MTXMODE_APPLY);
         Matrix_MultVec3f(&cyloffsets[i], &cylPos);
         Matrix_Pop();
-        this->colCylinder[i + 3].dim.pos.x = cylPos.x;
-        this->colCylinder[i + 3].dim.pos.y = cylPos.y;
-        this->colCylinder[i + 3].dim.pos.z = cylPos.z;
+        this->colCylinder[i + 3].dim.pos.x = LinkSpan_S16F(cylPos.x);
+        this->colCylinder[i + 3].dim.pos.y = LinkSpan_S16F(cylPos.y);
+        this->colCylinder[i + 3].dim.pos.z = LinkSpan_S16F(cylPos.z);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->colCylinder[i + 3].base);
     }
     return 1;

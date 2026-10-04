@@ -7,6 +7,7 @@
 #include "z_bg_haka_sgami.h"
 #include "objects/object_haka_objects/object_haka_objects.h"
 #include "objects/object_ice_objects/object_ice_objects.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -151,9 +152,9 @@ void BgHakaSgami_Init(Actor* thisx, PlayState* play) {
     Collider_InitCylinder(play, &this->colliderScytheCenter);
     Collider_SetCylinder(play, &this->colliderScytheCenter, thisx, &sCylinderInit);
 
-    this->colliderScytheCenter.dim.pos.x = thisx->world.pos.x;
-    this->colliderScytheCenter.dim.pos.y = thisx->world.pos.y;
-    this->colliderScytheCenter.dim.pos.z = thisx->world.pos.z;
+    this->colliderScytheCenter.dim.pos.x = LinkSpan_S16F(thisx->world.pos.x);
+    this->colliderScytheCenter.dim.pos.y = LinkSpan_S16F(thisx->world.pos.y);
+    this->colliderScytheCenter.dim.pos.z = LinkSpan_S16F(thisx->world.pos.z);
 
     CollisionCheck_SetInfo(&thisx->colChkInfo, NULL, &sColChkInfoInit);
 
@@ -174,8 +175,8 @@ void BgHakaSgami_Init(Actor* thisx, PlayState* play) {
         thisx->flags &= ~ACTOR_FLAG_ATTENTION_ENABLED;
     } else {
         this->requiredObjBankIndex = Object_GetIndex(&play->objectCtx, OBJECT_ICE_OBJECTS);
-        this->colliderScytheCenter.dim.radius = 30;
-        this->colliderScytheCenter.dim.height = 70;
+        this->colliderScytheCenter.dim.radius = LinkSpan_S16F(30);
+        this->colliderScytheCenter.dim.height = LinkSpan_S16F(70);
         Actor_SetFocus(thisx, 40.0f);
     }
 

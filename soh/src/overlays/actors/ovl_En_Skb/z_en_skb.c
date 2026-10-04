@@ -2,6 +2,7 @@
 #include "overlays/actors/ovl_En_Encount1/z_en_encount1.h"
 #include "objects/object_skb/object_skb.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -163,11 +164,11 @@ void EnSkb_Init(Actor* thisx, PlayState* play) {
     Actor_SetScale(&this->actor, ((this->actor.params * 0.1f) + 1.0f) * 0.01f);
 
     paramOffsetBody = this->actor.params + 0xA;
-    this->collider.elements[0].dim.worldSphere.radius = paramOffsetBody;
-    this->collider.elements[0].dim.modelSphere.radius = paramOffsetBody;
+    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(paramOffsetBody);
+    this->collider.elements[0].dim.modelSphere.radius = LinkSpan_S16F(paramOffsetBody);
     paramOffsetArm = (this->actor.params * 2) + 0x14;
-    this->collider.elements[1].dim.worldSphere.radius = paramOffsetArm;
-    this->collider.elements[1].dim.modelSphere.radius = paramOffsetArm;
+    this->collider.elements[1].dim.worldSphere.radius = LinkSpan_S16F(paramOffsetArm);
+    this->collider.elements[1].dim.modelSphere.radius = LinkSpan_S16F(paramOffsetArm);
     this->actor.home.pos = this->actor.world.pos;
     this->actor.floorHeight = this->actor.world.pos.y;
     func_80AFCDF8(this);

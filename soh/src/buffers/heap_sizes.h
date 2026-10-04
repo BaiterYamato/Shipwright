@@ -10,4 +10,10 @@
 #define SOH_PLAY_HEAP_SIZE ((size_t)0x1D4790 * 2 + SOH_ACTOR_HEAP_RESERVE)
 #define SOH_SYSTEM_HEAP_SIZE ((size_t)SYSTEM_HEAP_SIZE + SOH_ACTOR_HEAP_RESERVE)
 
+// SOH [Link-Span] OOT-VANILLA-001: sem mod, o Play pede o tamanho do upstream. A arena do sistema fica alargada nos
+// dois modos: as estruturas daqui (PlayState, banco de objetos, buffers de texto) são maiores que as do upstream, e
+// com 4 MiB o GameState_Realloc reduziria o THA, o que o upstream não fazia.
+#include "../code/linkspan_vanilla.h"
+#define SOH_PLAY_HEAP_ACTIVE_SIZE (LinkSpan_EngineExtended() ? SOH_PLAY_HEAP_SIZE : (size_t)0x1D4790 * 2)
+
 #endif

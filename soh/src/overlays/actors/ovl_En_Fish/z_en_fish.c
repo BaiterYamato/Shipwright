@@ -8,6 +8,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -384,7 +385,7 @@ void EnFish_Dropped_Fall(EnFish* this, PlayState* play) {
     } else if (this->actor.bgCheckFlags & 0x20) { // In water
         EnFish_Dropped_SetupSwimAway(this);
     } else if ((this->timer <= 0) && (this->actor.params == FISH_DROPPED) &&
-               (this->actor.floorHeight < BGCHECK_Y_MIN + 10.0f)) {
+               (this->actor.floorHeight < LINKSPAN_BGCHECK_Y_MIN + 10.0f)) {
         osSyncPrintf(VT_COL(YELLOW, BLACK));
         // "BG missing? Running Actor_delete"
         osSyncPrintf("BG 抜け？ Actor_delete します(%s %d)\n", __FILE__, __LINE__);

@@ -35,6 +35,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include "../../../code/linkspan_vanilla.h"
 
 // Custom external bodies may opt into MM Goron's no-ledge-grab rule. Kept
 // separate from GameInteractor's global Crowd Control state.
@@ -7114,7 +7115,7 @@ void func_8083DC54(Player* this, PlayState* play) {
     } else {
         sp46 = 0;
         temp1 = func_8083973C(play, this, &D_8085456C, &sp34);
-        if (temp1 > BGCHECK_Y_MIN) {
+        if (temp1 > LINKSPAN_BGCHECK_Y_MIN) {
             temp2 = Math_Atan2S(40.0f, this->actor.world.pos.y - temp1);
             sp46 = CLAMP(temp2, -4000, 4000);
         }
@@ -12159,17 +12160,17 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
             temp_f0;
         temp_f0 += this->bodyPartsPos[PLAYER_BODYPART_HEAD].y + 10.0f;
 
-        this->cylinder.dim.height = temp_f0 - phi_f12;
+        this->cylinder.dim.height = LinkSpan_S16F(temp_f0 - phi_f12);
 
         if (this->cylinder.dim.height < 0) {
             phi_f12 = temp_f0;
-            this->cylinder.dim.height = -this->cylinder.dim.height;
+            this->cylinder.dim.height = LinkSpan_S16F(-this->cylinder.dim.height);
         }
 
-        this->cylinder.dim.yShift = phi_f12 - this->actor.world.pos.y;
+        this->cylinder.dim.yShift = LinkSpan_S16F(phi_f12 - this->actor.world.pos.y);
 
         if (this->stateFlags1 & PLAYER_STATE1_SHIELDING) {
-            this->cylinder.dim.height = this->cylinder.dim.height * 0.8f;
+            this->cylinder.dim.height = LinkSpan_S16F(this->cylinder.dim.height * 0.8f);
         }
 
         Collider_UpdateCylinder(&this->actor, &this->cylinder);

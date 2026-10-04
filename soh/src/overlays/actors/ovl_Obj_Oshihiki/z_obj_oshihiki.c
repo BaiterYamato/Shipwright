@@ -8,6 +8,7 @@
 #include "overlays/actors/ovl_Obj_Switch/z_obj_switch.h"
 #include "objects/gameplay_dangeon_keep/gameplay_dangeon_keep.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -390,7 +391,7 @@ s32 ObjOshihiki_CheckFloor(ObjOshihiki* this, PlayState* play) {
 }
 
 s32 ObjOshihiki_CheckGround(ObjOshihiki* this, PlayState* play) {
-    if (this->dyna.actor.world.pos.y <= BGCHECK_Y_MIN + 10.0f) {
+    if (this->dyna.actor.world.pos.y <= LINKSPAN_BGCHECK_Y_MIN + 10.0f) {
         // "Warning : Push-pull block fell too much"
         osSyncPrintf("Warning : 押し引きブロック落ちすぎた(%s %d)(arg_data 0x%04x)\n", __FILE__, __LINE__,
                      this->dyna.actor.params);

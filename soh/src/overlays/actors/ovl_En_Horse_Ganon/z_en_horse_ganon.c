@@ -6,6 +6,7 @@
 
 #include "z_en_horse_ganon.h"
 #include "objects/object_horse_ganon/object_horse_ganon.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -312,12 +313,12 @@ void EnHorseGanon_PostDraw(Actor* thisx, PlayState* play, Skin* skin) {
 
         Skin_GetLimbPos(skin, this->colliderHead.elements[index].dim.limb, &sp4C, &sp40);
 
-        this->colliderHead.elements[index].dim.worldSphere.center.x = sp40.x;
-        this->colliderHead.elements[index].dim.worldSphere.center.y = sp40.y;
-        this->colliderHead.elements[index].dim.worldSphere.center.z = sp40.z;
+        this->colliderHead.elements[index].dim.worldSphere.center.x = LinkSpan_S16F(sp40.x);
+        this->colliderHead.elements[index].dim.worldSphere.center.y = LinkSpan_S16F(sp40.y);
+        this->colliderHead.elements[index].dim.worldSphere.center.z = LinkSpan_S16F(sp40.z);
 
-        this->colliderHead.elements[index].dim.worldSphere.radius =
-            this->colliderHead.elements[index].dim.modelSphere.radius * this->colliderHead.elements[index].dim.scale;
+        this->colliderHead.elements[index].dim.worldSphere.radius = LinkSpan_S16F(
+            this->colliderHead.elements[index].dim.modelSphere.radius * this->colliderHead.elements[index].dim.scale);
     }
 
     //! @bug see relevant comment in `EnHorse_SkinCallback1`

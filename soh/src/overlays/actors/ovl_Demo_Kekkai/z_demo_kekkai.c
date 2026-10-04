@@ -10,6 +10,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -101,9 +102,9 @@ void DemoKekkai_Init(Actor* thisx, PlayState* play) {
     switch (thisx->params) {
         case KEKKAI_TOWER:
             this->updateFunc = DemoKekkai_TowerBarrier;
-            this->collider2.dim.radius = thisx->scale.x * 6100.0f;
-            this->collider2.dim.height = thisx->scale.y * 5000.0f;
-            this->collider2.dim.yShift = 300;
+            this->collider2.dim.radius = LinkSpan_S16F(thisx->scale.x * 6100.0f);
+            this->collider2.dim.height = LinkSpan_S16F(thisx->scale.y * 5000.0f);
+            this->collider2.dim.yShift = LinkSpan_S16F(300);
             break;
         case KEKKAI_WATER:
         case KEKKAI_LIGHT:
@@ -116,12 +117,12 @@ void DemoKekkai_Init(Actor* thisx, PlayState* play) {
             Actor_SetScale(thisx, 0.1f);
             thisx->update = DemoKekkai_TrialBarrierIdle;
             thisx->draw = DemoKekkai_DrawTrialBarrier;
-            this->collider1.dim.radius = thisx->scale.x * 120.0f;
-            this->collider1.dim.height = thisx->scale.y * 2000.0f;
-            this->collider1.dim.yShift = 0;
-            this->collider2.dim.radius = thisx->scale.x * 320.0f;
-            this->collider2.dim.height = thisx->scale.y * 510.0f;
-            this->collider2.dim.yShift = 95;
+            this->collider1.dim.radius = LinkSpan_S16F(thisx->scale.x * 120.0f);
+            this->collider1.dim.height = LinkSpan_S16F(thisx->scale.y * 2000.0f);
+            this->collider1.dim.yShift = LinkSpan_S16F(0);
+            this->collider2.dim.radius = LinkSpan_S16F(thisx->scale.x * 320.0f);
+            this->collider2.dim.height = LinkSpan_S16F(thisx->scale.y * 510.0f);
+            this->collider2.dim.yShift = LinkSpan_S16F(95);
             break;
     }
     if (DemoKekkai_CheckEventFlag(thisx->params)) {

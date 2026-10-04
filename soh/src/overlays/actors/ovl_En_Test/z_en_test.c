@@ -7,6 +7,7 @@
 #include "z_en_test.h"
 #include "objects/object_sk2/object_sk2.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -1894,9 +1895,9 @@ void EnTest_PostLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot
     } else if ((limbIndex == STALFOS_LIMB_SHIELD) && (this->unk_7DE != 0)) {
         Matrix_MultVec3f(&D_80864670, &sp64);
 
-        this->shieldCollider.dim.pos.x = sp64.x;
-        this->shieldCollider.dim.pos.y = sp64.y;
-        this->shieldCollider.dim.pos.z = sp64.z;
+        this->shieldCollider.dim.pos.x = LinkSpan_S16F(sp64.x);
+        this->shieldCollider.dim.pos.y = LinkSpan_S16F(sp64.y);
+        this->shieldCollider.dim.pos.z = LinkSpan_S16F(sp64.z);
     } else {
         Actor_SetFeetPos(&this->actor, limbIndex, STALFOS_LIMB_FOOT_L, &D_80864658, STALFOS_LIMB_ANKLE_R, &D_80864658);
 

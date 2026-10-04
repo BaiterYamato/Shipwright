@@ -15,6 +15,7 @@
 #include "objects/object_cob/object_cob.h"
 #include "objects/object_os_anime/object_os_anime.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -711,8 +712,8 @@ void EnHy_UpdateEyes(EnHy* this) {
 void EnHy_InitCollider(EnHy* this) {
     u8 type = this->actor.params & 0x7F;
 
-    this->collider.dim.radius = sColliderInfo[type].radius;
-    this->collider.dim.height = sColliderInfo[type].height;
+    this->collider.dim.radius = LinkSpan_S16F(sColliderInfo[type].radius);
+    this->collider.dim.height = LinkSpan_S16F(sColliderInfo[type].height);
 }
 
 void EnHy_InitSetProperties(EnHy* this) {
@@ -729,12 +730,12 @@ void EnHy_InitSetProperties(EnHy* this) {
 void EnHy_UpdateCollider(EnHy* this, PlayState* play) {
     Vec3f pos; // SOH [Unbound] collider dims are f32
 
-    pos.x = this->actor.world.pos.x;
-    pos.y = this->actor.world.pos.y;
-    pos.z = this->actor.world.pos.z;
-    pos.x += sColliderInfo[this->actor.params & 0x7F].offset.x;
-    pos.y += sColliderInfo[this->actor.params & 0x7F].offset.y;
-    pos.z += sColliderInfo[this->actor.params & 0x7F].offset.z;
+    pos.x = LinkSpan_S16F(this->actor.world.pos.x);
+    pos.y = LinkSpan_S16F(this->actor.world.pos.y);
+    pos.z = LinkSpan_S16F(this->actor.world.pos.z);
+    pos.x = LinkSpan_S16F(pos.x + (sColliderInfo[this->actor.params & 0x7F].offset.x));
+    pos.y = LinkSpan_S16F(pos.y + (sColliderInfo[this->actor.params & 0x7F].offset.y));
+    pos.z = LinkSpan_S16F(pos.z + (sColliderInfo[this->actor.params & 0x7F].offset.z));
     this->collider.dim.pos = pos;
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
 }

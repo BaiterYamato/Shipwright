@@ -12,6 +12,7 @@ extern "C" {
 #include "macros.h"
 #include "functions.h"
 #include "variables.h"
+#include "../../src/code/linkspan_vanilla.h"
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,7 +1052,7 @@ void ActionGoronRoll(Player* player, PlayState* play) {
             // sonda que pega um degrau alto joga a esfera num tombamento que o MM
             // descarta.
             f32 heightDiff = 0.0f;
-            if (leftY > BGCHECK_Y_MIN && rightY > BGCHECK_Y_MIN) {
+            if (leftY > LINKSPAN_BGCHECK_Y_MIN && rightY > LINKSPAN_BGCHECK_Y_MIN) {
                 heightDiff = rightY - leftY;
                 if (fabsf(heightDiff) > 100.0f) {
                     heightDiff = 0.0f;

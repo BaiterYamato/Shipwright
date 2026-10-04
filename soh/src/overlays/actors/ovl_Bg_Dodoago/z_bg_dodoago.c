@@ -8,6 +8,7 @@
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
 #include "objects/object_ddan_objects/object_ddan_objects.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -197,13 +198,13 @@ void BgDodoago_WaitExplosives(BgDodoago* this, PlayState* play) {
         Collider_UpdateCylinder(&this->dyna.actor, &this->colliderLeft);
         Collider_UpdateCylinder(&this->dyna.actor, &this->colliderRight);
 
-        this->colliderMain.dim.pos.z += 200;
+        this->colliderMain.dim.pos.z = LinkSpan_S16F(this->colliderMain.dim.pos.z + (200));
 
-        this->colliderLeft.dim.pos.z += 215;
-        this->colliderLeft.dim.pos.x += 90;
+        this->colliderLeft.dim.pos.z = LinkSpan_S16F(this->colliderLeft.dim.pos.z + (215));
+        this->colliderLeft.dim.pos.x = LinkSpan_S16F(this->colliderLeft.dim.pos.x + (90));
 
-        this->colliderRight.dim.pos.z += 215;
-        this->colliderRight.dim.pos.x -= 90;
+        this->colliderRight.dim.pos.z = LinkSpan_S16F(this->colliderRight.dim.pos.z + (215));
+        this->colliderRight.dim.pos.x = LinkSpan_S16F(this->colliderRight.dim.pos.x - (90));
 
         CollisionCheck_SetAC(play, &play->colChkCtx, &this->colliderMain.base);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->colliderLeft.base);

@@ -12,6 +12,7 @@
 
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 #define WATER_SURFACE_Y(play) play->colCtx.colHeader->waterBoxes->ySurface
@@ -432,11 +433,11 @@ static Vec3f sStreamSoundProjectedPos;
 static s16 sFishOnHandParams;
 
 void Fishing_SetColliderElement(s32 index, ColliderJntSph* collider, Vec3f* pos, f32 scale) {
-    collider->elements[index].dim.worldSphere.center.x = pos->x;
-    collider->elements[index].dim.worldSphere.center.y = pos->y;
-    collider->elements[index].dim.worldSphere.center.z = pos->z;
-    collider->elements[index].dim.worldSphere.radius =
-        collider->elements[index].dim.modelSphere.radius * collider->elements[index].dim.scale * scale * 1.6f;
+    collider->elements[index].dim.worldSphere.center.x = LinkSpan_S16F(pos->x);
+    collider->elements[index].dim.worldSphere.center.y = LinkSpan_S16F(pos->y);
+    collider->elements[index].dim.worldSphere.center.z = LinkSpan_S16F(pos->z);
+    collider->elements[index].dim.worldSphere.radius = LinkSpan_S16F(
+        collider->elements[index].dim.modelSphere.radius * collider->elements[index].dim.scale * scale * 1.6f);
 }
 
 void Fishing_SeedRand(s32 seed0, s32 seed1, s32 seed2) {

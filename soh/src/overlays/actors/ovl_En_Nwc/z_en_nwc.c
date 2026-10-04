@@ -7,6 +7,7 @@
 #include "z_en_nwc.h"
 #include "objects/object_nwc/object_nwc.h"
 #include "soh/frame_interpolation.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -124,9 +125,9 @@ void EnNwc_UpdateChicks(EnNwc* this, PlayState* play) {
 
         chickActionFuncs[chick->type](chick, this, play);
 
-        element->dim.worldSphere.center.x = chick->pos.x;
-        element->dim.worldSphere.center.y = chick->pos.y;
-        element->dim.worldSphere.center.z = chick->pos.z;
+        element->dim.worldSphere.center.x = LinkSpan_S16F(chick->pos.x);
+        element->dim.worldSphere.center.y = LinkSpan_S16F(chick->pos.y);
+        element->dim.worldSphere.center.z = LinkSpan_S16F(chick->pos.z);
 
         test = chick->pos.y - prevChickPos.y;
         if (fabsf(test) < 10.0f) {

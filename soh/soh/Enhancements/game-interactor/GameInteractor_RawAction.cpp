@@ -15,6 +15,7 @@ extern PlayState* gPlayState;
 
 #include "overlays/actors/ovl_En_Niw/z_en_niw.h"
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
+#include "../../../src/code/linkspan_vanilla.h"
 
 void GameInteractor::RawAction::AddOrRemoveHealthContainers(int16_t amount) {
     gSaveContext.healthCapacity += amount * FULL_HEART_HEALTH;
@@ -510,7 +511,7 @@ GameInteractionEffectQueryResult GameInteractor::RawAction::SpawnEnemyWithOffset
 
     // If ground is found below actor, move actor to that height.
     // If not it's likely out of bounds, so make it temporarily not possible and try again later.
-    if (raycastResult > BGCHECK_Y_MIN) {
+    if (raycastResult > LINKSPAN_BGCHECK_Y_MIN) {
         pos.y = raycastResult;
     } else {
         return GameInteractionEffectQueryResult::TemporarilyNotPossible;

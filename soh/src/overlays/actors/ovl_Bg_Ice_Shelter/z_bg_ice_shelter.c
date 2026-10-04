@@ -1,6 +1,7 @@
 #include "z_bg_ice_shelter.h"
 #include "objects/object_ice_objects/object_ice_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -86,21 +87,21 @@ void BgIceShelter_InitColliders(BgIceShelter* this, PlayState* play) {
     Collider_SetCylinder(play, &this->cylinder1, &this->dyna.actor, &sCylinder1Init);
     Collider_UpdateCylinder(&this->dyna.actor, &this->cylinder1);
 
-    this->cylinder1.dim.radius = cylinderRadii[type];
-    this->cylinder1.dim.height = cylinderHeights[type];
+    this->cylinder1.dim.radius = LinkSpan_S16F(cylinderRadii[type]);
+    this->cylinder1.dim.height = LinkSpan_S16F(cylinderHeights[type]);
 
     // The wall and platform types use DynaPoly for collision, so they don't need the second collider
     if (type == RED_ICE_LARGE || type == RED_ICE_SMALL || type == RED_ICE_KING_ZORA) {
         Collider_InitCylinder(play, &this->cylinder2);
         Collider_SetCylinder(play, &this->cylinder2, &this->dyna.actor, &sCylinder2Init);
         Collider_UpdateCylinder(&this->dyna.actor, &this->cylinder2);
-        this->cylinder2.dim.radius = cylinderRadii[type];
-        this->cylinder2.dim.height = cylinderHeights[type];
+        this->cylinder2.dim.radius = LinkSpan_S16F(cylinderRadii[type]);
+        this->cylinder2.dim.height = LinkSpan_S16F(cylinderHeights[type]);
     }
 
     if (type == RED_ICE_KING_ZORA) {
-        this->cylinder1.dim.pos.z += 30;
-        this->cylinder2.dim.pos.z += 30;
+        this->cylinder1.dim.pos.z = LinkSpan_S16F(this->cylinder1.dim.pos.z + (30));
+        this->cylinder2.dim.pos.z = LinkSpan_S16F(this->cylinder2.dim.pos.z + (30));
     }
 }
 

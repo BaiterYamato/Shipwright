@@ -6,6 +6,7 @@
 
 #include "z_en_horse_zelda.h"
 #include "objects/object_horse_zelda/object_horse_zelda.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -255,12 +256,12 @@ void EnHorseZelda_PostDraw(Actor* thisx, PlayState* play, Skin* skin) {
 
         Skin_GetLimbPos(skin, this->colliderSphere.elements[i].dim.limb, &sp4C, &sp40);
 
-        this->colliderSphere.elements[i].dim.worldSphere.center.x = sp40.x;
-        this->colliderSphere.elements[i].dim.worldSphere.center.y = sp40.y;
-        this->colliderSphere.elements[i].dim.worldSphere.center.z = sp40.z;
+        this->colliderSphere.elements[i].dim.worldSphere.center.x = LinkSpan_S16F(sp40.x);
+        this->colliderSphere.elements[i].dim.worldSphere.center.y = LinkSpan_S16F(sp40.y);
+        this->colliderSphere.elements[i].dim.worldSphere.center.z = LinkSpan_S16F(sp40.z);
 
-        this->colliderSphere.elements[i].dim.worldSphere.radius =
-            this->colliderSphere.elements[i].dim.modelSphere.radius * this->colliderSphere.elements[i].dim.scale;
+        this->colliderSphere.elements[i].dim.worldSphere.radius = LinkSpan_S16F(
+            this->colliderSphere.elements[i].dim.modelSphere.radius * this->colliderSphere.elements[i].dim.scale);
     }
 
     //! @bug see relevant comment in `EnHorse_SkinCallback1`

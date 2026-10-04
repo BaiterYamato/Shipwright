@@ -8,6 +8,7 @@
 #include "overlays/effects/ovl_Effect_Ss_Kakera/z_eff_ss_kakera.h"
 #include "objects/object_spot11_obj/object_spot11_obj.h"
 #include "objects/gameplay_field_keep/gameplay_field_keep.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -57,9 +58,9 @@ void func_808B2180(BgSpot11Bakudankabe* this, PlayState* play) {
 
     Collider_InitCylinder(play, &this->collider);
     Collider_SetCylinder(play, &this->collider, &this->dyna.actor, &sCylinderInit);
-    this->collider.dim.pos.x += (s16)this->dyna.actor.world.pos.x;
-    this->collider.dim.pos.y += (s16)this->dyna.actor.world.pos.y;
-    this->collider.dim.pos.z += (s16)this->dyna.actor.world.pos.z;
+    this->collider.dim.pos.x = LinkSpan_S16F(this->collider.dim.pos.x + ((s16)this->dyna.actor.world.pos.x));
+    this->collider.dim.pos.y = LinkSpan_S16F(this->collider.dim.pos.y + ((s16)this->dyna.actor.world.pos.y));
+    this->collider.dim.pos.z = LinkSpan_S16F(this->collider.dim.pos.z + ((s16)this->dyna.actor.world.pos.z));
 }
 
 void func_808B2218(BgSpot11Bakudankabe* this, PlayState* play) {

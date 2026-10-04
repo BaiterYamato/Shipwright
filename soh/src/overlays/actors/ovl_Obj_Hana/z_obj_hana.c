@@ -6,6 +6,7 @@
 
 #include "z_obj_hana.h"
 #include "objects/gameplay_field_keep/gameplay_field_keep.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -82,8 +83,8 @@ void ObjHana_Init(Actor* thisx, PlayState* play) {
         Collider_InitCylinder(play, &this->collider);
         Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
         Collider_UpdateCylinder(&this->actor, &this->collider);
-        this->collider.dim.radius = params->radius;
-        this->collider.dim.height = params->height;
+        this->collider.dim.radius = LinkSpan_S16F(params->radius);
+        this->collider.dim.height = LinkSpan_S16F(params->height);
         CollisionCheck_SetInfo(&this->actor.colChkInfo, NULL, &sColChkInfoInit);
     }
 

@@ -7,6 +7,7 @@
 #include "z_en_wood02.h"
 #include "objects/object_wood02/object_wood02.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -298,7 +299,7 @@ void EnWood02_Init(Actor* thisx, PlayState* play2) {
         this->actor.world.pos.y += 200.0f;
         floorY = BgCheck_EntityRaycastFloor4(&play->colCtx, &outPoly, &bgId, &this->actor, &this->actor.world.pos);
 
-        if (floorY > BGCHECK_Y_MIN) {
+        if (floorY > LINKSPAN_BGCHECK_Y_MIN) {
             this->actor.world.pos.y = floorY;
         } else {
             Actor_Kill(&this->actor);

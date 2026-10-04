@@ -8,6 +8,7 @@
 #include "objects/object_mir_ray/object_mir_ray.h"
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -121,10 +122,10 @@ void MirRay_SetupCollider(MirRay* this) {
     colliderOffset.x = (this->poolPt.x - this->sourcePt.x) * dataEntry->unk_10;
     colliderOffset.y = (this->poolPt.y - this->sourcePt.y) * dataEntry->unk_10;
     colliderOffset.z = (this->poolPt.z - this->sourcePt.z) * dataEntry->unk_10;
-    this->colliderSph.elements[0].dim.worldSphere.center.x = colliderOffset.x + this->sourcePt.x;
-    this->colliderSph.elements[0].dim.worldSphere.center.y = colliderOffset.y + this->sourcePt.y;
-    this->colliderSph.elements[0].dim.worldSphere.center.z = colliderOffset.z + this->sourcePt.z;
-    this->colliderSph.elements[0].dim.worldSphere.radius = dataEntry->unk_14 * this->colliderSph.elements->dim.scale;
+    this->colliderSph.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(colliderOffset.x + this->sourcePt.x);
+    this->colliderSph.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(colliderOffset.y + this->sourcePt.y);
+    this->colliderSph.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(colliderOffset.z + this->sourcePt.z);
+    this->colliderSph.elements[0].dim.worldSphere.radius = LinkSpan_S16F(dataEntry->unk_14 * this->colliderSph.elements->dim.scale);
 }
 
 // Set up a light point between source point and reflection point. Reflection point is the pool point (for windows) or

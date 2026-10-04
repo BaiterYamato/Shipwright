@@ -7,6 +7,7 @@
 #include "z_en_bili.h"
 #include "objects/object_bl/object_bl.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_IGNORE_QUAKE | ACTOR_FLAG_CAN_ATTACH_TO_ARROW)
@@ -540,7 +541,7 @@ void EnBili_Frozen(EnBili* this, PlayState* play) {
         this->actor.gravity = -1.0f;
     }
 
-    if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || (this->actor.floorHeight == BGCHECK_Y_MIN)) {
+    if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || (this->actor.floorHeight == LINKSPAN_BGCHECK_Y_MIN)) {
         this->actor.colorFilterTimer = 0;
         EnBili_SetupDie(this);
     } else {

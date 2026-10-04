@@ -10,6 +10,7 @@
 #include "vt.h"
 #include "objects/object_tite/object_tite.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -275,7 +276,7 @@ void EnTite_Attack(EnTite* this, PlayState* play) {
                 // Snap to ground or water, then lunge into the air with some initial speed
                 this->vAttackState = TEKTITE_MID_LUNGE;
                 if ((this->actor.params != TEKTITE_BLUE) || !(this->actor.bgCheckFlags & 0x20)) {
-                    if (this->actor.floorHeight > BGCHECK_Y_MIN) {
+                    if (this->actor.floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
                         this->actor.world.pos.y = this->actor.floorHeight;
                     }
                     Audio_PlayActorSound2(&this->actor, NA_SE_EN_STAL_JUMP);
@@ -296,7 +297,7 @@ void EnTite_Attack(EnTite* this, PlayState* play) {
                     if (this->actor.velocity.y <= 0.0f) {
                         this->vAttackState = TEKTITE_LANDED;
                         if ((this->actor.params != TEKTITE_BLUE) || !(this->actor.bgCheckFlags & 0x20)) {
-                            if (BGCHECK_Y_MIN < this->actor.floorHeight) {
+                            if (LINKSPAN_BGCHECK_Y_MIN < this->actor.floorHeight) {
                                 this->actor.world.pos.y = this->actor.floorHeight;
                             }
                             this->actor.velocity.y = 0.0f;
@@ -538,7 +539,7 @@ void EnTite_MoveTowardPlayer(EnTite* this, PlayState* play) {
         Math_SmoothStepToS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 1, 4000, 0);
         this->actor.world.rot.y = this->actor.shape.rot.y;
         if ((this->actor.params != TEKTITE_BLUE) || !(this->actor.bgCheckFlags & 0x20)) {
-            if (this->actor.floorHeight > BGCHECK_Y_MIN) {
+            if (this->actor.floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
                 this->actor.world.pos.y = this->actor.floorHeight;
             }
         } else if (this->actor.bgCheckFlags & 0x40) {
@@ -624,7 +625,7 @@ void EnTite_Recoil(EnTite* this, PlayState* play) {
     if (((this->actor.bgCheckFlags & 3) || (this->actor.params == TEKTITE_BLUE && (this->actor.bgCheckFlags & 0x20))) &&
         (this->actor.velocity.y <= 0.0f)) {
         if ((this->actor.params != TEKTITE_BLUE) || !(this->actor.bgCheckFlags & 0x20)) {
-            if (this->actor.floorHeight > BGCHECK_Y_MIN) {
+            if (this->actor.floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
                 this->actor.world.pos.y = this->actor.floorHeight;
             }
         } else {
@@ -695,7 +696,7 @@ void EnTite_Stunned(EnTite* this, PlayState* play) {
          ((this->actor.params == TEKTITE_BLUE) && (this->actor.bgCheckFlags & 0x20))) &&
         (this->actor.velocity.y <= 0.0f)) {
         if (((this->actor.params != TEKTITE_BLUE) || !(this->actor.bgCheckFlags & 0x20))) {
-            if (this->actor.floorHeight > BGCHECK_Y_MIN) {
+            if (this->actor.floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
                 this->actor.world.pos.y = this->actor.floorHeight;
             }
         } else {

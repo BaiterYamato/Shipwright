@@ -1,5 +1,6 @@
 #include "savestates.h"
 #include "../../src/buffers/heap_sizes.h"
+#include "../../src/code/linkspan_vanilla.h"
 
 #include <algorithm>
 #include <memory>
@@ -469,8 +470,11 @@ void SaveState::Save(void) {
 void SaveState::SaveCapture(std::shared_ptr<SaveStateInfo>& info) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
     info->nativeLightsGuard.Capture();
-    info->collisionGuard.Capture(gPlayState->colCtx, BgCheck_GetSaveStateGeneration());
-    info->collisionTables.Capture(gPlayState->colCtx, info->collisionGuard);
+    // OOT-VANILLA-001: sem mod as tabelas de colisão ficam no THA e vão na cópia do heap do sistema, como no upstream.
+    if (LinkSpan_EngineExtended()) {
+        info->collisionGuard.Capture(gPlayState->colCtx, BgCheck_GetSaveStateGeneration());
+        info->collisionTables.Capture(gPlayState->colCtx, info->collisionGuard);
+    }
     memcpy(&info->sysHeapCopy, gSystemHeap, SOH_SYSTEM_HEAP_SIZE /* sizeof(gSystemHeap) */);
     memcpy(&info->audioHeapCopy, gAudioHeap, AUDIO_HEAP_SIZE /* sizeof(gAudioContext) */);
 
@@ -504,8 +508,8 @@ bool SaveState::Load(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
     // Must precede every heap/static restore: those copies would revive freed
     // process-heap pointers and obsolete capacities in the saved PlayState.
-    if (gPlayState == nullptr ||
-        !info->collisionGuard.Matches(gPlayState->colCtx, BgCheck_GetSaveStateGeneration())) {
+    if (gPlayState == nullptr || (LinkSpan_EngineExtended() &&
+                                  !info->collisionGuard.Matches(gPlayState->colCtx, BgCheck_GetSaveStateGeneration()))) {
         SPDLOG_WARN("SaveState slot {} refused: collision buffers, capacities or generation changed", slot);
         return false;
     }
@@ -517,7 +521,9 @@ bool SaveState::Load(void) {
     memcpy(gAudioHeap, &info->audioHeapCopy, AUDIO_HEAP_SIZE);
     // The restored heap revives actors, lookup heads and counts. Restore their
     // external backing tables before any load callback or collision query.
-    info->collisionTables.Restore(gPlayState->colCtx, info->collisionGuard);
+    if (LinkSpan_EngineExtended()) {
+        info->collisionTables.Restore(gPlayState->colCtx, info->collisionGuard);
+    }
 
     memcpy(&gAudioContext, &info->audioContextCopy, sizeof(AudioContext));
     memcpy(gActiveSeqs, &info->gActiveSeqsCopy, sizeof(info->gActiveSeqsCopy));

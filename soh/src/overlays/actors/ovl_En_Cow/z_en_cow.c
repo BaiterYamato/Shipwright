@@ -7,6 +7,7 @@
 #include "z_en_cow.h"
 #include "objects/object_cow/object_cow.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY)
 
@@ -79,17 +80,17 @@ void EnCow_SetColliderPos(EnCow* this) {
     vec.x = 0.0f;
     vec.z = 30.0f;
     EnCow_RotateY(&vec, this->actor.shape.rot.y);
-    this->colliders[0].dim.pos.x = this->actor.world.pos.x + vec.x;
-    this->colliders[0].dim.pos.y = this->actor.world.pos.y;
-    this->colliders[0].dim.pos.z = this->actor.world.pos.z + vec.z;
+    this->colliders[0].dim.pos.x = LinkSpan_S16F(this->actor.world.pos.x + vec.x);
+    this->colliders[0].dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y);
+    this->colliders[0].dim.pos.z = LinkSpan_S16F(this->actor.world.pos.z + vec.z);
 
     vec.x = 0.0f;
     vec.y = 0.0f;
     vec.z = -20.0f;
     EnCow_RotateY(&vec, this->actor.shape.rot.y);
-    this->colliders[1].dim.pos.x = this->actor.world.pos.x + vec.x;
-    this->colliders[1].dim.pos.y = this->actor.world.pos.y;
-    this->colliders[1].dim.pos.z = this->actor.world.pos.z + vec.z;
+    this->colliders[1].dim.pos.x = LinkSpan_S16F(this->actor.world.pos.x + vec.x);
+    this->colliders[1].dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y);
+    this->colliders[1].dim.pos.z = LinkSpan_S16F(this->actor.world.pos.z + vec.z);
 }
 
 void EnCow_SetTailPos(EnCow* this) {

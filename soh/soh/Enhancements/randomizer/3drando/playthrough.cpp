@@ -11,6 +11,7 @@
 #include "soh/cvar_prefixes.h"
 #include "../option.h"
 #include "soh/Enhancements/debugger/performanceTimer.h"
+#include "../../../../src/code/linkspan_vanilla.h"
 
 namespace Playthrough {
 
@@ -41,6 +42,10 @@ int Playthrough_Init(uint32_t seed, std::set<RandomizerCheck> excludedLocations,
         }
 
         for (Rando::Option* option : optionGroup.GetOptions()) {
+            // OOT-VANILLA-001: sem mod a opção do Link-Span fica fora do hash, e a seed gera o mundo do upstream.
+            if (!LinkSpan_EngineExtended() && option->GetKey() == RSK_LINKSPAN_MOD_ITEMS) {
+                continue;
+            }
             if (option->GetCategory() != Rando::OptionCategory::Toggle) {
                 if (option->GetOptionCount() > 0) {
                     if (i >= RSG_EXCLUDES_KOKIRI_FOREST && i <= RSG_EXCLUDES_GANONS_CASTLE) {

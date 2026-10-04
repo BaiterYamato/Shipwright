@@ -4,6 +4,7 @@
 #include "overlays/actors/ovl_En_Ex_Item/z_en_ex_item.h"
 #include "objects/object_bg/object_bg.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                  \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -81,8 +82,8 @@ void EnBomBowlMan_Init(Actor* thisx, PlayState* play2) {
 
         if (cucco != NULL) {
             cucco->scale = cuccoScales[i];
-            cucco->collider.dim.radius = (s16)cuccoColliderDims[i][0];
-            cucco->collider.dim.height = (s16)cuccoColliderDims[i][1];
+            cucco->collider.dim.radius = LinkSpan_S16F((s16)cuccoColliderDims[i][0]);
+            cucco->collider.dim.height = LinkSpan_S16F((s16)cuccoColliderDims[i][1]);
         }
     }
 

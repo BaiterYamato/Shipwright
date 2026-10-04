@@ -7,6 +7,7 @@
 #include "z_en_attack_niw.h"
 #include "objects/object_niw/object_niw.h"
 #include "overlays/actors/ovl_En_Niw/z_en_niw.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -341,7 +342,7 @@ void EnAttackNiw_Update(Actor* thisx, PlayState* play) {
         Actor_MoveXZGravity(&this->actor);
     }
 
-    if (this->actor.floorHeight <= BGCHECK_Y_MIN) {
+    if (this->actor.floorHeight <= LINKSPAN_BGCHECK_Y_MIN) {
         Actor_Kill(&this->actor);
         return;
     }

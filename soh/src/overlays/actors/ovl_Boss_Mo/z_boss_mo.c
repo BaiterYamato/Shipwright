@@ -17,6 +17,7 @@
 #include "soh/Enhancements/savestate_serialize.h"
 
 #include <string.h>
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -2444,14 +2445,14 @@ void BossMo_UpdateTent(Actor* thisx, PlayState* play) {
 }
 
 void BossMo_UpdateTentColliders(BossMo* this, s32 item, ColliderJntSph* tentCollider, Vec3f* center) {
-    tentCollider->elements[item].dim.worldSphere.center.x = center->x;
-    tentCollider->elements[item].dim.worldSphere.center.y = center->y;
-    tentCollider->elements[item].dim.worldSphere.center.z = center->z;
+    tentCollider->elements[item].dim.worldSphere.center.x = LinkSpan_S16F(center->x);
+    tentCollider->elements[item].dim.worldSphere.center.y = LinkSpan_S16F(center->y);
+    tentCollider->elements[item].dim.worldSphere.center.z = LinkSpan_S16F(center->z);
     if (this->work[MO_TENT_ACTION_STATE] <= MO_TENT_SHAKE) {
-        tentCollider->elements[item].dim.worldSphere.radius =
-            tentCollider->elements[item].dim.modelSphere.radius * tentCollider->elements[item].dim.scale;
+        tentCollider->elements[item].dim.worldSphere.radius = LinkSpan_S16F(
+            tentCollider->elements[item].dim.modelSphere.radius * tentCollider->elements[item].dim.scale);
     } else {
-        tentCollider->elements[item].dim.worldSphere.radius = 0;
+        tentCollider->elements[item].dim.worldSphere.radius = LinkSpan_S16F(0);
     }
 }
 

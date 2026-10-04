@@ -8,6 +8,7 @@
 #include "objects/object_poh/object_poh.h"
 #include "objects/object_po_composer/object_po_composer.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_IGNORE_QUAKE)
@@ -193,10 +194,10 @@ void EnPoh_Init(Actor* thisx, PlayState* play) {
     ActorShape_Init(&this->actor.shape, 0.0f, ActorShadow_DrawCircle, 30.0f);
     Collider_InitJntSph(play, &this->colliderSph);
     Collider_SetJntSph(play, &this->colliderSph, &this->actor, &sJntSphInit, &this->colliderSphItem);
-    this->colliderSph.elements[0].dim.worldSphere.radius = 0;
-    this->colliderSph.elements[0].dim.worldSphere.center.x = this->actor.world.pos.x;
-    this->colliderSph.elements[0].dim.worldSphere.center.y = this->actor.world.pos.y;
-    this->colliderSph.elements[0].dim.worldSphere.center.z = this->actor.world.pos.z;
+    this->colliderSph.elements[0].dim.worldSphere.radius = LinkSpan_S16F(0);
+    this->colliderSph.elements[0].dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->colliderSph.elements[0].dim.worldSphere.center.y = LinkSpan_S16F(this->actor.world.pos.y);
+    this->colliderSph.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
     Collider_InitCylinder(play, &this->colliderCyl);
     Collider_SetCylinder(play, &this->colliderCyl, &this->actor, &sCylinderInit);
     CollisionCheck_SetInfo(&this->actor.colChkInfo, &sDamageTable, &sColChkInfoInit);
@@ -415,12 +416,12 @@ void func_80ADE6D4(EnPoh* this) {
 void EnPoh_Talk(EnPoh* this, PlayState* play) {
     this->actor.home.pos.y = this->actor.world.pos.y;
     Actor_SetFocus(&this->actor, -10.0f);
-    this->colliderCyl.dim.radius = 13;
-    this->colliderCyl.dim.height = 30;
-    this->colliderCyl.dim.yShift = 0;
-    this->colliderCyl.dim.pos.x = this->actor.world.pos.x;
-    this->colliderCyl.dim.pos.y = this->actor.world.pos.y - 20.0f;
-    this->colliderCyl.dim.pos.z = this->actor.world.pos.z;
+    this->colliderCyl.dim.radius = LinkSpan_S16F(13);
+    this->colliderCyl.dim.height = LinkSpan_S16F(30);
+    this->colliderCyl.dim.yShift = LinkSpan_S16F(0);
+    this->colliderCyl.dim.pos.x = LinkSpan_S16F(this->actor.world.pos.x);
+    this->colliderCyl.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y - 20.0f);
+    this->colliderCyl.dim.pos.z = LinkSpan_S16F(this->actor.world.pos.z);
     this->colliderCyl.base.ocFlags1 = OC1_ON | OC1_TYPE_PLAYER;
     if (this->actor.params == EN_POH_FLAT || this->actor.params == EN_POH_SHARP) {
         if (CHECK_QUEST_ITEM(QUEST_SONG_SUN)) {
@@ -794,7 +795,7 @@ void func_80ADFE80(EnPoh* this, PlayState* play) {
     if (this->unk_195 == 0) {
         this->unk_195 = 32;
     }
-    this->colliderCyl.dim.pos.y = this->actor.world.pos.y - 20.0f;
+    this->colliderCyl.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y - 20.0f);
     Actor_SetFocus(&this->actor, -10.0f);
     Lights_PointNoGlowSetInfo(&this->lightInfo, this->actor.world.pos.x, this->actor.world.pos.y,
                               this->actor.world.pos.z, this->info->lightColor.r, this->info->lightColor.g,
@@ -922,11 +923,11 @@ void EnPoh_Update(Actor* thisx, PlayState* play) {
                                this->morphTable, 12);
             this->actor.draw = EnPoh_DrawComposer;
             this->colliderSph.elements[0].dim.limb = 9;
-            this->colliderSph.elements[0].dim.modelSphere.center.y *= -1;
+            this->colliderSph.elements[0].dim.modelSphere.center.y = LinkSpan_S16F(this->colliderSph.elements[0].dim.modelSphere.center.y * (-1));
             this->actor.shape.rot.y = this->actor.world.rot.y = -0x4000;
-            this->colliderCyl.dim.radius = 20;
-            this->colliderCyl.dim.height = 55;
-            this->colliderCyl.dim.yShift = 15;
+            this->colliderCyl.dim.radius = LinkSpan_S16F(20);
+            this->colliderCyl.dim.height = LinkSpan_S16F(55);
+            this->colliderCyl.dim.yShift = LinkSpan_S16F(15);
         }
         this->actor.flags &= ~ACTOR_FLAG_UPDATE_CULLING_DISABLED;
         EnPoh_SetupInitialAction(this);

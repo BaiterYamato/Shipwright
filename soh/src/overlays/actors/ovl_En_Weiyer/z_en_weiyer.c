@@ -7,6 +7,7 @@
 #include "z_en_weiyer.h"
 #include "objects/object_ei/object_ei.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -172,7 +173,7 @@ void EnWeiyer_SetupHurt(EnWeiyer* this) {
     this->actor.velocity.y = 0.0f;
     this->actor.speedXZ = 3.0f;
     Actor_SetColorFilter(&this->actor, 0x4000, 0xC8, 0, 0x28);
-    this->collider.dim.height = sCylinderInit.dim.height;
+    this->collider.dim.height = LinkSpan_S16F(sCylinderInit.dim.height);
     this->actionFunc = EnWeiyer_Hurt;
 }
 
@@ -182,7 +183,7 @@ void EnWeiyer_SetupStunned(EnWeiyer* this) {
     this->actor.speedXZ = 0.0f;
     this->actor.velocity.y = 0.0f;
     this->actor.gravity = -1.0f;
-    this->collider.dim.height = sCylinderInit.dim.height + 15;
+    this->collider.dim.height = LinkSpan_S16F(sCylinderInit.dim.height + 15);
     Actor_SetColorFilter(&this->actor, 0, 0xC8, 0, 0x50);
     this->collider.base.atFlags &= ~AT_ON;
     Audio_PlayActorSound2(&this->actor, NA_SE_EN_GOMA_JR_FREEZE);
@@ -507,7 +508,7 @@ void EnWeiyer_Stunned(EnWeiyer* this, PlayState* play) {
     if (this->timer == 0) {
         this->actor.gravity = 0.0f;
         this->actor.velocity.y = 0.0f;
-        this->collider.dim.height = sCylinderInit.dim.height;
+        this->collider.dim.height = LinkSpan_S16F(sCylinderInit.dim.height);
         EnWeiyer_SetupFreeSwim(this);
     }
 }

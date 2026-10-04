@@ -8,6 +8,7 @@
 #include "objects/object_fd/object_fd.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "overlays/actors/ovl_Boss_Fd/z_boss_fd.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -67,9 +68,9 @@ void EnVbBall_Init(Actor* thisx, PlayState* play) {
         Collider_InitCylinder(play, &this->collider);
         Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
         Actor_SetScale(&this->actor, this->actor.world.rot.z / 10000.0f);
-        this->collider.dim.radius = this->actor.scale.y * 3000.0f;
-        this->collider.dim.height = this->actor.scale.y * 5000.0f;
-        this->collider.dim.yShift = this->actor.scale.y * -2500.0f;
+        this->collider.dim.radius = LinkSpan_S16F(this->actor.scale.y * 3000.0f);
+        this->collider.dim.height = LinkSpan_S16F(this->actor.scale.y * 5000.0f);
+        this->collider.dim.yShift = LinkSpan_S16F(this->actor.scale.y * -2500.0f);
         this->xRotVel = Rand_CenteredFloat(0x2000);
         this->yRotVel = Rand_CenteredFloat(0x2000);
         this->shadowSize = this->actor.scale.y * 68.0f;

@@ -7,6 +7,7 @@
 #include "z_bg_po_syokudai.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_syokudai/object_syokudai.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -93,9 +94,9 @@ void BgPoSyokudai_Init(Actor* thisx, PlayState* play) {
     Collider_InitCylinder(play, &this->collider);
     Collider_SetCylinder(play, &this->collider, thisx, &sCylinderInit);
 
-    this->collider.dim.pos.x = thisx->world.pos.x;
-    this->collider.dim.pos.y = thisx->world.pos.y;
-    this->collider.dim.pos.z = thisx->world.pos.z;
+    this->collider.dim.pos.x = LinkSpan_S16F(thisx->world.pos.x);
+    this->collider.dim.pos.y = LinkSpan_S16F(thisx->world.pos.y);
+    this->collider.dim.pos.z = LinkSpan_S16F(thisx->world.pos.z);
 
     if (this->flameColor == POE_FLAME_PURPLE && Flags_GetSwitch(play, POE_TORCH_FLAG + POE_FLAME_GREEN) &&
         Flags_GetSwitch(play, POE_TORCH_FLAG + POE_FLAME_BLUE) &&

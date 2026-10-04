@@ -45,6 +45,7 @@ const ActorInit En_Jj_InitVars = {
 static s32 sUnused = 0;
 
 #include "z_en_jj_cutscene_data.c" EARLY
+#include "../../../code/linkspan_vanilla.h"
 
 static s32 sUnused2[] = { 0, 0 };
 
@@ -206,9 +207,9 @@ void EnJj_WaitForFish(EnJj* this, PlayState* play) {
         EnJj_SetupAction(this, EnJj_BeginCutscene);
     }
 
-    this->collider.dim.pos.x = -1245;
-    this->collider.dim.pos.y = 20;
-    this->collider.dim.pos.z = -48;
+    this->collider.dim.pos.x = LinkSpan_S16F(-1245);
+    this->collider.dim.pos.y = LinkSpan_S16F(20);
+    this->collider.dim.pos.z = LinkSpan_S16F(-48);
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
 }
 

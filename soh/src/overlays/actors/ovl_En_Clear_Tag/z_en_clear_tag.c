@@ -5,6 +5,7 @@
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -531,9 +532,9 @@ void EnClearTag_Update(Actor* thisx, PlayState* play2) {
                 Actor_SetFocus(&this->actor, 0.0f);
 
                 // Update Arwing collider to better match a ground collision.
-                this->collider.dim.radius = 20;
-                this->collider.dim.height = 15;
-                this->collider.dim.yShift = -5;
+                this->collider.dim.radius = LinkSpan_S16F(20);
+                this->collider.dim.height = LinkSpan_S16F(15);
+                this->collider.dim.yShift = LinkSpan_S16F(-5);
                 Collider_UpdateCylinder(&this->actor, &this->collider);
 
                 CollisionCheck_SetAC(play, &play->colChkCtx, &this->collider.base);
@@ -579,9 +580,9 @@ void EnClearTag_Update(Actor* thisx, PlayState* play2) {
                 }
 
                 // Set laser collider properties.
-                this->collider.dim.radius = 23;
-                this->collider.dim.height = 25;
-                this->collider.dim.yShift = -10;
+                this->collider.dim.radius = LinkSpan_S16F(23);
+                this->collider.dim.height = LinkSpan_S16F(25);
+                this->collider.dim.yShift = LinkSpan_S16F(-10);
                 Collider_UpdateCylinder(&this->actor, &this->collider);
                 CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);
                 Actor_UpdateBgCheckInfo(play, &this->actor, 50.0f, 80.0f, 100.0f, 5);

@@ -9,6 +9,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipUtils.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -200,9 +201,9 @@ void EnBom_Explode(EnBom* this, PlayState* play) {
 
     if (CVarGetInteger(CVAR_ENHANCEMENT("StaticExplosionRadius"), 0)) {
         // 72 is the maximum radius of an OoT bomb explosion
-        this->explosionCollider.elements[0].dim.worldSphere.radius = 72;
+        this->explosionCollider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(72);
     } else {
-        this->explosionCollider.elements[0].dim.worldSphere.radius += this->actor.shape.rot.z + 8;
+        this->explosionCollider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(this->explosionCollider.elements[0].dim.worldSphere.radius + (this->actor.shape.rot.z + 8));
     }
 
     if (this->actor.params == BOMB_EXPLOSION) {
@@ -340,7 +341,7 @@ void EnBom_Update(Actor* thisx, PlayState* play2) {
             EffectSsBomb2_SpawnLayered(play, &effPos, &effVelocity, &bomb2Accel, 100, (thisx->shape.rot.z * 6) + 19);
 
             effPos.y = thisx->floorHeight;
-            if (thisx->floorHeight > BGCHECK_Y_MIN) {
+            if (thisx->floorHeight > LINKSPAN_BGCHECK_Y_MIN) {
                 EffectSsBlast_SpawnWhiteShockwave(play, &effPos, &effVelocity, &effAccel);
             }
 

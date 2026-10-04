@@ -1,6 +1,7 @@
 #include <libultraship/libultra.h>
 #include <libultraship/bridge/audiobridge.h>
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/audio/AudioEditor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -2463,9 +2464,13 @@ s32 AudioOcarina_MemoryGameNextNote(void) {
 void AudioOcarina_Update(void) {
     const u8 linkSpanOcarinaActive = (sOcarinaInstrumentId != OCARINA_INSTRUMENT_OFF) &&
                                      (sIsOcarinaInputEnabled == true) && (sOcarinaFlags != 0);
-    OotNative_PublishOcarinaState(linkSpanOcarinaActive,
-                                  linkSpanOcarinaActive ? sAvailOcarinaSongFlags : 0);
-    const s32 linkSpanForcedSong = OotNative_TakePendingOcarinaSong();
+    s32 linkSpanForcedSong = -1;
+
+    // OOT-VANILLA-001: estado para providers nativos, só com mod.
+    if (LinkSpan_EngineExtended()) {
+        OotNative_PublishOcarinaState(linkSpanOcarinaActive, linkSpanOcarinaActive ? sAvailOcarinaSongFlags : 0);
+        linkSpanForcedSong = OotNative_TakePendingOcarinaSong();
+    }
     if (linkSpanOcarinaActive && linkSpanForcedSong >= 0 &&
         linkSpanForcedSong <= OCARINA_SONG_SCARECROW_SPAWN &&
         (sAvailOcarinaSongFlags & (u16)(1 << linkSpanForcedSong))) {

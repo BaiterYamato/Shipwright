@@ -2,6 +2,7 @@
 #include "objects/object_shopnuts/object_shopnuts.h"
 #include "overlays/actors/ovl_En_Dns/z_en_dns.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -94,7 +95,7 @@ void EnShopnuts_Destroy(Actor* thisx, PlayState* play) {
 void EnShopnuts_SetupWait(EnShopnuts* this) {
     Animation_PlayOnceSetSpeed(&this->skelAnime, &gBusinessScrubAnim_139C, 0.0f);
     this->animFlagAndTimer = Rand_S16Offset(100, 50);
-    this->collider.dim.height = 5;
+    this->collider.dim.height = LinkSpan_S16F(5);
     this->collider.base.acFlags &= ~AC_ON;
     this->actionFunc = EnShopnuts_Wait;
 }
@@ -148,7 +149,7 @@ void EnShopnuts_Wait(EnShopnuts* this, PlayState* play) {
         Audio_PlayActorSound2(&this->actor, NA_SE_EN_NUTS_UP);
     }
 
-    this->collider.dim.height = ((CLAMP(this->skelAnime.curFrame, 9.0f, 13.0f) - 9.0f) * 9.0f) + 5.0f;
+    this->collider.dim.height = LinkSpan_S16F(((CLAMP(this->skelAnime.curFrame, 9.0f, 13.0f) - 9.0f) * 9.0f) + 5.0f);
     if (!hasSlowPlaybackSpeed && (this->actor.xzDistToPlayer < 120.0f)) {
         EnShopnuts_SetupBurrow(this);
     } else if (SkelAnime_Update(&this->skelAnime)) {
@@ -215,7 +216,7 @@ void EnShopnuts_Burrow(EnShopnuts* this, PlayState* play) {
     if (SkelAnime_Update(&this->skelAnime)) {
         EnShopnuts_SetupWait(this);
     } else {
-        this->collider.dim.height = ((4.0f - CLAMP_MAX(this->skelAnime.curFrame, 4.0f)) * 10.0f) + 5.0f;
+        this->collider.dim.height = LinkSpan_S16F(((4.0f - CLAMP_MAX(this->skelAnime.curFrame, 4.0f)) * 10.0f) + 5.0f);
     }
     if (Animation_OnFrame(&this->skelAnime, 4.0f)) {
         this->collider.base.acFlags &= ~AC_ON;

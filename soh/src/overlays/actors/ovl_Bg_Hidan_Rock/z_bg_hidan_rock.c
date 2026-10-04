@@ -7,6 +7,7 @@
 #include "z_bg_hidan_rock.h"
 #include "objects/object_hidan_objects/object_hidan_objects.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -98,9 +99,9 @@ void BgHidanRock_Init(Actor* thisx, PlayState* play) {
         CollisionHeader_GetVirtual(&gFireTempleStoneBlock1Col, &colHeader);
     } else {
         CollisionHeader_GetVirtual(&gFireTempleStoneBlock2Col, &colHeader);
-        this->collider.dim.pos.x = thisx->home.pos.x;
-        this->collider.dim.pos.y = thisx->home.pos.y;
-        this->collider.dim.pos.z = thisx->home.pos.z;
+        this->collider.dim.pos.x = LinkSpan_S16F(thisx->home.pos.x);
+        this->collider.dim.pos.y = LinkSpan_S16F(thisx->home.pos.y);
+        this->collider.dim.pos.z = LinkSpan_S16F(thisx->home.pos.z);
         this->actionFunc = func_8088B634;
     }
 
@@ -347,7 +348,7 @@ void BgHidanRock_Update(Actor* thisx, PlayState* play) {
     }
 
     if (this->unk_16C > 0.0f) {
-        this->collider.dim.height = sCylinderInit.dim.height * this->unk_16C;
+        this->collider.dim.height = LinkSpan_S16F(sCylinderInit.dim.height * this->unk_16C);
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);
     }
 }

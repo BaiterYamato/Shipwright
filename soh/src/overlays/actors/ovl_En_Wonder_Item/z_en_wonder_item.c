@@ -7,6 +7,7 @@
 #include "z_en_wonder_item.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS 0
 
@@ -160,8 +161,8 @@ void EnWonderItem_Init(Actor* thisx, PlayState* play) {
             Collider_InitCylinder(play, &this->collider);
             Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
             this->collider.info.bumper.dmgFlags = collisionTypes[colTypeIndex];
-            this->collider.dim.radius = 20;
-            this->collider.dim.height = 30;
+            this->collider.dim.radius = LinkSpan_S16F(20);
+            this->collider.dim.height = LinkSpan_S16F(30);
             this->updateFunc = EnWonderItem_InteractSwitch;
             break;
         case WONDERITEM_UNUSED:
@@ -190,8 +191,8 @@ void EnWonderItem_Init(Actor* thisx, PlayState* play) {
             Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
             this->collider.info.bumper.dmgFlags = 0x00000004; // slingshot
             this->unkPos = this->actor.world.pos;
-            this->collider.dim.radius = 35;
-            this->collider.dim.height = 75;
+            this->collider.dim.radius = LinkSpan_S16F(35);
+            this->collider.dim.height = LinkSpan_S16F(75);
             this->updateFunc = EnWonderItem_BombSoldier;
             break;
         case WONDERITEM_ROLL_DROP:

@@ -7,6 +7,7 @@
 #include "z_en_floormas.h"
 #include "objects/object_wallmaster/object_wallmaster.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_HOOKSHOT_PULLS_PLAYER)
 
@@ -293,8 +294,8 @@ void EnFloormas_SetupSplit(EnFloormas* this) {
     this->actor.params = 0x10;
     Animation_Change(&this->skelAnime, &gWallmasterJumpAnim, 1.0f, 41.0f, Animation_GetLastFrame(&gWallmasterJumpAnim),
                      ANIMMODE_ONCE, 0.0f);
-    this->collider.dim.radius = sCylinderInit.dim.radius * 0.6f;
-    this->collider.dim.height = sCylinderInit.dim.height * 0.6f;
+    this->collider.dim.radius = LinkSpan_S16F(sCylinderInit.dim.radius * 0.6f);
+    this->collider.dim.height = LinkSpan_S16F(sCylinderInit.dim.height * 0.6f);
     this->collider.info.bumperFlags &= ~BUMP_HOOKABLE;
     this->actor.speedXZ = 4.0f;
     this->actor.velocity.y = 7.0f;
@@ -911,8 +912,8 @@ void EnFloormas_Merge(EnFloormas* this, PlayState* play) {
         Audio_PlayActorSound2(&this->actor, NA_SE_EN_FLOORMASTER_EXPAND);
     }
 
-    this->collider.dim.radius = (sCylinderInit.dim.radius * 100.0f) * this->actor.scale.x;
-    this->collider.dim.height = (sCylinderInit.dim.height * 100.0f) * this->actor.scale.x;
+    this->collider.dim.radius = LinkSpan_S16F((sCylinderInit.dim.radius * 100.0f) * this->actor.scale.x);
+    this->collider.dim.height = LinkSpan_S16F((sCylinderInit.dim.height * 100.0f) * this->actor.scale.x);
 
     if (SkelAnime_Update(&this->skelAnime) != 0) {
         if (this->actor.scale.x >= 0.01f) {

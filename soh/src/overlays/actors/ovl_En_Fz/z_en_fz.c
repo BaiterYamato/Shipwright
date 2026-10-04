@@ -2,6 +2,7 @@
 #include "objects/object_fz/object_fz.h"
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -842,9 +843,9 @@ void EnFz_UpdateIceSmoke(EnFz* this, PlayState* play) {
                 }
 
                 if ((this->unusedTimer2 == 0) && (iceSmoke->primAlpha >= 101) && iceSmoke->isTimerMod8) {
-                    this->collider3.dim.pos.x = (s16)iceSmoke->pos.x;
-                    this->collider3.dim.pos.y = (s16)iceSmoke->pos.y;
-                    this->collider3.dim.pos.z = (s16)iceSmoke->pos.z;
+                    this->collider3.dim.pos.x = LinkSpan_S16F((s16)iceSmoke->pos.x);
+                    this->collider3.dim.pos.y = LinkSpan_S16F((s16)iceSmoke->pos.y);
+                    this->collider3.dim.pos.z = LinkSpan_S16F((s16)iceSmoke->pos.z);
                     CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider3.base);
                 }
 

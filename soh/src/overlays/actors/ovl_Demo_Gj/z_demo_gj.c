@@ -8,6 +8,7 @@
 #include "objects/object_gj/object_gj.h"
 #include "objects/object_geff/object_geff.h"
 #include "vt.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -990,17 +991,17 @@ void func_8097AEE8(DemoGj* this, PlayState* play) {
     f32 cos_theta = Math_CosS(theta);
     f32 sin_theta = Math_SinS(theta);
 
-    cylinder0->dim.pos.z = actorPos->z + (20.0f * cos_theta) - (-20.0f * sin_theta);
-    cylinder0->dim.pos.x = actorPos->x + (20.0f * sin_theta) + (-20.0f * cos_theta);
-    cylinder0->dim.pos.y = actorPos->y;
+    cylinder0->dim.pos.z = LinkSpan_S16F(actorPos->z + (20.0f * cos_theta) - (-20.0f * sin_theta));
+    cylinder0->dim.pos.x = LinkSpan_S16F(actorPos->x + (20.0f * sin_theta) + (-20.0f * cos_theta));
+    cylinder0->dim.pos.y = LinkSpan_S16F(actorPos->y);
 
-    cylinder1->dim.pos.z = actorPos->z + (-20.0f * cos_theta) - (20.0f * sin_theta);
-    cylinder1->dim.pos.x = actorPos->x + (-20.0f * sin_theta) + (20.0f * cos_theta);
-    cylinder1->dim.pos.y = actorPos->y;
+    cylinder1->dim.pos.z = LinkSpan_S16F(actorPos->z + (-20.0f * cos_theta) - (20.0f * sin_theta));
+    cylinder1->dim.pos.x = LinkSpan_S16F(actorPos->x + (-20.0f * sin_theta) + (20.0f * cos_theta));
+    cylinder1->dim.pos.y = LinkSpan_S16F(actorPos->y);
 
-    cylinder2->dim.pos.z = actorPos->z + (-60.0f * cos_theta) - (60.0f * sin_theta);
-    cylinder2->dim.pos.x = actorPos->x + (-60.0f * sin_theta) + (60.0f * cos_theta);
-    cylinder2->dim.pos.y = actorPos->y;
+    cylinder2->dim.pos.z = LinkSpan_S16F(actorPos->z + (-60.0f * cos_theta) - (60.0f * sin_theta));
+    cylinder2->dim.pos.x = LinkSpan_S16F(actorPos->x + (-60.0f * sin_theta) + (60.0f * cos_theta));
+    cylinder2->dim.pos.y = LinkSpan_S16F(actorPos->y);
 }
 
 void DemoGj_SetCylindersAsAC(DemoGj* this, PlayState* play) {
@@ -1120,17 +1121,17 @@ void func_8097B450(DemoGj* this, PlayState* play) {
     f32 cos_theta = Math_CosS(theta);
     f32 sin_theta = Math_SinS(theta);
 
-    cylinder0->dim.pos.z = actorPos->z - (35.0f * sin_theta);
-    cylinder0->dim.pos.x = actorPos->x + (35.0f * cos_theta);
-    cylinder0->dim.pos.y = actorPos->y;
+    cylinder0->dim.pos.z = LinkSpan_S16F(actorPos->z - (35.0f * sin_theta));
+    cylinder0->dim.pos.x = LinkSpan_S16F(actorPos->x + (35.0f * cos_theta));
+    cylinder0->dim.pos.y = LinkSpan_S16F(actorPos->y);
 
-    cylinder1->dim.pos.z = actorPos->z - (-10.0f * sin_theta);
-    cylinder1->dim.pos.x = actorPos->x + (-10.0f * cos_theta);
-    cylinder1->dim.pos.y = actorPos->y;
+    cylinder1->dim.pos.z = LinkSpan_S16F(actorPos->z - (-10.0f * sin_theta));
+    cylinder1->dim.pos.x = LinkSpan_S16F(actorPos->x + (-10.0f * cos_theta));
+    cylinder1->dim.pos.y = LinkSpan_S16F(actorPos->y);
 
-    cylinder2->dim.pos.z = actorPos->z - (-55.0f * sin_theta);
-    cylinder2->dim.pos.x = actorPos->x + (-55.0f * cos_theta);
-    cylinder2->dim.pos.y = actorPos->y;
+    cylinder2->dim.pos.z = LinkSpan_S16F(actorPos->z - (-55.0f * sin_theta));
+    cylinder2->dim.pos.x = LinkSpan_S16F(actorPos->x + (-55.0f * cos_theta));
+    cylinder2->dim.pos.y = LinkSpan_S16F(actorPos->y);
 }
 
 void DemoGj_SetCylindersAsAC2(DemoGj* this, PlayState* play) {

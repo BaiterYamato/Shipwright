@@ -3,10 +3,22 @@
 #include <libultraship/libultra/types.h>
 #include <string.h>
 #include "z64.h"
+#include "../src/code/linkspan_vanilla.h"
 
 // SOH [Unbound] Mtx is float (GBI_FLOAT_MTX in libultraship fast/types.h): the s16.16 pack/unpack that wrapped
 // translations >= 32768 becomes a copy. See unbound-docs/extent.md.
+// SOH [Link-Span] OOT-VANILLA-001: sem mod, grava o valor que o s16.16 do upstream daria depois de decodificado
+// pelo renderizador ((s32)(f * 65536) e depois / 65536), então o desenho sai com os mesmos números.
 void guMtxF2L(float mf[4][4], Mtx* m) {
+    if (!LinkSpan_EngineExtended()) {
+        unsigned int r, c;
+        for (r = 0; r < 4; r++) {
+            for (c = 0; c < 4; c++) {
+                m->mf[r][c] = (s32)(mf[r][c] * 65536.0f) / 65536.0f;
+            }
+        }
+        return;
+    }
     memcpy(m->mf, mf, sizeof(m->mf));
 }
 

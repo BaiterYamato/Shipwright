@@ -1,4 +1,5 @@
 #include "global.h"
+#include "linkspan_vanilla.h"
 #include "vt.h"
 
 void func_800430A0(CollisionContext* colCtx, s32 bgId, Actor* actor) {
@@ -25,8 +26,8 @@ void func_800430A0(CollisionContext* colCtx, s32 bgId, Actor* actor) {
             SkinMatrix_Vec3fMtxFMultXYZ(&prevTransformInv, &actor->world.pos, &tempPos);
             SkinMatrix_Vec3fMtxFMultXYZ(&curTransform, &tempPos, &pos);
             actor->world.pos = pos;
-            if (BGCHECK_XYZ_ABSMAX <= pos.x || pos.x <= -BGCHECK_XYZ_ABSMAX || BGCHECK_XYZ_ABSMAX <= pos.y ||
-                pos.y <= -BGCHECK_XYZ_ABSMAX || BGCHECK_XYZ_ABSMAX <= pos.z || pos.z <= -BGCHECK_XYZ_ABSMAX) {
+            if (LINKSPAN_BGCHECK_XYZ_ABSMAX <= pos.x || pos.x <= -LINKSPAN_BGCHECK_XYZ_ABSMAX || LINKSPAN_BGCHECK_XYZ_ABSMAX <= pos.y ||
+                pos.y <= -LINKSPAN_BGCHECK_XYZ_ABSMAX || LINKSPAN_BGCHECK_XYZ_ABSMAX <= pos.z || pos.z <= -LINKSPAN_BGCHECK_XYZ_ABSMAX) {
 
                 osSyncPrintf(VT_FGCOL(RED));
                 //! @bug file and line are not passed to osSyncPrintf

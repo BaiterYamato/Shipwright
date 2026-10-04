@@ -1,6 +1,7 @@
 #include "z_en_eiyer.h"
 #include "objects/object_ei/object_ei.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -272,7 +273,7 @@ void EnEiyer_SetupLand(EnEiyer* this) {
     // Update BgCheck info, play sound, and spawn effect on the first frame of the land action
     this->timer = -1;
     this->actor.gravity = 0.0f;
-    this->collider.dim.height = sColCylInit.dim.height;
+    this->collider.dim.height = LinkSpan_S16F(sColCylInit.dim.height);
     this->actionFunc = EnEiyer_Land;
 }
 
@@ -318,7 +319,7 @@ void EnEiyer_SetupStunned(EnEiyer* this) {
     this->actor.speedXZ = 0.0f;
     this->actor.velocity.y = 0.0f;
     this->actor.gravity = -1.0f;
-    this->collider.dim.height = sColCylInit.dim.height + 8;
+    this->collider.dim.height = LinkSpan_S16F(sColCylInit.dim.height + 8);
     Actor_SetColorFilter(&this->actor, 0, 200, 0, 80);
     this->collider.base.atFlags &= ~AT_ON;
     Audio_PlayActorSound2(&this->actor, NA_SE_EN_GOMA_JR_FREEZE);
@@ -596,7 +597,7 @@ void EnEiyer_Stunned(EnEiyer* this, PlayState* play) {
     if (this->timer == 0) {
         this->actor.gravity = 0.0f;
         this->actor.velocity.y = 0.0f;
-        this->collider.dim.height = sColCylInit.dim.height;
+        this->collider.dim.height = LinkSpan_S16F(sColCylInit.dim.height);
         EnEiyer_SetupGlide(this);
     }
 }
@@ -629,7 +630,7 @@ void EnEiyer_UpdateDamage(EnEiyer* this, PlayState* play) {
                 Audio_PlayActorSound2(&this->actor, NA_SE_EN_EIER_DAMAGE);
                 EnEiyer_SetupHurt(this);
             } else {
-                this->collider.dim.height = sColCylInit.dim.height;
+                this->collider.dim.height = LinkSpan_S16F(sColCylInit.dim.height);
                 EnEiyer_SetupDie(this);
             }
         }

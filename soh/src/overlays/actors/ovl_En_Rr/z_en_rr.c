@@ -9,6 +9,7 @@
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <assert.h>
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -799,9 +800,9 @@ void EnRr_Update(Actor* thisx, PlayState* play) {
     Math_StepToF(&this->actor.speedXZ, 0.0f, 0.1f);
     Actor_MoveXZGravity(&this->actor);
     Collider_UpdateCylinder(&this->actor, &this->collider1);
-    this->collider2.dim.pos.x = this->mouthPos.x;
-    this->collider2.dim.pos.y = this->mouthPos.y;
-    this->collider2.dim.pos.z = this->mouthPos.z;
+    this->collider2.dim.pos.x = LinkSpan_S16F(this->mouthPos.x);
+    this->collider2.dim.pos.y = LinkSpan_S16F(this->mouthPos.y);
+    this->collider2.dim.pos.z = LinkSpan_S16F(this->mouthPos.z);
     if (!this->isDead && (this->invincibilityTimer == 0)) {
         CollisionCheck_SetAC(play, &play->colChkCtx, &this->collider1.base);
         CollisionCheck_SetAC(play, &play->colChkCtx, &this->collider2.base);

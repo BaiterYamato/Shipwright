@@ -8,6 +8,7 @@
 #include "objects/object_vali/object_vali.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <stdlib.h>
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_IGNORE_QUAKE)
@@ -163,7 +164,7 @@ void EnVali_Init(Actor* thisx, PlayState* play) {
         BgCheck_EntityRaycastFloor4(&play->colCtx, &this->actor.floorPoly, &bgId, &this->actor, &this->actor.world.pos);
     this->actor.params = BARI_TYPE_NORMAL;
 
-    if (this->actor.floorHeight == BGCHECK_Y_MIN) {
+    if (this->actor.floorHeight == LINKSPAN_BGCHECK_Y_MIN) {
         Actor_Kill(&this->actor);
     }
 }

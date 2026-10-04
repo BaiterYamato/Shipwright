@@ -8,6 +8,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_anubice/object_anubice.h"
 #include "soh/frame_interpolation.h"
+#include "../../../code/linkspan_vanilla.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -196,9 +197,9 @@ void EnAnubiceFire_Update(Actor* thisx, PlayState* play) {
 
     Actor_UpdateBgCheckInfo(play, &this->actor, 5.0f, 5.0f, 10.0f, 0x1D);
     if (!(this->scale < 0.6f || this->actionFunc == func_809B2B48)) {
-        this->cylinder.dim.radius = this->scale * 15.0f + 5.0f;
-        this->cylinder.dim.height = this->scale * 15.0f + 5.0f;
-        this->cylinder.dim.yShift = this->scale * -0.75f + -15.0f;
+        this->cylinder.dim.radius = LinkSpan_S16F(this->scale * 15.0f + 5.0f);
+        this->cylinder.dim.height = LinkSpan_S16F(this->scale * 15.0f + 5.0f);
+        this->cylinder.dim.yShift = LinkSpan_S16F(this->scale * -0.75f + -15.0f);
 
         if (this->unk_15A != 0) {
             Collider_UpdateCylinder(&this->actor, &this->cylinder);
