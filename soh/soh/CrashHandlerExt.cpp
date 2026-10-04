@@ -4,6 +4,8 @@
 #include "z64actor.h"
 #include <stdio.h>
 #include <array>
+#include <algorithm>
+#include <cstring>
 #include "soh/ActorDB.h"
 #include <fast/interpreter.h>
 #include <shiplua/native/NativeDiagnostics.h>
@@ -29,42 +31,99 @@ static std::array<const char*, SCENE_ID_MAX> sSceneIdToStrArray{
 
 #undef DEFINE_SCENE
 
-static void append_str(char* buf, size_t* len, const char* str) {
-    while (*str != '\0')
-        buf[(*len)++] = *str++;
+// CrashHandlerCallback does not expose a capacity. Keep this in sync with
+// Ship::CrashHandler::gMaxBufferSize (libultraship, currently 32768 bytes).
+static constexpr size_t sCrashReportCapacity = 32768;
+// Three decimal digits per byte cover any size_t; includes newline and NUL.
+// Reserve this even before Actors, so earlier sections cannot consume its space.
+static constexpr size_t sActorSummaryCapacity = 3 * sizeof(size_t) + sizeof("  ...  atores omitidos\n");
+static constexpr size_t sCrashReportTextCapacity = sCrashReportCapacity - sActorSummaryCapacity;
+
+static bool append_text(char* buf, size_t* len, const char* str, bool newline, size_t capacity) {
+    const size_t extra = newline ? 1 : 0;
+    if (*len >= capacity || capacity - 1 - *len < extra) {
+        return false;
+    }
+    const size_t available = capacity - 1 - *len - extra;
+    size_t length = 0;
+    while (length < available && str[length] != '\0') {
+        ++length;
+    }
+    if (str[length] != '\0') {
+        return false;
+    }
+    // Commit only complete strings/lines, always leaving room for NUL.
+    memcpy(buf + *len, str, length);
+    *len += length;
+    if (newline) {
+        buf[(*len)++] = '\n';
+    }
+    buf[*len] = '\0';
+    return true;
 }
 
-static void append_line(char* buf, size_t* len, const char* str) {
-    while (*str != '\0')
-        buf[(*len)++] = *str++;
-    buf[(*len)++] = '\n';
+static bool append_str(char* buf, size_t* len, const char* str,
+                       size_t capacity = sCrashReportTextCapacity) {
+    return append_text(buf, len, str, false, capacity);
 }
 
-static void CrashHandler_WriteActorData(char* buffer, size_t* pos) {
-    for (unsigned int i = 0; i < ACTORCAT_MAX; i++) {
+static bool append_line(char* buf, size_t* len, const char* str,
+                        size_t capacity = sCrashReportTextCapacity) {
+    return append_text(buf, len, str, true, capacity);
+}
 
-        ActorListEntry* entry = &gPlayState->actorCtx.actorLists[i];
-        Actor* cur;
+// False means the omission summary is the final line of the report.
+static bool CrashHandler_WriteActorData(char* buffer, size_t* pos) {
+    size_t omitted = 0;
+    for (unsigned int i = 0; i < ACTORCAT_MAX; ++i) {
+        for (Actor* cur = gPlayState->actorCtx.actorLists[i].head; cur != nullptr; cur = cur->next) {
+            ++omitted;
+        }
+    }
 
-        if (entry->length == 0) {
+    for (unsigned int i = 0; i < ACTORCAT_MAX; ++i) {
+        Actor* cur = gPlayState->actorCtx.actorLists[i].head;
+        if (cur == nullptr) {
             continue;
         }
-        WRITE_VAR_LINE(buffer, pos, "  Category: ", sCatToStrArray[i]);
-        cur = entry->head;
+        const std::string categoryLine = std::string("  Category: ") + sCatToStrArray[i];
+        if (!append_line(buffer, pos, categoryLine.c_str())) {
+            break;
+        }
         while (cur != nullptr) {
             std::string actorLine = "    ";
             actorLine += ActorDB::Instance->RetrieveEntry(cur->id).entry.valid
                              ? ActorDB::Instance->RetrieveEntry(cur->id).entry.desc
                              : "???";
             actorLine += " (" + std::to_string(cur->params) + ")";
-            append_line(buffer, pos, actorLine.c_str());
-
+            if (!append_line(buffer, pos, actorLine.c_str())) {
+                break;
+            }
+            --omitted;
             cur = cur->next;
         }
+        if (cur != nullptr) {
+            break;
+        }
     }
+
+    if (omitted != 0) {
+        // An incoming prefix or native diagnostic may end without a newline.
+        if (*pos != 0 && buffer[*pos - 1] != '\n') {
+            append_line(buffer, pos, "", sCrashReportCapacity);
+        }
+        char summary[sActorSummaryCapacity];
+        snprintf(summary, sizeof(summary), "  ... %zu atores omitidos", omitted);
+        append_line(buffer, pos, summary, sCrashReportCapacity);
+        return false;
+    }
+    return true;
 }
 
 extern "C" void CrashHandler_PrintSohData(char* buffer, size_t* pos) {
+    // If LUS arrives full, recover space for the summary inside its own buffer.
+    *pos = std::min(*pos, sCrashReportTextCapacity - 1);
+    buffer[*pos] = '\0';
     char intCharBuffer[16];
     append_line(buffer, pos, "Build Information:");
     WRITE_VAR_LINE(buffer, pos, "  Game Version: ", (const char*)gBuildVersion);
@@ -73,7 +132,10 @@ extern "C" void CrashHandler_PrintSohData(char* buffer, size_t* pos) {
     WRITE_VAR_LINE(buffer, pos, "  Build Date: ", (const char*)gBuildDate);
 
     // SOH [Link-Span] mod nativo ativo, DLLs de mods na pilha e proteção de boot; sem alocar.
-    *pos += ShipLua::WriteNativeCrashReport(buffer + *pos, 4096);
+    // NativeDiagnostics writes up to capacity bytes and does not append NUL.
+    const size_t nativeCapacity = std::min<size_t>(4096, sCrashReportTextCapacity - 1 - *pos);
+    *pos += ShipLua::WriteNativeCrashReport(buffer + *pos, nativeCapacity);
+    buffer[*pos] = '\0';
 
     if (gPlayState != nullptr) {
         // SOH [Link-Span] cenas registradas por mods ficam fora da tabela vanilla.
@@ -86,7 +148,9 @@ extern "C" void CrashHandler_PrintSohData(char* buffer, size_t* pos) {
         WRITE_VAR_LINE(buffer, pos, "Room: ", intCharBuffer);
 
         append_line(buffer, pos, "Actors:");
-        CrashHandler_WriteActorData(buffer, pos);
+        if (!CrashHandler_WriteActorData(buffer, pos)) {
+            return;
+        }
 
         append_line(buffer, pos, "GFX Stack:");
         for (auto& disp : Fast::g_exec_stack.disp_stack) {

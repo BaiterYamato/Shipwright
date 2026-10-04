@@ -19,6 +19,9 @@ extern "C" {
 #include <variables.h>
 }
 
+#include "savestate_collision_guard.h"
+
+extern "C" uint64_t BgCheck_GetSaveStateGeneration(void);
 extern "C" PlayState* gPlayState;
 extern "C" EffectContext sEffectContext;
 
@@ -89,6 +92,8 @@ static void LoadOverlayState(std::unique_ptr<uint8_t[]>& buf, void (*fn)(SaveSta
 typedef struct SaveStateInfo {
     unsigned char sysHeapCopy[SOH_SYSTEM_HEAP_SIZE];
     unsigned char audioHeapCopy[AUDIO_HEAP_SIZE];
+
+    SaveStateCollisionGuard collisionGuard;
 
     SaveContext saveContextCopy;
     EffectContext effectContextCopy;
@@ -173,7 +178,7 @@ class SaveState {
     std::shared_ptr<SaveStateInfo> info;
 
     void Save(void);
-    void Load(void);
+    bool Load(void);
     void BackupSeqScriptState(void);
     void LoadSeqScriptState(void);
     void SaveOverlayStaticData(void);
@@ -384,9 +389,9 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
                 break;
             case RequestType::LOAD:
                 if (this->states.contains(request.slot)) {
-                    this->states[request.slot]->Load();
+                    const bool loaded = this->states[request.slot]->Load();
                     Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                        1.0f, true, "loaded state %u", request.slot);
+                        1.0f, true, loaded ? "loaded state %u" : "slot %u recusado: colisao alterada", request.slot);
                 } else {
                     SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);
                 }
@@ -429,6 +434,7 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
 
 void SaveState::Save(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
+    info->collisionGuard.Capture(gPlayState->colCtx, BgCheck_GetSaveStateGeneration());
     memcpy(&info->sysHeapCopy, gSystemHeap, SOH_SYSTEM_HEAP_SIZE /* sizeof(gSystemHeap) */);
     memcpy(&info->audioHeapCopy, gAudioHeap, AUDIO_HEAP_SIZE /* sizeof(gAudioContext) */);
 
@@ -457,8 +463,15 @@ void SaveState::Save(void) {
     SaveTransitionActors();
 }
 
-void SaveState::Load(void) {
+bool SaveState::Load(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
+    // Must precede every heap/static restore: those copies would revive freed
+    // process-heap pointers and obsolete capacities in the saved PlayState.
+    if (gPlayState == nullptr ||
+        !info->collisionGuard.Matches(gPlayState->colCtx, BgCheck_GetSaveStateGeneration())) {
+        SPDLOG_WARN("SaveState slot {} recusado: buffers/capacidades ou geracao da colisao alterados", slot);
+        return false;
+    }
     memcpy(gSystemHeap, &info->sysHeapCopy, SOH_SYSTEM_HEAP_SIZE);
     memcpy(gAudioHeap, &info->audioHeapCopy, AUDIO_HEAP_SIZE);
 
@@ -485,4 +498,5 @@ void SaveState::Load(void) {
     D_801755D0 = info->D_801755D0_copy;
     LoadOverlayStaticData();
     LoadTransitionActors();
+    return true;
 }

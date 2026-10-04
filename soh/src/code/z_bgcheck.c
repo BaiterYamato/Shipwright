@@ -9,6 +9,14 @@
 #include <math.h>
 #include "soh/unbound/CollisionVertexWords.h"
 
+// Private savestate lifetime token. Kept outside the copied system heap/static blobs.
+// Any free or allocation invalidates slots, including allocator address reuse.
+static uint64_t sBgCheckSaveStateGeneration = 0;
+
+uint64_t BgCheck_GetSaveStateGeneration(void) {
+    return sBgCheckSaveStateGeneration;
+}
+
 #define SS_NULL 0xFFFFFFFFu // SOH [Unbound] node indices are 32-bit
 
 /**
@@ -1519,6 +1527,8 @@ static void BgCheck_ScaleSubdivisionsForPolyCount(CollisionContext* colCtx, u32 
 void BgCheck_Free(CollisionContext* colCtx) {
     s32 i;
 
+    ++sBgCheckSaveStateGeneration;
+
     free(colCtx->lookupTbl);
     colCtx->lookupTbl = NULL;
     free(colCtx->polyNodes.tbl);
@@ -1579,6 +1589,8 @@ static void BgCheck_SetVanillaSubdivisions(CollisionContext* colCtx, PlayState* 
  */
 void BgCheck_Allocate(CollisionContext* colCtx, PlayState* play, CollisionHeader* colHeader) {
     u32 tblMax;
+
+    ++sBgCheckSaveStateGeneration;
 
     colCtx->colHeader = colHeader;
 
