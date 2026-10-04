@@ -1146,7 +1146,13 @@ void OTRAudio_Thread() {
         // Safe for BGM — the N64 sequencer advances independently of gameplay.
         // The producer guard (same as above) prevents advancing the audio engine
         // when the backend ring is already at capacity.
-        while (audio.running && AudioPlayer_Buffered() < AudioPlayer_GetDesiredBuffered()) {
+        while (true) {
+            // Share the save/load lock for every batch, not the entire reservoir fill.
+            std::unique_lock<std::mutex> Lock(audio.mutex);
+            // Save/load or shutdown may have run while we waited for the lock.
+            if (!audio.running || AudioPlayer_Buffered() >= AudioPlayer_GetDesiredBuffered()) {
+                break;
+            }
             if (AudioPlayer_Buffered() + SAMPLES_MID * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
                 break;
             }
