@@ -135,6 +135,22 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   O resumo ganha `grafos=`, `incompletos=`, `herdadas=` e
   `dependencias=`. Só as cenas que um mod traz são raízes; um mod que só troca uma colisão da base não é cruzado
   com as cenas da base.
+- **Minimapa e mapa da pausa (0.6.8).** Duas notas locais da cena. Uma cena de dungeon vanilla, da variante MQ
+  dela (`scenes/<cena>_mq`; chefe não tem MQ) ou do chefe sai em nota quando passa das salas do minimapa da dungeon ou da sala 31: o
+  `z_map_exp.c` (`Map_InitData`, `Map_SetPaletteData`, `Map_InitRoomData`) lê textura, paleta e bússola pela sala
+  sem conferir, e as tabelas são contíguas. A nota diz, por tabela, em que salas a leitura cai nas dungeons
+  seguintes e de que sala em diante passa da tabela inteira (239 nomes de textura, linhas de 32 paletas e de 44
+  offsets de bússola por dungeon), e que a visita deixa de ser marcada da sala 32 em diante. A paleta lida além da
+  tabela é índice de escrita em `mapPalette` e pode escrever fora dela. Na `ice_doukutu`, última da lista, a textura já passa da
+  lista na sala 12; na `MIZUsin` e na `HIDAN`, a nota pode sair a partir da 32, antes de acabarem as texturas delas.
+  A nota diz o que o jogo lê: os chefes não desenham o minimapa, e o desenho depende do mapa da dungeon. A outra nota
+  é `cameraSettings.worldMapArea` fora de 0..22 num setup emitido: o jogo guarda o valor como s16, um negativo passa
+  nas guardas `< 22` do mapa-múndi da pausa, que lê as tabelas de área fora, e numa cena de exterior vanilla o valor
+  também indexa `gBitFlags` e marca `worldMapAreaData` no save. O 22 (fora do mapa: fontes de fada e grutas) não sai
+  em nota, mas o host o lê além das quatro tabelas de 22 da moldura da pausa (`func_80823A0C`, como no vanilla): a
+  nota não certifica a pausa, e a guarda é do host. Cena nova não tem minimapa (`Map_Init` e `Minimap_Draw` só
+  conhecem as cenas vanilla) e, na pausa, mostra o mapa-múndi na área do `worldMapArea` dela. Nenhuma cena da base
+  gera essas notas (as 18 cenas de dungeon cabem no minimapa; as áreas vão de 0 a 22).
 
 ## Unbound 0.8 (novo na 0.5.0)
 

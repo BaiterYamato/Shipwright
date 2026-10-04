@@ -324,6 +324,107 @@ void TestRoomCount() {
     }
 }
 
+// R09 (UNBOUND-028): o minimapa das dungeons vanilla lê textura, bússola e paleta pela sala. A nota diz, por tabela,
+// em que salas a leitura cai nas dungeons seguintes e de que sala em diante passa da tabela; a visita para na 31. A
+// Deku Tree tem 13 salas no minimapa; a Ice Cavern, última das tabelas, passa da lista de texturas já na sala 12; a
+// Water Temple tem 44, mas a paleta e a visita param em 32. A variante MQ usa as mesmas tabelas. Cena fora da lista
+// e cena nova não têm nota.
+void TestMinimapRooms() {
+    const auto note = [](const std::string& path, size_t n) {
+        const std::string doc = R"({"rooms":)" + PositionalText(n, R"("x/sala.json")") + R"(,"setups":{"0":{}}})";
+        TranscodeContext context = Context();
+        context.path = path;
+        const std::string xml = TranscodeScene(ParseJson(doc), false, context);
+        CHECK(Count(xml, "<RoomEntry ") == n);
+        std::string found;
+        for (const auto& text : context.notes) {
+            if (text.find("minimapa") != std::string::npos) {
+                CHECK(found.empty());
+                found = text;
+            }
+        }
+        return found;
+    };
+    const auto head = [](const std::string& path, size_t n, const std::string& dungeon, size_t own) {
+        return path + " rooms: " + std::to_string(n) + " salas, e o minimapa de " + dungeon + " tem " +
+               std::to_string(own) + " (z_map_exp.c lê as tabelas pela sala sem conferir): ";
+    };
+    const std::string ydan = "scenes/ydan/scene.json";
+    const std::string visit = "visita não marcada da sala 32 em diante";
+    CHECK(note(ydan, 13).empty());
+    CHECK(note(ydan, 14) == head(ydan, 14, "ydan", 13) + "textura da dungeon seguinte na sala 13");
+    // Até a 31, a textura é a da Dodongo's Cavern (19 salas a partir da 13); da 32, já é a da seguinte.
+    CHECK(note(ydan, 32) == head(ydan, 32, "ydan", 13) + "textura da dungeon seguinte nas salas 13 a 31");
+    CHECK(note(ydan, 33) == head(ydan, 33, "ydan", 13) + "textura das dungeons seguintes nas salas 13 a 32; " + visit +
+                                "; paleta da dungeon seguinte na sala 32");
+    CHECK(note(ydan, 240) == head(ydan, 240, "ydan", 13) +
+                                 "textura das dungeons seguintes nas salas 13 a 238 e além da lista de 239 nomes da sala "
+                                 "239 em diante; " +
+                                 visit + "; paleta das dungeons seguintes nas salas 32 a 239; bússola das dungeons "
+                                         "seguintes nas salas 44 a 239");
+    CHECK(note(ydan, 441) == head(ydan, 441, "ydan", 13) +
+                                 "textura das dungeons seguintes nas salas 13 a 238 e além da lista de 239 nomes da sala "
+                                 "239 em diante; " +
+                                 visit +
+                                 "; paleta das dungeons seguintes nas salas 32 a 319 e além da tabela da sala 320 em "
+                                 "diante (risco de escrita fora de mapPalette); bússola das dungeons seguintes nas salas 44 a 439 "
+                                 "e além da tabela da sala 440 em diante");
+    const std::string ice = "scenes/ice_doukutu/scene.json";
+    const std::string iceTexture = "textura além da lista de 239 nomes da sala 12 em diante";
+    CHECK(note(ice, 12).empty());
+    CHECK(note(ice, 13) == head(ice, 13, "ice_doukutu", 12) + iceTexture);
+    CHECK(note(ice, 32) == head(ice, 32, "ice_doukutu", 12) + iceTexture);
+    CHECK(note(ice, 33) == head(ice, 33, "ice_doukutu", 12) + iceTexture + "; " + visit +
+                               "; paleta além da tabela da sala 32 em diante (risco de escrita fora de mapPalette)");
+    CHECK(note(ice, 44) == note(ice, 33).replace(note(ice, 33).find("33 salas"), 2, "44"));
+    CHECK(note(ice, 45) == head(ice, 45, "ice_doukutu", 12) + iceTexture + "; " + visit +
+                               "; paleta além da tabela da sala 32 em diante (risco de escrita fora de mapPalette); bússola além "
+                               "da tabela da sala 44 em diante");
+    const std::string water = "scenes/MIZUsin/scene.json";
+    CHECK(note(water, 32).empty());
+    CHECK(note(water, 33) == head(water, 33, "MIZUsin", 44) + visit + "; paleta da dungeon seguinte na sala 32");
+    CHECK(note(water, 45) == head(water, 45, "MIZUsin", 44) + "textura da dungeon seguinte na sala 44; " + visit +
+                                 "; paleta da dungeon seguinte nas salas 32 a 44; bússola da dungeon seguinte na sala 44");
+    CHECK(note(water, 161).find("paleta das dungeons seguintes nas salas 32 a 159 e além da tabela da sala 160 em "
+                                "diante") != std::string::npos);
+    CHECK(note(water, 221).find("bússola das dungeons seguintes nas salas 44 a 219 e além da tabela da sala 220 em "
+                                "diante") != std::string::npos);
+    const std::string boss = "scenes/moribossroom/scene.json";
+    CHECK(note(boss, 28) == head(boss, 28, "moribossroom", 27) + "textura da dungeon seguinte na sala 27");
+    const std::string mq = "scenes/ydan_mq/scene.json";
+    CHECK(note(mq, 13).empty());
+    CHECK(note(mq, 14) == head(mq, 14, "ydan", 13) + "textura da dungeon seguinte na sala 13");
+    CHECK(!note("scenes/MIZUsin_mq/scene.json", 33).empty());
+    CHECK(note("scenes/spot04/scene.json", 200).empty());
+    CHECK(note("scenes/linkspan_e/ydan/scene.json", 200).empty());
+    CHECK(note("scenes/ydan_boss_mq2/scene.json", 200).empty());
+    // Chefe não tem variante MQ: o nome com _mq não é a rota vanilla.
+    CHECK(note("scenes/ydan_boss_mq/scene.json", 14).empty());
+    CHECK(note("scenes/HAKAdan_bs_mq/scene.json", 200).empty());
+    CHECK(!note("scenes/ydan_boss/scene.json", 14).empty());
+}
+
+// R08 (UNBOUND-028): área do mapa-múndi em s16; 0..22 valem (22 é fora do mapa, como as grutas vanilla).
+void TestWorldMapArea() {
+    for (const int64_t value : { 0LL, 21LL, 22LL, 23LL, -1LL, 32767LL, 65536LL, 65558LL, 65535LL }) {
+        const std::string doc = R"({"setups":{"0":{"cameraSettings":{"worldMapArea":)" + std::to_string(value) +
+                                R"(}},"2":{"cameraSettings":{"worldMapArea":5}}}})";
+        TranscodeContext context = Context();
+        TranscodeScene(ParseJson(doc), false, context);
+        const int16_t stored = static_cast<int16_t>(static_cast<int32_t>(value));
+        const bool outside = stored < 0 || stored > 22;
+        CHECK(AnyNote(context, "1 setup(s) fora de 0..22") == outside);
+        CHECK(!outside || AnyNote(context, "(ex.: setups.0=" + std::to_string(value) + ")"));
+    }
+    // Alias de setup ("01" e "1"): só um vira o <AlternateHeader> 1, e a nota segue o que foi emitido.
+    TranscodeContext context = Context();
+    const std::string xml = TranscodeScene(ParseJson(R"({"setups":{"0":{},"1":{"cameraSettings":{"worldMapArea":3}},
+        "01":{"cameraSettings":{"worldMapArea":-5}}}})"), false, context);
+    const bool negative = xml.find(R"(WorldMapArea="-5")") != std::string::npos;
+    CHECK(negative != (xml.find(R"(WorldMapArea="3")") != std::string::npos));
+    CHECK(AnyNote(context, "1 setup(s) fora de 0..22") == negative);
+}
+
 // M07: atores por sala (numSetupActors u16) e M09: objetos por sala (banco de 1 024).
 void TestActorAndObjectCounts() {
     for (const size_t n : { 65534u, 65535u, 65536u }) {
@@ -539,6 +640,8 @@ void TestDecimalPositions() {
 
 int main() {
     TestRoomCount();
+    TestMinimapRooms();
+    TestWorldMapArea();
     TestActorAndObjectCounts();
     TestCameraPositions();
     TestWorldLimit();

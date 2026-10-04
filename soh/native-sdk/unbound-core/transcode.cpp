@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iterator>
+#include <set>
 
 namespace LinkSpanUnbound {
 namespace {
@@ -874,11 +875,135 @@ std::string EscapeXml(const std::string& text) {
     return out;
 }
 
+// R08/R09 (UNBOUND-028): o minimapa das dungeons vanilla (z_map_exp.c, Map_InitData e Map_SetPaletteData) lê
+// textura, bússola e paleta pela sala sem conferir. Tabelas de z_map_data.c: salas com minimapa por dungeon
+// (sDgnMinimapCount), início de cada uma na lista de texturas (sDgnMinimapTexIndexOffset; 239 nomes ao todo),
+// paleta em linhas de 32 (sRoomPalette[10][32]; o valor lido é índice de escrita em mapPalette, de 32 bytes:
+// fora de 0..15, escreve fora), bússola em
+// linhas de 44 (sRoomCompassOffsetX/Y[10][44]) e bit de visita só até a sala 31 (Map_InitRoomData). Além das salas
+// de uma dungeon, a leitura cai nas dungeons seguintes (as tabelas são contíguas) até acabar a tabela inteira. Os
+// chefes fazem as mesmas leituras na entrada, mas não desenham o minimapa, e o desenho depende do mapa da dungeon:
+// por isso a nota diz o que o jogo lê, não o que mostra.
+struct DungeonMinimap {
+    const char* scene;
+    size_t index;
+    bool masterQuest; // tem variante MQ (scenes/<cena>_mq): só as dez dungeons (SceneHasMasterQuest)
+};
+constexpr DungeonMinimap kDungeonMinimaps[] = {
+    { "ydan", 0, true },       { "ddan", 1, true },        { "bdan", 2, true },      { "Bmori1", 3, true },
+    { "HIDAN", 4, true },      { "MIZUsin", 5, true },     { "jyasinzou", 6, true }, { "HAKAdan", 7, true },
+    { "HAKAdanCH", 8, true },  { "ice_doukutu", 9, true },
+    // O chefe usa a tabela da dungeon dele (mapIndex = cena - SCENE_DEKU_TREE_BOSS).
+    { "ydan_boss", 0, false }, { "ddan_boss", 1, false },  { "bdan_boss", 2, false }, { "moribossroom", 3, false },
+    { "FIRE_bs", 4, false },   { "MIZUsin_bs", 5, false }, { "jyasinboss", 6, false }, { "HAKAdan_bs", 7, false },
+};
+constexpr size_t kDungeonCount = 10;
+constexpr size_t kMinimapRooms[kDungeonCount] = { 13, 19, 17, 27, 38, 44, 32, 27, 10, 12 };
+constexpr size_t kMinimapTexOffset[kDungeonCount] = { 0, 13, 32, 49, 76, 114, 158, 190, 217, 227 };
+constexpr size_t kMinimapTexCount = 239;
+constexpr size_t kPaletteRow = 32;
+constexpr size_t kCompassRow = 44;
+
+// "na sala 13" ou "nas salas 13 a 238", cortado na última sala da cena.
+std::string RoomRange(size_t first, size_t end, size_t rooms) {
+    const size_t last = std::min(end, rooms) - 1;
+    return first == last ? "na sala " + std::to_string(first)
+                         : "nas salas " + std::to_string(first) + " a " + std::to_string(last);
+}
+
+void DungeonMinimapNote(size_t rooms, TranscodeContext& context) {
+    for (const auto& dungeon : kDungeonMinimaps) {
+        const std::string base = std::string("scenes/") + dungeon.scene;
+        // A variante MQ (scenes/<cena>_mq, como o extrator grava) usa o mesmo id de cena e as mesmas tabelas.
+        if (context.path != base + "/scene.json" && !(dungeon.masterQuest && context.path == base + "_mq/scene.json")) {
+            continue;
+        }
+        const size_t index = dungeon.index;
+        const size_t own = kMinimapRooms[index];
+        if (rooms <= std::min(own, kPaletteRow)) {
+            return;
+        }
+        // Cada tabela: das dungeons seguintes de `start` até `end` (fim da tabela inteira), além dela daí em diante.
+        // `next` é onde acaba a dungeon seguinte, para o singular.
+        std::vector<std::string> parts;
+        auto table = [&](const std::string& what, size_t start, size_t next, size_t end, const std::string& after) {
+            std::string part;
+            if (start < end && rooms > start) {
+                part = what + (std::min(end, rooms) > next ? " das dungeons seguintes " : " da dungeon seguinte ") +
+                       RoomRange(start, end, rooms);
+            }
+            if (rooms > end) {
+                part += (part.empty() ? what + " " : std::string(" e ")) + "além da " +
+                        (what == "textura" ? "lista de 239 nomes" : "tabela") + " da sala " + std::to_string(end) +
+                        " em diante" + after;
+            }
+            if (!part.empty()) {
+                parts.push_back(part);
+            }
+        };
+        const size_t rows = kDungeonCount - index;
+        const size_t textureEnd = kMinimapTexCount - kMinimapTexOffset[index];
+        const size_t textureNext = index + 1 < kDungeonCount ? own + kMinimapRooms[index + 1] : textureEnd;
+        table("textura", own, textureNext, textureEnd, "");
+        if (rooms > kPaletteRow) {
+            parts.push_back("visita não marcada da sala 32 em diante");
+        }
+        table("paleta", kPaletteRow, 2 * kPaletteRow, kPaletteRow * rows, " (risco de escrita fora de mapPalette)");
+        table("bússola", kCompassRow, 2 * kCompassRow, kCompassRow * rows, "");
+        std::string note = Where(context, "rooms") + ": " + std::to_string(rooms) + " salas, e o minimapa de " +
+                           dungeon.scene + " tem " + std::to_string(own) +
+                           " (z_map_exp.c lê as tabelas pela sala sem conferir): ";
+        for (size_t i = 0; i < parts.size(); i++) {
+            note += (i ? "; " : "") + parts[i];
+        }
+        context.notes.push_back(note);
+        return;
+    }
+}
+
+// R08 (UNBOUND-028): o jogo guarda a área do mapa-múndi em s16 (gSaveContext.worldMapArea). 0..21 são áreas e 22 é
+// "fora do mapa" (fontes de fada e grutas vanilla). Negativo passa nas guardas < 22 da pausa (z_kaleido_map_PAL.c)
+// e lê textura e moldura antes das tabelas; acima de 22 lê além delas. Numa cena de exterior vanilla, o valor também
+// indexa gBitFlags na entrada (z_scene_otr.cpp) e marca worldMapAreaData no save. O 22 não sai em nota, mas o host
+// também o lê além das quatro tabelas de 22 da moldura (func_80823A0C, sem guarda): é do vanilla e vai para a guarda
+// do host.
+void WorldMapAreaNote(const Json& setups, const std::vector<std::pair<int64_t, std::string>>& alternates,
+                      TranscodeContext& context) {
+    ListNote outside;
+    // O 0 e o primeiro alias de cada índice alternativo, como o <AlternateHeader> emitido.
+    std::vector<std::string> keys{ "0" };
+    std::set<int64_t> emitted;
+    for (const auto& [index, key] : alternates) {
+        if (emitted.insert(index).second) {
+            keys.push_back(key);
+        }
+    }
+    for (const auto& key : keys) {
+        const Json& setup = setups[key];
+        if (!setup.is_object() || !setup.contains("cameraSettings")) {
+            continue;
+        }
+        const int64_t value = Field(setup["cameraSettings"], "worldMapArea");
+        const int16_t stored = static_cast<int16_t>(S32(value));
+        if (stored < 0 || stored > 22) {
+            outside.Add("setups." + key + "=" + std::to_string(value));
+        }
+    }
+    outside.Note(context, Where(context, "cameraSettings.worldMapArea"),
+                 "setup(s) fora de 0..22 (o jogo guarda s16); na pausa, o mapa-múndi lê as tabelas de área fora "
+                 "(negativo passa nas guardas < 22), e numa cena de exterior vanilla o valor indexa gBitFlags e "
+                 "marca worldMapAreaData no save");
+}
+
 std::string TranscodeScene(const Json& doc, bool room, TranscodeContext& context) {
     Shared shared;
     if (!room) {
         shared.rooms = Sub(doc, "rooms");
         shared.collision = PathField(doc, "collision");
+        // Só objeto vira lista de salas (como no <RoomEntry> emitido).
+        if (shared.rooms.is_object()) {
+            DungeonMinimapNote(PositionalItems(shared.rooms, Where(context, "rooms")).size(), context);
+        }
     }
     const Json& setups = Sub(doc, "setups");
     if (!setups.contains("0") || !setups["0"].is_object()) {
@@ -903,6 +1028,7 @@ std::string TranscodeScene(const Json& doc, bool room, TranscodeContext& context
             alternates.push_back({ index, key });
         }
     }
+    WorldMapAreaNote(setups, alternates, context);
     Xml xml;
     // Cena e sala têm a mesma raiz: o loader acha o tipo pelo nome da raiz e o SoH registra a fábrica
     // XML de cena só como "Room" (OTRGlobals.cpp).

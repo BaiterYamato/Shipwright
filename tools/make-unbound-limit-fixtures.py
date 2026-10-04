@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gera as camadas de prova da UNBOUND-020, 022 e 024: documentos Unbound nos tetos da matriz do Prelude.
 
-Uso: make-unbound-limit-fixtures.py <pasta-de-saida>   (grava UB020-A.o2r, UB022-A.o2r, UB024-A.o2r e UB025-A.o2r)
+Uso: make-unbound-limit-fixtures.py <pasta-de-saida>   (grava UB020-A.o2r, UB022-A.o2r, UB024-A.o2r, UB025-A.o2r e UB028-A.o2r)
 
 Os documentos ficam fora de scenes/ e do registro, entao o jogo nao os carrega: so a checagem do game.ready
 (UNBOUND-019) os mescla e transcodifica, e o tempo dela sai no resumo (ms=). Sozinha em mods/, o esperado e
@@ -32,6 +32,10 @@ UB025-A (grafo cena <-> colisao e salas, 0.6.7): sozinha em mods/, o esperado sa
   custom/ub025/lacuna.json   colisao que nenhum archive tem                                -> lacuna e ausente
   scenes/spot04/scene.json   delta: porta nova (setup 0) com room 40 numa cena de 3 salas  -> nota de room de porta;
                              os setups de cutscene vanilla (exits alem da lista) nao viram nota
+UB028-A (minimapa e mapa-mundi, 0.6.8): sozinha em mods/, o esperado sao tres notas novas:
+  scenes/ydan/scene.json         delta: salas 12 e 13 (14 de 13 do minimapa)        -> textura da dungeon seguinte na 13
+  scenes/ice_doukutu/scene.json  delta: sala 12 (13 de 12; fim da lista)            -> textura alem da lista na 12
+  custom/ub028/cena.json         worldMapArea -1, 23 e 22 nos setups 0, 1 e 2       -> nota de 2 setups (22 vale)
 So JSON e bytes escritos aqui: nenhum dado do jogo entra no arquivo.
 """
 import json
@@ -163,6 +167,36 @@ def graph_documents():
     }
 
 
+def map_documents():
+    spawn = {"0": {"id": 0, "pos": [0, 0, 0], "rot": [0, 0, 0], "params": 0}}
+    return {
+        # Deltas em dungeons da base: salas que repetem uma sala vanilla, além da tabela do minimapa.
+        "scenes/ydan/scene.json": {"$schema": "unbound/scene/1",
+                                   "rooms": {"12": "scenes/ydan/rooms/0.json", "13": "scenes/ydan/rooms/0.json"}},
+        "scenes/ice_doukutu/scene.json": {"$schema": "unbound/scene/1",
+                                          "rooms": {"12": "scenes/ice_doukutu/rooms/0.json"}},
+        "custom/ub028/cena.json": {
+            "$schema": "unbound/scene/1",
+            "collision": "custom/ub028/colisao.json",
+            "rooms": {"0": "custom/ub028/sala.json"},
+            "setups": {
+                "0": {"spawns": spawn, "entrances": {"0": {"spawn": 0, "room": 0}},
+                      "cameraSettings": {"cameraMovement": 0, "worldMapArea": -1}},
+                "1": {"spawns": spawn, "entrances": {"0": {"spawn": 0, "room": 0}},
+                      "cameraSettings": {"cameraMovement": 0, "worldMapArea": 23}},
+                "2": {"spawns": spawn, "entrances": {"0": {"spawn": 0, "room": 0}},
+                      "cameraSettings": {"cameraMovement": 0, "worldMapArea": 22}},
+            },
+        },
+        "custom/ub028/sala.json": {"$schema": "unbound/room/1", "setups": {"0": {}}},
+        "custom/ub028/colisao.json": {
+            "$schema": "unbound/collision/3",
+            "bounds": {"min": [0, 0, 0], "max": [1, 1, 1]},
+            "bulk": {"file": "custom/ub028/colisao.bin", "vertices": 0, "polys": 0},
+        },
+    }
+
+
 def write_layer(folder, name, docs, bulk):
     path = os.path.join(folder, name)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as archive:
@@ -182,6 +216,7 @@ def main(argv):
     write_layer(argv[1], "UB022-A.o2r", world_limit_documents(), "custom/ub022/colisao.bin")
     write_layer(argv[1], "UB024-A.o2r", camera_documents(), "custom/ub024/colisao.bin")
     write_layer(argv[1], "UB025-A.o2r", graph_documents(), "custom/ub025/colisao.bin")
+    write_layer(argv[1], "UB028-A.o2r", map_documents(), "custom/ub028/colisao.bin")
     return 0
 
 
