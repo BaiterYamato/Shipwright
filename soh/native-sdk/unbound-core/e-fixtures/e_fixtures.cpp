@@ -395,6 +395,24 @@ ShipNativeStatus SHIP_NATIVE_CALL Water(void* user, const char* request, uint32_
     return Write(write, writer, text);
 }
 
+// Só teste (RFC 0027, patch 15): conta os nós da lista de luzes do jogo. Uma luz da bridge removida depois do save
+// não pode voltar ao lightCtx num load (luz fantasma).
+ShipNativeStatus SHIP_NATIVE_CALL LightsProbe(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                              void* writer) {
+    auto& fixtures = *static_cast<Fixtures*>(user);
+    const PlayState* play = nullptr;
+    const Player* player = nullptr;
+    if (length) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    if (!PlayerReady(fixtures, play, player)) {
+        return Write(write, writer, "sem jogador em cena");
+    }
+    char text[96];
+    std::snprintf(text, sizeof(text), "luzes lista=%u", CountLights(play));
+    return Write(write, writer, text);
+}
+
 void ResetRooms(Fixtures& fixtures) {
     fixtures.lastRoom = -1;
     fixtures.roomFrom = -1;
@@ -575,7 +593,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "text_probe", TextProbe, fixtures) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "adult_epona", AdultEpona, fixtures) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "horse_here", HorseHere, fixtures) != SHIP_NATIVE_OK ||
-        runtime->register_function(runtime->context, "water", Water, fixtures) != SHIP_NATIVE_OK) {
+        runtime->register_function(runtime->context, "water", Water, fixtures) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "lights_probe", LightsProbe, fixtures) != SHIP_NATIVE_OK) {
         delete fixtures;
         return SHIP_NATIVE_FAILURE;
     }

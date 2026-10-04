@@ -80,6 +80,11 @@ ship.hotkeys.register("water_probe", { default = "P", label = "Unbound E: le a a
     ship.log.info("unbound-e: " .. tostring(ship.native.call("water", "")))
 end)
 
+-- Só teste (RFC 0027, patch 15): I conta os nós da lista de luzes do jogo.
+ship.hotkeys.register("lights_probe", { default = "I", label = "Unbound E: conta as luzes" }, function()
+    ship.log.info("unbound-e: " .. tostring(ship.native.call("lights_probe", "")))
+end)
+
 -- O framework aplica o texto no primeiro frame; a sonda olha a tabela logo depois.
 local frames = 0
 ship.events.on("game.frame", function()
