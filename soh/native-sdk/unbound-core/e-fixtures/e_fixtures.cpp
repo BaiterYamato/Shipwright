@@ -361,6 +361,40 @@ ShipNativeStatus SHIP_NATIVE_CALL HorseHere(void* user, const char*, uint32_t le
     return Write(write, writer, "cavalo ao lado " + Describe(fixtures, play, player));
 }
 
+// Só teste (RFC 0027, patch 14): lê o nível das water boxes da colisão da cena e, com "up", sobe todas 200 unidades.
+// Um load_state na mesma colisão precisa trazer o nível de volta (as caixas ficam no recurso, fora dos heaps).
+ShipNativeStatus SHIP_NATIVE_CALL Water(void* user, const char* request, uint32_t length, ShipNativeWriteFn write,
+                                        void* writer) {
+    auto& fixtures = *static_cast<Fixtures*>(user);
+    const PlayState* play = nullptr;
+    const Player* player = nullptr;
+    const std::string mode(request ? request : "", length);
+    if (!mode.empty() && mode != "up") {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    if (!PlayerReady(fixtures, play, player)) {
+        return Write(write, writer, "sem jogador em cena");
+    }
+    CollisionHeader* header = play->colCtx.colHeader;
+    if (!header || !header->waterBoxes || header->numWaterBoxes == 0) {
+        return Write(write, writer, "agua: cena sem water box");
+    }
+    long long before = 0;
+    long long after = 0;
+    for (unsigned i = 0; i < header->numWaterBoxes; ++i) {
+        before += header->waterBoxes[i].ySurface;
+        if (mode == "up") {
+            header->waterBoxes[i].ySurface += 200;
+        }
+        after += header->waterBoxes[i].ySurface;
+    }
+    char text[192];
+    std::snprintf(text, sizeof(text), "agua %s caixas=%u y0=%d soma=%lld->%lld", mode.empty() ? "leitura" : "sobe",
+                  static_cast<unsigned>(header->numWaterBoxes), static_cast<int>(header->waterBoxes[0].ySurface),
+                  before, after);
+    return Write(write, writer, text);
+}
+
 void ResetRooms(Fixtures& fixtures) {
     fixtures.lastRoom = -1;
     fixtures.roomFrom = -1;
@@ -540,7 +574,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         runtime->register_function(runtime->context, "update", Update, fixtures) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "text_probe", TextProbe, fixtures) != SHIP_NATIVE_OK ||
         runtime->register_function(runtime->context, "adult_epona", AdultEpona, fixtures) != SHIP_NATIVE_OK ||
-        runtime->register_function(runtime->context, "horse_here", HorseHere, fixtures) != SHIP_NATIVE_OK) {
+        runtime->register_function(runtime->context, "horse_here", HorseHere, fixtures) != SHIP_NATIVE_OK ||
+        runtime->register_function(runtime->context, "water", Water, fixtures) != SHIP_NATIVE_OK) {
         delete fixtures;
         return SHIP_NATIVE_FAILURE;
     }

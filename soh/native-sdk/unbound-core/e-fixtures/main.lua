@@ -71,6 +71,15 @@ ship.hotkeys.register("horse_here", { default = "U", label = "Unbound E: Epona a
     ship.log.info("unbound-e: " .. tostring(result))
 end)
 
+-- Só teste (RFC 0027, patch 14): O sobe 200 unidades o nível de todas as water boxes da cena; P lê o nível.
+ship.hotkeys.register("water_up", { default = "O", label = "Unbound E: sobe a agua" }, function()
+    ship.log.info("unbound-e: " .. tostring(ship.native.call("water", "up")))
+end)
+
+ship.hotkeys.register("water_probe", { default = "P", label = "Unbound E: le a agua" }, function()
+    ship.log.info("unbound-e: " .. tostring(ship.native.call("water", "")))
+end)
+
 -- O framework aplica o texto no primeiro frame; a sonda olha a tabela logo depois.
 local frames = 0
 ship.events.on("game.frame", function()
