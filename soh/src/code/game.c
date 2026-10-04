@@ -378,25 +378,37 @@ void GameState_Realloc(GameState* gameState, size_t size) {
     u32 systemMaxFree;
     u32 systemFree;
     u32 systemAlloc;
+    size_t maxSize;
     void* thaBufp = gameState->tha.bufp;
 
     THA_Dt(&gameState->tha);
     GameAlloc_Free(alloc, thaBufp);
     osSyncPrintf("ハイラル一時解放!!\n"); // "Hyrule temporarily released!!"
     SystemArena_GetSizes(&systemMaxFree, &systemFree, &systemAlloc);
-    if ((systemMaxFree - 0x10) < size) {
+    // GetSizes informa bytes de payload: o ArenaNode ja esta excluido.
+    // GameAlloc acrescenta sua entrada; __osMalloc alinha o pedido para cima em 16 B.
+    maxSize = systemMaxFree >= sizeof(GameAllocEntry)
+                  ? ((size_t)systemMaxFree - sizeof(GameAllocEntry)) & ~(size_t)0xF
+                  : 0;
+    if (maxSize < size) {
         osSyncPrintf("%c", BEL);
         osSyncPrintf(VT_FGCOL(RED));
 
         // "Not enough memory. Change the hyral size to the largest possible value"
         osSyncPrintf("メモリが足りません。ハイラルサイズを可能な最大値に変更します\n");
-        osSyncPrintf("(hyral=%08x max=%08x free=%08x alloc=%08x)\n", size, systemMaxFree, systemFree, systemAlloc);
+        osSyncPrintf("(hyral=%zu max=%08x free=%08x alloc=%08x)\n", size, systemMaxFree, systemFree, systemAlloc);
         osSyncPrintf(VT_RST);
-        size = systemMaxFree - 0x10;
+        size = maxSize;
     }
 
-    osSyncPrintf("ハイラル再確保 サイズ＝%u バイト\n", size); // "Hyral reallocate size = %u bytes"
-    gameArena = GAMESTATE_MALLOC_DEBUG(alloc, size);
+    osSyncPrintf("ハイラル再確保 サイズ＝%zu バイト\n", size); // "Hyral reallocate size = %u bytes"
+    if (maxSize == 0) {
+        osSyncPrintf("GameState_Realloc: sem espaco para THA de 16 B (maxFree=%u, GameAllocEntry=%zu); Fault\n",
+                     systemMaxFree, sizeof(GameAllocEntry));
+        gameArena = NULL;
+    } else {
+        gameArena = GAMESTATE_MALLOC_DEBUG(alloc, size);
+    }
     if (gameArena != NULL) {
         THA_Ct(&gameState->tha, gameArena, size);
         osSyncPrintf("ハイラル再確保成功\n"); // "Successful reacquisition of Hyrule"
