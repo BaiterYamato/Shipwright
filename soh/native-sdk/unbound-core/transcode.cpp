@@ -178,8 +178,9 @@ constexpr size_t kMaxRooms = 32768;      // índice de sala s16
 // buffer do oot.room.actors, de LINKSPAN_OOT_ROOM_ACTORS_MAX (8 192) vagas, e com mais escreve além dele
 // (UNBOUND-029). O teto de atores vivos (ACTOR_NUMBER_MAX) também é 8 192, com o Link na conta.
 constexpr size_t kMaxRoomActors = 8192;
-// Pool de luzes do host (z_lights.c): 32 nós para LIGHT_LIST de cena e salas, atores e ambiente.
+// Sem a rodada de host: 32 nós compartilhados; com ela: 255 entradas por comando de lista.
 constexpr size_t kLightSlots = 32;
+constexpr size_t kMaxLightsPerList = 255;
 // OBJECT_EXCHANGE_BANK_MAX (1024) menos as vagas permanentes antes da lista da sala: gameplay_keep, o objeto do Link
 // e o keep da cena (Object_Spawn em z_scene.c/z_scene_otr.cpp), mais o cavalo que o host acrescenta à lista nas
 // cenas com cavalo.
@@ -787,13 +788,17 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         const Json& list = setup["lights"];
         xml.Open("SetLightList");
         const auto lights = PositionalItems(list, Where(context, "lights"));
-        // UNBOUND-030: as luzes de lista não voltam ao pool nas trocas de sala, só na próxima cena.
-        if (lights.size() > kLightSlots) {
+        // Sem detectar a rodada do host: uma nota por setup; o XML conserva todas as entradas.
+        if (lights.size() > kMaxLightsPerList) {
             context.notes.push_back(Where(context, "lights") + ": " + std::to_string(lights.size()) +
-                                    " luzes; o jogo tem " + std::to_string(kLightSlots) +
-                                    " vagas de luz (z_lights.c) divididas entre as listas de cena e de sala, os atores "
-                                    "e o ambiente; as luzes de lista não voltam ao pool nas trocas de sala, só na "
-                                    "próxima cena, e as que não cabem não acendem");
+                                    " luzes; entradas além de 255 são descartadas mesmo com a rodada de host "
+                                    "(sem ela, além de 32), com aviso no log do host");
+        } else if (lights.size() > kLightSlots) {
+            context.notes.push_back(Where(context, "lights") + ": " + std::to_string(lights.size()) +
+                                    " luzes; sem a rodada de host, só 32 vagas no total para listas, atores e ambiente; "
+                                    "o resto é descartado. Com a rodada, o limite é 255 por comando de lista e 765 nós "
+                                    "cumulativos por cena para listas, separados das 32 vagas de atores/ambiente; "
+                                    "luzes de lista não voltam ao pool nas trocas de sala");
         }
         for (const auto& [key, item] : lights) {
             const Json& light = *item;

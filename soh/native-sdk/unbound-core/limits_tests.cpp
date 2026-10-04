@@ -449,16 +449,6 @@ void TestActorAndObjectCounts() {
         CHECK(Count(xml, "<ActorEntry ") == 8192);
         CHECK(!AnyNote(context, "o framework grava só os primeiros"));
     }
-    // Luzes: 32 vagas no pool do host (z_lights.c).
-    for (const size_t n : { 32u, 33u }) {
-        const std::string doc = R"({"setups":{"0":{"lights":)" +
-                                PositionalText(n, R"({"type":0,"pos":[0,0,0],"color":[255,255,255],"glow":0,"radius":100})") +
-                                "}}}";
-        TranscodeContext context = Context();
-        const std::string xml = TranscodeScene(ParseJson(doc), true, context);
-        CHECK(Count(xml, "<LightInfo ") == n);
-        CHECK(AnyNote(context, std::to_string(n) + " luzes; o jogo tem 32 vagas de luz") == (n > 32));
-    }
     // O banco tem 1 024 vagas, mas até 4 são permanentes (gameplay_keep, Link, keep da cena e cavalo).
     for (const size_t n : { 1019u, 1020u, 1021u }) {
         const std::string doc = R"({"setups":{"0":{"objects":)" + PositionalText(n, "1") + "}}}";
@@ -466,6 +456,54 @@ void TestActorAndObjectCounts() {
         const std::string xml = TranscodeScene(ParseJson(doc), true, context);
         CHECK(Count(xml, "<ObjectEntry ") == n);
         CHECK(AnyNote(context, "objetos; o banco do jogo tem 1024 vagas, até 4 delas") == (n > 1020));
+    }
+}
+
+// Notas de luzes por setup, em cena e sala: host antigo e host com a rodada.
+void TestLightListCounts() {
+    const char* light = R"({"type":0,"pos":[0,0,0],"color":[255,255,255],"glow":0,"radius":100})";
+    const std::string low = " luzes; sem a rodada de host, só 32 vagas no total para listas, atores e ambiente; "
+                            "o resto é descartado. Com a rodada, o limite é 255 por comando de lista e 765 nós "
+                            "cumulativos por cena para listas, separados das 32 vagas de atores/ambiente; "
+                            "luzes de lista não voltam ao pool nas trocas de sala";
+    const std::string high = " luzes; entradas além de 255 são descartadas mesmo com a rodada de host "
+                             "(sem ela, além de 32), com aviso no log do host";
+    for (const bool room : { false, true }) {
+        for (const size_t n : { 31u, 32u, 33u, 254u, 255u, 256u, 764u, 765u, 766u }) {
+            const std::string doc = R"({"setups":{"0":{"lights":)" + PositionalText(n, light) + "}}}";
+            TranscodeContext context = Context();
+            const std::string xml = TranscodeScene(ParseJson(doc), room, context);
+            CHECK(Count(xml, "<LightInfo ") == n); // Nota não corta nem recusa o XML.
+            CHECK(context.notes.size() == (n > 32 ? 1u : 0u));
+            if (n > 32 && !context.notes.empty()) {
+                CHECK(context.notes.front() == context.path + " lights: " + std::to_string(n) +
+                                               (n > 255 ? high : low));
+            }
+            CHECK(AnyNote(context, low) == (n > 32 && n <= 255));
+            CHECK(AnyNote(context, high) == (n > 255));
+        }
+        // Quatro setups alternativos de 255: quatro notas baixas, nenhuma soma para nota alta/cumulativa.
+        const std::string list = PositionalText(255, light);
+        const std::string doc = R"({"setups":{"0":{"lights":)" + list + R"(},"1":{"lights":)" + list +
+                                R"(},"2":{"lights":)" + list + R"(},"3":{"lights":)" + list + "}}}";
+        TranscodeContext context = Context();
+        const std::string xml = TranscodeScene(ParseJson(doc), room, context);
+        CHECK(Count(xml, "<LightInfo ") == 1020);
+        CHECK(context.notes.size() == 4);
+        for (const auto& note : context.notes) {
+            CHECK(note == context.path + " lights: 255" + low);
+        }
+        CHECK(!AnyNote(context, high));
+
+        // Setups de níveis distintos continuam independentes; não usar o total do documento.
+        TranscodeContext mixed = Context();
+        const std::string mixedDoc = R"({"setups":{"0":{"lights":)" + PositionalText(32, light) +
+                                     R"(},"1":{"lights":)" + PositionalText(33, light) +
+                                     R"(},"2":{"lights":)" + PositionalText(256, light) + "}}}";
+        CHECK(Count(TranscodeScene(ParseJson(mixedDoc), room, mixed), "<LightInfo ") == 321);
+        CHECK(mixed.notes.size() == 2);
+        CHECK(AnyNote(mixed, " lights: 33" + low));
+        CHECK(AnyNote(mixed, " lights: 256" + high));
     }
 }
 
@@ -667,6 +705,7 @@ int main() {
     TestMinimapRooms();
     TestWorldMapArea();
     TestActorAndObjectCounts();
+    TestLightListCounts();
     TestCameraPositions();
     TestWorldLimit();
     TestMeshEntries();

@@ -156,9 +156,18 @@ Veja [NOTICE.md](./NOTICE.md) para a origem do código.
   com mais escreve além dele: uma sala de 8 200 rúpias corrompeu o heap em jogo (UNBOUND-029). O total de atores
   vivos também para em 8 192, com o Link na conta, então o excesso nunca nasceria. Antes disso, a arena do jogo
   pode acabar: na e-fixtures, cabem 4 132 rúpias (En_Item00), e cada uma das outras falha com "Cannot allocate
-  actor" no log. Uma lista `lights` com mais de 32 entradas também sai em nota: o pool de luzes do host
-  (`z_lights.c`) tem 32 vagas para a cena, as salas já carregadas, os atores e o ambiente, e as luzes de lista só
-  voltam ao pool na troca de cena. As que não cabem não acendem.
+  actor" no log.
+- **Notas de luzes em dois níveis (0.6.10).** Por setup de cena ou sala, uma lista `lights` de 33 a 255 entradas
+  recebe a nota do pool antigo: sem a rodada de host, são só 32 vagas no total, compartilhadas por listas, atores
+  e ambiente, e o resto é descartado. Com a rodada, o limite é 255 por comando de lista e 765 nós cumulativos por
+  cena para listas, separados das 32 vagas de atores/ambiente. As luzes de lista não voltam ao pool nas trocas de
+  sala; reloads podem esgotar os 765 nós mesmo com listas de até 255. Acima de 255, a nota avisa que as entradas
+  além de 255 são descartadas mesmo com a rodada (sem ela, além de 32), com aviso no log do host.
+  O framework não detecta a rodada e conserva todas as entradas no XML; esses tetos não garantem vagas disponíveis
+  nem que todas as luzes iluminem uma geometria em execução. Não há nota cumulativa acima de 765: o transcode
+  recebe um documento por vez e não conhece cena + salas nem o histórico de carregamento/reloads. Somar todos os
+  quartos ou setups alternativos daria falsos positivos; considerar só cena + sala atual perderia o acúmulo.
+  O descarte por falta de vaga continua sendo diagnosticado pelo host em execução.
 
 ## Unbound 0.8 (novo na 0.5.0)
 
