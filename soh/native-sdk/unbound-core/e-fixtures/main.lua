@@ -42,6 +42,7 @@ local PLAN = table.concat({
     "linkspan_e/m08/a8100",   -- 029: 8 100 rúpias; a arena atual comporta 4 132 (as outras: Cannot allocate actor)
     "linkspan_e/m08/a8192",   -- 029: 8 192 rúpias; com arena suficiente, o total para em 8 192 (2 recusas pelo teto)
     -- linkspan_e/m08/a8200 fica fora: com mais de 8 192 atores na sala o host escreve além do buffer do oot.room.actors
+    "linkspan_e/m18/main",    -- 031: 255 luzes na cena e 255 em cada sala; andando para a frente, três planos trocam A->B->A->B
     "linkspan_e/house/main",  -- retorno
 }, ";")
 

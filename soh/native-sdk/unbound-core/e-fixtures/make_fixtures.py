@@ -211,6 +211,8 @@ def main():
     make_m09(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision,
              object_ids(Path(__file__).resolve().parents[4] / "soh/include/tables/object_table.h"))
     make_m08(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    # UNBOUND-031: listas de luz de cena e de sala no teto (M18) e as recargas pelas trocas de sala.
+    make_m18(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
@@ -1177,6 +1179,61 @@ def make_m08(put, registry, field, field_room, field_collision):
     registry["linkspan_e/m08"] = {"name": "Link-Span E: atores vivos", "scene": f"{folder}/scene.json",
                                   "drawConfig": 0,
                                   "entrances": {name: {"spawn": i} for i, (name, _) in enumerate(M08_ROOMS)}}
+
+
+M18_LIGHTS = 255        # entradas por comando LIGHT_LIST
+M18_SPAWN = (0, 0, -300)
+HOLL_ACTOR = 0x0023     # En_Holl
+HOLL_INVISIBLE = 4 << 6  # ENHOLL_H_INVISIBLE: carrega a sala do lado do jogador a 50..100 unidades do plano
+# Planos em z (rotY 0: o lado 0 é z menor). O Link anda para +z e cruza A->B, B->A e A->B.
+M18_HOLLS = ((0, 0, 1), (400, 1, 0), (800, 0, 1))
+
+
+def m18_lights(y, color):
+    """255 luzes pontuais sem brilho, raio 1, numa grade bem abaixo do piso: contam no pool, não mudam a cena."""
+    return {str(i): {"type": 0, "pos": [-2000 + (i % 16) * 250, y, -2000 + (i // 16) * 250], "color": color,
+                     "glow": 0, "radius": 1}
+            for i in range(M18_LIGHTS)}
+
+
+def make_m18(put, registry, field, field_room, field_collision):
+    """M18: o pool de luzes do jogo (z_lights.c) tem 32 vagas para tudo: listas de cena e de sala, atores (a Navi) e o
+    ambiente. Uma lista de 255 toma o pool e as luzes dos atores não acendem. Com o M18 da RFC 0027, as listas ganham
+    uma partição de 3 x 255 = 765 nós por cena, separada das 32 vagas dos outros. As listas de sala não voltam ao pool
+    nas trocas de sala, só na cena seguinte.
+    A cena tem 255 luzes, e cada uma das duas salas tem mais 255. Na chegada são 510 nós de lista. Três planos En_Holl
+    invisíveis à frente do spawn trocam de sala quando o Link anda para +z:
+    - A->B: +255, a partição fecha em 765;
+    - B->A: a lista da A roda de novo, não cabe, e sai um único aviso de exaustão;
+    - A->B: nada entra e nenhum aviso novo aparece.
+    O relatório "sala" da e-fixtures conta os nós (luzes=)."""
+    folder = "scenes/linkspan_e/m18"
+    strips_floor(put, folder, [(-600, 3000, "grid")], width=600)
+    floor, vertices, polys = band_floor((-600, 3000), (0,), width=600)
+    put(f"{folder}/collision.bin", floor)
+    collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin", vertices=vertices,
+                               polys=polys)
+    collision["bounds"] = {"min": [-600, -10, -600], "max": [600, 10, 3000]}
+    put(f"{folder}/collision.json", collision)
+    setup = outdoor_setup(field, list(M18_SPAWN), 0, 0)
+    setup["lights"] = m18_lights(-3000, [0, 0, 40])
+    setup["transitionActors"] = {
+        str(i): {"front": {"room": front, "effects": 0}, "back": {"room": back, "effects": 0}, "id": HOLL_ACTOR,
+                 "pos": [0, 0, z], "rotY": 0, "params": HOLL_INVISIBLE}
+        for i, (z, front, back) in enumerate(M18_HOLLS)}
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {"0": f"{folder}/rooms/a.json", "1": f"{folder}/rooms/b.json"},
+        "setups": {"0": setup},
+    })
+    for name, color in (("a", [40, 0, 0]), ("b", [0, 40, 0])):
+        room = base_room(field_room)
+        room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                     "objects": {}, "actors": {}, "lights": m18_lights(-3500 if name == "a" else -4000, color)})
+        put(f"{folder}/rooms/{name}.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/m18"] = {"name": "Link-Span E: listas de luz", "scene": f"{folder}/scene.json",
+                                  "drawConfig": 0, "entrances": {"main": {"spawn": 0}}}
 
 
 def title_card(text):

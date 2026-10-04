@@ -37,9 +37,17 @@ struct Fixtures {
     // UNBOUND-021: mudanças do flag de chão depois da chegada (sair do piso, cair, voltar).
     int lastGround = -1;
     uint32_t groundChanges = 0;
+    // UNBOUND-031: trocas de sala sem viagem (planos En_Holl), relatadas alguns frames depois.
+    int lastRoom = -1;
+    int roomFrom = -1;
+    uint32_t roomReportFrame = 0;
+    uint32_t roomChanges = 0;
 };
 
 constexpr uint32_t MAX_GROUND_CHANGES = 24;
+constexpr uint32_t MAX_ROOM_CHANGES = 24;
+// A sala nova executa os comandos dela (inclusive LIGHT_LIST) depois da troca do número.
+constexpr uint32_t ROOM_REPORT_DELAY = 20;
 
 ShipNativeStatus Write(ShipNativeWriteFn write, void* writer, const std::string& text) {
     return write(writer, text.data(), static_cast<uint32_t>(text.size()));
@@ -97,6 +105,15 @@ std::string Limits(const PlayState* play, const Player* player) {
     return text;
 }
 
+// UNBOUND-031: nós na lista de luzes do jogo (listas de cena e de sala, atores, ambiente).
+unsigned CountLights(const PlayState* play) {
+    unsigned count = 0;
+    for (const LightNode* node = play->lightCtx.listHead; node && count < 65536; node = node->next) {
+        ++count;
+    }
+    return count;
+}
+
 std::string Describe(const PlayState* play, const Player* player) {
     // Coletáveis (En_Item00) vivos e o mais próximo do jogador: a fixture ampla põe 600 à frente do spawn.
     unsigned items = 0;
@@ -135,13 +152,13 @@ std::string Describe(const PlayState* play, const Player* player) {
     char text[640];
     int used = std::snprintf(text, sizeof(text),
                              "scene=%d room=%d pos=%.1f,%.1f,%.1f chao=%d piso=%ld alturaChao=%.1f camSup=%ld cam=%d "
-                             "set=%d bg=%d atores=%u",
+                             "set=%d bg=%d atores=%u luzes=%u",
                              play->sceneNum, static_cast<int>(play->roomCtx.curRoom.num), player->actor.world.pos.x,
                              player->actor.world.pos.y, player->actor.world.pos.z,
                              (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0, floorIndex,
                              player->actor.floorHeight, surfaceCamera, camera ? camera->camDataIdx : -1,
                              camera ? camera->setting : -1, static_cast<int>(player->actor.floorBgId),
-                             static_cast<unsigned>(play->actorCtx.total));
+                             static_cast<unsigned>(play->actorCtx.total), CountLights(play));
     if (nearest && used > 0 && used < static_cast<int>(sizeof(text))) {
         used += std::snprintf(text + used, sizeof(text) - used,
                               " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X", items, nearest->world.pos.x,
@@ -302,6 +319,13 @@ ShipNativeStatus SHIP_NATIVE_CALL HorseHere(void* user, const char*, uint32_t le
     return Write(write, writer, "cavalo ao lado " + Describe(play, player));
 }
 
+void ResetRooms(Fixtures& fixtures) {
+    fixtures.lastRoom = -1;
+    fixtures.roomFrom = -1;
+    fixtures.roomReportFrame = 0;
+    fixtures.roomChanges = 0;
+}
+
 // Por frame: chegada numa cena nova (inclusive por saída física) e relatórios de posição depois dela.
 ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
                                          void* writer) {
@@ -326,6 +350,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
             fixtures.reportsDone = 0;
             fixtures.lastGround = -1;
             fixtures.groundChanges = 0;
+            ResetRooms(fixtures);
             return Write(write, writer, "arrived " + Describe(play, player));
         }
         return Write(write, writer, "idle");
@@ -342,9 +367,21 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         fixtures.reportsDone = 0;
         fixtures.lastGround = -1;
         fixtures.groundChanges = 0;
+        ResetRooms(fixtures);
         return Write(write, writer, "arrived por saida " + Describe(play, player));
     }
     ++fixtures.framesInScene;
+    // UNBOUND-031: a troca de sala só é registrada aqui; o relatório sai ROOM_REPORT_DELAY frames depois da primeira
+    // troca pendente, com a sala de origem dela e a sala atual.
+    const int room = play->roomCtx.curRoom.num;
+    if (fixtures.lastRoom != -1 && room != fixtures.lastRoom && fixtures.roomChanges < MAX_ROOM_CHANGES) {
+        ++fixtures.roomChanges;
+        if (!fixtures.roomReportFrame) {
+            fixtures.roomFrom = fixtures.lastRoom;
+            fixtures.roomReportFrame = fixtures.framesInScene + ROOM_REPORT_DELAY;
+        }
+    }
+    fixtures.lastRoom = room;
     const int ground = (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 1 : 0;
     if (fixtures.lastGround != -1 && ground != fixtures.lastGround && fixtures.groundChanges < MAX_GROUND_CHANGES) {
         fixtures.lastGround = ground;
@@ -353,6 +390,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
                                         std::to_string(fixtures.framesInScene) + " " + Describe(play, player));
     }
     fixtures.lastGround = ground;
+    if (fixtures.roomReportFrame && fixtures.framesInScene >= fixtures.roomReportFrame) {
+        fixtures.roomReportFrame = 0;
+        return Write(write, writer, "sala " + std::to_string(fixtures.roomFrom) + "->" + std::to_string(room) +
+                                        " frame " + std::to_string(fixtures.framesInScene) + " " +
+                                        Describe(play, player));
+    }
     if (fixtures.reportsDone < std::size(REPORT_FRAMES) &&
         fixtures.framesInScene >= REPORT_FRAMES[fixtures.reportsDone]) {
         ++fixtures.reportsDone;
