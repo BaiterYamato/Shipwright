@@ -225,6 +225,13 @@ extern "C" void LinkSpan_RoomActors(PlayState* play, s32 layer) {
     }
     static std::vector<ShipOotActorEntryV2> buffer;
     const uint32_t count = play->numSetupActors;
+    // SOH [Unbound] The TRANSFORM ceiling cannot hold this resource; keep its original list.
+    if (count > LINKSPAN_OOT_ROOM_ACTORS_MAX) {
+        SPDLOG_WARN("[Unbound] oot.room.actors cena {} sala {} camada {}: {} atores excedem {}; "
+                    "hooks ignorados, lista do recurso mantida", play->sceneNum, play->roomCtx.curRoom.num,
+                    layer, count, LINKSPAN_OOT_ROOM_ACTORS_MAX);
+        return;
+    }
     const uint32_t capacity = std::min<uint32_t>(LINKSPAN_OOT_ROOM_ACTORS_MAX, std::max<uint32_t>(count * 2, count + 256));
     buffer.assign(capacity, ShipOotActorEntryV2{});
     if (count) {

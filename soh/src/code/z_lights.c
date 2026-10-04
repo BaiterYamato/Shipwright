@@ -1,4 +1,5 @@
 #include "global.h"
+#include "z_light_list.h" // SOH [Unbound] Internal API; excluded from native layout id.
 
 #include <string.h>
 
@@ -12,14 +13,22 @@
 void LinkSpan_PointLightColor(LightInfo* info, u8* r, u8* g, u8* b, s16 radius);
 s32 LinkSpan_RenderHideVanillaPointGlow(void);
 
-#define LIGHTS_BUFFER_SIZE 32
-//#define LIGHTS_BUFFER_SIZE 1024 // Kill me
+// SOH [Unbound] M18: keep the vanilla budget independent of scene/room lists.
+#define LIGHTS_ACTOR_BUFFER_SIZE 32
+#define LIGHTS_LIST_LIMIT 255
+// SOH [Unbound] Scene + two full room lists; cumulative until scene init, as vanilla.
+#define LIGHTS_ROOM_BUFFER_SIZE (3 * LIGHTS_LIST_LIMIT)
+#define LIGHTS_BUFFER_SIZE (LIGHTS_ACTOR_BUFFER_SIZE + LIGHTS_ROOM_BUFFER_SIZE)
 
 typedef struct {
     /* 0x000 */ s32 numOccupied;
     /* 0x004 */ s32 searchIndex;
     /* 0x008 */ LightNode buf[LIGHTS_BUFFER_SIZE];
-} LightsBuffer; // size = 0x188
+    // SOH [Unbound] Saved together with nodes; scene/room lists share the list partition.
+    s32 numRoomLights;
+    s32 roomSearchIndex;
+    s32 exhaustionWarned;
+} LightsBuffer;
 
 static LightsBuffer sLightsBuffer;
 
@@ -177,38 +186,50 @@ void Lights_BindAll(Lights* lights, LightNode* listHead, Vec3f* vec) {
     }
 }
 
-LightNode* Lights_FindBufSlot() {
+// SOH [Unbound] Search only the caller's partition; never borrow actor slots.
+static LightNode* Lights_FindBufSlotRange(s32 start, s32 end, s32 occupied, s32* searchIndex) {
     LightNode* node;
 
-    if (sLightsBuffer.numOccupied >= LIGHTS_BUFFER_SIZE) {
+    if (occupied >= end - start) {
         return NULL;
     }
 
-    node = &sLightsBuffer.buf[sLightsBuffer.searchIndex];
-
+    node = &sLightsBuffer.buf[*searchIndex];
     while (node->info != NULL) {
-        sLightsBuffer.searchIndex++;
-
-        if (sLightsBuffer.searchIndex < LIGHTS_BUFFER_SIZE) {
+        (*searchIndex)++;
+        if (*searchIndex < end) {
             node++;
         } else {
-            sLightsBuffer.searchIndex = 0;
-            node = &sLightsBuffer.buf[0];
+            *searchIndex = start;
+            node = &sLightsBuffer.buf[start];
         }
     }
-
     sLightsBuffer.numOccupied++;
-
     return node;
+}
+
+// SOH [Unbound] Existing callers retain all 32 vanilla slots.
+LightNode* Lights_FindBufSlot() {
+    return Lights_FindBufSlotRange(0, LIGHTS_ACTOR_BUFFER_SIZE,
+                                  sLightsBuffer.numOccupied - sLightsBuffer.numRoomLights,
+                                  &sLightsBuffer.searchIndex);
 }
 
 // return type must not be void to match
 s32 Lights_FreeNode(LightNode* light) {
-    if (light != NULL) {
+    // SOH [Unbound] Pointer subtraction already yields an index; ignore a repeated free.
+    if (light != NULL && light->info != NULL) {
+        s32 index = light - sLightsBuffer.buf;
         sLightsBuffer.numOccupied--;
         light->info = NULL;
-        sLightsBuffer.searchIndex = (light - sLightsBuffer.buf) / sizeof(LightNode);
+        if (index >= LIGHTS_ACTOR_BUFFER_SIZE) {
+            sLightsBuffer.numRoomLights--;
+            sLightsBuffer.roomSearchIndex = index;
+        } else {
+            sLightsBuffer.searchIndex = index;
+        }
     }
+    return 0; // SOH [Unbound] Defined return value for the legacy s32 signature.
 }
 
 void LightContext_Init(PlayState* play, LightContext* lightCtx) {
@@ -222,6 +243,8 @@ void LightContext_Init(PlayState* play, LightContext* lightCtx) {
     lightCtx->zNear = 10.0f;
     lightCtx->zFar = 12800.0f;
     memset(&sLightsBuffer, 0, sizeof(sLightsBuffer));
+    // SOH [Unbound] The room allocator starts beyond the vanilla partition.
+    sLightsBuffer.roomSearchIndex = LIGHTS_ACTOR_BUFFER_SIZE;
 }
 
 void LightContext_SetAmbientColor(LightContext* lightCtx, u8 r, u8 g, u8 b) {
@@ -250,9 +273,19 @@ void LightContext_InitList(PlayState* play, LightContext* lightCtx) {
 }
 
 void LightContext_DestroyList(PlayState* play, LightContext* lightCtx) {
+    // SOH [Unbound] Owners retain raw nodes: refuse atomically while any owned slot is live.
+    for (s32 i = 0; i < LIGHTS_ACTOR_BUFFER_SIZE; i++) {
+        if (sLightsBuffer.buf[i].info != NULL) {
+            // SOH [Unbound] WARN remains visible in release; callers must remove owners first.
+            lusprintf(__FILE__, __LINE__, 3,
+                      "[Unbound M18] cena=%d sala=%d: DestroyList recusado; luz de ator/ambiente/bridge ativa\n",
+                      play->sceneNum, play->roomCtx.curRoom.num);
+            return;
+        }
+    }
     while (lightCtx->listHead != NULL) {
         LightContext_RemoveLight(play, lightCtx, lightCtx->listHead);
-        lightCtx->listHead = lightCtx->listHead->next;
+        // SOH [Unbound] RemoveLight already advances listHead; do not skip/dereference NULL.
     }
 }
 
@@ -262,28 +295,51 @@ void LightContext_DestroyList(PlayState* play, LightContext* lightCtx) {
  * Note: Due to the limited number of slots in a Lights group, inserting too many lights in the
  * list may result in older entries not being bound to a Light when calling Lights_BindAll
  */
-LightNode* LightContext_InsertLight(PlayState* play, LightContext* lightCtx, LightInfo* info) {
-    LightNode* node;
-
-    node = Lights_FindBufSlot();
-
+// SOH [Unbound] Both producers share linking and one warning per scene initialization.
+static LightNode* LightContext_LinkLight(PlayState* play, LightContext* lightCtx, LightInfo* info, LightNode* node) {
     if (node != NULL) {
         node->info = info;
         node->prev = NULL;
         node->next = lightCtx->listHead;
-
         if (lightCtx->listHead != NULL) {
             lightCtx->listHead->prev = node;
         }
-
         lightCtx->listHead = node;
+    } else if (!sLightsBuffer.exhaustionWarned) {
+        // SOH [Unbound] WARN directly: osSyncPrintf is disabled in release builds.
+        lusprintf(__FILE__, __LINE__, 3,
+                  "[Unbound M18] cena=%d sala=%d: limite de luzes atingido; listas=%d/%d "
+                  "atores/ambiente=%d/%d; luz descartada\n",
+                  play->sceneNum, play->roomCtx.curRoom.num, sLightsBuffer.numRoomLights,
+                  LIGHTS_ROOM_BUFFER_SIZE, sLightsBuffer.numOccupied - sLightsBuffer.numRoomLights,
+                  LIGHTS_ACTOR_BUFFER_SIZE);
+        sLightsBuffer.exhaustionWarned = 1;
     }
-
     return node;
 }
 
-void LightContext_RemoveLight(PlayState* play, LightContext* lightCtx, LightNode* node) {
+// SOH [Unbound] Vanilla actors/effects/environment keep the original entry point.
+LightNode* LightContext_InsertLight(PlayState* play, LightContext* lightCtx, LightInfo* info) {
+    return LightContext_LinkLight(play, lightCtx, info, Lights_FindBufSlot());
+}
+
+// SOH [Unbound] Each command accepts 255 entries; preserve older lists until scene init.
+LightNode* LightContext_InsertListLight(PlayState* play, LightContext* lightCtx, LightInfo* info, size_t listIndex) {
+    // SOH [Unbound] Enforce the per-command limit without erasing scene/prevRoom lights.
+    if (listIndex >= LIGHTS_LIST_LIMIT) {
+        return LightContext_LinkLight(play, lightCtx, info, NULL);
+    }
+    LightNode* node = Lights_FindBufSlotRange(LIGHTS_ACTOR_BUFFER_SIZE, LIGHTS_BUFFER_SIZE,
+                                             sLightsBuffer.numRoomLights, &sLightsBuffer.roomSearchIndex);
     if (node != NULL) {
+        sLightsBuffer.numRoomLights++;
+    }
+    return LightContext_LinkLight(play, lightCtx, info, node);
+}
+
+void LightContext_RemoveLight(PlayState* play, LightContext* lightCtx, LightNode* node) {
+    // SOH [Unbound] A retained free node must never modify the list links.
+    if (node != NULL && node->info != NULL) {
         if (node->prev != NULL) {
             node->prev->next = node->next;
         } else {

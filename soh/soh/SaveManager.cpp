@@ -1464,6 +1464,8 @@ void SaveManager::LoadFile(int fileNum) {
                                                              ".\nSave file corruption is suspected.\n" +
                                                              "The file has been renamed to prevent further issues.");
     }
+    // SOH [Unbound] mantém a área válida inclusive após loaders de seções e hooks do save.
+    gSaveContext.worldMapArea = SaveContext_NormalizeWorldMapArea(gSaveContext.worldMapArea);
     saveMtx.unlock();
 }
 
@@ -2896,6 +2898,8 @@ void SaveManager::ConvertFromUnversioned() {
             SaveSection(fileNum, SECTION_ID_BASE, false);
             InitMeta(fileNum);
             gSaveContext = saveContextSave;
+            // SOH [Unbound] a restauração do contexto também respeita o domínio da área.
+            gSaveContext.worldMapArea = SaveContext_NormalizeWorldMapArea(gSaveContext.worldMapArea);
         }
     }
 

@@ -1,6 +1,17 @@
 // vim: ft=cpp
 #pragma once
 
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+// SOH [Unbound] helper interno do host; não integra a ABI nativa dos mods.
+int16_t SaveContext_NormalizeWorldMapArea(int32_t area);
+#ifdef __cplusplus
+}
+#endif
+
 #define BTN_CUSTOM_MODIFIER1 0x0040
 #define BTN_CUSTOM_MODIFIER2 0x0080
 

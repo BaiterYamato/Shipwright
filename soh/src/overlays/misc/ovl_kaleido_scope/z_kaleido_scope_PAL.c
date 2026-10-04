@@ -2906,15 +2906,18 @@ s16 func_80823A0C(PlayState* play, Vtx* vtx, s16 pageIndex, s16 arg3) {
 
             colorIndex = gSaveContext.worldMapArea;
 
-            vtx[vtxIndex + 0].v.ob[0] = vtx[vtxIndex + 2].v.ob[0] = D_8082B060[colorIndex];
+            // SOH [Unbound] 22 é fora do mapa e não tem entrada nestas quatro tabelas.
+            if (colorIndex >= 0 && colorIndex < (s32)ARRAY_COUNT(D_8082B060)) {
+                vtx[vtxIndex + 0].v.ob[0] = vtx[vtxIndex + 2].v.ob[0] = D_8082B060[colorIndex];
 
-            if (colorIndex) {}
+                if (colorIndex) {}
 
-            vtx[vtxIndex + 1].v.ob[0] = vtx[vtxIndex + 3].v.ob[0] = vtx[vtxIndex + 0].v.ob[0] + D_8082B08C[colorIndex];
+                vtx[vtxIndex + 1].v.ob[0] = vtx[vtxIndex + 3].v.ob[0] = vtx[vtxIndex + 0].v.ob[0] + D_8082B08C[colorIndex];
 
-            vtx[vtxIndex + 0].v.ob[1] = vtx[vtxIndex + 1].v.ob[1] = D_8082B0B8[colorIndex] + pauseCtx->offsetY;
+                vtx[vtxIndex + 0].v.ob[1] = vtx[vtxIndex + 1].v.ob[1] = D_8082B0B8[colorIndex] + pauseCtx->offsetY;
 
-            vtx[vtxIndex + 2].v.ob[1] = vtx[vtxIndex + 3].v.ob[1] = vtx[vtxIndex + 0].v.ob[1] - D_8082B0E4[colorIndex];
+                vtx[vtxIndex + 2].v.ob[1] = vtx[vtxIndex + 3].v.ob[1] = vtx[vtxIndex + 0].v.ob[1] - D_8082B0E4[colorIndex];
+            }
 
             vtxIndex += 12;
 

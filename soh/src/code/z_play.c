@@ -1,4 +1,5 @@
 #include "global.h"
+#include "../buffers/heap_sizes.h"
 #include "soh/unbound/SceneFlagsExt.h"
 #include "vt.h"
 
@@ -430,10 +431,8 @@ void Play_Init(GameState* thisx) {
 
     SystemArena_Display();
 
-    // OTRTODO allocate double the normal amount of memory
-    // This is to avoid some parts of the game, like loading actors, causing OoM
-    // This is potionally unavoidable due to struct size differences, but is x2 the right amount?
-    GameState_Realloc(&play->state, 0x1D4790 * 2);
+    // SOH [Unbound] Preserva o orçamento de cena e reserva 1 KiB por vaga de ator.
+    GameState_Realloc(&play->state, SOH_PLAY_HEAP_SIZE);
     KaleidoManager_Init(play);
     View_Init(&play->view, gfxCtx);
     Audio_SetExtraFilter(0);
@@ -612,6 +611,10 @@ void Play_Init(GameState* thisx) {
     zAlloc = (uintptr_t)GAMESTATE_ALLOC_MC(&play->state, zAllocSize);
     zAllocAligned = (zAlloc + 8) & ~0xF;
     ZeldaArena_Init((void*)zAllocAligned, zAllocSize - (zAllocAligned - zAlloc));
+    // SOH [Unbound] Expõe o orçamento real após eventual redução pelo SystemArena.
+    LUSLOG_INFO("Unbound Play heap: requested=%zu actual=%zu ZeldaArena=%zu EnItem00=%zu",
+                (size_t)SOH_PLAY_HEAP_SIZE, (size_t)play->state.tha.size,
+                zAllocSize - (zAllocAligned - zAlloc), sizeof(EnItem00));
     // "Zelda Heap"
     osSyncPrintf("ゼルダヒープ %08x-%08x\n", zAllocAligned,
                  (u8*)zAllocAligned + zAllocSize - (s32)(zAllocAligned - zAlloc));

@@ -1,4 +1,5 @@
 #include "savestates.h"
+#include "../../src/buffers/heap_sizes.h"
 
 #include <algorithm>
 #include <memory>
@@ -86,7 +87,7 @@ static void LoadOverlayState(std::unique_ptr<uint8_t[]>& buf, void (*fn)(SaveSta
 }
 
 typedef struct SaveStateInfo {
-    unsigned char sysHeapCopy[SYSTEM_HEAP_SIZE];
+    unsigned char sysHeapCopy[SOH_SYSTEM_HEAP_SIZE];
     unsigned char audioHeapCopy[AUDIO_HEAP_SIZE];
 
     SaveContext saveContextCopy;
@@ -428,7 +429,7 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
 
 void SaveState::Save(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
-    memcpy(&info->sysHeapCopy, gSystemHeap, SYSTEM_HEAP_SIZE /* sizeof(gSystemHeap) */);
+    memcpy(&info->sysHeapCopy, gSystemHeap, SOH_SYSTEM_HEAP_SIZE /* sizeof(gSystemHeap) */);
     memcpy(&info->audioHeapCopy, gAudioHeap, AUDIO_HEAP_SIZE /* sizeof(gAudioContext) */);
 
     memcpy(&info->audioContextCopy, &gAudioContext, sizeof(AudioContext));
@@ -458,7 +459,7 @@ void SaveState::Save(void) {
 
 void SaveState::Load(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
-    memcpy(gSystemHeap, &info->sysHeapCopy, SYSTEM_HEAP_SIZE);
+    memcpy(gSystemHeap, &info->sysHeapCopy, SOH_SYSTEM_HEAP_SIZE);
     memcpy(gAudioHeap, &info->audioHeapCopy, AUDIO_HEAP_SIZE);
 
     memcpy(&gAudioContext, &info->audioContextCopy, sizeof(AudioContext));
@@ -466,6 +467,8 @@ void SaveState::Load(void) {
     LoadSeqScriptState();
 
     memcpy(&gSaveContext, &info->saveContextCopy, sizeof(gSaveContext));
+    // SOH [Unbound] savestates antigos podem restaurar a área sem executar comandos da cena.
+    gSaveContext.worldMapArea = SaveContext_NormalizeWorldMapArea(gSaveContext.worldMapArea);
     memcpy(gGameInfo, &info->gameInfoCopy, sizeof(*gGameInfo));
     memcpy(&sEffectContext, &info->effectContextCopy, sizeof(sEffectContext));
 

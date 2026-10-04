@@ -2571,8 +2571,13 @@ void DynaPoly_NullPolyList(CollisionPoly** polyList) {
  * Allocate dyna.polyList
  */
 void DynaPoly_AllocPolyList(PlayState* play, CollisionPoly** polyList, s32 numPolys) {
-    *polyList = malloc(numPolys * sizeof(CollisionPoly)); // SOH [Unbound] heap; freed by BgCheck_Free
-    assert(*polyList != NULL);
+    CollisionPoly* newList = malloc(numPolys * sizeof(CollisionPoly)); // SOH [Unbound] heap; freed by BgCheck_Free
+
+    if (newList == NULL) {
+        osSyncPrintf("[Unbound] dyna polyList allocation failed (%d)\n", numPolys);
+        return;
+    }
+    *polyList = newList;
 }
 
 /**
@@ -2586,8 +2591,13 @@ void DynaPoly_NullVtxList(Vec3i** vtxList) {
  * Allocate dyna.vtxList
  */
 void DynaPoly_AllocVtxList(PlayState* play, Vec3i** vtxList, s32 numVtx) {
-    *vtxList = malloc(numVtx * sizeof(Vec3i)); // SOH [Unbound] heap; freed by BgCheck_Free
-    assert(*vtxList != NULL);
+    Vec3i* newList = malloc(numVtx * sizeof(Vec3i)); // SOH [Unbound] heap; freed by BgCheck_Free
+
+    if (newList == NULL) {
+        osSyncPrintf("[Unbound] dyna vtxList allocation failed (%d)\n", numVtx);
+        return;
+    }
+    *vtxList = newList;
 }
 
 /**
@@ -2666,19 +2676,27 @@ static void DynaPoly_EnsureListCapacity(PlayState* play, DynaCollisionContext* d
     }
     if (polys > dyna->polyListMax) {
         s32 newMax = (polys > dyna->polyListMax * 2) ? polys : dyna->polyListMax * 2;
-        DynaPoly_RetireBuffer(dyna, dyna->polyList);
-        DynaPoly_AllocPolyList(play, &dyna->polyList, newMax);
-        dyna->polyListMax = newMax;
-        dyna->bitFlag |= DYNAPOLY_INVALIDATE_LOOKUP;
-        osSyncPrintf("[Unbound] dyna polyList grown to %d\n", newMax);
+        CollisionPoly* newList = NULL;
+        DynaPoly_AllocPolyList(play, &newList, newMax);
+        if (newList != NULL) {
+            DynaPoly_RetireBuffer(dyna, dyna->polyList);
+            dyna->polyList = newList;
+            dyna->polyListMax = newMax;
+            dyna->bitFlag |= DYNAPOLY_INVALIDATE_LOOKUP;
+            osSyncPrintf("[Unbound] dyna polyList grown to %d\n", newMax);
+        } // Keep the old list/capacity on failure; ExpandSRT skips geometry that does not fit.
     }
     if (vtxs > dyna->vtxListMax) {
         s32 newMax = (vtxs > dyna->vtxListMax * 2) ? vtxs : dyna->vtxListMax * 2;
-        DynaPoly_RetireBuffer(dyna, dyna->vtxList);
-        DynaPoly_AllocVtxList(play, &dyna->vtxList, newMax);
-        dyna->vtxListMax = newMax;
-        dyna->bitFlag |= DYNAPOLY_INVALIDATE_LOOKUP;
-        osSyncPrintf("[Unbound] dyna vtxList grown to %d\n", newMax);
+        Vec3i* newList = NULL;
+        DynaPoly_AllocVtxList(play, &newList, newMax);
+        if (newList != NULL) {
+            DynaPoly_RetireBuffer(dyna, dyna->vtxList);
+            dyna->vtxList = newList;
+            dyna->vtxListMax = newMax;
+            dyna->bitFlag |= DYNAPOLY_INVALIDATE_LOOKUP;
+            osSyncPrintf("[Unbound] dyna vtxList grown to %d\n", newMax);
+        } // Keep the old list/capacity on failure; ExpandSRT skips geometry that does not fit.
     }
 }
 
@@ -2704,9 +2722,15 @@ void DynaPoly_Alloc(PlayState* play, DynaCollisionContext* dyna) {
     DynaPoly_GrowBgActorTable(play, dyna, BGACTOR_INITIAL_MAX);
     DynaPoly_NullPolyList(&dyna->polyList);
     DynaPoly_AllocPolyList(play, &dyna->polyList, dyna->polyListMax);
+    if (dyna->polyList == NULL) {
+        dyna->polyListMax = 0; // No geometry fits until a later allocation succeeds.
+    }
 
     DynaPoly_NullVtxList(&dyna->vtxList);
     DynaPoly_AllocVtxList(play, &dyna->vtxList, dyna->vtxListMax);
+    if (dyna->vtxList == NULL) {
+        dyna->vtxListMax = 0; // No geometry fits until a later allocation succeeds.
+    }
 
     DynaSSNodeList_Initialize(play, &dyna->polyNodes);
     DynaSSNodeList_Alloc(play, &dyna->polyNodes, dyna->polyNodesMax);
@@ -2729,9 +2753,17 @@ s32 DynaPoly_SetBgActor(PlayState* play, DynaCollisionContext* dyna, Actor* acto
     }
 
     if (foundSlot == false) {
-        // SOH [Unbound] No free slot: double the table instead of failing (vanilla capped at 50).
+        // SOH [Unbound] BGCHECK_SCENE/BGACTOR_INVALID must never be minted as an actor id.
+        if (dyna->bgActorMax >= BGCHECK_SCENE) {
+            osSyncPrintf("[Unbound] dyna actor table full (%d)\n", dyna->bgActorMax);
+            return BGACTOR_INVALID;
+        }
         bgId = dyna->bgActorMax;
-        DynaPoly_GrowBgActorTable(play, dyna, dyna->bgActorMax * 2);
+        s32 newMax = dyna->bgActorMax * 2;
+        if (newMax > BGCHECK_SCENE) {
+            newMax = BGCHECK_SCENE;
+        }
+        DynaPoly_GrowBgActorTable(play, dyna, newMax);
         osSyncPrintf("[Unbound] dyna actor table grown to %d\n", dyna->bgActorMax);
         dyna->bgActorFlags[bgId] |= 1;
     }

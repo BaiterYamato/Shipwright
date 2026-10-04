@@ -40,7 +40,23 @@ void Map_SavePlayerInitialInfo(PlayState* play) {
 void Map_SetPaletteData(PlayState* play, s16 room) {
     s32 mapIndex = gSaveContext.mapIndex;
     InterfaceContext* interfaceCtx = &play->interfaceCtx;
-    s16 paletteIndex = gMapData->roomPalette[mapIndex][room];
+    s16 paletteIndex;
+
+    // SOH [Unbound] a paleta e os bits do save só representam salas 0..31.
+    if (room < 0 || room >= 32) {
+        if (interfaceCtx->mapRoomNum == room) {
+            interfaceCtx->mapPaletteIndex = 0;
+        }
+        return;
+    }
+    paletteIndex = gMapData->roomPalette[mapIndex][room];
+    // SOH [Unbound] cada entrada ocupa dois bytes dentro de mapPalette.
+    if (paletteIndex < 0 || paletteIndex >= (s32)ARRAY_COUNT(interfaceCtx->mapPalette) / 2) {
+        if (interfaceCtx->mapRoomNum == room) {
+            interfaceCtx->mapPaletteIndex = 0;
+        }
+        return;
+    }
 
     if (interfaceCtx->mapRoomNum == room) {
         interfaceCtx->mapPaletteIndex = paletteIndex;
@@ -461,6 +477,13 @@ void Map_InitData(PlayState* play, s16 room) {
             //((gMapData->dgnMinimapTexIndexOffset[mapIndex] + room) * 0xFF0),
             // 0xFF0, __FILE__, __LINE__);
 
+            // SOH [Unbound] salas sem minimapa não podem atravessar a fatia desta dungeon.
+            if (room < 0 || room >= gMapData->dgnMinimapCount[mapIndex]) {
+                interfaceCtx->mapSegment[0] = NULL;
+                interfaceCtx->mapSegmentName[0] = NULL;
+                break;
+            }
+
             play->interfaceCtx.mapSegment[0] =
                 ResourceGetDataByName(minimapTableDangeon[gMapData->dgnMinimapTexIndexOffset[mapIndex] + room]);
             play->interfaceCtx.mapSegmentName[0] =
@@ -514,7 +537,10 @@ void Map_InitRoomData(PlayState* play, s16 room) {
                 break;
         }
     } else {
-        interfaceCtx->mapRoomNum = 0;
+        // SOH [Unbound] uma sala negativa também não possui textura ou marcadores.
+        interfaceCtx->mapRoomNum = room;
+        interfaceCtx->mapSegment[0] = NULL;
+        interfaceCtx->mapSegmentName[0] = NULL;
     }
 
     if (gSaveContext.sunsSongState != SUNSSONG_SPEED_TIME) {
@@ -820,7 +846,10 @@ void Minimap_Draw(PlayState* play) {
             case SCENE_SHADOW_TEMPLE:
             case SCENE_BOTTOM_OF_THE_WELL:
             case SCENE_ICE_CAVERN:
-                if (!R_MINIMAP_DISABLED && CVarGetInteger(CVAR_COSMETIC("HUD.Minimap.PosType"), 0) != HIDDEN) {
+                // SOH [Unbound] oculta textura, bússola e marcadores; não altera o toggle do usuário.
+                if (interfaceCtx->mapRoomNum >= 0 &&
+                    interfaceCtx->mapRoomNum < gMapData->dgnMinimapCount[mapIndex] &&
+                    !R_MINIMAP_DISABLED && CVarGetInteger(CVAR_COSMETIC("HUD.Minimap.PosType"), 0) != HIDDEN) {
                     Gfx_SetupDL_39Overlay(play->state.gfxCtx);
                     gDPSetCombineLERP(OVERLAY_DISP++, 1, 0, PRIMITIVE, 0, TEXEL0, 0, PRIMITIVE, 0, 1, 0, PRIMITIVE, 0,
                                       TEXEL0, 0, PRIMITIVE, 0);

@@ -8,6 +8,8 @@
 #include <spdlog/spdlog.h>
 
 #include "global.h"
+#include "soh/OTRGlobals.h"
+#include "../src/code/z_light_list.h" // SOH [Unbound] Internal C/C++ API.
 #include "soh/native/OotNativeScenes.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "ResourceManagerHelpers.h"
@@ -225,7 +227,7 @@ bool Scene_CommandLightList(PlayState* play, SOH::ISceneCommand* cmd) {
     SOH::SetLightList* cmdLight = (SOH::SetLightList*)cmd;
 
     for (size_t i = 0; i < cmdLight->lightList.size(); i++) {
-        LightContext_InsertLight(play, &play->lightCtx, (LightInfo*)&cmdLight->lightList[i]);
+        LightContext_InsertListLight(play, &play->lightCtx, (LightInfo*)&cmdLight->lightList[i], i); // SOH [Unbound]
     }
 
     return false;
@@ -449,7 +451,8 @@ bool Scene_CommandMiscSettings(PlayState* play, SOH::ISceneCommand* cmd) {
     SOH::SetCameraSettings* cmdCam = (SOH::SetCameraSettings*)cmd;
 
     YREG(15) = cmdCam->settings.cameraMovement;
-    gSaveContext.worldMapArea = cmdCam->settings.worldMapArea;
+    // SOH [Unbound] normaliza a área antes de qualquer índice de tabela.
+    gSaveContext.worldMapArea = SaveContext_NormalizeWorldMapArea(cmdCam->settings.worldMapArea);
 
     if ((play->sceneNum == SCENE_BAZAAR) || (play->sceneNum == SCENE_SHOOTING_GALLERY)) {
         if (LINK_AGE_IN_YEARS == YEARS_ADULT) {

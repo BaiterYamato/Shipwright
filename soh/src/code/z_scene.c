@@ -1,8 +1,15 @@
 #include "global.h"
+#include "soh/OTRGlobals.h"
+#include "z_light_list.h" // SOH [Unbound] Internal C/C++ API.
 #include "vt.h"
 #include "soh/ActorDB.h"
 #include "soh/unbound/UnboundAudio.h" // SOH [Unbound]
 #include <assert.h>
+
+// SOH [Unbound] valida em s32 antes de reduzir para s16; 22 significa fora do mapa.
+s16 SaveContext_NormalizeWorldMapArea(s32 area) {
+    return (area >= 0 && area <= 22) ? (s16)area : 22;
+}
 
 RomFile sNaviMsgFiles[];
 
@@ -334,7 +341,7 @@ void Scene_CommandLightList(PlayState* play, SceneCmd* cmd) {
     LightInfo* lightInfo = SEGMENTED_TO_VIRTUAL(cmd->lightList.segment);
 
     for (i = 0; i < cmd->lightList.num; i++) {
-        LightContext_InsertLight(play, &play->lightCtx, lightInfo);
+        LightContext_InsertListLight(play, &play->lightCtx, lightInfo, i); // SOH [Unbound]
         lightInfo++;
     }
 }
@@ -477,7 +484,8 @@ void Scene_CommandCutsceneData(PlayState* play, SceneCmd* cmd) {
 // Camera & World Map Area
 void Scene_CommandMiscSettings(PlayState* play, SceneCmd* cmd) {
     YREG(15) = cmd->miscSettings.cameraMovement;
-    gSaveContext.worldMapArea = cmd->miscSettings.area;
+    // SOH [Unbound] normaliza a área antes de qualquer índice de tabela.
+    gSaveContext.worldMapArea = SaveContext_NormalizeWorldMapArea(cmd->miscSettings.area);
 
     if ((play->sceneNum == SCENE_BAZAAR) || (play->sceneNum == SCENE_SHOOTING_GALLERY)) {
         if (LINK_AGE_IN_YEARS == YEARS_ADULT) {

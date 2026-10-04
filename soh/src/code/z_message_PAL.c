@@ -941,6 +941,99 @@ void Message_HandleOcarina(PlayState* play) {
 }
 
 // Taken from decomped N64 1.0 z_message https://decomp.me/scratch/462bn
+// SOH [Link-Span] R04: descartar controles parciais e preparar END.
+static void Message_DiscardDecoded(PlayState* play, bool wide) {
+    MessageContext* msgCtx = &play->msgCtx;
+
+    if (wide) {
+        msgCtx->msgBufDecodedWide[0] = MESSAGE_END_JPN;
+    } else {
+        msgCtx->msgBufDecoded[0] = MESSAGE_END;
+    }
+    msgCtx->decodedTextLen = 0;
+    msgCtx->textDrawPos = 1;
+    msgCtx->msgMode = MSGMODE_TEXT_DISPLAYING;
+    msgCtx->textboxEndType = TEXTBOX_ENDTYPE_DEFAULT;
+    msgCtx->choiceNum = 1;
+    msgCtx->choiceIndex = msgCtx->choiceTextId = 0;
+    msgCtx->textUnskippable = msgCtx->textDelay = msgCtx->textDelayTimer = msgCtx->stateTimer = 0;
+    R_TEXT_INIT_YPOS = R_TEXTBOX_Y +
+                       (msgCtx->textBoxType == TEXTBOX_TYPE_NONE_BOTTOM ? (wide ? 6 : 8) : (wide ? 22 : 26));
+    sNextTextId = 0;
+    sTextFade = sTextboxSkipped = false;
+}
+
+// SOH [Link-Span] R04: unidades do texto decodificado, nao do raw.
+static s32 Message_DecodedControlUnits(u16 character, bool wide) {
+    if (wide) {
+        switch (character) {
+            case MESSAGE_COLOR_JPN:
+            case MESSAGE_SHIFT_JPN:
+            case MESSAGE_TEXTID_JPN:
+            case MESSAGE_BOX_BREAK_DELAYED_JPN:
+            case MESSAGE_FADE_JPN:
+            case MESSAGE_SFX_JPN:
+            case MESSAGE_ITEM_ICON_JPN:
+            case MESSAGE_TEXT_SPEED_JPN:
+                return 2;
+        }
+    } else {
+        switch (character) {
+            case MESSAGE_TEXTID:
+            case MESSAGE_FADE2:
+            case MESSAGE_SFX:
+                return 3;
+            case MESSAGE_COLOR:
+            case MESSAGE_SHIFT:
+            case MESSAGE_BOX_BREAK_DELAYED:
+            case MESSAGE_FADE:
+            case MESSAGE_ITEM_ICON:
+            case MESSAGE_TEXT_SPEED:
+                return 2;
+        }
+    }
+    return 1;
+}
+
+// SOH [Link-Span] R04: limitar lookahead e pular operandos.
+static bool Message_FindQuickTextEnd(MessageContext* msgCtx, u16* pos, bool wide) {
+    u32 capacity = wide ? ARRAY_COUNT(msgCtx->msgBufDecodedWide) : ARRAY_COUNT(msgCtx->msgBufDecoded);
+    u32 length = (u32)msgCtx->decodedTextLen + 1;
+    u32 j = *pos;
+    u16 character;
+    s32 units;
+    bool stop;
+
+    if (length > capacity) {
+        length = capacity;
+    }
+    while (j < length) {
+        character = wide ? msgCtx->msgBufDecodedWide[j] : msgCtx->msgBufDecoded[j];
+        units = Message_DecodedControlUnits(character, wide);
+        if ((u32)units > length - j) {
+            return false;
+        }
+        if (wide) {
+            stop = character == MESSAGE_QUICKTEXT_DISABLE_JPN || character == MESSAGE_PERSISTENT_JPN ||
+                   character == MESSAGE_EVENT_JPN || character == MESSAGE_BOX_BREAK_DELAYED_JPN ||
+                   character == MESSAGE_AWAIT_BUTTON_PRESS_JPN || character == MESSAGE_BOX_BREAK_JPN ||
+                   character == MESSAGE_TEXTID_JPN || character == MESSAGE_FADE_JPN || character == MESSAGE_END_JPN;
+        } else {
+            stop = character == MESSAGE_QUICKTEXT_DISABLE || character == MESSAGE_PERSISTENT ||
+                   character == MESSAGE_EVENT || character == MESSAGE_BOX_BREAK_DELAYED ||
+                   character == MESSAGE_AWAIT_BUTTON_PRESS || character == MESSAGE_BOX_BREAK ||
+                   character == MESSAGE_TEXTID || character == MESSAGE_FADE || character == MESSAGE_FADE2 ||
+                   character == MESSAGE_END;
+        }
+        if (stop) {
+            *pos = j;
+            return true;
+        }
+        j += units;
+    }
+    return false;
+}
+
 void Message_DrawTextJPN(PlayState* play, Gfx** gfxP) {
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
@@ -1019,16 +1112,12 @@ void Message_DrawTextJPN(PlayState* play, Gfx** gfxP) {
                                                 msgCtx->msgMode < MSGMODE_SCARECROW_LONG_RECORDING_START)),
                                           i)) {
                     j = i;
-                    while (true) {
-                        character = msgCtx->msgBufDecodedWide[j];
-                        if ((character != MESSAGE_QUICKTEXT_DISABLE_JPN) && (character != MESSAGE_PERSISTENT_JPN) &&
-                            (character != MESSAGE_EVENT_JPN) && (character != MESSAGE_BOX_BREAK_DELAYED_JPN) &&
-                            (character != MESSAGE_AWAIT_BUTTON_PRESS_JPN) && (character != MESSAGE_BOX_BREAK_JPN) &&
-                            (character != MESSAGE_END_JPN)) {
-                            j++;
-                        } else {
-                            break;
-                        }
+                    if (!Message_FindQuickTextEnd(msgCtx, &j, true)) {
+                        // SOH [Link-Span] R04: sem parada valida, descartar a caixa.
+                        osSyncPrintf("[R04] message %04x: lookahead incompleto; encerrando\n", msgCtx->textId);
+                        Message_DiscardDecoded(play, true);
+                        *gfxP = gfx;
+                        return;
                     }
 
                     if (GameInteractor_Should(VB_FIX_TEXT_SPEED_SOFTLOCK, true, j)) {
@@ -1274,7 +1363,6 @@ void Message_DrawTextJPN(PlayState* play, Gfx** gfxP) {
  */
 void Message_DrawText(PlayState* play, Gfx** gfxP) {
     MessageContext* msgCtx = &play->msgCtx;
-    u16 lookAheadCharacter;
     u8 character;
     u16 j;
     u16 i;
@@ -1358,20 +1446,12 @@ void Message_DrawText(PlayState* play, Gfx** gfxP) {
                                                 msgCtx->msgMode < MSGMODE_SCARECROW_LONG_RECORDING_START)),
                                           i)) {
                     j = i;
-                    while (true) {
-                        lookAheadCharacter = msgCtx->msgBufDecoded[j];
-                        if (lookAheadCharacter == MESSAGE_SHIFT) {
-                            j += 2;
-                        } else if ((lookAheadCharacter != MESSAGE_QUICKTEXT_DISABLE) &&
-                                   (lookAheadCharacter != MESSAGE_PERSISTENT) &&
-                                   (lookAheadCharacter != MESSAGE_EVENT) &&
-                                   (lookAheadCharacter != MESSAGE_BOX_BREAK_DELAYED) &&
-                                   (lookAheadCharacter != MESSAGE_AWAIT_BUTTON_PRESS) &&
-                                   (lookAheadCharacter != MESSAGE_BOX_BREAK) && (lookAheadCharacter != MESSAGE_END)) {
-                            j++;
-                        } else {
-                            break;
-                        }
+                    if (!Message_FindQuickTextEnd(msgCtx, &j, false)) {
+                        // SOH [Link-Span] R04: sem parada valida, descartar a caixa.
+                        osSyncPrintf("[R04] message %04x: lookahead incompleto; encerrando\n", msgCtx->textId);
+                        Message_DiscardDecoded(play, false);
+                        *gfxP = gfx;
+                        return;
                     }
 
                     if (GameInteractor_Should(VB_FIX_TEXT_SPEED_SOFTLOCK, true, j)) {
@@ -1632,6 +1712,66 @@ void Message_LoadItemIcon(PlayState* play, u16 itemId, s16 y) {
     msgCtx->choiceNum = 1;
 }
 
+// SOH [Link-Span] R04: conferir antes da escrita e encerrar a caixa no excesso.
+#define MESSAGE_DECODE_REQUIRE_INDEX(index)                                      \
+    do {                                                                        \
+        if ((index) < 0 || (index) >= decodedLimit) {                             \
+            goto decodeOverflow;                                                \
+        }                                                                       \
+    } while (0)
+#define MESSAGE_DECODE_REQUIRE_GLYPH(index)                                      \
+    do {                                                                        \
+        if ((index) < 0 || (index) > ARRAY_COUNT(font->charTexBuf) - FONT_CHAR_TEX_SIZE) { \
+            goto decodeOverflow;                                                \
+        }                                                                       \
+    } while (0)
+
+static s32 Message_RawControlUnits(u16 character, bool wide) {
+    if (wide) {
+        switch (character) {
+            case MESSAGE_BACKGROUND_JPN:
+                return 3;
+            case MESSAGE_COLOR_JPN:
+            case MESSAGE_SHIFT_JPN:
+            case MESSAGE_TEXTID_JPN:
+            case MESSAGE_BOX_BREAK_DELAYED_JPN:
+            case MESSAGE_FADE_JPN:
+            case MESSAGE_SFX_JPN:
+            case MESSAGE_ITEM_ICON_JPN:
+            case MESSAGE_TEXT_SPEED_JPN:
+            case MESSAGE_HIGHSCORE_JPN:
+                return 2;
+        }
+    } else {
+        switch (character) {
+            case MESSAGE_BACKGROUND:
+                return 4;
+            case MESSAGE_TEXTID:
+            case MESSAGE_FADE2:
+            case MESSAGE_SFX:
+                return 3;
+            case MESSAGE_COLOR:
+            case MESSAGE_SHIFT:
+            case MESSAGE_BOX_BREAK_DELAYED:
+            case MESSAGE_FADE:
+            case MESSAGE_ITEM_ICON:
+            case MESSAGE_TEXT_SPEED:
+            case MESSAGE_HIGHSCORE:
+                return 2;
+        }
+    }
+    return 1;
+}
+
+static bool Message_HasRawUnits(Font* font, s32 pos, s32 count, bool wide) {
+    u32 capacity = wide ? ARRAY_COUNT(font->msgBufWide) : ARRAY_COUNT(font->msgBuf);
+    u32 length = font->msgLength / (wide ? sizeof(u16) : sizeof(u8));
+    if (length > capacity) {
+        length = capacity;
+    }
+    return pos >= 0 && (u32)pos <= length && (u32)count <= length - (u32)pos;
+}
+
 // #region SOH [NTSC] - Add support for filenames on different versions
 bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxPtr) {
     s32 i;
@@ -1640,6 +1780,10 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
     u8 curChar2;
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
+
+    s16 decodedLimit = (gSaveContext.language == LANGUAGE_JPN && !sTextIsCredits &&
+                        !sDisplayNextMessageAsEnglish) ? ARRAY_COUNT(msgCtx->msgBufDecodedWide)
+                                                     : ARRAY_COUNT(msgCtx->msgBufDecoded);
     u8 emptyChar = (gSaveContext.ship.filenameLanguage == NAME_LANGUAGE_PAL) ? 0x3E : 0xDF;
 
     for (playerNameLen = ARRAY_COUNT(gSaveContext.playerName); playerNameLen > 0; playerNameLen--) {
@@ -1670,10 +1814,12 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                     curChar2 += '=';
                 }
                 if (curChar2 != ' ') {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                     Font_LoadChar(font, curChar2 - ' ', *charTexIdxPtr);
                     *charTexIdxPtr += FONT_CHAR_TEX_SIZE;
                 }
 
+                MESSAGE_DECODE_REQUIRE_INDEX(*decodedBufPosPtr);
                 msgCtx->msgBufDecoded[*decodedBufPosPtr] = curChar2;
                 (*decodedBufPosPtr)++;
             }
@@ -1697,10 +1843,12 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                     curChar2 -= 0x64;
                 }
                 if (curChar2 != ' ') {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                     Font_LoadChar(font, curChar2 - ' ', *charTexIdxPtr);
                     *charTexIdxPtr += FONT_CHAR_TEX_SIZE;
                 }
 
+                MESSAGE_DECODE_REQUIRE_INDEX((*decodedBufPosPtr));
                 msgCtx->msgBufDecoded[(*decodedBufPosPtr)] = curChar2;
                 (*decodedBufPosPtr)++;
             }
@@ -1733,10 +1881,12 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                 }
 
                 if (curChar2 != ' ') {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                     Font_LoadChar(font, curChar2 - ' ', *charTexIdxPtr);
                     *charTexIdxPtr += FONT_CHAR_TEX_SIZE;
                 }
 
+                MESSAGE_DECODE_REQUIRE_INDEX((*decodedBufPosPtr));
                 msgCtx->msgBufDecoded[(*decodedBufPosPtr)] = curChar2;
                 (*decodedBufPosPtr)++;
             }
@@ -1748,7 +1898,9 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                 for (i = 0; i < playerNameLen; i++) {
                     curChar2 = gSaveContext.playerName[i];
                     u8* fontBuf = &font->fontBuf[(curChar2 * 32) << 2];
+                    MESSAGE_DECODE_REQUIRE_INDEX((*decodedBufPosPtr));
                     msgCtx->msgBufDecodedWide[(*decodedBufPosPtr)++] = MESSAGE_NAME_JPN;
+                    MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                     for (j = 0; j < FONT_CHAR_TEX_SIZE; j += 4) {
                         font->charTexBuf[*charTexIdxPtr + j + 0] = fontBuf[j + 0];
                         font->charTexBuf[*charTexIdxPtr + j + 1] = fontBuf[j + 1];
@@ -1761,7 +1913,9 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                 for (i = 0; i < playerNameLen; i++) {
                     curChar2 = gSaveContext.playerName[i];
                     u8* fontBuf = &font->fontBuf[(curChar2 * 32) << 2];
+                    MESSAGE_DECODE_REQUIRE_INDEX((*decodedBufPosPtr));
                     msgCtx->msgBufDecoded[(*decodedBufPosPtr)++] = MESSAGE_NAME;
+                    MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                     for (j = 0; j < FONT_CHAR_TEX_SIZE; j += 4) {
                         font->charTexBuf[*charTexIdxPtr + j + 0] = fontBuf[j + 0];
                         font->charTexBuf[*charTexIdxPtr + j + 1] = fontBuf[j + 1];
@@ -1776,7 +1930,9 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                 for (i = 0; i < playerNameLen; i++) {
                     curChar2 = gSaveContext.playerName[i];
                     u8* fontBuf = &font->fontBuf[(curChar2 * 32) << 2];
+                    MESSAGE_DECODE_REQUIRE_INDEX((*decodedBufPosPtr));
                     msgCtx->msgBufDecodedWide[(*decodedBufPosPtr)++] = MESSAGE_NAME_JPN;
+                    MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                     for (j = 0; j < FONT_CHAR_TEX_SIZE; j += 4) {
                         font->charTexBuf[*charTexIdxPtr + j + 0] = fontBuf[j + 0];
                         font->charTexBuf[*charTexIdxPtr + j + 1] = fontBuf[j + 1];
@@ -1805,10 +1961,12 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                         curChar2 -= 0x64;
                     }
                     if (curChar2 != ' ') {
+                        MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                         Font_LoadChar(font, curChar2 - ' ', *charTexIdxPtr);
                         *charTexIdxPtr += FONT_CHAR_TEX_SIZE;
                     }
 
+                    MESSAGE_DECODE_REQUIRE_INDEX((*decodedBufPosPtr));
                     msgCtx->msgBufDecoded[(*decodedBufPosPtr)] = curChar2;
                     (*decodedBufPosPtr)++;
                 }
@@ -1828,7 +1986,9 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                     }
 
                     u8* fontBuf = &font->fontBuf[(curChar2 * 32) << 2];
+                    MESSAGE_DECODE_REQUIRE_INDEX((*decodedBufPosPtr));
                     msgCtx->msgBufDecoded[(*decodedBufPosPtr)++] = MESSAGE_NAME;
+                    MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                     for (j = 0; j < FONT_CHAR_TEX_SIZE; j += 4) {
                         font->charTexBuf[*charTexIdxPtr + j + 0] = fontBuf[j + 0];
                         font->charTexBuf[*charTexIdxPtr + j + 1] = fontBuf[j + 1];
@@ -1857,10 +2017,12 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
                         curChar2 += '=';
                     }
                     if (curChar2 != ' ') {
+                        MESSAGE_DECODE_REQUIRE_GLYPH(*charTexIdxPtr);
                         Font_LoadChar(font, curChar2 - ' ', *charTexIdxPtr);
                         *charTexIdxPtr += FONT_CHAR_TEX_SIZE;
                     }
 
+                    MESSAGE_DECODE_REQUIRE_INDEX(*decodedBufPosPtr);
                     msgCtx->msgBufDecoded[*decodedBufPosPtr] = curChar2;
                     (*decodedBufPosPtr)++;
                 }
@@ -1870,11 +2032,15 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
     (*decodedBufPosPtr)--;
 
     return true;
+
+
+decodeOverflow:
+    return false;
 }
 // #endregion
 
 // Taken from decomped N64 1.0 z_message https://decomp.me/scratch/462bn
-void Message_DecodeJPN(PlayState* play) {
+static bool Message_DecodeJPN(PlayState* play) {
     u16 curChar;
     u8 curChar2;
     u8* fontBuf;
@@ -1891,7 +2057,20 @@ void Message_DecodeJPN(PlayState* play) {
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
 
+    s16 decodedLimit = ARRAY_COUNT(msgCtx->msgBufDecodedWide);
+    u16 rawTokenStart = msgCtx->msgBufPos;
+
     while (true) {
+        rawTokenStart = msgCtx->msgBufPos;
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos, 1, true)) {
+            goto decodeOverflow;
+        }
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos,
+                                 Message_RawControlUnits((u16)font->msgBufWide[msgCtx->msgBufPos],
+                                                         true), true)) {
+            goto decodeOverflow;
+        }
+        MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
         curChar = msgCtx->msgBufDecodedWide[decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos];
 
         // #region SOH - Don't require input for credits textboxes in randomizer
@@ -1899,14 +2078,16 @@ void Message_DecodeJPN(PlayState* play) {
             (msgCtx->textId == 0x706F || msgCtx->textId == 0x7091 || msgCtx->textId == 0x7092 ||
              msgCtx->textId == 0x7093 || msgCtx->textId == 0x7094 || msgCtx->textId == 0x7095)) {
             if (curChar == MESSAGE_BOX_BREAK_JPN) {
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 curChar = msgCtx->msgBufDecodedWide[decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos] =
                     MESSAGE_BOX_BREAK_DELAYED_JPN;
             } else if (curChar == MESSAGE_END_JPN) {
-                // use fade instead of fade2, as fade2 is unimplemented in JP
-                curChar = msgCtx->msgBufDecodedWide[decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos] =
-                    MESSAGE_FADE_JPN;
-                curChar = msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[++msgCtx->msgBufPos] =
-                    MESSAGE_END_JPN;
+                // SOH [Link-Span] R04: fade completo, sem escrever alem do raw.
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos + 2);
+                msgCtx->msgBufDecodedWide[decodedBufPos] = MESSAGE_FADE_JPN;
+                msgCtx->msgBufDecodedWide[++decodedBufPos] = MESSAGE_END_JPN;
+                msgCtx->msgBufDecodedWide[++decodedBufPos] = MESSAGE_END_JPN;
+                sTextFade = true;
             }
         }
         // #endregion
@@ -1924,41 +2105,24 @@ void Message_DecodeJPN(PlayState* play) {
                 }
             }
             if (curChar == MESSAGE_TEXTID_JPN) {
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 sNextTextId = msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos + 1];
             }
             if (curChar == MESSAGE_BOX_BREAK_DELAYED_JPN) {
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos + 1];
                 msgCtx->msgBufPos += 2;
             }
             msgCtx->decodedTextLen = decodedBufPos;
             if (sTextboxSkipped) {
-                msgCtx->textDrawPos = msgCtx->decodedTextLen;
+                msgCtx->textDrawPos = msgCtx->decodedTextLen != 0 ? msgCtx->decodedTextLen : 1;
             }
             break;
         }
         if (curChar == MESSAGE_NAME_JPN) {
             // #region SOH [NTSC] - Support multiple names
             if (!Message_DecodeName(play, &decodedBufPos, &charTexIdx)) {
-                for (playerNameLen = 8; playerNameLen > 0; playerNameLen--) {
-                    if (gSaveContext.playerName[playerNameLen - 1] != 0xDF) {
-                        break;
-                    }
-                }
-                for (i = 0; i < playerNameLen; i++) {
-                    curChar = gSaveContext.playerName[i];
-                    // FAKE? Figure out what best way to match is
-                    fontBuf = &font->fontBuf[(curChar * 32) << 2];
-                    msgCtx->msgBufDecodedWide[decodedBufPos + i] = MESSAGE_NAME_JPN;
-
-                    for (j = 0; j < FONT_CHAR_TEX_SIZE; j += 4) {
-                        font->charTexBuf[charTexIdx + j + 0] = fontBuf[j + 0];
-                        font->charTexBuf[charTexIdx + j + 1] = fontBuf[j + 1];
-                        font->charTexBuf[charTexIdx + j + 2] = fontBuf[j + 2];
-                        font->charTexBuf[charTexIdx + j + 3] = fontBuf[j + 3];
-                    }
-                    charTexIdx += FONT_CHAR_TEX_SIZE;
-                }
-                decodedBufPos += playerNameLen - 1;
+                goto decodeOverflow;
             }
         } else if (curChar == MESSAGE_MARATHON_TIME_JPN || curChar == MESSAGE_RACE_TIME_JPN) {
             digits[0] = digits[1] = digits[2] = 0;
@@ -1981,18 +2145,24 @@ void Message_DecodeJPN(PlayState* play) {
             }
 
             for (i = 0; i < 4; i++) {
+                MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                 Font_LoadCharWide(font, digits[i] + 0x824F, charTexIdx);
                 charTexIdx += FONT_CHAR_TEX_SIZE;
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 msgCtx->msgBufDecodedWide[decodedBufPos] = digits[i] + 0x824F;
                 decodedBufPos++;
                 if (i == 1) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadCharWide(font, 0x95AA, charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecodedWide[decodedBufPos] = 0x95AA;
                     decodedBufPos++;
                 } else if (i == 3) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadCharWide(font, 0x9562, charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecodedWide[decodedBufPos] = 0x9562;
                 }
             }
@@ -2018,8 +2188,10 @@ void Message_DecodeJPN(PlayState* play) {
                     loadChar = true;
                 }
                 if (loadChar) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadCharWide(font, digits[i] + 0x824F, charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecodedWide[decodedBufPos] = digits[i] + 0x824F;
                     decodedBufPos++;
                 }
@@ -2044,8 +2216,10 @@ void Message_DecodeJPN(PlayState* play) {
                     loadChar = true;
                 }
                 if (loadChar) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadCharWide(font, digits[i] + 0x824F, charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecodedWide[decodedBufPos] = digits[i] + 0x824F;
                     decodedBufPos++;
                 }
@@ -2062,8 +2236,10 @@ void Message_DecodeJPN(PlayState* play) {
 
             for (i = 0; i < 2; i++) {
                 if (i == 1 || digits[i] != 0) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadCharWide(font, digits[i] + 0x824F, charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecodedWide[decodedBufPos] = digits[i] + 0x824F;
                     decodedBufPos++;
                 }
@@ -2104,8 +2280,10 @@ void Message_DecodeJPN(PlayState* play) {
                             loadChar = true;
                         }
                         if (loadChar) {
+                            MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                             Font_LoadCharWide(font, digits[i] + 0x824F, charTexIdx);
                             charTexIdx += FONT_CHAR_TEX_SIZE;
+                            MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                             msgCtx->msgBufDecodedWide[decodedBufPos] = digits[i] + 0x824F;
                             decodedBufPos++;
                         }
@@ -2134,18 +2312,24 @@ void Message_DecodeJPN(PlayState* play) {
                     }
 
                     for (i = 0; i < 4; i++) {
+                        MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                         Font_LoadCharWide(font, digits[i] + 0x824F, charTexIdx);
                         charTexIdx += FONT_CHAR_TEX_SIZE;
+                        MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                         msgCtx->msgBufDecodedWide[decodedBufPos] = digits[i] + 0x824F;
                         decodedBufPos++;
                         if (i == 1) {
+                            MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                             Font_LoadCharWide(font, 0x95AA, charTexIdx);
                             charTexIdx += FONT_CHAR_TEX_SIZE;
+                            MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                             msgCtx->msgBufDecodedWide[decodedBufPos] = 0x95AA;
                             decodedBufPos++;
                         } else if (i == 3) {
+                            MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                             Font_LoadCharWide(font, 0x9562, charTexIdx);
                             charTexIdx += FONT_CHAR_TEX_SIZE;
+                            MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                             msgCtx->msgBufDecodedWide[decodedBufPos] = 0x9562;
                         }
                     }
@@ -2168,22 +2352,29 @@ void Message_DecodeJPN(PlayState* play) {
             }
 
             for (i = 0; i < 4; i++) {
+                MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                 Font_LoadCharWide(font, digits[i] + 0x824F, charTexIdx);
                 charTexIdx += FONT_CHAR_TEX_SIZE;
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 msgCtx->msgBufDecodedWide[decodedBufPos] = digits[i] + 0x824F;
                 decodedBufPos++;
                 if (i == 1) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadCharWide(font, 0x8E9E, charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecodedWide[decodedBufPos] = 0x8E9E;
                     decodedBufPos++;
                 } else if (i == 3) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadCharWide(font, 0x95AA, charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecodedWide[decodedBufPos] = 0x95AA;
                 }
             }
         } else if (curChar == MESSAGE_ITEM_ICON_JPN) {
+            MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
             msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[msgCtx->msgBufPos + 1];
             if (GameInteractor_Should(VB_LOAD_ITEM_ICON, (uint8_t)font->msgBuf[msgCtx->msgBufPos + 1] < ITEM_CUSTOM,
                                       sDisplayNextMessageAsEnglish)) {
@@ -2203,6 +2394,7 @@ void Message_DecodeJPN(PlayState* play) {
             msgCtx->msgBufPos += 2;
             R_TEXTBOX_BG_YPOS = R_TEXTBOX_Y + 8;
         } else if (curChar == MESSAGE_COLOR_JPN) {
+            MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
             msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[++msgCtx->msgBufPos] & 0xF;
         } else if (curChar == MESSAGE_NEWLINE_JPN) {
             numLines++;
@@ -2211,10 +2403,13 @@ void Message_DecodeJPN(PlayState* play) {
                    curChar != MESSAGE_PERSISTENT_JPN && curChar != MESSAGE_UNSKIPPABLE_JPN) {
             if (curChar == MESSAGE_FADE_JPN) {
                 sTextFade = true;
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[++msgCtx->msgBufPos] & 0xFF;
             } else if (curChar == MESSAGE_SHIFT_JPN || curChar == MESSAGE_TEXT_SPEED_JPN) {
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[++msgCtx->msgBufPos] & 0xFF;
             } else if (curChar == MESSAGE_SFX_JPN) {
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecodedWide[++decodedBufPos] = font->msgBufWide[++msgCtx->msgBufPos];
             } else if (curChar == MESSAGE_TWO_CHOICE_JPN) {
                 msgCtx->choiceNum = 2;
@@ -2222,6 +2417,7 @@ void Message_DecodeJPN(PlayState* play) {
                 msgCtx->choiceNum = 3;
                 R_TEXT_INIT_XPOS += 32;
             } else if (curChar != MESSAGE_SPACE_JPN) {
+                MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                 Font_LoadCharWide(font, curChar, charTexIdx);
                 charTexIdx += FONT_CHAR_TEX_SIZE;
             }
@@ -2229,9 +2425,19 @@ void Message_DecodeJPN(PlayState* play) {
         decodedBufPos++;
         msgCtx->msgBufPos++;
     }
+    return true;
+
+decodeOverflow:
+    // SOH [Link-Span] R04: falha explicita, sem controles do prefixo.
+    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de texto/glifos ou entrada incompleta; encerrando\n",
+                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit,
+                 charTexIdx, (int)ARRAY_COUNT(font->charTexBuf));
+    msgCtx->msgBufPos = rawTokenStart;
+    Message_DiscardDecoded(play, true);
+    return false;
 }
 
-void Message_Decode(PlayState* play) {
+static bool Message_DecodeChecked(PlayState* play) {
     u8 temp_s2;
     u8 phi_s1;
     u16 phi_s0_3;
@@ -2245,6 +2451,9 @@ void Message_Decode(PlayState* play) {
     f32 timeInSeconds;
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
+
+    s16 decodedLimit = ARRAY_COUNT(msgCtx->msgBufDecoded);
+    u16 rawTokenStart = msgCtx->msgBufPos;
 
     // #region SOH [NTSC] - allow switching languages mid text
     sTextBoxNum++;
@@ -2269,12 +2478,21 @@ void Message_Decode(PlayState* play) {
     // #region SOH [NTSC] - Originally this is all in one function, but for ease of reading, the JP decoding will be
     // separated out
     if (gSaveContext.language == LANGUAGE_JPN && !sTextIsCredits && !sDisplayNextMessageAsEnglish) {
-        Message_DecodeJPN(play);
-        return;
+        return Message_DecodeJPN(play);
     }
     // #endregion
 
     while (true) {
+        rawTokenStart = msgCtx->msgBufPos;
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos, 1, false)) {
+            goto decodeOverflow;
+        }
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos,
+                                 Message_RawControlUnits((u8)font->msgBuf[msgCtx->msgBufPos],
+                                                         false), false)) {
+            goto decodeOverflow;
+        }
+        MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
         phi_s1 = temp_s2 = msgCtx->msgBufDecoded[decodedBufPos] = font->msgBuf[msgCtx->msgBufPos];
 
         // Don't require input for credits textboxes in randomizer
@@ -2282,13 +2500,17 @@ void Message_Decode(PlayState* play) {
             (msgCtx->textId == 0x706F || msgCtx->textId == 0x7091 || msgCtx->textId == 0x7092 ||
              msgCtx->textId == 0x7093 || msgCtx->textId == 0x7094 || msgCtx->textId == 0x7095)) {
             if (temp_s2 == MESSAGE_BOX_BREAK) {
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 phi_s1 = temp_s2 = msgCtx->msgBufDecoded[decodedBufPos] = font->msgBuf[msgCtx->msgBufPos] =
                     MESSAGE_BOX_BREAK_DELAYED;
             } else if (temp_s2 == MESSAGE_END) {
-                phi_s1 = temp_s2 = msgCtx->msgBufDecoded[decodedBufPos] = font->msgBuf[msgCtx->msgBufPos] =
-                    MESSAGE_FADE2;
-                phi_s1 = temp_s2 = msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos] =
-                    MESSAGE_END;
+                // SOH [Link-Span] R04: manter o byte alto legado; cauda deterministica.
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos + 3);
+                msgCtx->msgBufDecoded[decodedBufPos] = MESSAGE_FADE2;
+                msgCtx->msgBufDecoded[++decodedBufPos] = MESSAGE_END;
+                msgCtx->msgBufDecoded[++decodedBufPos] = 0;
+                msgCtx->msgBufDecoded[++decodedBufPos] = MESSAGE_END;
+                sTextFade = true;
             }
         }
 
@@ -2311,60 +2533,29 @@ void Message_Decode(PlayState* play) {
             if (phi_s1 == MESSAGE_TEXTID) {
                 osSyncPrintf("NZ_NEXTMSG=%x, %x, %x\n", font->msgBuf[msgCtx->msgBufPos],
                              font->msgBuf[msgCtx->msgBufPos + 1], font->msgBuf[msgCtx->msgBufPos + 2]);
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 temp_s2 = msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[msgCtx->msgBufPos + 1];
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[msgCtx->msgBufPos + 2];
                 phi_s0_3 = temp_s2 << 8;
                 sNextTextId = msgCtx->msgBufDecoded[decodedBufPos] | phi_s0_3;
             }
             if (phi_s1 == MESSAGE_BOX_BREAK_DELAYED) {
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[msgCtx->msgBufPos + 1];
                 msgCtx->msgBufPos += 2;
             }
             msgCtx->decodedTextLen = decodedBufPos;
             if (sTextboxSkipped) {
-                msgCtx->textDrawPos = msgCtx->decodedTextLen;
+                msgCtx->textDrawPos = msgCtx->decodedTextLen != 0 ? msgCtx->decodedTextLen : 1;
             }
             break;
         } else if (temp_s2 == MESSAGE_NAME) {
             // Substitute the player name control character for the file's player name.
             // #region SOH [NTSC] - Support PAL and NTSC with either language
-            //                      Function always returns true, so block is not entered
+            //                      Falha de capacidade encerra a caixa sem fallback.
             if (!Message_DecodeName(play, &decodedBufPos, &charTexIdx)) {
-                for (playerNameLen = ARRAY_COUNT(gSaveContext.playerName); playerNameLen > 0; playerNameLen--) {
-                    if (gSaveContext.playerName[playerNameLen - 1] != 0x3E) {
-                        break;
-                    }
-                }
-                // "Name"
-                osSyncPrintf("\n名前 ＝ ");
-
-                for (i = 0; i < playerNameLen; i++) {
-                    phi_s1 = gSaveContext.playerName[i];
-                    if (phi_s1 == 0x3E) {
-                        phi_s1 = ' ';
-                    } else if (phi_s1 == 0x40) {
-                        phi_s1 = '.';
-                    } else if (phi_s1 == 0x3F) {
-                        phi_s1 = '-';
-                    } else if (phi_s1 < 0xA) {
-                        phi_s1 += 0;
-                        phi_s1 += '0';
-                    } else if (phi_s1 < 0x24) {
-                        phi_s1 += 0;
-                        phi_s1 += '7';
-                    } else if (phi_s1 < 0x3E) {
-                        phi_s1 += 0;
-                        phi_s1 += '=';
-                    }
-                    if (phi_s1 != ' ') {
-                        Font_LoadChar(font, phi_s1 - ' ', charTexIdx);
-                        charTexIdx += FONT_CHAR_TEX_SIZE;
-                    }
-                    osSyncPrintf("%x ", phi_s1);
-                    msgCtx->msgBufDecoded[decodedBufPos] = phi_s1;
-                    decodedBufPos++;
-                }
-                decodedBufPos--;
+                goto decodeOverflow;
             }
             // #endregion
         } else if (temp_s2 == MESSAGE_MARATHON_TIME || temp_s2 == MESSAGE_RACE_TIME) {
@@ -2393,18 +2584,24 @@ void Message_Decode(PlayState* play) {
             }
 
             for (i = 0; i < 4; i++) {
+                MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                 Font_LoadChar(font, digits[i] + '0' - ' ', charTexIdx);
                 charTexIdx += FONT_CHAR_TEX_SIZE;
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 msgCtx->msgBufDecoded[decodedBufPos] = digits[i] + '0';
                 decodedBufPos++;
                 if (i == 1) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadChar(font, '"' - ' ', charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecoded[decodedBufPos] = '"';
                     decodedBufPos++;
                 } else if (i == 3) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadChar(font, '"' - ' ', charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecoded[decodedBufPos] = '"';
                 }
             }
@@ -2435,7 +2632,9 @@ void Message_Decode(PlayState* play) {
                     loadChar = true;
                 }
                 if (loadChar) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadChar(font, digits[i] + '0' - ' ', charTexIdx);
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecoded[decodedBufPos] = digits[i] + '0';
                     charTexIdx += FONT_CHAR_TEX_SIZE;
                     decodedBufPos++;
@@ -2465,7 +2664,9 @@ void Message_Decode(PlayState* play) {
                     loadChar = true;
                 }
                 if (loadChar) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadChar(font, digits[i] + '0' - ' ', charTexIdx);
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecoded[decodedBufPos] = digits[i] + '0';
                     charTexIdx += FONT_CHAR_TEX_SIZE;
                     osSyncPrintf("%x(%x) ", digits[i] + '0' - ' ', digits[i]);
@@ -2486,7 +2687,9 @@ void Message_Decode(PlayState* play) {
 
             for (i = 0; i < 2; i++) {
                 if (i == 1 || digits[i] != 0) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadChar(font, digits[i] + '0' - ' ', charTexIdx);
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecoded[decodedBufPos] = digits[i] + '0';
                     charTexIdx += FONT_CHAR_TEX_SIZE;
                     osSyncPrintf("%x(%x) ", digits[i] + '0' - ' ', digits[i]);
@@ -2536,7 +2739,9 @@ void Message_Decode(PlayState* play) {
                             loadChar = true;
                         }
                         if (loadChar) {
+                            MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                             Font_LoadChar(font, digits[i] + '0' - ' ', charTexIdx);
+                            MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                             msgCtx->msgBufDecoded[decodedBufPos] = digits[i] + '0';
                             charTexIdx += FONT_CHAR_TEX_SIZE;
                             decodedBufPos++;
@@ -2566,18 +2771,24 @@ void Message_Decode(PlayState* play) {
                     }
 
                     for (i = 0; i < 4; i++) {
+                        MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                         Font_LoadChar(font, digits[i] + '0' - ' ', charTexIdx);
                         charTexIdx += FONT_CHAR_TEX_SIZE;
+                        MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                         msgCtx->msgBufDecoded[decodedBufPos] = digits[i] + '0';
                         decodedBufPos++;
                         if (i == 1) {
+                            MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                             Font_LoadChar(font, '"' - ' ', charTexIdx);
                             charTexIdx += FONT_CHAR_TEX_SIZE;
+                            MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                             msgCtx->msgBufDecoded[decodedBufPos] = '"';
                             decodedBufPos++;
                         } else if (i == 3) {
+                            MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                             Font_LoadChar(font, '"' - ' ', charTexIdx);
                             charTexIdx += FONT_CHAR_TEX_SIZE;
+                            MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                             msgCtx->msgBufDecoded[decodedBufPos] = '"';
                         }
                     }
@@ -2602,19 +2813,24 @@ void Message_Decode(PlayState* play) {
             }
 
             for (i = 0; i < 4; i++) {
+                MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                 Font_LoadChar(font, digits[i] + '0' - ' ', charTexIdx);
                 charTexIdx += FONT_CHAR_TEX_SIZE;
+                MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                 msgCtx->msgBufDecoded[decodedBufPos] = digits[i] + '0';
                 decodedBufPos++;
                 if (i == 1) {
+                    MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                     Font_LoadChar(font, ':' - ' ', charTexIdx);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
+                    MESSAGE_DECODE_REQUIRE_INDEX(decodedBufPos);
                     msgCtx->msgBufDecoded[decodedBufPos] = ':';
                     decodedBufPos++;
                 }
             }
             decodedBufPos--;
         } else if (temp_s2 == MESSAGE_ITEM_ICON) {
+            MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
             msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[msgCtx->msgBufPos + 1];
             osSyncPrintf("ITEM_NO=(%d) (%d)\n", msgCtx->msgBufDecoded[decodedBufPos],
                          font->msgBuf[msgCtx->msgBufPos + 1]);
@@ -2639,6 +2855,7 @@ void Message_Decode(PlayState* play) {
             numLines = 2;
             R_TEXT_INIT_XPOS = 50;
         } else if (temp_s2 == MESSAGE_COLOR) {
+            MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
             msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos];
         } else if (temp_s2 == MESSAGE_NEWLINE) {
             numLines++;
@@ -2648,22 +2865,29 @@ void Message_Decode(PlayState* play) {
             if (temp_s2 == MESSAGE_FADE) {
                 sTextFade = true;
                 osSyncPrintf("NZ_TIMER_END (key_off_flag=%d)\n", sTextFade);
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos];
             } else if (temp_s2 == MESSAGE_FADE2) {
                 sTextFade = true;
                 osSyncPrintf("NZ_BGM (key_off_flag=%d)\n", sTextFade);
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos];
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos];
             } else if (temp_s2 == MESSAGE_SHIFT || temp_s2 == MESSAGE_TEXT_SPEED) {
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos] & 0xFF;
             } else if (temp_s2 == MESSAGE_SFX) {
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos];
+                MESSAGE_DECODE_REQUIRE_INDEX((decodedBufPos + 1));
                 msgCtx->msgBufDecoded[++decodedBufPos] = font->msgBuf[++msgCtx->msgBufPos];
             } else if (temp_s2 == MESSAGE_TWO_CHOICE) {
                 msgCtx->choiceNum = 2;
             } else if (temp_s2 == MESSAGE_THREE_CHOICE) {
                 msgCtx->choiceNum = 3;
             } else if (temp_s2 != ' ') {
+                MESSAGE_DECODE_REQUIRE_GLYPH(charTexIdx);
                 Font_LoadChar(font, temp_s2 - ' ', charTexIdx);
                 charTexIdx += FONT_CHAR_TEX_SIZE;
             }
@@ -2671,7 +2895,25 @@ void Message_Decode(PlayState* play) {
         decodedBufPos++;
         msgCtx->msgBufPos++;
     }
+    return true;
+
+decodeOverflow:
+    // SOH [Link-Span] R04: falha explicita, sem controles do prefixo.
+    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de texto/glifos ou entrada incompleta; encerrando\n",
+                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit,
+                 charTexIdx, (int)ARRAY_COUNT(font->charTexBuf));
+    msgCtx->msgBufPos = rawTokenStart;
+    Message_DiscardDecoded(play, false);
+    return false;
 }
+
+// SOH [Link-Span] R04: preservar a API publica; consumidores internos conferem o resultado.
+void Message_Decode(PlayState* play) {
+    Message_DecodeChecked(play);
+}
+
+#undef MESSAGE_DECODE_REQUIRE_INDEX
+#undef MESSAGE_DECODE_REQUIRE_GLYPH
 
 extern const char* msgStaticTbl[];
 
@@ -3012,7 +3254,10 @@ void Message_StartOcarina(PlayState* play, u16 ocarinaActionId) {
         msgCtx->textBoxType = TEXTBOX_TYPE_BLUE;
     } else if (ocarinaActionId == OCARINA_ACTION_MEMORY_GAME) {
         Interface_ChangeHudVisibilityMode(1);
-        Message_Decode(play);
+        if (!Message_DecodeChecked(play)) {
+            // SOH [Link-Span] R04: manter o encerramento de erro.
+            return;
+        }
         msgCtx->msgMode = MSGMODE_MEMORY_GAME_START;
     } else if (ocarinaActionId == OCARINA_ACTION_SCARECROW_LONG_PLAYBACK) {
         // "?????Recording Playback / Recording Playback / Recording Playback / Recording Playback -> "
@@ -3303,19 +3548,23 @@ void Message_DrawMain(PlayState* play, Gfx** p) {
             s16 textboxColorAlphaCurrent = msgCtx->textboxColorAlphaCurrent;
             s32 textBoxNum;
             s32 textBoxMax = sTextBoxNum - 1;
+            bool decodeOk;
             Message_OpenText(play, msgCtx->textId);
-            Message_Decode(play);
+            decodeOk = Message_DecodeChecked(play);
             // Move to correct textbox
-            for (textBoxNum = 0; textBoxNum < textBoxMax; textBoxNum++) {
+            for (textBoxNum = 0; decodeOk && textBoxNum < textBoxMax; textBoxNum++) {
                 msgCtx->msgBufPos++;
-                Message_Decode(play);
+                decodeOk = Message_DecodeChecked(play);
             }
-            msgCtx->textDrawPos = (drawPos > msgCtx->decodedTextLen) ? msgCtx->decodedTextLen : drawPos;
-            msgCtx->choiceNum = choiceNum;
-            msgCtx->textUnskippable = textUnskippable;
-            msgCtx->textboxEndType = textboxEndType;
-            msgCtx->msgMode = msgMode;
-            msgCtx->textboxColorAlphaCurrent = textboxColorAlphaCurrent;
+            if (decodeOk) {
+                // SOH [Link-Span] R04: nao restaurar controles apos descarte.
+                msgCtx->textDrawPos = (drawPos > msgCtx->decodedTextLen) ? msgCtx->decodedTextLen : drawPos;
+                msgCtx->choiceNum = choiceNum;
+                msgCtx->textUnskippable = textUnskippable;
+                msgCtx->textboxEndType = textboxEndType;
+                msgCtx->msgMode = msgMode;
+                msgCtx->textboxColorAlphaCurrent = textboxColorAlphaCurrent;
+            }
         }
         // #endregion
 
@@ -3599,7 +3848,10 @@ void Message_DrawMain(PlayState* play, Gfx** p) {
                         // "kokokokokoko"
                         osSyncPrintf("ここここここ\n");
                         Message_ContinueTextbox(play, 0x88B); // red X background
-                        Message_Decode(play);
+                        if (!Message_DecodeChecked(play)) {
+                            // SOH [Link-Span] R04: manter o encerramento de erro.
+                            break;
+                        }
                         msgCtx->msgMode = MSGMODE_SONG_PLAYBACK_NOTES_DROP;
                     } else {
                         msgCtx->msgMode = MSGMODE_OCARINA_NOTES_DROP;
@@ -3635,7 +3887,10 @@ void Message_DrawMain(PlayState* play, Gfx** p) {
                     osSyncPrintf("Na_StopOcarinaMode();\n");
                     osSyncPrintf("Na_StopOcarinaMode();\n");
                     osSyncPrintf(VT_RST);
-                    Message_Decode(play);
+                    if (!Message_DecodeChecked(play)) {
+                        // SOH [Link-Span] R04: manter o encerramento de erro.
+                        break;
+                    }
                     msgCtx->msgMode = MSGMODE_SETUP_DISPLAY_SONG_PLAYED;
                     msgCtx->ocarinaStaff = AudioOcarina_GetPlayingStaff();
                     msgCtx->ocarinaStaff->pos = sOcarinaButtonIndexBufPos = 0;
@@ -3710,7 +3965,10 @@ void Message_DrawMain(PlayState* play, Gfx** p) {
                 break;
             case MSGMODE_DISPLAY_SONG_PLAYED_TEXT_BEGIN:
                 Message_ContinueTextbox(play, msgCtx->lastPlayedSong + 0x893); // You played [song name]
-                Message_Decode(play);
+                if (!Message_DecodeChecked(play)) {
+                    // SOH [Link-Span] R04: manter o encerramento de erro.
+                    break;
+                }
                 msgCtx->msgMode = MSGMODE_DISPLAY_SONG_PLAYED_TEXT;
 
                 if (CVarGetInteger(CVAR_ENHANCEMENT("FastOcarinaPlayback"), 0) == 0 ||
@@ -4554,7 +4812,7 @@ void Message_Update(PlayState* play) {
                 Interface_ChangeHudVisibilityMode(1);
             }
             if (D_80153D74 != 0) {
-                msgCtx->textDrawPos = msgCtx->decodedTextLen;
+                msgCtx->textDrawPos = msgCtx->decodedTextLen != 0 ? msgCtx->decodedTextLen : 1;
                 D_80153D74 = 0;
             }
             break;
@@ -4567,8 +4825,13 @@ void Message_Update(PlayState* play) {
         case MSGMODE_TEXT_DISPLAYING:
             if (msgCtx->textBoxType != TEXTBOX_TYPE_NONE_BOTTOM && YREG(31) == 0 && isB_Held &&
                 !msgCtx->textUnskippable) {
+                // SOH [Link-Span] R04: o primeiro skip recupera a fronteira de AWAIT.
+                // B mantido conserva o avanco posterior, inclusive END e o descarte.
+                if ((!sTextboxSkipped && msgCtx->decodedTextLen != 0) ||
+                    msgCtx->textDrawPos < msgCtx->decodedTextLen) {
+                    msgCtx->textDrawPos = msgCtx->decodedTextLen;
+                }
                 sTextboxSkipped = true;
-                msgCtx->textDrawPos = msgCtx->decodedTextLen;
             }
             break;
         case MSGMODE_TEXT_AWAIT_INPUT:
@@ -4612,11 +4875,8 @@ void Message_Update(PlayState* play) {
                     if (msgCtx->textboxEndType == TEXTBOX_ENDTYPE_HAS_NEXT) {
                         Audio_PlaySfxGeneral(NA_SE_SY_MESSAGE_PASS, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
                                              &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
-                        if (gSaveContext.language == LANGUAGE_JPN && !sTextIsCredits && !sDisplayNextMessageAsEnglish) {
-                            Message_ContinueTextbox(play, msgCtx->msgBufDecodedWide[msgCtx->textDrawPos]);
-                        } else {
-                            Message_ContinueTextbox(play, sNextTextId);
-                        }
+                        // SOH [Link-Span] R04: o ID validado independe do cursor de desenho.
+                        Message_ContinueTextbox(play, sNextTextId);
                     } else {
                         Audio_PlaySfxGeneral(NA_SE_SY_DECIDE, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
                                              &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);

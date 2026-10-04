@@ -4,6 +4,7 @@
 #endif
 
 #include "global.h"
+#include "../buffers/heap_sizes.h"
 #include "vt.h"
 #include "stdio.h"
 #include <libultraship/bridge/crashhandlerbridge.h>
@@ -94,7 +95,7 @@ void Main(void* arg) {
     SysCfb_Init(0);
     sysHeap = (uintptr_t)gSystemHeap;
     fb = SysCfb_GetFbPtr(0);
-    gSystemHeapSize = 1024 * 1024 * 4;
+    gSystemHeapSize = SOH_SYSTEM_HEAP_SIZE;
     // "System heap initalization"
     osSyncPrintf("システムヒープ初期化 %08x-%08x %08x\n", sysHeap, fb, gSystemHeapSize);
     SystemHeap_Init((void*)sysHeap, gSystemHeapSize); // initializes the system heap
