@@ -36,6 +36,12 @@ local PLAN = table.concat({
     "linkspan_e/m15/v16392",  -- 026: 2 049 caixas, 16 392 vértices: cresce para 32 768
     "linkspan_e/m24_seq/main", -- 027: 8 193 texturas distintas num quadro (janelas 1x1 de um atlas)
     "linkspan_e/m24_slots/main", -- 027: A verde no slot 0, 8 192 chaves no slot 1; o painel de x positivo (à esquerda na tela) volta ao slot 0
+    "linkspan_e/m09/o1020",   -- 029: 1 020 objetos na sala, o da caixa por último (objetos=1023 caixas=1)
+    "linkspan_e/m09/o1021",   -- 029: 1 021, o banco fecha em 1 024 e a caixa nasce (objetos=1024 caixas=1)
+    "linkspan_e/m09/o1022",   -- 029: 1 022, a última entrada (a da caixa) é descartada (objetos=1024 caixas=0)
+    "linkspan_e/m08/a8100",   -- 029: 8 100 rúpias; a arena atual comporta 4 132 (as outras: Cannot allocate actor)
+    "linkspan_e/m08/a8192",   -- 029: 8 192 rúpias; com arena suficiente, o total para em 8 192 (2 recusas pelo teto)
+    -- linkspan_e/m08/a8200 fica fora: com mais de 8 192 atores na sala o host escreve além do buffer do oot.room.actors
     "linkspan_e/house/main",  -- retorno
 }, ";")
 

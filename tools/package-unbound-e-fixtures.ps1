@@ -51,11 +51,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Fixture documents rejected by the Unbound chec
 [System.IO.File]::WriteAllText((Join-Path $staging 'manifest.toml'), @'
 id = "linkspan.unbound.e-fixtures"
 name = "Link-Span Unbound E Fixtures"
-version = "0.1.7"
+version = "0.1.8"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
-description = "Fixtures locais da fase E e do Prelude: cena JSON com titulo e exits por nome, texto, mundo amplo, materialAnims e recursos proprios nos limites (mundo, 33 exits, 65 540 vertices, malha tipo 2 com 1 025 entradas, 301 cameras, agua por room, 2 049 caixas DynaPoly, 8 193 texturas num quadro). Tecla K viaja para a proxima."
+description = "Fixtures locais da fase E e do Prelude: cena JSON com titulo e exits por nome, texto, mundo amplo, materialAnims e recursos proprios nos limites (mundo, 33 exits, 65 540 vertices, malha tipo 2 com 1 025 entradas, 301 cameras, agua por room, 2 049 caixas DynaPoly, 8 193 texturas num quadro, banco de 1 024 objetos, 8 200 atores contra a arena do jogo). Tecla K viaja para a proxima."
 
 [provider]
 abi_version = "1.0"
@@ -68,7 +68,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'main.lua') -Destination (Join-Pat
 Copy-Item -LiteralPath $dll -Destination (Join-Path $staging 'provider\linkspan_unbound_e_fixtures.dll')
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$package = Join-Path $packageRoot "LinkSpan-Unbound-E-Fixtures-0.1.7-layout-$layout.shipmod"
+$package = Join-Path $packageRoot "LinkSpan-Unbound-E-Fixtures-0.1.8-layout-$layout.shipmod"
 if (Test-Path -LiteralPath $package) {
     Remove-Item -LiteralPath $package -Force
 }

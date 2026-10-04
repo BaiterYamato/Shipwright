@@ -207,6 +207,10 @@ def main():
     make_m19(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_m15(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
     make_m24(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
+    # UNBOUND-029: banco de objetos no teto (M09) e total de atores vivos no teto (M08).
+    make_m09(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision,
+             object_ids(Path(__file__).resolve().parents[4] / "soh/include/tables/object_table.h"))
+    make_m08(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
@@ -1089,6 +1093,90 @@ def make_m24(put, registry, field, field_room, field_collision):
         mesh = {"type": 0, "entries": {"0": {"opa": f"{folder}/draw", "xlu": None}}}
         small_scene(put, registry, field, field_room, field_collision, key,
                     "Link-Span E: M24 dois slots" if two_slots else "Link-Span E: M24 8193 janelas", mesh)
+
+
+M09_ROOMS = (("o1020", 1020), ("o1021", 1021), ("o1022", 1022))
+M09_SPAWN = (0, 0, -300)
+
+
+def make_m09(put, registry, field, field_room, field_collision, objects):
+    """M09: o banco de objetos tem 1 024 vagas (OBJECT_EXCHANGE_BANK_MAX), e a cena já ocupa 3 antes da lista da
+    sala: gameplay_keep, o keep do campo (specialObjects) e o objeto do Link. Uma sala por tamanho de lista (1 020,
+    1 021 e 1 022): enchimento com ids de objeto válidos, em ciclo, e o objeto da caixa por último, com uma caixa à
+    frente do spawn. No SoH o objeto é só contabilidade (Object_UpdateBank troca o sinal do id; o recurso vem pelo
+    nome), então a caixa nasce se e só se a última entrada coube: com 1 021, o banco fecha em 1 024 e a caixa nasce;
+    com 1 022, Scene_CommandObjectList descarta a última ("object list exceeds the bank") e a caixa não nasce. O
+    framework dá a nota de mais de 1 020 objetos nas duas últimas."""
+    folder = "scenes/linkspan_e/m09"
+    strips_floor(put, folder, [(-600, 1200, "grid")], width=1200)
+    floor, vertices, polys = band_floor((-600, 1200), (0,), width=1200)
+    put(f"{folder}/collision.bin", floor)
+    collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin", vertices=vertices,
+                               polys=polys)
+    collision["bounds"] = {"min": [-1200, -10, -600], "max": [1200, 10, 1200]}
+    put(f"{folder}/collision.json", collision)
+    setup = outdoor_setup(field, list(M09_SPAWN), 0, 0)
+    setup["entrances"] = {str(i): {"spawn": 0, "room": i} for i in range(len(M09_ROOMS))}
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {str(i): f"{folder}/rooms/{name}.json" for i, (name, _) in enumerate(M09_ROOMS)},
+        "setups": {"0": setup},
+    })
+    for name, count in M09_ROOMS:
+        listed = [objects[i % len(objects)] for i in range(count - 1)] + [CRATE_OBJECT]
+        room = base_room(field_room)
+        room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                     "objects": {str(i): object_id for i, object_id in enumerate(listed)},
+                     "actors": {"0": {"id": CRATE_ACTOR, "pos": [0, 0, 200], "rot": [0, 0, 0], "params": 0}}})
+        put(f"{folder}/rooms/{name}.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/m09"] = {"name": "Link-Span E: banco de objetos", "scene": f"{folder}/scene.json",
+                                  "drawConfig": 0,
+                                  "entrances": {name: {"spawn": i} for i, (name, _) in enumerate(M09_ROOMS)}}
+
+
+M08_ROOMS = (("a8100", 8100), ("a8192", 8192), ("a8200", 8200))
+M08_COLUMNS = 100
+M08_SPAWN = (0, 0, -300)
+
+
+def make_m08(put, registry, field, field_room, field_collision):
+    """M08: atores vivos até ACTOR_NUMBER_MAX (8 192). Salas com 8 100, 8 192 e 8 200 rúpias verdes (En_Item00,
+    params 0, gráfico do gameplay_keep) em grade à frente do spawn. Com 8 100, todas nascem e o total fica abaixo do
+    teto; com 8 192, o Link e a Navi entram na conta e o Actor_Spawn recusa as 2 últimas com o aviso "Actor number
+    max exceeded". Isso pede uma arena que comporte os atores: no host atual (heap do Play de 0x1D4790 * 2) a
+    ZeldaArena acaba antes, cabem 4 132 rúpias e cada uma das outras falha com "Cannot allocate actor".
+    A sala de 8 200 fica fora do roteiro: LinkSpan_RoomActors (OotNativeHooksGame.cpp) copia a lista da sala para o
+    buffer do oot.room.actors, que tem no máximo 8 192 vagas, e acima disso escreve além dele (corrupção do heap,
+    UNBOUND-029). Ela serve para provar a correção do host."""
+    folder = "scenes/linkspan_e/m08"
+    strips_floor(put, folder, [(-600, 3800, "grid")], width=2100)
+    floor, vertices, polys = band_floor((-600, 3800), (0,), width=2100)
+    put(f"{folder}/collision.bin", floor)
+    collision = flat_collision(field_collision, {}, bulk_file=f"{folder}/collision.bin", vertices=vertices,
+                               polys=polys)
+    collision["bounds"] = {"min": [-2100, -10, -600], "max": [2100, 10, 3800]}
+    put(f"{folder}/collision.json", collision)
+    setup = outdoor_setup(field, list(M08_SPAWN), 0, 0)
+    setup["entrances"] = {str(i): {"spawn": 0, "room": i} for i in range(len(M08_ROOMS))}
+    put(f"{folder}/scene.json", {
+        "$schema": "unbound/scene/1",
+        "collision": f"{folder}/collision.json",
+        "rooms": {str(i): f"{folder}/rooms/{name}.json" for i, (name, _) in enumerate(M08_ROOMS)},
+        "setups": {"0": setup},
+    })
+    for name, count in M08_ROOMS:
+        actors = {str(i): {"id": HEART_ACTOR,
+                           "pos": [-2000 + (i % M08_COLUMNS) * 40, 0, 300 + (i // M08_COLUMNS) * 40],
+                           "rot": [0, 0, 0], "params": 0}
+                  for i in range(count)}
+        room = base_room(field_room)
+        room.update({"mesh": {"type": 0, "entries": {"0": {"opa": f"{folder}/floor", "xlu": None}}},
+                     "objects": {}, "actors": actors})
+        put(f"{folder}/rooms/{name}.json", {"$schema": "unbound/room/1", "setups": {"0": room}})
+    registry["linkspan_e/m08"] = {"name": "Link-Span E: atores vivos", "scene": f"{folder}/scene.json",
+                                  "drawConfig": 0,
+                                  "entrances": {name: {"spawn": i} for i, (name, _) in enumerate(M08_ROOMS)}}
 
 
 def title_card(text):
