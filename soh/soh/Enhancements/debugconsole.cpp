@@ -569,7 +569,7 @@ static bool LoadStateHandler(std::shared_ptr<Ship::Console> Console, const std::
 
     switch (rtn) {
         case SaveStateReturn::SUCCESS:
-            INFO_MESSAGE("[SOH] Loaded state from slot (%u)", slot);
+            INFO_MESSAGE("[SOH] Load requested from slot (%u)", slot);
             return 0;
         case SaveStateReturn::FAIL_INVALID_SLOT:
             ERROR_MESSAGE("[SOH] Invalid State Slot Number (%u)", slot);

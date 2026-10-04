@@ -1801,7 +1801,7 @@ extern "C" void Graph_StartFrame() {
 
             switch (stateReturn) {
                 case SaveStateReturn::SUCCESS:
-                    SPDLOG_INFO("[SOH] Loaded state from slot {}", slot);
+                    SPDLOG_INFO("[SOH] Load requested from slot {}", slot);
                     break;
                 case SaveStateReturn::FAIL_INVALID_SLOT:
                     SPDLOG_ERROR("[SOH] Invalid State Slot Number {}", slot);

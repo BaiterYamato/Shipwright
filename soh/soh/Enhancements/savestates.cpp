@@ -94,6 +94,7 @@ typedef struct SaveStateInfo {
     unsigned char audioHeapCopy[AUDIO_HEAP_SIZE];
 
     SaveStateCollisionGuard collisionGuard;
+    SaveStateCollisionTables collisionTables;
 
     SaveContext saveContextCopy;
     EffectContext effectContextCopy;
@@ -391,7 +392,7 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
                 if (this->states.contains(request.slot)) {
                     const bool loaded = this->states[request.slot]->Load();
                     Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                        1.0f, true, loaded ? "loaded state %u" : "slot %u recusado: colisao alterada", request.slot);
+                        1.0f, true, loaded ? "loaded state %u" : "state %u refused: collision changed", request.slot);
                 } else {
                     SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);
                 }
@@ -435,6 +436,7 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
 void SaveState::Save(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
     info->collisionGuard.Capture(gPlayState->colCtx, BgCheck_GetSaveStateGeneration());
+    info->collisionTables.Capture(gPlayState->colCtx);
     memcpy(&info->sysHeapCopy, gSystemHeap, SOH_SYSTEM_HEAP_SIZE /* sizeof(gSystemHeap) */);
     memcpy(&info->audioHeapCopy, gAudioHeap, AUDIO_HEAP_SIZE /* sizeof(gAudioContext) */);
 
@@ -469,11 +471,14 @@ bool SaveState::Load(void) {
     // process-heap pointers and obsolete capacities in the saved PlayState.
     if (gPlayState == nullptr ||
         !info->collisionGuard.Matches(gPlayState->colCtx, BgCheck_GetSaveStateGeneration())) {
-        SPDLOG_WARN("SaveState slot {} recusado: buffers/capacidades ou geracao da colisao alterados", slot);
+        SPDLOG_WARN("SaveState slot {} refused: collision buffers, capacities or generation changed", slot);
         return false;
     }
     memcpy(gSystemHeap, &info->sysHeapCopy, SOH_SYSTEM_HEAP_SIZE);
     memcpy(gAudioHeap, &info->audioHeapCopy, AUDIO_HEAP_SIZE);
+    // The restored heap revives actors, lookup heads and counts. Restore their
+    // external backing tables before any load callback or collision query.
+    info->collisionTables.Restore(gPlayState->colCtx);
 
     memcpy(&gAudioContext, &info->audioContextCopy, sizeof(AudioContext));
     memcpy(gActiveSeqs, &info->gActiveSeqsCopy, sizeof(info->gActiveSeqsCopy));
