@@ -431,11 +431,19 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
 
     switch (request.type) {
         case RequestType::SAVE:
-            requests.push(request);
+            try {
+                requests.push(request);
+            } catch (const std::bad_alloc&) {
+                return SaveStateReturn::FAIL_NO_MEMORY;
+            }
             return SaveStateReturn::SUCCESS;
         case RequestType::LOAD:
             if (states.contains(request.slot)) {
-                requests.push(request);
+                try {
+                    requests.push(request);
+                } catch (const std::bad_alloc&) {
+                    return SaveStateReturn::FAIL_NO_MEMORY;
+                }
                 return SaveStateReturn::SUCCESS;
             } else {
                 SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);

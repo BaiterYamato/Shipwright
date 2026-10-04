@@ -7,6 +7,7 @@
 #include <vector>
 #include <chrono>
 #include <optional>
+#include <new>
 #include <spdlog/common.h>
 #include <imgui.h>
 
@@ -1775,6 +1776,15 @@ extern "C" void Graph_StartFrame() {
                 case SaveStateReturn::SUCCESS:
                     SPDLOG_INFO("[SOH] Save requested for slot {}", slot);
                     break;
+                case SaveStateReturn::FAIL_NO_MEMORY:
+                    try {
+                        SPDLOG_ERROR("[SOH] Save request for slot {} refused: out of memory", slot);
+                        gui->GetGameOverlay()->TextDrawNotification(
+                            1.0f, true, "savestate request refused: out of memory");
+                    } catch (const std::bad_alloc&) {
+                        // Reporting is best effort while memory is exhausted.
+                    }
+                    break;
                 case SaveStateReturn::FAIL_WRONG_GAMESTATE:
                     SPDLOG_ERROR("[SOH] Can not save a state outside of \"GamePlay\"");
                     break;
@@ -1814,6 +1824,15 @@ extern "C" void Graph_StartFrame() {
                     break;
                 case SaveStateReturn::FAIL_STATE_EMPTY:
                     SPDLOG_ERROR("[SOH] State Slot {} is empty", slot);
+                    break;
+                case SaveStateReturn::FAIL_NO_MEMORY:
+                    try {
+                        SPDLOG_ERROR("[SOH] Load request for slot {} refused: out of memory", slot);
+                        gui->GetGameOverlay()->TextDrawNotification(
+                            1.0f, true, "savestate request refused: out of memory");
+                    } catch (const std::bad_alloc&) {
+                        // Reporting is best effort while memory is exhausted.
+                    }
                     break;
                 case SaveStateReturn::FAIL_WRONG_GAMESTATE:
                     SPDLOG_ERROR("[SOH] Can not load a state outside of \"GamePlay\"");

@@ -1,5 +1,6 @@
 #include <vector>
 #include <string>
+#include <new>
 
 #include <ship/utils/Utils.h>
 
@@ -554,6 +555,13 @@ static bool SaveStateHandler(std::shared_ptr<Ship::Console> Console, const std::
         case SaveStateReturn::SUCCESS:
             INFO_MESSAGE("[SOH] Save requested for slot %u", slot);
             return 0;
+        case SaveStateReturn::FAIL_NO_MEMORY:
+            try {
+                ERROR_MESSAGE("[SOH] Save request for slot %u refused: out of memory", slot);
+            } catch (const std::bad_alloc&) {
+                // Reporting is best effort while memory is exhausted.
+            }
+            return 1;
         case SaveStateReturn::FAIL_WRONG_GAMESTATE:
             ERROR_MESSAGE("[SOH] Can not save a state outside of \"GamePlay\"");
             return 1;
@@ -576,6 +584,13 @@ static bool LoadStateHandler(std::shared_ptr<Ship::Console> Console, const std::
             return 1;
         case SaveStateReturn::FAIL_STATE_EMPTY:
             ERROR_MESSAGE("[SOH] State Slot (%u) is empty", slot);
+            return 1;
+        case SaveStateReturn::FAIL_NO_MEMORY:
+            try {
+                ERROR_MESSAGE("[SOH] Load request for slot %u refused: out of memory", slot);
+            } catch (const std::bad_alloc&) {
+                // Reporting is best effort while memory is exhausted.
+            }
             return 1;
         case SaveStateReturn::FAIL_WRONG_GAMESTATE:
             ERROR_MESSAGE("[SOH] Can not load a state outside of \"GamePlay\"");
