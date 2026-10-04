@@ -435,8 +435,12 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
 
 void SaveState::Save(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
+    // Copy the external tables into a fresh snapshot before touching the slot: if an allocation throws, the slot
+    // keeps its previous guard, tables and heap together. The move below does not allocate.
+    SaveStateCollisionTables tables;
+    tables.Capture(gPlayState->colCtx);
+    info->collisionTables = std::move(tables);
     info->collisionGuard.Capture(gPlayState->colCtx, BgCheck_GetSaveStateGeneration());
-    info->collisionTables.Capture(gPlayState->colCtx);
     memcpy(&info->sysHeapCopy, gSystemHeap, SOH_SYSTEM_HEAP_SIZE /* sizeof(gSystemHeap) */);
     memcpy(&info->audioHeapCopy, gAudioHeap, AUDIO_HEAP_SIZE /* sizeof(gAudioContext) */);
 
