@@ -21,6 +21,7 @@ extern "C" {
 }
 
 #include "savestate_collision_guard.h"
+#include "savestate_native_lights_guard.h"
 
 extern "C" uint64_t BgCheck_GetSaveStateGeneration(void);
 extern "C" PlayState* gPlayState;
@@ -94,6 +95,7 @@ typedef struct SaveStateInfo {
     unsigned char sysHeapCopy[SOH_SYSTEM_HEAP_SIZE];
     unsigned char audioHeapCopy[AUDIO_HEAP_SIZE];
 
+    SaveStateNativeLightsGuard nativeLightsGuard;
     SaveStateCollisionGuard collisionGuard;
     SaveStateCollisionTables collisionTables;
 
@@ -408,7 +410,7 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
                 if (this->states.contains(request.slot)) {
                     const bool loaded = this->states[request.slot]->Load();
                     Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                        1.0f, true, loaded ? "loaded state %u" : "state %u refused: collision changed", request.slot);
+                        1.0f, true, loaded ? "loaded state %u" : "state %u refused: collision or native lights changed", request.slot);
                 } else {
                     SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);
                 }
@@ -466,6 +468,7 @@ void SaveState::Save(void) {
 
 void SaveState::SaveCapture(std::shared_ptr<SaveStateInfo>& info) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
+    info->nativeLightsGuard.Capture();
     info->collisionGuard.Capture(gPlayState->colCtx, BgCheck_GetSaveStateGeneration());
     info->collisionTables.Capture(gPlayState->colCtx, info->collisionGuard);
     memcpy(&info->sysHeapCopy, gSystemHeap, SOH_SYSTEM_HEAP_SIZE /* sizeof(gSystemHeap) */);
@@ -504,6 +507,10 @@ bool SaveState::Load(void) {
     if (gPlayState == nullptr ||
         !info->collisionGuard.Matches(gPlayState->colCtx, BgCheck_GetSaveStateGeneration())) {
         SPDLOG_WARN("SaveState slot {} refused: collision buffers, capacities or generation changed", slot);
+        return false;
+    }
+    if (!info->nativeLightsGuard.Matches()) {
+        SPDLOG_WARN("SaveState slot {} refused: native light bridge changed or busy", slot);
         return false;
     }
     memcpy(gSystemHeap, &info->sysHeapCopy, SOH_SYSTEM_HEAP_SIZE);

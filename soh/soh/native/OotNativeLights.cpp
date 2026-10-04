@@ -1,4 +1,5 @@
 #include "OotNativeLights.h"
+#include "../Enhancements/savestate_native_lights_guard.h"
 
 #include <array>
 #include <cmath>
@@ -24,6 +25,8 @@ struct LightsState {
     std::thread::id ownerThread;
     OotLightsBridge bridge;
     uint64_t nextSerial = 1;
+    // Private savestate epoch, never rewound. Zero permanently disables loads after wrap.
+    uint64_t saveStateGeneration = 1;
     std::array<Slot, LINKSPAN_OOT_LIGHTS_MAX> slots;
     // Uma operação no meio da bridge: Lights_PointSetInfo dispara oot.light.point_color, e um callback ali não pode
     // criar, mudar ou apagar luz de mod enquanto a vaga está pela metade.
@@ -33,6 +36,12 @@ struct LightsState {
 LightsState& State() {
     static LightsState state;
     return state;
+}
+
+// Invalidate before entering callbacks, including failed insertions that write HostLight::info.
+void AdvanceSaveStateGeneration() {
+    auto& generation = State().saveStateGeneration;
+    if (generation != 0) ++generation;
 }
 
 // Marca a bridge ocupada durante uma operação; a reentrada responde UNSUPPORTED sem mexer em vaga.
@@ -86,6 +95,7 @@ uint32_t IndexOf(const Slot& slot) {
 
 // Tira a luz da lista se a cena dela ainda for a atual e libera a vaga.
 void Free(Slot& slot) {
+    AdvanceSaveStateGeneration();
     const auto& bridge = State().bridge;
     if (bridge.remove && slot.play && slot.play == Gameplay()) {
         BusyScope busy;
@@ -98,6 +108,7 @@ void Free(Slot& slot) {
 Slot* Live(uint64_t handle, bool* issued = nullptr) {
     Slot* slot = Find(handle, issued);
     if (slot && slot->play != Gameplay()) {
+        AdvanceSaveStateGeneration();
         *slot = Slot{};
         return nullptr;
     }
@@ -117,6 +128,7 @@ ShipNativeStatus SHIP_NATIVE_CALL CreatePointLight(const char* owner, const Ship
         try {
             std::string name(owner);
             BusyScope busy;
+            AdvanceSaveStateGeneration();
             if (!state.bridge.insert(play, IndexOf(slot), *light)) return SHIP_NATIVE_LIMIT;
             slot.used = true;
             slot.serial = state.nextSerial++;
@@ -138,6 +150,7 @@ ShipNativeStatus SHIP_NATIVE_CALL UpdatePointLight(uint64_t handle, const ShipOo
     const auto& bridge = State().bridge;
     if (!bridge.update) return SHIP_NATIVE_UNSUPPORTED;
     BusyScope busy;
+    // Same node and LightInfo address: value updates do not invalidate snapshots.
     bridge.update(IndexOf(*slot), *light);
     return SHIP_NATIVE_OK;
 }
@@ -170,11 +183,13 @@ const ShipOotLightsV1 lightsV1{ sizeof(ShipOotLightsV1), CreatePointLight, Updat
 } // namespace
 
 void SetOotLightsBridge(const OotLightsBridge& bridge) {
+    AdvanceSaveStateGeneration();
     State().bridge = bridge;
 }
 
 void InitializeOotNativeLights(std::thread::id ownerThread) {
     ResetOotNativeLights();
+    AdvanceSaveStateGeneration();
     State().ownerThread = ownerThread;
 }
 
@@ -182,6 +197,11 @@ void ResetOotNativeLights() {
     for (auto& slot : State().slots) {
         if (slot.used) Free(slot);
     }
+}
+
+// A snapshot captured or checked inside a bridge callback is never loadable.
+uint64_t OotLightsSaveStateGeneration() {
+    return State().busy ? 0 : State().saveStateGeneration;
 }
 
 const ShipOotLightsV1& GetOotNativeLightsService() {
