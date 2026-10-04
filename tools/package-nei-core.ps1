@@ -41,7 +41,7 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
     New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
-$version = '0.3.16'
+$version = '0.3.17'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_nei_core.dll') 'NEI core DLL'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
 $jsonCopyright = Resolve-InputFile $JsonLicense 'nlohmann/json license'
