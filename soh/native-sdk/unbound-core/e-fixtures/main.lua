@@ -43,6 +43,11 @@ local PLAN = table.concat({
     "linkspan_e/m08/a8192",   -- 029: 8 192 rúpias; com arena suficiente, o total para em 8 192 (2 recusas pelo teto)
     -- linkspan_e/m08/a8200 fica fora: com mais de 8 192 atores na sala o host escreve além do buffer do oot.room.actors
     "linkspan_e/m18/main",    -- 031: 255 luzes na cena e 255 em cada sala; andando para a frente, três planos trocam A->B->A->B
+    "ENTR_DODONGOS_CAVERN_ENTRANCE", -- RFC 0027 R09: delta da ddan, sala 0 de controle (mapa e bússola concedidos)
+    "ENTR_DODONGOS_CAVERN_BOSS_DOOR", -- R09: o mesmo spawn, sala lógica 32 (além dos 19 minimapas e das 32 paletas)
+    "linkspan_e/r08_neg/main",       -- R08: worldMapArea -1 vira 22 antes da pausa
+    "linkspan_e/r08_high/main",      -- R08: 23 vira 22
+    "linkspan_e/r08_none/main",      -- R08: 22 válido, sem moldura de área na pausa
     "linkspan_e/house/main",  -- retorno
 }, ";")
 

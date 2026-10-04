@@ -42,6 +42,11 @@ struct Fixtures {
     int roomFrom = -1;
     uint32_t roomReportFrame = 0;
     uint32_t roomChanges = 0;
+    // RFC 0027 R08/R09: campos de mapa só nas viagens dos casos (ENTR_DODONGOS_*, linkspan_e/r08_*); a pausa é
+    // relatada em toda cena, a partir da segunda leitura (a primeira só guarda o estado de chegada).
+    bool mapReport = false;
+    int lastPauseState = -1;
+    int lastPausePage = -1;
 };
 
 constexpr uint32_t MAX_GROUND_CHANGES = 24;
@@ -114,7 +119,31 @@ unsigned CountLights(const PlayState* play) {
     return count;
 }
 
-std::string Describe(const PlayState* play, const Player* player) {
+// RFC 0027 R08/R09: somente leitura pelo serviço/layout já verificado no Init.
+// R_MAP_TEX_INDEX depende de gGameInfo (regs.h); engine v1 não expõe esse ponteiro.
+// Não importar globals internos do exe numa DLL de SDK independente.
+std::string MapState(const Fixtures& fixtures, const PlayState* play) {
+    const auto* save = static_cast<const SaveContext*>(fixtures.engine->get_save_context());
+    if (!save) {
+        return " | mapa=sem_save";
+    }
+    const auto& interfaceCtx = play->interfaceCtx;
+    const int index = save->mapIndex;
+    const bool dungeon = play->sceneNum == SCENE_DODONGOS_CAVERN;
+    const unsigned items = dungeon && index >= 0 && index < 20 ? save->inventory.dungeonItems[index] : 0;
+    char text[320];
+    std::snprintf(text, sizeof(text),
+                  " | worldMapArea=%d worldMapAreaData=0x%08X mapIndex=%d mapRoomNum=%d mapPaletteIndex=%d "
+                  "mapTex0=%d mapName0=%d dungeonItems=0x%02X pauseState=%u pausePage=%u "
+                  "R_MAP_TEX_INDEX=indisponivel_SDK_v1",
+                  static_cast<int>(save->worldMapArea), static_cast<unsigned>(save->worldMapAreaData), index,
+                  static_cast<int>(interfaceCtx.mapRoomNum), static_cast<int>(interfaceCtx.mapPaletteIndex),
+                  interfaceCtx.mapSegment && interfaceCtx.mapSegment[0] ? 1 : 0, interfaceCtx.mapSegmentName[0] ? 1 : 0,
+                  items, static_cast<unsigned>(play->pauseCtx.state), static_cast<unsigned>(play->pauseCtx.pageIndex));
+    return text;
+}
+
+std::string Describe(const Fixtures& fixtures, const PlayState* play, const Player* player) {
     // Coletáveis (En_Item00) vivos e o mais próximo do jogador: a fixture ampla põe 600 à frente do spawn.
     unsigned items = 0;
     const Actor* nearest = nullptr;
@@ -183,7 +212,7 @@ std::string Describe(const PlayState* play, const Player* player) {
     if (used > 0 && used < static_cast<int>(sizeof(text))) {
         std::snprintf(text + used, sizeof(text) - used, "%s", Limits(play, player).c_str());
     }
-    return text;
+    return fixtures.mapReport ? std::string(text) + MapState(fixtures, play) : std::string(text);
 }
 
 // "a;b;c": entradas do roteiro. Monta assets/ antes do game.ready em que o framework lê as camadas.
@@ -237,13 +266,26 @@ ShipNativeStatus SHIP_NATIVE_CALL Next(void* user, const char*, uint32_t length,
     if (fixtures.scenes->travel_to_entrance(index) != SHIP_NATIVE_OK) {
         return Write(write, writer, "viagem recusada: " + target);
     }
+    std::string granted;
+    const bool dodongo = target.rfind("ENTR_DODONGOS_CAVERN", 0) == 0;
+    if (dodongo) {
+        // Só teste (RFC 0027 R09): mapa (0x04) e bússola (0x02) da Dodongo, para o minimapa e as marcas desenharem
+        // na sala 32. O save da cópia de teste é restaurado depois da sessão.
+        auto* save = const_cast<SaveContext*>(static_cast<const SaveContext*>(fixtures.engine->get_save_context()));
+        if (save) {
+            save->inventory.dungeonItems[SCENE_DODONGOS_CAVERN] |= 0x06;
+            granted = " (mapa e bussola da Dodongo concedidos)";
+        }
+    }
     ++fixtures.next;
     fixtures.travelling = true;
     fixtures.fromScene = play->sceneNum;
     fixtures.framesInScene = 0;
     fixtures.reportsDone = 0;
-    return Write(write, writer, "travel " + target + " entrance=" + std::to_string(index) + " from " +
-                                    Describe(play, player));
+    std::string line = "travel " + target + " entrance=" + std::to_string(index) + granted + " from " +
+                       Describe(fixtures, play, player);
+    fixtures.mapReport = dodongo || target.rfind("linkspan_e/r08_", 0) == 0;
+    return Write(write, writer, line);
 }
 
 // Só teste (UNBOUND-013): Link adulto na próxima carga, Epona obtida, ocarina e Epona's Song, e viagem de volta para a
@@ -276,7 +318,7 @@ ShipNativeStatus SHIP_NATIVE_CALL AdultEpona(void* user, const char* request, ui
     fixtures.fromScene = play->sceneNum;
     fixtures.framesInScene = 0;
     fixtures.reportsDone = 0;
-    return Write(write, writer, "adulto com Epona, travel " + target + " from " + Describe(play, player));
+    return Write(write, writer, "adulto com Epona, travel " + target + " from " + Describe(fixtures, play, player));
 }
 
 // Só teste (UNBOUND-013): põe a Epona ao lado do Link. Ela anda sozinha pela cena, e uma sequência automatizada
@@ -316,7 +358,7 @@ ShipNativeStatus SHIP_NATIVE_CALL HorseHere(void* user, const char*, uint32_t le
     horse->speedXZ = 0.0f;
     mutablePlayer->actor.shape.rot.y = facing;
     mutablePlayer->actor.world.rot.y = facing;
-    return Write(write, writer, "cavalo ao lado " + Describe(play, player));
+    return Write(write, writer, "cavalo ao lado " + Describe(fixtures, play, player));
 }
 
 void ResetRooms(Fixtures& fixtures) {
@@ -324,6 +366,8 @@ void ResetRooms(Fixtures& fixtures) {
     fixtures.roomFrom = -1;
     fixtures.roomReportFrame = 0;
     fixtures.roomChanges = 0;
+    fixtures.lastPauseState = -1;
+    fixtures.lastPausePage = -1;
 }
 
 // Por frame: chegada numa cena nova (inclusive por saída física) e relatórios de posição depois dela.
@@ -351,7 +395,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
             fixtures.lastGround = -1;
             fixtures.groundChanges = 0;
             ResetRooms(fixtures);
-            return Write(write, writer, "arrived " + Describe(play, player));
+            return Write(write, writer, "arrived " + Describe(fixtures, play, player));
         }
         return Write(write, writer, "idle");
     }
@@ -368,9 +412,22 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         fixtures.lastGround = -1;
         fixtures.groundChanges = 0;
         ResetRooms(fixtures);
-        return Write(write, writer, "arrived por saida " + Describe(play, player));
+        return Write(write, writer, "arrived por saida " + Describe(fixtures, play, player));
     }
     ++fixtures.framesInScene;
+    // Registra abertura, mudança de página e fechamento mesmo depois do último REPORT_FRAMES.
+    // mapSegment é reutilizado pela pausa: só comparar a ausência do minimapa com pauseState=0.
+    const int pauseState = play->pauseCtx.state;
+    const int pausePage = play->pauseCtx.pageIndex;
+    if (fixtures.lastPauseState < 0) {
+        fixtures.lastPauseState = pauseState;
+        fixtures.lastPausePage = pausePage;
+    } else if (pauseState != fixtures.lastPauseState || pausePage != fixtures.lastPausePage) {
+        fixtures.lastPauseState = pauseState;
+        fixtures.lastPausePage = pausePage;
+        return Write(write, writer, "pausa frame " + std::to_string(fixtures.framesInScene) + " " +
+                                        Describe(fixtures, play, player));
+    }
     // UNBOUND-031: a troca de sala só é registrada aqui; o relatório sai ROOM_REPORT_DELAY frames depois da primeira
     // troca pendente, com a sala de origem dela e a sala atual.
     const int room = play->roomCtx.curRoom.num;
@@ -387,20 +444,20 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         fixtures.lastGround = ground;
         ++fixtures.groundChanges;
         return Write(write, writer, std::string("chao ") + (ground ? "0->1 " : "1->0 ") + "frame " +
-                                        std::to_string(fixtures.framesInScene) + " " + Describe(play, player));
+                                        std::to_string(fixtures.framesInScene) + " " + Describe(fixtures, play, player));
     }
     fixtures.lastGround = ground;
     if (fixtures.roomReportFrame && fixtures.framesInScene >= fixtures.roomReportFrame) {
         fixtures.roomReportFrame = 0;
         return Write(write, writer, "sala " + std::to_string(fixtures.roomFrom) + "->" + std::to_string(room) +
                                         " frame " + std::to_string(fixtures.framesInScene) + " " +
-                                        Describe(play, player));
+                                        Describe(fixtures, play, player));
     }
     if (fixtures.reportsDone < std::size(REPORT_FRAMES) &&
         fixtures.framesInScene >= REPORT_FRAMES[fixtures.reportsDone]) {
         ++fixtures.reportsDone;
         return Write(write, writer, "after " + std::to_string(fixtures.framesInScene) + " frames " +
-                                        Describe(play, player));
+                                        Describe(fixtures, play, player));
     }
     return Write(write, writer, "idle");
 }

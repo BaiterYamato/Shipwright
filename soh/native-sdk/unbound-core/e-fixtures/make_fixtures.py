@@ -214,6 +214,9 @@ def main():
     # UNBOUND-031: listas de luz de cena e de sala no teto (M18) e as recargas pelas trocas de sala.
     make_m18(put, registry, field, doc("scenes/spot00/rooms/0.json")["setups"]["0"], field_collision)
 
+    # RFC 0027 R08/R09: delta de dungeon e áreas inválidas/sentinela na pausa.
+    make_r0809(put, registry, doc, field)
+
     put("unbound/scenes.json", registry)
     print(f"fixtures: {len(registry)} cenas em {out}")
 
@@ -1265,6 +1268,49 @@ def floor_grid(cells, extent):
             for va, vb, vc in ((a, b, c), (c, b, d)):
                 polys += struct.pack("<HHIIIhhhhi", 0, 0, va, vb, vc, 0, 32767, 0, 0, 0)
     return bytes(vertices), bytes(polys)
+
+
+def make_r0809(put, registry, doc, field):
+    """R09: delta sobre ddan (ID vanilla), sala 0 de controle e alias da sala 0 na 32.
+    R08: três cenas novas reaproveitam a casa; -1/23/22 testam o mapa-múndi da pausa.
+    Só lê JSON da base durante o empacotamento; não grava dados do jogo no fonte.
+    """
+    dungeon = doc("scenes/ddan/scene.json")
+    base_rooms = dungeon["rooms"]
+    # Lista posicional completa (o --check valida a camada sozinha, sem buraco): as salas vanilla com o mesmo valor
+    # e as que faltam até a 32 apontando para a sala 0, sem criar room.json novo.
+    rooms = {str(i): base_rooms.get(str(i), base_rooms["0"]) for i in range(33)}
+    setups = {}
+    for key, setup in dungeon["setups"].items():
+        # Setups ausentes/null continuam herdando o header 0, como na base.
+        if not isinstance(setup, dict):
+            continue
+        spawn = copy.deepcopy(setup.get("spawns", {}).get("0", dungeon["setups"]["0"]["spawns"]["0"]))
+        setups[key] = {
+            "spawns": {"0": spawn, "1": copy.deepcopy(spawn)},
+            "entrances": {"0": {"spawn": 0, "room": 0}, "1": {"spawn": 1, "room": 32}},
+        }
+    # Não registrar ddan em unbound/scenes.json: ActivateBase mantém SCENE_DODONGOS_CAVERN.
+    # ENTR_DODONGOS_CAVERN_ENTRANCE usa entrada 0; BOSS_DOOR usa entrada 1.
+    put("scenes/ddan/scene.json", {"$schema": "unbound/scene/1", "rooms": rooms, "setups": setups})
+
+    # A casa já é usada por esta e-fixtures: colisão/malha/objetos vêm da base montada.
+    # ID customizado => mapa-múndi na pausa, sem indexar o minimapa da dungeon.
+    house = doc("scenes/link_home/scene.json")
+    for name, area in (("neg", -1), ("high", 23), ("none", 22)):
+        scene = copy.deepcopy(house)
+        for setup in scene["setups"].values():
+            if not isinstance(setup, dict):
+                continue
+            camera = copy.deepcopy(setup.get("cameraSettings", field["cameraSettings"]))
+            camera["worldMapArea"] = area
+            setup["cameraSettings"] = camera
+        folder = f"scenes/linkspan_e/r08_{name}"
+        put(f"{folder}/scene.json", scene)
+        registry[f"linkspan_e/r08_{name}"] = {
+            "name": f"Link-Span E: worldMapArea {area}", "scene": f"{folder}/scene.json",
+            "drawConfig": 0, "entrances": {"main": {"spawn": 1}},
+        }
 
 
 if __name__ == "__main__":
