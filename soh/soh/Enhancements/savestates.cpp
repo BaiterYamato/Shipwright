@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <new>
 #include <spdlog/spdlog.h>
 #include <vector>
 
@@ -180,11 +181,11 @@ class SaveState {
 
     void Save(void);
     bool Load(void);
-    void BackupSeqScriptState(void);
+    void BackupSeqScriptState(SaveStateInfo* info);
     void LoadSeqScriptState(void);
-    void SaveOverlayStaticData(void);
+    void SaveOverlayStaticData(SaveStateInfo* info);
     void LoadOverlayStaticData(void);
-    void SaveTransitionActors(void);
+    void SaveTransitionActors(SaveStateInfo* info);
     void LoadTransitionActors(void);
 
     SaveStateInfo* GetSaveStateInfo(void);
@@ -199,10 +200,9 @@ SaveStateMgr::~SaveStateMgr() {
 
 SaveState::SaveState(std::shared_ptr<SaveStateMgr> mgr, unsigned int slot)
     : slot(slot), saveStateMgr(mgr), info(nullptr) {
-    this->info = std::make_shared<SaveStateInfo>();
 }
 
-void SaveState::BackupSeqScriptState(void) {
+void SaveState::BackupSeqScriptState(SaveStateInfo* info) {
     for (unsigned int i = 0; i < 4; i++) {
         info->seqScriptStateCopy[i].value = gAudioContext.seqPlayers[i].scriptState.value;
 
@@ -252,7 +252,7 @@ void SaveState::LoadSeqScriptState(void) {
     }
 }
 
-void SaveState::SaveOverlayStaticData(void) {
+void SaveState::SaveOverlayStaticData(SaveStateInfo* info) {
     SaveOverlayState(info->matrixState, Matrix_SaveState);
     SaveOverlayState(info->lightsState, Lights_SaveState);
     SaveOverlayState(info->doorWarp1State, DoorWarp1_SaveState);
@@ -344,7 +344,7 @@ void SaveState::LoadOverlayStaticData(void) {
     LoadOverlayState(info->playerState, Player_SaveState);
 }
 
-void SaveState::SaveTransitionActors(void) {
+void SaveState::SaveTransitionActors(SaveStateInfo* info) {
     info->transitionActorCount_copy = gPlayState->transiActorCtx.numActors;
     info->transitionActorIds_copy.resize(info->transitionActorCount_copy);
     for (u32 i = 0; i < info->transitionActorCount_copy; i++) {
@@ -379,15 +379,30 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
         const auto& request = this->requests.front();
 
         switch (request.type) {
-            case RequestType::SAVE:
-                if (!this->states.contains(request.slot)) {
-                    this->states[request.slot] =
-                        std::make_shared<SaveState>(OTRGlobals::Instance->gSaveStateMgr, request.slot);
+            case RequestType::SAVE: {
+                bool saved = false;
+                try {
+                    const auto state = this->states.find(request.slot);
+                    if (state != this->states.end()) {
+                        state->second->Save();
+                    } else {
+                        auto next = std::make_shared<SaveState>(OTRGlobals::Instance->gSaveStateMgr, request.slot);
+                        next->Save();
+                        // A failed save or map allocation must never expose an incomplete new slot.
+                        this->states.emplace(request.slot, std::move(next));
+                    }
+                    saved = true;
+                } catch (const std::bad_alloc&) {
+                    // The previous slot is intact; a new slot has not been inserted.
                 }
-                this->states[request.slot]->Save();
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                    1.0f, true, "saved state %u", request.slot);
+                try {
+                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
+                        1.0f, true, saved ? "saved state %u" : "state %u not saved: out of memory", request.slot);
+                } catch (const std::bad_alloc&) {
+                    // Notifications also allocate. Keep the game running even if memory is still exhausted.
+                }
                 break;
+            }
             case RequestType::LOAD:
                 if (this->states.contains(request.slot)) {
                     const bool loaded = this->states[request.slot]->Load();
@@ -435,8 +450,8 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
 
 void SaveState::Save(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
-    // Copy the external tables into a fresh snapshot before touching the slot: if an allocation throws, the slot
-    // keeps its previous guard, tables and heap together. The move below does not allocate.
+    // Stage the entire snapshot: no slot data changes until every allocation and copy succeeds.
+    auto info = std::make_shared<SaveStateInfo>();
     SaveStateCollisionTables tables;
     tables.Capture(gPlayState->colCtx);
     info->collisionTables = std::move(tables);
@@ -446,7 +461,7 @@ void SaveState::Save(void) {
 
     memcpy(&info->audioContextCopy, &gAudioContext, sizeof(AudioContext));
     memcpy(&info->gActiveSeqsCopy, gActiveSeqs, sizeof(info->gActiveSeqsCopy));
-    BackupSeqScriptState();
+    BackupSeqScriptState(info.get());
 
     memcpy(info->gActiveSoundsCopy, gActiveSounds, sizeof(gActiveSounds));
     memcpy(&info->gSoundBankMutedCopy, gSoundBankMuted, sizeof(info->gSoundBankMutedCopy));
@@ -465,8 +480,9 @@ void SaveState::Save(void) {
     memcpy(&info->effectContextCopy, &sEffectContext, sizeof(sEffectContext));
 
     // Various static data
-    SaveOverlayStaticData();
-    SaveTransitionActors();
+    SaveOverlayStaticData(info.get());
+    SaveTransitionActors(info.get());
+    this->info.swap(info); // No allocation; publish only the complete snapshot.
 }
 
 bool SaveState::Load(void) {
