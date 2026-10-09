@@ -387,16 +387,16 @@ try {
     $sumLines = @((@($packages) + @($attachments)) | Sort-Object { $_.file } | ForEach-Object { $_.sha256 + '  ' + $_.file })
     Write-Utf8NoBom -Path (Join-Path $stage 'SHA256SUMS.txt') -Content (($sumLines -join "`n") + "`n")
 
-    $md = @('# Link-Span OoT ' + $Version, '', '## Pacotes', '', '| Arquivo | ID | Versão | Layout | Host exigido | SHA-256 |', '|---|---|---|---|---|---|')
+    $md = @(('# Link-Span OoT ' + $Version), '', '## Pacotes', '', '| Arquivo | ID | Versão | Layout | Host exigido | SHA-256 |', '|---|---|---|---|---|---|')
     foreach ($package in $packages) {
         $layout = if ($package.layoutId) { $package.layoutId } else { 'não declarado' }
-        $requiredHost = if ($package.hostRequired) { $package.hostRequired } else { 'conforme manifest.toml / host compatível' }
+        $requiredHost = if ($package.hostRequired) { $package.hostRequired } else { 'não declarado (ver RELEASE-NOTES.md)' }
         $md += '| `' + $package.file + '` | `' + $package.id + '` | ' + $package.version + ' | `' + $layout + '` | ' + $requiredHost + ' | `' + $package.sha256 + '` |'
     }
     $md += @('', '## Instalação e rollback', '', '- Instale o overlay sobre Shipwright 9.2.3 fresco; execute uma vez para validar os assets locais.', '- Copie os mods independentes para `mods/` e reinicie.', '- Atualize com o jogo fechado: tire a versão anterior de `mods/` (guarde a cópia para voltar) e copie a nova. O save preserva os blocos de mods ausentes.', '- Mod que derruba o boot é desativado no início seguinte (lista `mods/.shiplua-disabled`, sem apagar arquivo); apague a linha da lista para reativar.', '- O scanner `protected-content.txt` deve permanecer OK; nenhum ROM, archive derivado ou save é distribuído.')
     $md += @('', '## Autores e limitações', '', 'Consulte [RELEASE-NOTES.md](RELEASE-NOTES.md). O pacote SDK listado acima contém guias PT/EN, contrato OoT e fontes; extraia-o fora de mods/.')
     $md += @('', '## Licenças', '',
-        '- O trabalho próprio do Link-Span está em domínio público pela CC0 1.0 Universal. Cada pacote traz `LICENSE` e `NOTICE.md`; no overlay, `LICENSE-LinkSpan.txt`, `NOTICE-LinkSpan.md` e `THIRD-PARTY-NOTICES-LinkSpan.md`, com os componentes de terceiros do `soh.exe`.',
+        '- O trabalho próprio do Link-Span está em domínio público pela CC0 1.0 Universal. Cada mod com manifesto traz `LICENSE` e `NOTICE.md`; no overlay, `LICENSE-LinkSpan.txt`, `NOTICE-LinkSpan.md` e `THIRD-PARTY-NOTICES-LinkSpan.md`, com os componentes de terceiros do `soh.exe`.',
         '- Shipwright, Not Enough Items (skijer), Unbound e Wind Waker Style (roborich) não publicam licença. O código portado deles segue com seus autores, e esta release não concede licença sobre ele.',
         '- `LinkSpan-Unbound09-Actors-Demo.o2r` é só dados, sem documentos internos: os atores adaptam o exemplo oficial do Unbound 0.9 (roborich) e usam modelos do jogo extraídos pelo próprio jogador; o restante é trabalho do Link-Span sob a CC0.')
     Write-Utf8NoBom -Path (Join-Path $stage 'RELEASE.md') -Content (($md -join "`n") + "`n")
