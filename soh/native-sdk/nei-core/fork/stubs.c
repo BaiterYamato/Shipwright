@@ -87,6 +87,16 @@ s32 MmForm_GetStrengthOverride(void) {
     return -1;
 }
 
+// Sem forma, o instrumento é o da forma humana, como no fork. O 0 do stub gerado é OCARINA_INSTRUMENT_OFF: o replay
+// da música não termina e a mensagem trava em MSGMODE_DISPLAY_SONG_PLAYED.
+u8 MmForm_GetOcarinaPlaybackInstrument(void) {
+    return 1; // OCARINA_INSTRUMENT_DEFAULT
+}
+
+u8 MmForm_GetSongFanfareInstrument(void) {
+    return 0x35; // MMFORM_FANFARE_INSTRUMENT_DEFAULT do fork (Humano / Fierce Deity)
+}
+
 void MmForm_HandleFormInteractions(Player* player, PlayState* play) {
     (void)player;
     (void)play;

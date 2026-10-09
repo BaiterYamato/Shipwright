@@ -249,8 +249,6 @@ MmMaskWear_MakesRedeadsFriendly
 MmMaskWear_ShouldForceNightGS
 # soh/mods/transformation_masks/mm_player_form.cpp
 MmForm_FireDekuBubble
-MmForm_GetOcarinaPlaybackInstrument
-MmForm_GetSongFanfareInstrument
 MmForm_GetZoraBoomerangAnim
 MmForm_KafeiWhistleHandDL
 MmForm_RitoShieldIsDrawn
