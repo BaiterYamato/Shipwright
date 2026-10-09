@@ -19,11 +19,16 @@ s16 gEnPartnerId = ACTOR_EN_PARTNER;
 // varre, por isso ficam aqui e não em stub-names.txt.
 
 // Move o cursor do menu para as setas de página. O LTCG inlinou a do host e ela sumiu do
-// soh.symbols. Sem ela, as setas de página não capturam o cursor; a troca de página do NEI é pelo
-// botão livre (ExtInv_SwitchPage), que não passa por aqui.
+// soh.symbols: cópia do corpo do host (z_kaleido_scope_PAL.c). Vazia, as setas de página não
+// capturavam o cursor nas páginas vanilla (itens, equipamento, quest) com o NEI carregado.
 void KaleidoScope_MoveCursorToSpecialPos(PlayState* play, u16 specialPos) {
-    (void)play;
-    (void)specialPos;
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    pauseCtx->cursorSpecialPos = specialPos;
+    pauseCtx->pageSwitchTimer = 0;
+
+    Audio_PlaySfxGeneral(NA_SE_SY_DECIDE, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale, &gSfxDefaultFreqAndVolScale,
+                         &gSfxDefaultReverb);
 }
 
 // Ciclagem do item da célula do Nayru's Love (RocsFeatherCycle.c do host, também inlinada).
@@ -270,4 +275,15 @@ s32 MmMaskWear_MakesRedeadsFriendly(void) {
 
 s32 MmMaskWear_ShouldForceNightGS(void) {
     return CVarGetInteger(CVAR_ENHANCEMENT("NightGSAlwaysSpawn"), 0) != 0;
+}
+
+// Pictograph Box (nei_save.cpp): fora a sincronização do Fleet, descartar a foto zera a imagem e a posse no save do
+// NEI. Vazio, a foto descartada voltava no próximo uso.
+#include <string.h>
+#include "mods/nei_save.h"
+
+void Picto_SyncClear(void) {
+    NeiSaveData* save = Nei_Save();
+    memset(save->pictoPhotoI5, 0, sizeof(save->pictoPhotoI5));
+    save->pictoHasPhoto = 0;
 }
