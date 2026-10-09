@@ -474,7 +474,8 @@ def main():
         if nome in vistos:
             continue
         vistos.add(nome)
-        d = fmap.get(nome)
+        # Macro só do host que a mescla usa (MESSAGE_DECODE_REQUIRE_INDEX, R04): vai copiada, como um tipo.
+        d = fmap.get(nome) or (hmap.get(nome) if hmap.get(nome) and hmap[nome].tipo == "define" else None)
         if not d:
             if nome not in hmap:
                 ausentes.append(nome)
@@ -498,7 +499,7 @@ def main():
             if ident == nome:
                 continue
             # O nome só do host (sPlayerFocusOffsetFromHead, que o upstream renomeou e a mescla usa) é import.
-            outro = fmap.get(ident) or (hmap.get(ident) if hmap.get(ident) and hmap[ident].tipo in ("funcao", "variavel")
+            outro = fmap.get(ident) or (hmap.get(ident) if hmap.get(ident) and hmap[ident].tipo in ("funcao", "variavel", "define")
                                         else None)
             if outro:
                 if ident in hmap and e_import(ident, outro):
@@ -524,6 +525,12 @@ def main():
         if d.nome in tipos and (d.inicio, d.fim) not in vistos_trechos:
             tipos_d.append(d)
             vistos_trechos.add((d.inicio, d.fim))
+    # Macros só do host vêm do texto do host, depois das do fork (macro só expande no uso).
+    vistos_host = set()
+    for d in hd:
+        if d.nome in tipos and d.nome not in fmap and d.tipo == "define" and (d.inicio, d.fim) not in vistos_host:
+            tipos_d.append(d)
+            vistos_host.add((d.inicio, d.fim))
     impf_d = [hmap[n] for n in imports_func if n in hmap and hmap[n].tipo == "funcao"]
     # A declaração do import é a do host: é o armazenamento que existe (o fork pode ter outra forma, ou duas
     # num #if, como o sEyeTextures).

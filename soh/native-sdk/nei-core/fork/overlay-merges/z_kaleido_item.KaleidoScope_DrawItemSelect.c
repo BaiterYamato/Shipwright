@@ -1,4 +1,4 @@
-/* overlay-merge cb449f744521 4c1a0f76fe3d 956e73cd62ea */
+/* overlay-merge f537f85bd023 4c1a0f76fe3d 956e73cd62ea */
 void KaleidoScope_DrawItemSelect(PlayState* play) {
     static s16 magicArrowEffectsR[] = { 255, 100, 255 };
     static s16 magicArrowEffectsG[] = { 0, 100, 255 };
