@@ -245,8 +245,6 @@ MmMaskWear_GreatFairyWarpUpdate
 MmMaskWear_IsGiantMaskActive
 MmMaskWear_IsGreatFairyWarpActive
 MmMaskWear_IsStoneMaskActive
-MmMaskWear_MakesRedeadsFriendly
-MmMaskWear_ShouldForceNightGS
 # soh/mods/transformation_masks/mm_player_form.cpp
 MmForm_FireDekuBubble
 MmForm_GetZoraBoomerangAnim

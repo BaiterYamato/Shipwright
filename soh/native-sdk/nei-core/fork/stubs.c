@@ -250,3 +250,24 @@ void* PikaMode_ButtonIcon(s32 button, void* orig) {
 Gfx* MmDL_Or(Gfx* vanillaDL, Gfx* mmDL) {
     return (mmDL != NULL) ? mmDL : vanillaDL;
 }
+
+// Máscaras do MM (mm_mask_wear.cpp) sem máscara do MM vestida: o fork ainda responde pelas máscaras do próprio OoT e
+// pelo realce do SoH. O 0 do stub gerado deixava o ReDead hostil com a Skull/Spooky Mask e desligava o
+// "NightGSAlwaysSpawn".
+#include "z64.h"
+#include "macros.h"
+#include "variables.h"
+#include "soh/cvar_prefixes.h"
+#include "libultraship/bridge/consolevariablebridge.h"
+
+s32 MmMaskWear_MakesRedeadsFriendly(void) {
+    if (gPlayState == NULL) {
+        return 0;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    return player != NULL && (player->currentMask == PLAYER_MASK_SKULL || player->currentMask == PLAYER_MASK_SPOOKY);
+}
+
+s32 MmMaskWear_ShouldForceNightGS(void) {
+    return CVarGetInteger(CVAR_ENHANCEMENT("NightGSAlwaysSpawn"), 0) != 0;
+}
