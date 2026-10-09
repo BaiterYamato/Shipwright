@@ -227,6 +227,7 @@ extern "C" void Actor_Kill(Actor* actor) { killed = actor; }
 extern "C" s32 LinkSpan_ItemButtonHidden(s32 button);
 extern "C" void LinkSpan_FilterPlayerInput(Input* input);
 extern "C" s32 LinkSpan_DpadHudOwned(void);
+extern "C" uint8_t LinkSpan_PauseEquipSelectorEnabled(void);
 extern "C" void LinkSpan_CaptureDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u16 alpha);
 extern "C" s32 LinkSpan_OwnedDpadBackground(PlayState* play, s16* x, s16* y, u8* r, u8* g, u8* b, u8* alpha);
 extern "C" void Player_Action_Roll(Player*, PlayState*) {}
@@ -2223,7 +2224,7 @@ int main(int argc, char** argv) {
               OotNative_TakePendingOcarinaSong() == -1,
           "fechar a ocarina deve descartar a música pendente");
     OotNative_PublishOcarinaState(1, uint16_t(1u << OCARINA_SONG_SARIAS));
-    Check(movementV2->get_setting_int("linkspan.transient_settings", 0) == 7 &&
+    Check(movementV2->get_setting_int("linkspan.transient_settings", 0) == 15 &&
               movementV2->set_setting_int("linkspan.hud.hide_item_button.c_down", 1) == SHIP_NATIVE_OK &&
               movementV2->get_setting_int("linkspan.hud.hide_item_button.c_down", 0) == 1 &&
               LinkSpan_ItemButtonHidden(2) == 1 && LinkSpan_ItemButtonHidden(1) == 0 &&
@@ -2267,6 +2268,17 @@ int main(int argc, char** argv) {
               otherSettings.find("linkspan.hud.dpad") == otherSettings.end() &&
               movementV2->set_setting_int("linkspan.hud.dpad", 0) == SHIP_NATIVE_OK && LinkSpan_DpadHudOwned() == 0,
           "D-pad do HUD tomado por provider deve ficar só em memória no host");
+    Check(movementV2->set_setting_int("linkspan.hud.dpad", 1) == SHIP_NATIVE_OK &&
+              LinkSpan_PauseEquipSelectorEnabled() == 0 &&
+              movementV2->set_setting_int("linkspan.pause.equip_selector", 7) == SHIP_NATIVE_OK &&
+              movementV2->get_setting_int("linkspan.pause.equip_selector", 0) == 1 &&
+              LinkSpan_PauseEquipSelectorEnabled() == 1 &&
+              otherSettings.find("linkspan.pause.equip_selector") == otherSettings.end() &&
+              movementV2->set_setting_int("linkspan.hud.dpad", 0) == SHIP_NATIVE_OK &&
+              LinkSpan_PauseEquipSelectorEnabled() == 1 &&
+              movementV2->set_setting_int("linkspan.pause.equip_selector", 0) == SHIP_NATIVE_OK &&
+              LinkSpan_PauseEquipSelectorEnabled() == 0,
+          "seletor do pause (RFC 0028) deve ter setting próprio, só em memória e independente do D-pad do HUD");
     std::thread worker([&] {
         Check(!engine->get_player() && !engine->get_save_context() && !movement->get_input_current(0),
               "thread externa deve ser recusada");
@@ -2296,6 +2308,7 @@ int main(int argc, char** argv) {
         Check(movementV2->set_setting_int("linkspan.hud.hide_item_button.c_left", 1) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->set_setting_int("linkspan.input.sword_over_shield", 1) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->set_setting_int("linkspan.hud.dpad", 1) == SHIP_NATIVE_UNSUPPORTED &&
+                  movementV2->set_setting_int("linkspan.pause.equip_selector", 1) == SHIP_NATIVE_UNSUPPORTED &&
                   movementV2->get_setting_int("linkspan.transient_settings", 7) == 7,
               "settings transitórios devem recusar thread externa");
     });
@@ -2437,6 +2450,7 @@ int main(int argc, char** argv) {
         LinkSpan_FilterPlayerInput(&swordInput);
         Check(swordInput.cur.button == BTN_B, "perfil com escudo no ZL deve dar prioridade à espada");
         Check(LinkSpan_DpadHudOwned() == 1, "perfil Nintendo deve tomar o D-pad do HUD");
+        Check(LinkSpan_PauseEquipSelectorEnabled() == 1, "perfil Nintendo deve ligar o seletor do pause (RFC 0028)");
         const auto itemMenuState = [&] {
             response.fill(0);
             const auto result = (*loaded.value)->Call("hud_item_menu", "", 0, response.data(), uint32_t(response.size()));
@@ -2604,6 +2618,7 @@ int main(int argc, char** argv) {
         LinkSpan_FilterPlayerInput(&unloadedInput);
         Check(unloadedInput.cur.button == (BTN_R | BTN_B), "unload deve devolver o escudo ao R");
         Check(LinkSpan_DpadHudOwned() == 0, "unload deve devolver o D-pad do HUD");
+        Check(LinkSpan_PauseEquipSelectorEnabled() == 0, "unload deve desligar o seletor do pause");
         LinkSpan_CaptureDpadBackground(&play, 271, 55, 255, 200, 100, 180);
         Check(LinkSpan_OwnedDpadBackground(&play, &backgroundX, &backgroundY, &backgroundR, &backgroundG, &backgroundB,
                                            &backgroundAlpha) == 0,

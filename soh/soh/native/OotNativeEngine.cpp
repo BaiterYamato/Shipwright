@@ -126,6 +126,7 @@ constexpr const char* TRANSIENT_SETTINGS_PROBE = "linkspan.transient_settings";
 constexpr int32_t TRANSIENT_HIDE_ITEM_BUTTONS = 1;
 constexpr int32_t TRANSIENT_SWORD_OVER_SHIELD = 2;
 constexpr int32_t TRANSIENT_DPAD_HUD = 4;
+constexpr int32_t TRANSIENT_PAUSE_EQUIP_SELECTOR = 8;
 // Botões C do HUD, índices 1..3.
 constexpr const char* HIDDEN_ITEM_BUTTON_SETTINGS[] = { nullptr, "linkspan.hud.hide_item_button.c_left",
                                                         "linkspan.hud.hide_item_button.c_down",
@@ -153,6 +154,9 @@ struct CapturedDpadBackground {
     bool valid = false;
 };
 CapturedDpadBackground dpadBackground{};
+// Seletor do pause (RFC 0028): A sobre um item abre as molduras dos botões C. Independe do D-pad do HUD.
+constexpr const char* PAUSE_EQUIP_SELECTOR_SETTING = "linkspan.pause.equip_selector";
+bool pauseEquipSelector = false;
 int HiddenItemButtonIndex(const char* name) {
     for (int button = 1; button <= 3; ++button) {
         if (std::strcmp(name, HIDDEN_ITEM_BUTTON_SETTINGS[button]) == 0) return button;
@@ -162,10 +166,12 @@ int HiddenItemButtonIndex(const char* name) {
 int32_t SHIP_NATIVE_CALL GetSettingInt(const char* name, int32_t fallback) {
     if (!OnGameThread() || !name || !*name) return fallback;
     if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0)
-        return TRANSIENT_HIDE_ITEM_BUTTONS | TRANSIENT_SWORD_OVER_SHIELD | TRANSIENT_DPAD_HUD;
+        return TRANSIENT_HIDE_ITEM_BUTTONS | TRANSIENT_SWORD_OVER_SHIELD | TRANSIENT_DPAD_HUD |
+               TRANSIENT_PAUSE_EQUIP_SELECTOR;
     if (const int button = HiddenItemButtonIndex(name)) return hiddenItemButtons[button];
     if (std::strcmp(name, SWORD_OVER_SHIELD_SETTING) == 0) return swordOverShield ? 1 : 0;
     if (std::strcmp(name, DPAD_HUD_SETTING) == 0) return dpadHudOwned ? 1 : 0;
+    if (std::strcmp(name, PAUSE_EQUIP_SELECTOR_SETTING) == 0) return pauseEquipSelector ? 1 : 0;
     return gamepadBridge.getSettingInt ? gamepadBridge.getSettingInt(name, fallback) : fallback;
 }
 ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value) {
@@ -182,6 +188,10 @@ ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value)
     }
     if (std::strcmp(name, DPAD_HUD_SETTING) == 0) {
         dpadHudOwned = value != 0;
+        return SHIP_NATIVE_OK;
+    }
+    if (std::strcmp(name, PAUSE_EQUIP_SELECTOR_SETTING) == 0) {
+        pauseEquipSelector = value != 0;
         return SHIP_NATIVE_OK;
     }
     return gamepadBridge.setSettingInt ? gamepadBridge.setSettingInt(name, value) : SHIP_NATIVE_UNSUPPORTED;
@@ -544,8 +554,9 @@ const ShipOotOcarinaV1 ocarinaV1{
 };
 }
 
-extern "C" uint8_t LinkSpan_DynamicMovementInventoryMenuEnabled(void) {
-    return dpadHudOwned ? 1 : 0;
+// Chamada pelo kaleido (z_kaleido_item.c) e pela cópia do fork do NEI.
+extern "C" uint8_t LinkSpan_PauseEquipSelectorEnabled(void) {
+    return pauseEquipSelector ? 1 : 0;
 }
 
 void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
@@ -554,6 +565,7 @@ void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
     hiddenItemButtons = {};
     swordOverShield = shieldDelivered = swordPending = false;
     dpadHudOwned = false;
+    pauseEquipSelector = false;
     dpadBackground = {};
 }
 

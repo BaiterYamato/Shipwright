@@ -33,8 +33,8 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     input->press.button |= physicalPad & ~sLinkSpanPreviousPad;
     input->cur.button |= physicalPad;
     sLinkSpanPreviousPad = physicalPad;
-    if ((physicalPad & BTN_DRIGHT) && LinkSpan_DynamicMovementInventoryMenuEnabled()) {
-        // DMR maps this physical direction to Navi/C-Up outside the inventory.
+    if ((physicalPad & BTN_DRIGHT) && LinkSpan_DpadHudOwned()) {
+        // The D-pad HUD owner maps this physical direction to C-Up outside the inventory.
         input->press.button &= ~BTN_CUP;
         input->cur.button &= ~BTN_CUP;
     }
@@ -68,7 +68,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
 
-    if (!LinkSpan_DynamicMovementInventoryMenuEnabled() || pauseCtx->state != 6 ||
+    if (!LinkSpan_PauseEquipSelectorEnabled() || pauseCtx->state != 6 ||
         pauseCtx->pageIndex != PAUSE_ITEM || pauseCtx->unk_1E4 != 0 || pauseCtx->cursorSpecialPos != 0 ||
         (sLinkSpanEquipMenuOpen && pauseCtx->cursorSlot[PAUSE_ITEM] != sLinkSpanEquipVisualSlot)) {
         sLinkSpanEquipMenuOpen = 0;
@@ -409,7 +409,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
                 KaleidoScope_SetCursorVtx(pauseCtx, index, pauseCtx->itemVtx);
 
                 if ((pauseCtx->debugState == 0) && (pauseCtx->state == 6) && (pauseCtx->unk_1E4 == 0)) {
-                    if (LinkSpan_DynamicMovementInventoryMenuEnabled() && !sLinkSpanEquipMenuOpen &&
+                    if (LinkSpan_PauseEquipSelectorEnabled() && !sLinkSpanEquipMenuOpen &&
                         aAction == NEI_INVENTORY_EQUIP && NeiInv_CheckAgeReqSlot(inventorySlot) &&
                         cursorItem != ITEM_NONE && cursorItem != ITEM_SOLD_OUT) {
                         sLinkSpanEquipMenuOpen = 1;

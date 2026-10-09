@@ -64,6 +64,10 @@ constexpr const char* TRANSIENT_SETTINGS_PROBE = "linkspan.transient_settings";
 constexpr int32_t TRANSIENT_HIDE_ITEM_BUTTONS = 1;
 constexpr int32_t TRANSIENT_SWORD_OVER_SHIELD = 2;
 constexpr int32_t TRANSIENT_DPAD_HUD = 4;
+constexpr int32_t TRANSIENT_PAUSE_EQUIP_SELECTOR = 8;
+// Seletor do pause (RFC 0028): A sobre um item abre as molduras dos botões C. Host sem o bit 8 liga o
+// seletor junto com o D-pad do HUD, como antes.
+constexpr const char* PAUSE_EQUIP_SELECTOR_SETTING = "linkspan.pause.equip_selector";
 // Com B pressionado, o host não entrega o R ao Player: o escudo do ZL baixa para a espada.
 constexpr const char* SWORD_OVER_SHIELD_SETTING = "linkspan.input.sword_over_shield";
 // D-pad do HUD nativo com as funções do mod: o host desenha o fundo e informa a posição das
@@ -138,6 +142,7 @@ struct Mod {
     bool itemHudApplied = false;
     bool swordOverShieldApplied = false;
     bool dpadHudApplied = false;
+    bool pauseEquipSelectorApplied = false;
     uint64_t iconArchive = 0;
     bool shortcutWasDown = false;
     bool shortcutHoldFired = false;
@@ -350,6 +355,10 @@ ShipNativeStatus ApplyNintendoBindings(Mod& mod) {
     if (!mod.dpadHudApplied && HostSupports(mod, TRANSIENT_DPAD_HUD) &&
         mod.movement->set_setting_int(DPAD_HUD_SETTING, 1) == SHIP_NATIVE_OK) {
         mod.dpadHudApplied = true;
+    }
+    if (!mod.pauseEquipSelectorApplied && HostSupports(mod, TRANSIENT_PAUSE_EQUIP_SELECTOR) &&
+        mod.movement->set_setting_int(PAUSE_EQUIP_SELECTOR_SETTING, 1) == SHIP_NATIVE_OK) {
+        mod.pauseEquipSelectorApplied = true;
     }
     return SHIP_NATIVE_OK;
 }
@@ -1286,6 +1295,7 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     if (mod) RestoreItemHud(*mod);
     if (mod && mod->swordOverShieldApplied) mod->movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 0);
     if (mod && mod->dpadHudApplied) mod->movement->set_setting_int(DPAD_HUD_SETTING, 0);
+    if (mod && mod->pauseEquipSelectorApplied) mod->movement->set_setting_int(PAUSE_EQUIP_SELECTOR_SETTING, 0);
     if (mod && mod->iconArchive) mod->resources->unmount_archive(mod->iconArchive);
     if (mod && mod->persistentMasksApplied)
         mod->movement->set_setting_int(PERSISTENT_MASKS_SETTING, mod->previousPersistentMasks);

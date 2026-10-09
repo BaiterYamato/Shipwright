@@ -18,8 +18,9 @@ static s16 sEquipState = 0;
 static s16 sEquipAnimTimer = 0;
 static s16 sEquipMoveTimer = 10;
 
-// Dynamic Movement: A escolhe um dos mesmos três botões C usados pelo menu R.
-extern u8 LinkSpan_DynamicMovementInventoryMenuEnabled(void);
+// Seletor de equipamento (RFC 0028): com o setting transitório linkspan.pause.equip_selector ligado por um
+// provider, A sobre um item abre as molduras dos três botões C, e o jogador escolhe onde equipar.
+extern u8 LinkSpan_PauseEquipSelectorEnabled(void);
 
 static void LinkSpan_DrawEquipChoice(PlayState* play, u8 choice) {
     OPEN_DISPS(play->state.gfxCtx);
@@ -452,7 +453,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
 
-    if (!LinkSpan_DynamicMovementInventoryMenuEnabled() || pauseCtx->state != 6 ||
+    if (!LinkSpan_PauseEquipSelectorEnabled() || pauseCtx->state != 6 ||
         pauseCtx->pageIndex != PAUSE_ITEM || pauseCtx->unk_1E4 != 0 || pauseCtx->cursorSpecialPos != 0 ||
         (sLinkSpanEquipMenuOpen && pauseCtx->cursorSlot[PAUSE_ITEM] != sLinkSpanEquipVisualSlot)) {
         sLinkSpanEquipMenuOpen = 0;
@@ -741,7 +742,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
                 KaleidoScope_SetCursorVtx(pauseCtx, index, pauseCtx->itemVtx);
 
                 if ((pauseCtx->debugState == 0) && (pauseCtx->state == 6) && (pauseCtx->unk_1E4 == 0)) {
-                    if (LinkSpan_DynamicMovementInventoryMenuEnabled() && !sLinkSpanEquipMenuOpen &&
+                    if (LinkSpan_PauseEquipSelectorEnabled() && !sLinkSpanEquipMenuOpen &&
                         CHECK_BTN_ALL(input->press.button, BTN_A) && CHECK_AGE_REQ_SLOT(cursorSlot) &&
                         cursorItem != ITEM_NONE && cursorItem != ITEM_SOLD_OUT) {
                         sLinkSpanEquipMenuOpen = 1;
