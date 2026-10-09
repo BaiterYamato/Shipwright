@@ -7,9 +7,10 @@ param(
     [ValidateSet('zip', 'shipmod')][string]$Extension = 'zip'
 )
 
-# Packages the Unbound framework (JSON factory, scene registry and room actor patches), the scene
-# demo (slice D2) and the Hyrule Field actor patch demo (slice D1) as Link-Span mods named after the
-# host layout id. -Extension shipmod writes the .shipmod container (the same ZIP) instead of .zip.
+# Packages the scene demo (slice D2) and the Hyrule Field actor patch demo (slice D1) as Link-Span mods
+# named after the host layout id. Both depend on the Unbound framework 0.6.x, which
+# tools/package-unbound-framework.ps1 packages. -Extension shipmod writes the .shipmod container (the same
+# ZIP) instead of .zip.
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'linkspan-zip.ps1')
@@ -33,7 +34,6 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
     New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
-$coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_unbound_core.dll') 'Unbound framework DLL'
 $demoDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_unbound_scene_demo.dll') 'Scene demo DLL'
 $fieldDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_unbound_field_demo.dll') 'Field demo DLL'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
@@ -47,15 +47,12 @@ $layout = $layoutMatch.Groups[1].Value.Substring(0, 8)
 $sourceRoot = [System.IO.Path]::GetFullPath('soh\native-sdk\unbound-core')
 $packageRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
 $staging = Join-Path $packageRoot 'staging'
-$coreStage = Join-Path $staging 'unbound-framework'
 $demoStage = Join-Path $staging 'unbound-scene-demo'
 $fieldStage = Join-Path $staging 'unbound-field-demo'
 if (Test-Path -LiteralPath $staging) {
     Remove-Item -LiteralPath $staging -Recurse -Force
 }
 foreach ($directory in @(
-    (Join-Path $coreStage 'provider'),
-    (Join-Path $coreStage 'include\linkspan\unbound'),
     (Join-Path $demoStage 'provider'),
     (Join-Path $demoStage 'assets\unbound'),
     (Join-Path $fieldStage 'provider'),
@@ -64,29 +61,10 @@ foreach ($directory in @(
     [System.IO.Directory]::CreateDirectory($directory) | Out-Null
 }
 
-Write-Utf8NoBom (Join-Path $coreStage 'manifest.toml') @'
-id = "linkspan.unbound.framework"
-name = "Link-Span Unbound Framework"
-version = "0.5.0"
-api = ">=0.5.0 <0.6.0"
-entrypoint = "main.lua"
-games = ["oot"]
-kind = "core_extension"
-load_phase = "pre_game"
-
-[provider]
-abi_version = "1.2"
-win64 = "provider/linkspan_unbound_core.dll"
-'@
-Copy-Item -LiteralPath (Join-Path $sourceRoot 'core-main.lua') -Destination (Join-Path $coreStage 'main.lua')
-Copy-Item -LiteralPath $coreDll -Destination (Join-Path $coreStage 'provider\linkspan_unbound_core.dll')
-Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\unbound\json_factory.h') `
-    -Destination (Join-Path $coreStage 'include\linkspan\unbound\json_factory.h')
-
 Write-Utf8NoBom (Join-Path $demoStage 'manifest.toml') @'
 id = "linkspan.unbound.scene-demo"
 name = "Link-Span Unbound Scene Demo"
-version = "0.1.2"
+version = "0.1.3"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -96,7 +74,7 @@ abi_version = "1.0"
 win64 = "provider/linkspan_unbound_scene_demo.dll"
 
 [dependencies]
-"linkspan.unbound.framework" = ">=0.2.0 <0.6.0"
+"linkspan.unbound.framework" = ">=0.6.0 <0.7.0"
 '@
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'scene-demo\main.lua') -Destination (Join-Path $demoStage 'main.lua')
 Copy-Item -LiteralPath $demoDll -Destination (Join-Path $demoStage 'provider\linkspan_unbound_scene_demo.dll')
@@ -106,7 +84,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'scene-demo\assets\unbound\scenes.
 Write-Utf8NoBom (Join-Path $fieldStage 'manifest.toml') @'
 id = "linkspan.unbound.field-demo"
 name = "Link-Span Unbound Field Demo"
-version = "0.1.1"
+version = "0.1.2"
 api = ">=0.5.0 <0.6.0"
 entrypoint = "main.lua"
 games = ["oot"]
@@ -116,29 +94,30 @@ abi_version = "1.0"
 win64 = "provider/linkspan_unbound_field_demo.dll"
 
 [dependencies]
-"linkspan.unbound.framework" = ">=0.3.0 <0.6.0"
+"linkspan.unbound.framework" = ">=0.6.0 <0.7.0"
 '@
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'field-demo\main.lua') -Destination (Join-Path $fieldStage 'main.lua')
 Copy-Item -LiteralPath $fieldDll -Destination (Join-Path $fieldStage 'provider\linkspan_unbound_field_demo.dll')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'field-demo\assets\scenes\spot00\rooms\0.json') `
     -Destination (Join-Path $fieldStage 'assets\scenes\spot00\rooms\0.json')
 
+foreach ($stage in @($demoStage, $fieldStage)) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\docs\licensing\LICENSE-PACKAGE.txt') -Destination (Join-Path $stage 'LICENSE')
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'NOTICE.md') -Destination (Join-Path $stage 'NOTICE.md')
+}
+
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$coreZip = Join-Path $packageRoot "LinkSpan-Unbound-Framework-0.5.0-layout-$layout.$Extension"
-$demoZip = Join-Path $packageRoot "LinkSpan-Unbound-Scene-Demo-0.1.2-layout-$layout.$Extension"
-$fieldZip = Join-Path $packageRoot "LinkSpan-Unbound-Field-Demo-0.1.1-layout-$layout.$Extension"
-New-DeterministicZip $coreStage $coreZip
+$demoZip = Join-Path $packageRoot "LinkSpan-Unbound-Scene-Demo-0.1.3-layout-$layout.$Extension"
+$fieldZip = Join-Path $packageRoot "LinkSpan-Unbound-Field-Demo-0.1.2-layout-$layout.$Extension"
 New-DeterministicZip $demoStage $demoZip
 New-DeterministicZip $fieldStage $fieldZip
 
-& $validatorExe $coreZip
-if ($LASTEXITCODE -ne 0) { throw 'Invalid Unbound framework package.' }
 & $validatorExe $demoZip
 if ($LASTEXITCODE -ne 0) { throw 'Invalid scene demo package.' }
 & $validatorExe $fieldZip
 if ($LASTEXITCODE -ne 0) { throw 'Invalid field demo package.' }
 
-@($coreZip, $demoZip, $fieldZip) | ForEach-Object {
+@($demoZip, $fieldZip) | ForEach-Object {
     [ordered]@{
         path = $_
         size = (Get-Item -LiteralPath $_).Length

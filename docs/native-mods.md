@@ -177,6 +177,13 @@ Esta fatia ainda não conecta o resultado a uma scene factory do
 cena/sala e o adapter que materializa o recurso pertencem aos recortes
 seguintes do Unbound.
 
+### Camadas Unbound sem o framework
+
+Uma camada Unbound (`.o2r` com `unbound.json` formato 2), solta em `mods/` ou
+dentro da pasta de um mod, só entra na raiz do VFS com o framework
+`linkspan.unbound.framework` carregado. Sem ele, o log diz `ShipLua ignorou a
+camada Unbound '…': o framework Unbound (…) não carregou` e o jogo segue sem ela.
+
 ## Serviço `linkspan.oot.movement` v2 (OOT-MOVE-004)
 
 Header do contrato: `soh/soh/native/oot_engine.h`; decisão em
@@ -496,7 +503,8 @@ framework registra o relatório quando ele muda.
 `soh/native-sdk/unbound-core/field-demo` monta `assets/scenes/spot00/rooms/0.json` e,
 com um save aberto, viaja uma vez para `ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN`. O build
 reaproveita `scene-demo/scene_demo.cpp`. `tools/package-unbound-scene-demo.ps1`
-empacota o framework 0.3.0, a demo de cenas 0.1.1 e a demo do campo 0.1.0.
+empacota a demo de cenas 0.1.3 e a demo do campo 0.1.2, que pedem o framework 0.6.x
+(empacotado por `tools/package-unbound-framework.ps1`).
 
 ## Esqueletos animados (OOT-CORE-005B, slice D4)
 
@@ -572,7 +580,8 @@ e o recusa com o motivo no log. Para reativar, apague a linha do mod. O marcador
 `mods/.shiplua-boot` some quando o boot é confirmado.
 
 `soh/native-sdk/crash-demo`, empacotado com `tools/package-crash-demo.ps1`, é um
-mod de teste cujo init escreve num ponteiro nulo.
+mod de teste cujo init escreve num ponteiro nulo. Com `-CoreExtension`, a mesma
+queda sai como core extension (`linkspan.crash-coremod`, ABI 1.2, `pre_game`).
 
 ## Compilar o host uma vez
 

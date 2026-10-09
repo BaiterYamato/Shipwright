@@ -4,6 +4,9 @@
 `roborich/Shipwright`, `unbound-docs/SPEC.md`) sobre o host Link-Span do Shipwright 9.2.3. Não linka
 `soh.exe`: usa só os serviços `linkspan.oot.*`.
 
+Camadas Unbound (`.o2r` com `unbound.json`), soltas em `mods/` ou dentro de um mod, só entram no jogo com este
+framework carregado. Sem ele, o host ignora a camada e grava o motivo no log.
+
 ## O que a versão 0.6.0 faz
 
 ### Unbound 0.9: atores declarados em JSON

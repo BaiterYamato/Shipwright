@@ -6372,6 +6372,9 @@ struct PendingUnboundArchive {
     std::filesystem::path modDirectory;
 };
 std::vector<PendingUnboundArchive> gPendingUnboundArchives;
+// Leitor das camadas Unbound v2. Sem ele, nada lê os documentos da camada: montá-la seria carga parcial
+// (plano §10.4, recusa com diagnóstico no host sem o framework).
+constexpr const char* kUnboundFrameworkId = "linkspan.unbound.framework";
 
 bool IsUnboundLayerArchive(const std::filesystem::path& path) {
     const auto archive = std::make_shared<Ship::O2rArchive>(path.generic_string());
@@ -6513,6 +6516,8 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     for (const auto& [modId, reason] : loaded.value->rejected) {
         SPDLOG_WARN("ShipLua rejeitou o mod '{}': {}", modId, reason);
     }
+    const bool unboundReader = std::find(loaded.value->loadedIds.begin(), loaded.value->loadedIds.end(),
+                                         kUnboundFrameworkId) != loaded.value->loadedIds.end();
     for (const auto& [archivePath, modDirectory] : gPendingUnboundArchives) {
         // Camada dentro da pasta de um mod só entra na raiz do VFS se esse mod carregou: um mod rejeitado não
         // pode sombrear cenas do jogo. O .o2r solto em mods/ é data mod e não tem manifesto.
@@ -6526,6 +6531,11 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
                             archivePath.string(), modDirectory.string());
                 continue;
             }
+        }
+        if (!unboundReader) {
+            SPDLOG_WARN("ShipLua ignorou a camada Unbound '{}': o framework Unbound ('{}') n\xC3\xA3o carregou",
+                        archivePath.string(), kUnboundFrameworkId);
+            continue;
         }
         uint64_t handle = 0;
         const auto status = NativeMountResourceArchive(archivePath.string().c_str(), &handle);
