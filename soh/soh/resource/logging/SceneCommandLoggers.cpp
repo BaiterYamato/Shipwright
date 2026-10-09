@@ -330,23 +330,26 @@ void LogMeshAsXML(std::shared_ptr<Ship::IResource> resource) {
 
         root->InsertEndChild(polygon);
 
-        BgImage* image = setMesh->meshHeader.polygon1.multi.list;
-        int count = setMesh->meshHeader.polygon1.format == 1 ? 1 : setMesh->meshHeader.polygon1.multi.count;
-        for (int i = 0; i < count; i += 1) {
+        if (setMesh->meshHeader.polygon1.format == 1) {
+            // Format 1 uses the polygon1.single member of the union; polygon1.multi.list aliases its fields and is
+            // not a valid pointer here. single has no unk_00 / id (the importer drops them), so log them as 0.
             tinyxml2::XMLElement* bgImage = doc.NewElement("BgImage");
-            if (setMesh->meshHeader.polygon1.format == 1) {
-                bgImage->SetAttribute("Unknown_00", image->unk_00);
-                bgImage->SetAttribute("Id", image->id);
-                bgImage->SetAttribute("ImagePath", TrimOTRSignature((char*)setMesh->meshHeader.polygon1.single.source));
-                bgImage->SetAttribute("Unknown_0C", setMesh->meshHeader.polygon1.single.unk_0C);
-                bgImage->SetAttribute("TLUT", setMesh->meshHeader.polygon1.single.tlut);
-                bgImage->SetAttribute("Width", setMesh->meshHeader.polygon1.single.width);
-                bgImage->SetAttribute("Height", setMesh->meshHeader.polygon1.single.height);
-                bgImage->SetAttribute("Fmt", setMesh->meshHeader.polygon1.single.fmt);
-                bgImage->SetAttribute("Siz", setMesh->meshHeader.polygon1.single.siz);
-                bgImage->SetAttribute("Mode0", setMesh->meshHeader.polygon1.single.mode0);
-                bgImage->SetAttribute("TLUTCount", setMesh->meshHeader.polygon1.single.tlutCount);
-            } else {
+            bgImage->SetAttribute("Unknown_00", 0);
+            bgImage->SetAttribute("Id", 0);
+            bgImage->SetAttribute("ImagePath", TrimOTRSignature((char*)setMesh->meshHeader.polygon1.single.source));
+            bgImage->SetAttribute("Unknown_0C", setMesh->meshHeader.polygon1.single.unk_0C);
+            bgImage->SetAttribute("TLUT", (uint32_t)(uintptr_t)setMesh->meshHeader.polygon1.single.tlut);
+            bgImage->SetAttribute("Width", setMesh->meshHeader.polygon1.single.width);
+            bgImage->SetAttribute("Height", setMesh->meshHeader.polygon1.single.height);
+            bgImage->SetAttribute("Fmt", setMesh->meshHeader.polygon1.single.fmt);
+            bgImage->SetAttribute("Siz", setMesh->meshHeader.polygon1.single.siz);
+            bgImage->SetAttribute("Mode0", setMesh->meshHeader.polygon1.single.mode0);
+            bgImage->SetAttribute("TLUTCount", setMesh->meshHeader.polygon1.single.tlutCount);
+            polygon->InsertEndChild(bgImage);
+        } else {
+            BgImage* image = setMesh->meshHeader.polygon1.multi.list;
+            for (int i = 0; i < setMesh->meshHeader.polygon1.multi.count; i += 1) {
+                tinyxml2::XMLElement* bgImage = doc.NewElement("BgImage");
                 bgImage->SetAttribute("Unknown_00", image->unk_00);
                 bgImage->SetAttribute("Id", image->id);
                 bgImage->SetAttribute("ImagePath", TrimOTRSignature((char*)image->source));
@@ -358,10 +361,10 @@ void LogMeshAsXML(std::shared_ptr<Ship::IResource> resource) {
                 bgImage->SetAttribute("Siz", image->siz);
                 bgImage->SetAttribute("Mode0", image->mode0);
                 bgImage->SetAttribute("TLUTCount", image->tlutCount);
-            }
-            polygon->InsertEndChild(bgImage);
+                polygon->InsertEndChild(bgImage);
 
-            image += 1;
+                image += 1;
+            }
         }
     } else if (setMesh->meshHeader.base.type == 2) {
         root->SetAttribute("PolyNum", setMesh->meshHeader.polygon2.num);
