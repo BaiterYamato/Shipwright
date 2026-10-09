@@ -41,7 +41,7 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
     New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
-$version = '0.3.18'
+$version = '0.3.19'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_nei_core.dll') 'NEI core DLL'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
 $jsonCopyright = Resolve-InputFile $JsonLicense 'nlohmann/json license'
@@ -94,6 +94,9 @@ Copy-Item -LiteralPath $coreDll -Destination (Join-Path $coreStage 'provider\lin
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\nei\nei_items.h') `
     -Destination (Join-Path $coreStage 'include\linkspan\nei\nei_items.h')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'README.md') -Destination (Join-Path $coreStage 'docs\README.md')
+# Licença (CC0 do trabalho do Link-Span) e atribuição do que o pacote porta.
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\docs\licensing\LICENSE-PACKAGE.txt') -Destination (Join-Path $coreStage 'LICENSE')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'NOTICE.md') -Destination (Join-Path $coreStage 'NOTICE.md')
 
 # Add-on de exemplo: só o fonte. Quem quiser o binário compila contra o SDK do mesmo layout id.
 $demoManifest = @'
@@ -151,10 +154,10 @@ Write-Utf8NoBom (Join-Path $coreStage 'docs\components.json') ($components | Con
 $notice = @"
 # Licenças
 
-- Código do Link-Span neste pacote (cola do coremod, registro, save, Lua, header e documentação): licença do
-  projeto Link-Span.
+- Código do Link-Span neste pacote (cola do coremod, registro, save, Lua, header e documentação): domínio
+  público pela CC0 1.0 Universal (``LICENSE``).
 - Código de itens do fork Not Enough Items (``skijer/Not-Enough-Items``, commit ``c29262b``), compilado na DLL: o
-  fork não traz LICENSE próprio e segue a licença do Shipwright, de onde deriva (inventário NEI-001, §8).
+  fork não publica licença; esse código segue com skijer e colaboradores (``NOTICE.md``).
 - Nenhum asset do fork (modelos, ícones, texturas, sons) vai neste pacote: eles não têm licença declarada. Quem
   joga os gera no próprio computador (``docs/README.md``, ``docs/components.json``).
 - Nenhum dado do jogo e nenhuma ROM vão neste pacote.

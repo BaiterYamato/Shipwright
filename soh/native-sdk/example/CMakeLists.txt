@@ -34,6 +34,9 @@ file(READ manifest.toml manifest_text)
 file(WRITE "${CMAKE_BINARY_DIR}/mod/manifest.toml" "${manifest_text}\nhost_fingerprints = [\"${host_fingerprint}\"]\n")
 # Texturas do mod no formato de recurso do libultraship; o provider monta a pasta no configure.
 file(COPY assets DESTINATION "${CMAKE_BINARY_DIR}/mod")
+# Licença (CC0 do trabalho do Link-Span) e atribuição vão no pacote.
+configure_file(NOTICE.md "${CMAKE_BINARY_DIR}/mod/NOTICE.md" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../../../docs/licensing/LICENSE-PACKAGE.txt" "${CMAKE_BINARY_DIR}/mod/LICENSE" COPYONLY)
 add_executable(dynamic_movement_icon_tests item_icons_tests.cpp)
 enable_testing()
 add_test(NAME dynamic_movement_icon_tests COMMAND dynamic_movement_icon_tests)

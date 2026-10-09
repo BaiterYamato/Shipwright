@@ -44,6 +44,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HOST_EXECUTABL
 file(READ manifest.toml manifest_text)
 file(WRITE "${CMAKE_BINARY_DIR}/mod/manifest.toml" "${manifest_text}\nhost_fingerprints = [\"${host_fingerprint}\"]\n")
 configure_file(README.md "${CMAKE_BINARY_DIR}/mod/README.md" COPYONLY)
+# Licença (CC0 do trabalho do Link-Span) e atribuição, com o texto da SDL2 embutida na DLL.
+configure_file(NOTICE.md "${CMAKE_BINARY_DIR}/mod/NOTICE.md" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../../../docs/licensing/LICENSE-PACKAGE.txt" "${CMAKE_BINARY_DIR}/mod/LICENSE" COPYONLY)
 file(COPY assets DESTINATION "${CMAKE_BINARY_DIR}/mod")
 
 enable_testing()

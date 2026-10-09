@@ -25,7 +25,7 @@ function Write-Utf8NoBom([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
 }
 
-$version = '0.6.10'
+$version = '0.6.11'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_unbound_core.dll') 'Unbound framework DLL'
 $tool = Resolve-InputFile (Join-Path $ToolDirectory 'linkspan_unbound_convert.exe') 'Unbound command-line tool'
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
@@ -75,11 +75,14 @@ Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'schemas\unbound') -File | Whe
     Copy-Item -Destination (Join-Path $staging 'schemas\unbound')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'schemas\validate_schemas.py') -Destination (Join-Path $staging 'schemas\validate_schemas.py')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'NOTICE.md') -Destination (Join-Path $staging 'docs\NOTICE.md')
+# Licença (CC0 do trabalho do Link-Span) e atribuição na raiz, como nos outros pacotes.
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\docs\licensing\LICENSE-PACKAGE.txt') -Destination (Join-Path $staging 'LICENSE')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'NOTICE.md') -Destination (Join-Path $staging 'NOTICE.md')
 $notice = @"
 # Licenças
 
-- Framework Unbound do Link-Span (DLL, Lua, ferramenta, header e documentação): licença do repositório
-  Link-Span.
+- Framework Unbound do Link-Span (DLL, Lua, ferramenta, header e documentação): domínio público pela CC0 1.0
+  Universal (``LICENSE``).
 - O formato lido é o da SPEC do SoH: Unbound (``roborich/Shipwright``, ``unbound-docs/SPEC.md``); nenhum
   arquivo integral daquele projeto vai neste pacote. O leitor de atores é adaptado da versão 0.9;
   consulte ``docs/NOTICE.md`` para a proveniência.

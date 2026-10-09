@@ -256,10 +256,20 @@ CONTEÚDO E RESTAURAÇÃO
   oficial não lê de volta; para voltar a ela, restaure a cópia do passo 4.
 - Para restaurar o executável oficial, extraia novamente a release oficial
   sobre a pasta ou use uma cópia limpa.
+
+LICENÇA
+- O trabalho próprio do Link-Span está em domínio público pela CC0 1.0
+  (LICENSE-LinkSpan.txt). O Shipwright e os componentes de terceiros mantêm
+  os próprios termos: NOTICE-LinkSpan.md e THIRD-PARTY-NOTICES-LinkSpan.md.
 "@
     # O README é lido no Bloco de Notas: fins de linha uniformes, seja qual for o EOL do checkout.
     $readme = $readme -replace "`r?`n", "`r`n"
     Write-Utf8NoBom -Path (Join-Path $stage 'README-LinkSpan.txt') -Content $readme
+    # Licença e avisos com o sufixo LinkSpan, como o README: o overlay é extraído na raiz do jogo.
+    $licensing = Join-Path $PSScriptRoot '..\docs\licensing'
+    Copy-Item -LiteralPath (Join-Path $licensing 'LICENSE-PACKAGE.txt') -Destination (Join-Path $stage 'LICENSE-LinkSpan.txt')
+    Copy-Item -LiteralPath (Join-Path $licensing 'OVERLAY-NOTICE.md') -Destination (Join-Path $stage 'NOTICE-LinkSpan.md')
+    Copy-Item -LiteralPath (Join-Path $licensing 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $stage 'THIRD-PARTY-NOTICES-LinkSpan.md')
 
     # GetRelativePath só existe no .NET do PowerShell 7; subtrair o prefixo funciona também no 5.1.
     $stageRoot = [System.IO.Path]::GetFullPath($stage).TrimEnd('\') + '\'

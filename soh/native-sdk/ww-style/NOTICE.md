@@ -23,9 +23,11 @@
 ## Host
 
 The mod runs on Ship of Harkinian with the Link-Span modloader. The projects behind them (HarbourMasters'
-Shipwright and libultraship, the zeldaret decompilation) are credited in Link-Span's own `CREDITS.md`.
+Shipwright and libultraship, the zeldaret decompilation) are credited in the Link-Span overlay's `NOTICE.md` and
+`THIRD-PARTY-NOTICES.md`.
 
 ## Licence
 
-**Not decided yet.** The maintainer has not chosen a licence for this package, and the fork documentation reviewed
-for this port does not state one. Until a licence is added here, this package carries no licence grant.
+Link-Span's own work in this package (the native mod around the ported code, the Lua, the tests and the
+documentation) is dedicated to the public domain under CC0 1.0 Universal (`LICENSE`). The code ported from
+roborich's fork stays with its authors: the fork publishes no licence, and this package grants none for that code.

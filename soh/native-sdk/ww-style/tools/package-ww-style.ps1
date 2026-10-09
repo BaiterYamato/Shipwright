@@ -21,6 +21,7 @@ Copy-Item -LiteralPath (Join-Path $source 'main.lua') -Destination $stage
 foreach ($doc in 'README.md', 'README.pt-BR.md', 'NOTICE.md') {
     Copy-Item -LiteralPath (Join-Path $source $doc) -Destination $stage
 }
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\..\..\..\docs\licensing\LICENSE-PACKAGE.txt') -Destination (Join-Path $stage 'LICENSE')
 Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'provider\linkspan_ww_style.dll')
 $version = (Select-String -LiteralPath (Join-Path $source 'manifest.toml') -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 $shipmod = Join-Path $OutputDirectory "LinkSpan-WindWakerStyle-$version.shipmod"

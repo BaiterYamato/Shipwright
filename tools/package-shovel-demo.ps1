@@ -26,13 +26,15 @@ $source = Join-Path (Get-Location).Path 'soh\native-sdk\shovel-demo'
 $output = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $OutputDirectory))
 $stage = Join-Path $output ([System.IO.Path]::GetRandomFileName())
 [System.IO.Directory]::CreateDirectory((Join-Path $stage 'provider')) | Out-Null
-foreach ($name in @('manifest.toml', 'main.lua')) {
+foreach ($name in @('manifest.toml', 'main.lua', 'NOTICE.md')) {
     Copy-Item -LiteralPath (InputFile (Join-Path $source $name)) -Destination (Join-Path $stage $name)
 }
+Copy-Item -LiteralPath (InputFile (Join-Path $PSScriptRoot '..\docs\licensing\LICENSE-PACKAGE.txt')) -Destination (Join-Path $stage 'LICENSE')
+$version = (Select-String -LiteralPath (Join-Path $source 'manifest.toml') -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'provider\linkspan_shovel_demo.dll')
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = Join-Path $output "LinkSpan-Shovel-Demo-0.1.1-layout-$layout-$dllHash.zip"
+$zip = Join-Path $output "LinkSpan-Shovel-Demo-$version-layout-$layout-$dllHash.zip"
 if (Test-Path -LiteralPath $zip) { throw "Pacote já existe: $zip" }
 New-LinkSpanZip -Source $stage -Destination $zip
 & $validatorExe $zip
