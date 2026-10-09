@@ -17,6 +17,9 @@ param(
     [Int64]$MaxFileBytes = 67108864,
 
     [string[]]$AllowLarge = @(),
+    # Obrigatório ao montar; opcional no parameter set Verify.
+    [Parameter(Mandatory = $true, ParameterSetName = 'Build')]
+    [string]$ReleaseNotes,
 
     [Parameter(ParameterSetName = 'Verify')]
     [switch]$Verify
@@ -161,6 +164,7 @@ function Get-ZipInventory {
 
         $manifest = $archive.Entries | Where-Object { $_.FullName -eq 'manifest.toml' } | Select-Object -First 1
         $overlay = $archive.Entries | Where-Object { $_.FullName -eq 'linkspan-overlay.json' } | Select-Object -First 1
+        $sdk = $archive.Entries | Where-Object { $_.FullName -eq 'linkspan-sdk.json' } | Select-Object -First 1
         $id = $null
         $packageVersion = $null
         $layoutId = Get-FileLayoutFromName -Name ([System.IO.Path]::GetFileName($Path))
@@ -201,6 +205,28 @@ function Get-ZipInventory {
                 finally { $sha.Dispose(); $hostStream.Dispose() }
             }
             $metadataSource = 'linkspan-overlay.json (overlay sem manifest.toml)'
+        }
+        elseif ($sdk) {
+            $sdkJson = Get-TextZipEntry -Entry $sdk | ConvertFrom-Json
+            if ($sdkJson.schemaVersion -ne 1 -or $sdkJson.packageType -cne 'linkspan.oot.sdk' -or
+                $sdkJson.platform -cne 'windows-x64' -or $sdkJson.configuration -cne 'Release' -or
+                $sdkJson.ootLayoutId -cnotmatch '^[0-9a-f]{64}$' -or
+                $sdkJson.hostSha256 -cnotmatch '^[0-9a-f]{64}$') {
+                throw "Metadados SDK inválidos: $Path"
+            }
+            $id = [string]$sdkJson.packageType
+            $packageVersion = [string]$sdkJson.version
+            $layoutId = [string]$sdkJson.ootLayoutId
+            $layoutSource = 'linkspan-sdk.json'
+            $hostRequired = [string]$sdkJson.hostRequired
+            $hostFingerprints = @([string]$sdkJson.hostSha256)
+            $expectedName = 'LinkSpan-OoT-SDK-' + $packageVersion + '-layout-' +
+                $layoutId.Substring(0, 8) + '-Win64.zip'
+            if ($fileName -cne $expectedName) { throw "Nome/metadados SDK divergem: $fileName" }
+            if (-not $archive.GetEntry('lib/cmake/LinkSpanOotSdk/LinkSpanOotSdkConfig.cmake') -or
+                -not $archive.GetEntry('include/oot_layout_id.h')) { throw "SDK incompleto: $Path" }
+            # Não preencher hostSha256: o SDK não contém um soh.exe.
+            $metadataSource = 'linkspan-sdk.json'
         }
         elseif ([System.IO.Path]::GetExtension($Path) -ieq '.o2r') {
             # Arquivo de recursos solto em mods/ (ex.: dados do Unbound): o VFS do host monta, sem manifesto.
@@ -299,6 +325,10 @@ $selected = @(
     Sort-Object Name
 )
 if ($selected.Count -eq 0) { throw "Nenhum .zip, .shipmod ou .o2r selecionado em $artifactRoot" }
+if (-not (Test-Path -LiteralPath $ReleaseNotes -PathType Leaf)) { throw "Notas ausentes: $ReleaseNotes" }
+if ([IO.File]::ReadAllText((Resolve-Path -LiteralPath $ReleaseNotes).Path) -match '\{\{[^}]+\}\}') {
+    throw 'Preencha os marcadores das release notes antes de montar o candidato final.'
+}
 Assert-ManifestReader
 $names = @($selected | ForEach-Object { $_.Name })
 if (@($names | Sort-Object -Unique).Count -ne $names.Count) { throw 'Nomes de pacote duplicados não são permitidos.' }
@@ -309,6 +339,7 @@ Assert-WithinDirectory -Candidate $stage -Parent $resolvedReleaseRoot
 try {
     Invoke-ProtectedScanner -Paths @($selected | ForEach-Object { $_.FullName }) -JsonOut (Join-Path $stage 'protected-content.json') -TextOut (Join-Path $stage 'protected-content.txt')
     foreach ($file in $selected) { Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $stage $file.Name) }
+    Copy-Item -LiteralPath $ReleaseNotes -Destination (Join-Path $stage 'RELEASE-NOTES.md')
     Invoke-ProtectedScanner -Paths @($stage) -JsonOut (Join-Path $stage 'protected-content.json') -TextOut (Join-Path $stage 'protected-content.txt')
 
     $packages = @()
@@ -316,6 +347,11 @@ try {
         $packages += Get-ZipInventory -Path $file.FullName
     }
     # Mods normalmente declaram apenas o prefixo de oito caracteres no nome do pacote.
+    $sdkPackages = @($packages | Where-Object { $_.id -eq 'linkspan.oot.sdk' })
+    if ($sdkPackages.Count -ne 1 -or $sdkPackages[0].version -cne $Version) {
+        throw 'A release exige exatamente um SDK da mesma versão.'
+    }
+    if (@($packages | Where-Object { $_.hostSha256 }).Count -ne 1) { throw 'A release exige exatamente um overlay para conferir o SDK.' }
     # O overlay traz o ID completo: complete-o apenas quando houver uma única correspondência.
     $fullLayouts = @($packages | Where-Object { $_.layoutId -and $_.layoutId.Length -eq 64 } | ForEach-Object { $_.layoutId } | Sort-Object -Unique)
     foreach ($package in $packages) {
@@ -338,10 +374,17 @@ try {
             }
         }
     }
-    $inventory = [ordered]@{ schemaVersion = 1; releaseVersion = $Version; packages = $packages }
+    $notesPath = Join-Path $stage 'RELEASE-NOTES.md'
+    $attachments = @([ordered]@{
+        file = 'RELEASE-NOTES.md'; type = 'release-notes'
+        size = [Int64](Get-Item -LiteralPath $notesPath).Length
+        sha256 = (Get-FileHash -LiteralPath $notesPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    })
+    # Campo aditivo; packages mantém a estrutura anterior.
+    $inventory = [ordered]@{ schemaVersion = 1; releaseVersion = $Version; packages = $packages; attachments = $attachments }
     Write-Utf8NoBom -Path (Join-Path $stage 'inventory.json') -Content (($inventory | ConvertTo-Json -Depth 10) + "`n")
     # Sort-Object com nome de propriedade não enxerga a chave de um [ordered]; o bloco de script, sim.
-    $sumLines = @($packages | Sort-Object { $_.file } | ForEach-Object { $_.sha256 + '  ' + $_.file })
+    $sumLines = @((@($packages) + @($attachments)) | Sort-Object { $_.file } | ForEach-Object { $_.sha256 + '  ' + $_.file })
     Write-Utf8NoBom -Path (Join-Path $stage 'SHA256SUMS.txt') -Content (($sumLines -join "`n") + "`n")
 
     $md = @('# Link-Span OoT ' + $Version, '', '## Pacotes', '', '| Arquivo | ID | Versão | Layout | Host exigido | SHA-256 |', '|---|---|---|---|---|---|')
@@ -351,7 +394,13 @@ try {
         $md += '| `' + $package.file + '` | `' + $package.id + '` | ' + $package.version + ' | `' + $layout + '` | ' + $requiredHost + ' | `' + $package.sha256 + '` |'
     }
     $md += @('', '## Instalação e rollback', '', '- Instale o overlay sobre Shipwright 9.2.3 fresco; execute uma vez para validar os assets locais.', '- Copie os mods independentes para `mods/` e reinicie.', '- Atualize com o jogo fechado: tire a versão anterior de `mods/` (guarde a cópia para voltar) e copie a nova. O save preserva os blocos de mods ausentes.', '- Mod que derruba o boot é desativado no início seguinte (lista `mods/.shiplua-disabled`, sem apagar arquivo); apague a linha da lista para reativar.', '- O scanner `protected-content.txt` deve permanecer OK; nenhum ROM, archive derivado ou save é distribuído.')
+    $md += @('', '## Autores e limitações', '', 'Consulte [RELEASE-NOTES.md](RELEASE-NOTES.md). O pacote SDK listado acima contém guias PT/EN, contrato OoT e fontes; extraia-o fora de mods/.')
+    $md += @('', '## Licenças', '',
+        '- O trabalho próprio do Link-Span está em domínio público pela CC0 1.0 Universal. Cada pacote traz `LICENSE` e `NOTICE.md`; no overlay, `LICENSE-LinkSpan.txt`, `NOTICE-LinkSpan.md` e `THIRD-PARTY-NOTICES-LinkSpan.md`, com os componentes de terceiros do `soh.exe`.',
+        '- Shipwright, Not Enough Items (skijer), Unbound e Wind Waker Style (roborich) não publicam licença. O código portado deles segue com seus autores, e esta release não concede licença sobre ele.',
+        '- `LinkSpan-Unbound09-Actors-Demo.o2r` é só dados, sem documentos internos: os atores adaptam o exemplo oficial do Unbound 0.9 (roborich) e usam modelos do jogo extraídos pelo próprio jogador; o restante é trabalho do Link-Span sob a CC0.')
     Write-Utf8NoBom -Path (Join-Path $stage 'RELEASE.md') -Content (($md -join "`n") + "`n")
+    Invoke-ProtectedScanner -Paths @($stage) -JsonOut (Join-Path $stage 'protected-content.json') -TextOut (Join-Path $stage 'protected-content.txt')
     Move-Item -LiteralPath $stage -Destination $releaseDirectory
     [ordered]@{ release = $releaseDirectory; packages = $packages.Count; sha256Sums = 'SHA256SUMS.txt'; inventory = 'inventory.json' } | ConvertTo-Json
 }

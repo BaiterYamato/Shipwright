@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.26)
+project(LinkSpanProviderExample LANGUAGES CXX)
+find_package(LinkSpanOotSdk CONFIG REQUIRED)
+add_library(linkspan_sdk_probe SHARED provider.cpp)
+target_link_libraries(linkspan_sdk_probe PRIVATE LinkSpan::OotSdk)
+set_target_properties(linkspan_sdk_probe PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded)
+foreach(config Debug Release RelWithDebInfo MinSizeRel)
+    string(TOUPPER "${config}" upper)
+    set_target_properties(linkspan_sdk_probe PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_${upper} "${CMAKE_BINARY_DIR}/mod/provider")
+endforeach()
+configure_file(manifest.toml "${CMAKE_BINARY_DIR}/mod/manifest.toml" COPYONLY)
+configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
