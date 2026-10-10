@@ -310,7 +310,7 @@ configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
     $metadata = [ordered]@{
         schemaVersion = 1; packageType = 'linkspan.oot.sdk'; version = $Version; game = 'oot'; platform = 'windows-x64'
         configuration = 'Release'; nativeProviderAbi = '1.3'; ootLayoutId = $layoutId
-        hostSha256 = $hostHash; hostRequired = 'Shipwright 9.2.3 com overlay Link-Span correspondente'
+        hostSha256 = $hostHash; hostRequired = 'Shipwright 9.2.3 with the matching Link-Span overlay'
         compiler = [ordered]@{ id = $compilerId; version = $compilerVersion; pointerSize = 8; runtime = 'MultiThreaded'; layoutHashFlags = $flags; layoutHashReleaseFlags = $releaseFlags }
         importLibraries = @(); headerCount = $seen.Count; heartSeedsPresent = [bool]$heartPresent
         limitations = @('Assets do DMR (texturas do HUD) não acompanham o SDK; o pacote do DMR traz os seus', 'Demos de código (Shovel, item, hooks...) ficam em https://github.com/BaiterYamato/link-span-examples', 'shipmod validate usa a checagem estrutural sem o validador C++', 'shipmod test requer o runner externo', 'Sem pacote nativo de conformidade completo; examples/provider-example é o probe mínimo')
