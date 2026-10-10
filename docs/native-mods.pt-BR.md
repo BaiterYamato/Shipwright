@@ -1,0 +1,891 @@
+[English](native-mods.md) · **Português (Brasil)**
+
+<a id="service-engine"></a>
+
+# Mods nativos do Link-Span no Shipwright
+
+Esta integração usa o SDK Link-Span 0.5 e carrega `.zip`, `.shipmod` ou pastas
+com `manifest.toml` na raiz. Providers nativos ficam ativos no host; a DLL faz
+parte do mod e suas funções não precisam ser cadastradas no loader.
+
+O serviço legado `linkspan.oot.engine` permanece na versão 1 para mods
+existentes. O serviço separado `linkspan.oot.movement` v1 oferece input virtual,
+botões físicos SDL, bindings transitórios, analógicos, estado de chão/rolamento
+e ações nativas de pulo e rolamento. A v2 acrescenta eixos físicos, gatilho ligado
+a botão virtual, atalho nativo de Lente e máscaras e a posição dos botões C no
+HUD. O Lua chama funções privadas da DLL por
+`ship.native.call`; eventos usam a API Lua existente.
+Os ponteiros ficam somente no código nativo e não devem ser retidos entre cenas
+ou frames. A tabela de serviço pode ser guardada até o shutdown; consulte novamente os
+ponteiros de gameplay em cada chamada. Fora de gameplay
+o jogador e a cena retornam nulo. Use apenas a thread do jogo.
+
+<a id="service-resources"></a>
+
+## Serviço `linkspan.oot.resources` v1 (OOT-CORE-001)
+
+Header do contrato: `soh/soh/native/oot_resources.h`. Nome/versão:
+`LINKSPAN_OOT_RESOURCES_SERVICE` / versão 1. A estrutura `ShipOotResourcesV1`
+tem `size` + 8 ponteiros de função:
+
+- `has_file(path)`
+- `read_file(path, output, capacity, output_size)`
+- `list_files(search_mask, callback, user)`
+- `dirty_resources(search_mask)`
+- `unload_resource(path)`
+- `mount_archive(archive_path, &handle)`
+- `unmount_archive(handle)`
+- `get_game_versions(output, capacity, output_count)`
+
+Semântica: ABI C estável, handles opacos; buffers e callbacks pertencem ao
+chamador; nenhum tipo C++ do libultraship atravessa a DLL. `read_file` e
+`get_game_versions` aceitam primeira chamada com `output=NULL, capacity=0` para
+consultar o tamanho e retornam `SHIP_NATIVE_LIMIT` se a capacidade for
+insuficiente. `list_files` usa máscara glob (ex:
+`objects/gameplay_keep/gArrow*`), ordena os caminhos e invoca o callback por
+caminho; retornar status não-OK no callback interrompe a enumeração.
+`mount_archive` aceita `.o2r`/`.zip` (ZIP), `.otr`/`.mpq` (MPQ, quando
+compilado) ou pasta, e devolve handle opaco uint64; quem monta deve desmontar
+no shutdown do provider, e o host desmonta sozinho no shutdown como rede de
+segurança (`ClearNativeResourceArchives`). Montagem e mutações exigem a thread do jogo. Leituras do VFS também são
+permitidas dentro de um callback de transcode JSON na thread de recursos
+(consulte resources v3); fora dessas condições, chamadas são recusadas.
+
+Limites de concorrência conhecidos na v1: a guarda de thread bloqueia chamadas
+externas, mas não serializa contra o thread pool interno do `ResourceManager`
+nem contra a thread de áudio, que leem os mesmos mapas do `ArchiveManager` (que
+não tem mutex). `dirty_resources` e `unload_resource` são best-effort de cache.
+`mount_archive`/`unmount_archive` são as operações de maior risco: faça-as
+somente em janelas sem loads em voo (ex: no `game.ready`, antes de entrar em
+cena). A correção estrutural é um mutex no `ArchiveManager` (upstream
+libultraship), fora do escopo desta fatia.
+
+O host inicializa o `ArchiveManager` com o conjunto de versões válidas vazio,
+portanto um archive sem arquivo `version` também é aceito por `mount_archive`.
+
+Formato do arquivo `version` dentro de um archive: byte 0 = endianness
+(0 = little, 1 = big), seguido de uint32 com a versão do jogo (ex:
+`01 d4 3d a8 1f` = big-endian 0xD43DA81F). A sonda de runtime montou um ZIP
+contendo `version` copiado do `oot.o2r`.
+
+O provider de exemplo (`soh/native-sdk/example/provider.cpp`) registra
+`resource_probe` (leitura sintética) e `resource_runtime_probe` (prova contra o
+VFS real); o `main.lua` chama via `ship.native.call` no `game.ready` e loga com
+o marcador `core-001-probe`.
+
+Validação de 2026-09-12: sessão de runtime `core-001-20260912-1155` (evidências
+em `build/runtime-evidence/core-001-20260912-1155/`), boot completo até a title
+screen, sem exceções, executável e archives inalterados (SHA-256 antes=depois).
+Linha de prova registrada no log:
+`core-001-probe: versions=1:0xD43DA81F; has=1/0; version_file=0xD43DA81F listed=1; arrows=13 first=objects/gameplay_keep/gArrow1Anim; mount=ok handle=1 marker=match unmount=ok gone=1`.
+
+<a id="service-registry"></a>
+
+## Serviço `linkspan.oot.registry` v1 (OOT-CORE-002)
+
+Header do contrato: `soh/soh/native/oot_registry.h`. O serviço oferece um
+registro dinâmico genérico; o Shipwright guarda identidade e bytes, enquanto o
+coremod decide se eles representam cenas, entradas, itens, transformações ou
+outro catálogo. A tabela `ShipOotRegistryV1` contém:
+
+- `create_space` / `find_space` / `destroy_space`;
+- `register_entry` / `unregister_entry`;
+- `find_entry_by_name` / `find_entry_by_id`;
+- `read_entry` para copiar nome, payload e ID;
+- `list_entries` para enumeração determinística.
+
+Cada espaço declara um intervalo numérico e um `stride`. Ao passar
+`LINKSPAN_OOT_REGISTRY_AUTO_ID`, o host escolhe o menor ID livre alinhado. Nome
+e ID são únicos dentro do espaço. O host copia todos os dados, limita nomes a
+255 bytes, cada payload a 64 KiB, mantém no máximo 64 espaços e 65.536 entradas
+vivas e recusa chamadas fora da thread do jogo.
+
+`read_entry` aceita consulta inicial com os dois buffers nulos e capacidades
+zero. O nome devolvido tem comprimento explícito e não inclui terminador NUL.
+`destroy_space` remove suas entradas em cascata; o provider que criou o espaço
+deve chamá-lo no shutdown. Assim, desativar ou trocar o `.shipmod` não deixa IDs
+ocupados no processo.
+
+O provider de exemplo cria `example/dynamic_movement/actions` e registra as
+entradas `jump` e `sprint` durante seu próprio `init`. `registry_probe` confirma
+busca por nome, leitura do payload e listagem, e o teste do host confirma que o
+espaço desaparece após o unload. Adicionar novas entradas a esse catálogo exige
+recompilar somente a DLL do mod.
+
+Validação de 2026-09-12: a sessão isolada
+`build/runtime-evidence/core-002-20260912-1445/` iniciou o Shipwright 9.2.3,
+carregou o ZIP 0.2.4, chegou a `ShipLua inicializado`, encerrou normalmente e
+registrou:
+`core-002-registry: space=ok; entries=2; first=128; jump=example/dynamic_movement/jump:action=jump; id=128`.
+O resultado da sessão ficou `valid: true`; `soh.exe`, `oot.o2r`, `soh.o2r` e os
+ZIPs rastreados mantiveram seus hashes antes e depois.
+
+## Serviço `linkspan.oot.resources` v2 (OOT-UNBOUND-002A)
+
+Header do contrato: `soh/soh/native/oot_resources.h`. A v2 é prefixo binário
+compatível com a v1 e adiciona `read_file_layers`: o host enumera **todas** as
+cópias montadas de um mesmo caminho virtual, da menor para a maior prioridade,
+chamando um callback síncrono por camada com:
+
+- bytes do arquivo (válidos apenas durante o callback);
+- caminho do archive de origem (`base.o2r`, `override.shipmod`, ...);
+- versão de jogo do archive (0 quando ausente);
+- hash FNV-1a 64 do conteúdo e o tamanho em bytes;
+- `layer_index` / `layer_count` para detecção de ordem e total.
+
+A regra de merge (JSON por schema, substituição binária etc.) pertence ao
+provider; o host apenas entrega as camadas em ordem estável. Retornar outro
+status no callback interrompe a enumeração e propaga o status. Leituras fora da thread do jogo ou de um callback de transcode JSON
+são recusadas com `SHIP_NATIVE_INVALID_ARGUMENT`. No
+libultraship, `ArchiveManager::LoadFileFromAllLayers` oferece a mesma
+enumeração para consumidores internos.
+
+O provider de exemplo expõe `layer_probe`, que compõe um hash determinístico
+sobre as camadas na ordem recebida; o teste `oot_native_engine_tests` valida
+ordem, bytes, origem, hash, interrupção do callback e recusa de thread externa
+com dois archives sintéticos, e a prova independente recompila a DLL fora da
+árvore contra o mesmo `soh.exe`. É o substrato que o Unbound precisa para
+aplicar deltas JSON sobre cenas vanilla sem loader específico no executável.
+
+A prova de runtime `layer_runtime_probe` monta dois ZIPs com
+`unbound/layer-probe.json`, confirma a ordem base → override, compõe o hash e
+desmonta ambos antes de retornar. Ela existe para validar o contrato; uma
+factory real do Unbound consumirá a mesma função com seu próprio schema.
+
+Aviso de robustez (descoberto no playtest, fora do escopo do serviço): o boot
+crasha com 0xc0000005 em `Fast3dGui::LoadGuiTexture` se o `soh.o2r` instalado
+não contém as texturas custom do SoH (ex: `textures/parameter_static/gTriforcePiece`,
+`gClimbTex`, `gCrawlTex`, `gGrabTex`, `gOpenChestsTex`) — o host não faz
+null-check ao carregar ícones GUI. O `soh.o2r` precisa ser o gerado pela mesma
+árvore/branch do executável.
+
+<a id="service-unbound-json-factory"></a>
+
+## Coremod `linkspan.unbound.json_factory` v1 (OOT-UNBOUND-002B)
+
+O projeto externo `soh/native-sdk/unbound-core` prova que uma core extension
+pode implementar uma factory sem adicionar regras do Unbound ao executável. O
+coremod consulta `linkspan.oot.resources` v2, registra o schema
+`linkspan.unbound.actor-patch/v1` e publica a tabela C
+`LinkSpanUnboundJsonFactoryV1` para outros mods.
+
+O serviço enumera schemas, carrega todas as camadas de um caminho, valida
+`$schema`, mescla objetos recursivamente e substitui arrays e escalares pela
+camada de maior prioridade. O resultado fica em um handle opaco pertencente ao
+coremod; o consumidor consulta JSON, quantidade de camadas e hash FNV-1a 64 e
+depois chama `release`. JSON e handles são limitados e todas as chamadas
+ocorrem na thread do jogo.
+
+`tools/package-unbound-factory-demo.ps1` gera dois mods independentes, duas
+camadas de fixture e um bundle que instala apenas em `mods/`. A sessão isolada
+`build/runtime-evidence/unbound-002b-20260912-1938/` carregou primeiro o
+framework e depois o consumidor, sem recompilar ou alterar `soh.exe`, e
+registrou:
+
+`unbound-002b-factory: schema=linkspan.unbound.actor-patch/v1; layers=2; hash=412c9d58a4e6de21; json={..."health":8,"speed":1..."drops":["heart"]...}; cleanup=ok`
+
+Esta fatia ainda não conecta o resultado a uma scene factory do
+`ResourceLoader`. Os operadores `null`, `$replace` e `$order`, factories de
+cena/sala e o adapter que materializa o recurso pertencem aos recortes
+seguintes do Unbound.
+
+### Camadas Unbound sem o framework
+
+Uma camada Unbound (`.o2r` com `unbound.json` formato 2), solta em `mods/` ou
+dentro da pasta de um mod, só entra na raiz do VFS com o framework
+`linkspan.unbound.framework` carregado. Sem ele, o log diz `ShipLua ignorou a
+camada Unbound '…': o framework Unbound (…) não carregou` e o jogo segue sem ela.
+
+<a id="service-movement"></a>
+
+## Serviço `linkspan.oot.movement` v2 (OOT-MOVE-004)
+
+Header do contrato: `soh/soh/native/oot_engine.h`; decisão em
+`extern/ship-lua/rfcs/0018-oot-movement-v2.md`. A tabela `ShipOotMovementV2` repete a
+v1 e acrescenta:
+
+- `get_gamepad_axis(port, sdl_axis)`: valor SDL bruto do eixo físico;
+- `bind_gamepad_axis(port, virtual_button, sdl_axis, direction)`: metade de um
+  eixo ligada a um botão virtual, só em memória. Com ZR segurando um botão C, o
+  jogo mira arco e gancho como no botão nativo;
+- `player_use_item_shortcut(item)`: Lente da Verdade, máscara, ocarina, traje ou
+  botas sem exigir o item num botão C. O host aplica as regras do jogo para Player,
+  cena, idade, inventário e magia. Cada família segue seu caminho nativo:
+  - lente e máscaras passam pelo `Player_UseItem`;
+  - a ocarina começa a tocar no mesmo frame pelo `Player_ActionHandler_13`;
+  - traje e botas seguem o `AssignableTunicsAndBoots`, e usar o equipado volta ao
+    Kokiri;
+- `get_item_button_rect(button, x, y, size, alpha)`: posição final de C-Left,
+  C-Down e C-Right desenhada pelo HUD no frame atual ou no anterior.
+
+A lente ligada pelo atalho continua ativa fora dos botões até ser desligada ou
+aparecer num botão (exceção no `Magic_Update` de `z_parameter.c`). Máscara fora
+dos botões exige `gEnhancements.PersistentMasks`; sem ela o host recusa o uso. O
+`hook.oot.hud.draw` roda antes de `Interface_Draw`, por isso a captura do frame
+anterior é aceita. O header do contrato entra no layout id: recompile providers
+nativos contra o SDK do host novo.
+
+<a id="service-ocarina"></a>
+
+## Serviço `linkspan.oot.ocarina` v1 (OOT-MIC-001)
+
+Header do contrato: `soh/soh/native/oot_ocarina.h`; decisão em
+`extern/ship-lua/rfcs/0019-oot-ocarina-service.md`. O update de input da ocarina
+(`func_800EE6F4`) publica se o jogo espera uma música e quais aceita. O serviço
+oferece:
+
+- `is_active()` e `get_available_song_flags()`: um bit por `OcarinaSongId`;
+- `get_song_count()` e `get_song_pattern(song, notes, capacity, count)`: índices
+  de nota de `gOcarinaSongNotes` (0=A, 1=C-Down, 2=C-Right, 3=C-Left, 4=C-Up);
+- `submit_song(song)`: entrega uma música aceita, que o jogo recebe no próximo
+  update como se tivesse sido tocada.
+
+O mod `soh/native-sdk/mic-ocarina` usa o serviço: com a ocarina aberta, Start/+
+liga o microfone padrão, o detector YIN reconhece o contorno da melodia
+cantarolada e B desliga. O provider liga o SDL2 estático e só precisa do SDK para
+os headers:
+
+```powershell
+$sdl2 = "<vcpkg>/installed/x64-windows-static/share/sdl2"
+cmake -S soh/native-sdk/mic-ocarina -B build/mic-ocarina -G "Visual Studio 17 2022" -A x64 -DOOT_NATIVE_SDK="$sdk" -DSDL2_DIR="$sdl2"
+cmake --build build/mic-ocarina --config Release
+ctest --test-dir build/mic-ocarina -C Release
+```
+
+<a id="service-scenes"></a>
+
+## Serviço `linkspan.oot.scenes` v1 (OOT-UNBOUND-003C)
+
+Header do contrato: `soh/soh/native/oot_scenes.h`; decisão em
+`extern/ship-lua/rfcs/0020-oot-scene-registry.md`; layout em
+`docs/architecture/unbound-scene-registry.md`. O host deixa de depender das
+tabelas compiladas para cenas e entradas:
+
+- `register_scene(definição, handle, id)`: nome namespaced (não pode ser um enum
+  `SCENE_*`), caminho do recurso no VFS, draw config e id 128 a 32767 ou
+  automático;
+- `register_entrance(handle da cena, definição, índice)`: grupo de quatro posições
+  da tabela de entradas (criança/adulto, dia/noite), a partir do primeiro grupo
+  livre depois das 1.556 vanilla, com nome final `"<cena>/<entrada>"`;
+- `unregister_scene(handle)`: remove a cena e as entradas; a tabela não encolhe;
+- `find_scene` e `find_entrance`: nomes vanilla (`SCENE_HYRULE_FIELD`,
+  `ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN`) e nomes dos mods;
+- `travel_to_entrance(índice)`: transição com fade, só com o jogador em cena e sem
+  outra transição.
+
+Por dentro, `EntranceInfo.scene` passou a `s16` e `gEntranceTable` virou ponteiro:
+aponta para a tabela vanilla até um mod registrar entradas e depois para a tabela
+combinada. `OTRPlay_SpawnScene` resolve ids a partir de 128 pelo registro, e as
+flags salvas dessas cenas ficam fora do array fixo de 124 (`LinkSpan_SceneFlags`),
+guardadas pelo nome da cena durante a sessão. Um save com entrada fora da tabela
+cai no Hyrule Field com uma linha de log.
+
+O framework `linkspan.unbound.framework` 0.2.0 usa o serviço para ler
+`unbound/scenes.json` de todas as camadas no `game.ready` (§7 do SPEC do
+Unbound). [`oot-native/unbound/scene-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/unbound/scene-demo) registra uma cópia do Hyrule
+Field e viaja até ela; `tools/package-unbound-scene-demo.ps1` do link-span-examples empacota os dois.
+As mudanças em `soh/include` e o header novo mudam o layout id: recompile os
+providers nativos contra o SDK do host novo.
+
+`titleCardTexture` já tem suporte pelo contrato scenes v2. O framework atual
+lê títulos e camadas de entrada diferentes (`layers`). Cenas novas ainda não
+têm minimapa próprio; a pausa usa a área do mapa-múndi definida pela cena.
+
+<a id="native-hooks"></a>
+
+## Hooks nativos do OoT (COREEXT-006)
+
+Com provider `abi_version = "1.2"`, um mod entra no fluxo do jogo por
+`register_hook` (contrato em `extern/ship-lua/rfcs/0021-native-hooks.md`). O host
+declara em `soh/soh/native/oot_hooks.h`:
+
+| Ponto v1 | Payload | Modos | Onde |
+|---|---|---|---|
+| `oot.play.update` | `ShipOotPlayHookV1` | observe, replace | `Play_Main` → `Play_Update` |
+| `oot.actor.update` | `ShipOotActorHookV1` | observe, replace | `Actor_UpdateAll`, depois do culling e do GameInteractor |
+| `oot.actor.draw` | `ShipOotActorHookV1` | observe, replace | `Actor_Draw`, entre segmentos e sombra |
+
+- Sem hook no ponto, o jogo chama a função original direto; o custo é uma
+  consulta ao registro por ator.
+- `replace` é exclusivo por ponto: quem substitui o update ou o draw filtra por
+  `actor_id` e chama `call->call_original(call)` para os outros atores.
+- Um segundo `replace` recebe `SHIP_NATIVE_LIMIT`, com log do dono atual.
+- Os hooks saem no unload do mod, antes do `shutdown`.
+
+[`oot-native/hooks-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/hooks-demo) conta frames e updates por observe e pisca o Link
+pelo replace do draw. Empacote com `tools/package-hooks-demo.ps1` do link-span-examples.
+
+<a id="service-save"></a>
+
+## Serviço `linkspan.oot.save` v1 (OOT-CORE-006)
+
+Header: `soh/soh/native/oot_save.h`; decisão em
+`extern/ship-lua/rfcs/0022-oot-save-namespaces.md`. Cada mod guarda um bloco JSON por
+namespace na seção `linkspan` do arquivo de save:
+
+- `open_namespace("autor.mod", versão, handle)`: o prefixo `linkspan.` é do host;
+- `read`/`write`/`erase`: JSON de até 1 MiB; a escrita chega ao disco no próximo
+  save do jogo;
+- `get_stored_version`: versão com que o bloco foi escrito, para migrar;
+- `begin`/`commit`/`rollback`: transação; o save grava o estado de antes do begin;
+- `set_required`: o arquivo registra a dependência, e carregar sem o mod gera aviso;
+- `get_slot`: arquivo carregado ou -1.
+
+Eventos são hooks observe (ABI 1.2): `oot.save.loaded`, `oot.save.saving`,
+`oot.save.deleted` e `oot.save.copied`, com `ShipOotSaveHookV1`.
+
+Blocos de mods ausentes são preservados no arquivo. As flags das cenas de mod
+(RFC 0020) passam a ser gravadas no bloco `linkspan.scenes`, pelo nome da cena.
+
+[`oot-native/save-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/save-demo) conta as cargas de arquivo no namespace
+`linkspan-demo.save`; empacote com `tools/package-save-demo.ps1` do link-span-examples.
+
+## Itens sintéticos e tipos de ator (OOT-CORE-003)
+
+<a id="service-items"></a>
+
+### `linkspan.oot.items` v1
+
+Header: `soh/soh/native/oot_items.h`.
+
+- `register_item({nome, ícone, idade, use, user}, &id)`: o id sai da faixa
+  `0xA0`–`0xEF`. O ícone é uma textura RGBA32 32x32 do resource manager, sem `__OTR__`.
+- `set_button_item(1..3, id)` põe o item num botão C, e `0xFF` esvazia o botão.
+  `get_button_item` lê o item do botão, vanilla ou sintético.
+- Apertar o botão chama `use(user, id, botão)` dentro do update do Player, e a ação
+  vanilla do Player não roda. A idade é conferida pelo host.
+- Botões com item sintético vão para o bloco `linkspan.items` pelo nome e voltam na
+  carga, mesmo que o id mude. Um nome que nenhum mod registrou esvazia o botão, com
+  aviso no log.
+- `unregister_item` esvazia os botões com o item, inclusive os guardados para a
+  outra idade. Registre no init e remova no shutdown.
+
+A v1 não cobre página de inventário (NEI-003).
+
+### `linkspan.oot.items` v2 (OOT-CORE-003B)
+
+Prefixo binário compatível com a v1, com duas funções a mais:
+
+- `set_get_item(id, {modelo, camada, escala, mensagem, receive, user})`:
+  - `modelo` é um display list mostrado acima do Link;
+  - `escala` multiplica o 0.2 do get-item;
+  - `mensagem` é ASCII de até 200 bytes, com os códigos do `CustomMessage` (`&`, `%r`, `%w`…).
+- `give_item(id)`: o Link levanta o item como se viesse de um NPC, com fanfarra e caixa de texto.
+  - Retorna `LIMIT` fora do gameplay normal (inclusive na cena de abertura do título), em cutscene ou com o
+    Player ocupado.
+  - Quando a caixa abre, o host chama `receive(user, id)`, e o mod decide o destino do item (botão C, contador no
+    save…).
+
+O host usa um `GetItemEntry` com `modIndex` próprio. O `z_player.c` só desvia esse
+`modIndex` para o `receive`, sem passar pelas tabelas vanilla. O texto sai por
+`OnOpenText` no id `0x7F00`.
+
+<a id="service-actors"></a>
+
+### `linkspan.oot.actors` v1
+
+Header: `soh/soh/native/oot_actors.h`.
+
+- `register_actor_type({nome, categoria, flags, objeto, tamanho, init, destroy,
+  update, draw, user}, &id)` cria a entrada no `ActorDB`. Use o id com `spawn_actor`
+  do serviço engine.
+- Os callbacks passam por funções do host. `unregister_actor_type` mata as
+  instâncias vivas, e dali em diante o mod não é mais chamado. O mesmo nome
+  registrado de novo volta com o mesmo id.
+- Registrar tipo dentro de um callback de ator retorna `UNSUPPORTED`, porque
+  `Actor_Spawn` guarda um ponteiro para a tabela.
+- `draw_display_list(play, caminho, translúcido)` só vale dentro do draw e usa a
+  matriz do ator.
+
+O `ActorDB` passa a ser criado antes da carga dos mods, então o init já pode registrar tipos.
+
+### Demo
+
+[`oot-native/item-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/item-demo) (0.2.0) registra o item `linkspan-demo.orb-wand` e o ator
+`linkspan-demo.orb`. Em gameplay, se nenhum botão C tem o item, o Link o recebe por
+`give_item`, e o `receive` o equipa num botão C vazio, ou no C-Right. Cada
+uso solta um orbe com o modelo do coração, que sobe girando e some. Empacote com
+`tools/package-item-demo.ps1` do link-span-examples.
+
+## Câmera, render e limb do Player (OOT-CORE-005)
+
+<a id="service-camera"></a>
+
+### `linkspan.oot.camera` v1
+
+Header: `soh/soh/native/oot_camera.h`.
+
+- `acquire(dono, &token)` cria uma subcâmera do jogo a partir da vista atual e a ativa.
+  - Só vale em gameplay com a câmera principal ativa.
+  - Em cutscene ou com outro dono, retorna `LIMIT`.
+- `set_view(token, {eye, at, fov})` vale até a próxima chamada e é reaplicada a cada
+  frame, antes do update das câmeras.
+- A posse cai sozinha na troca de cena ou quando o jogo ativa outra câmera. `is_owned`
+  diz se o token ainda vale, e `release` de um token perdido devolve `OK`.
+- `get_view` lê a câmera ativa, de qualquer dono.
+- Libere no shutdown do mod.
+
+<a id="service-render"></a>
+
+### `linkspan.oot.render` v1
+
+Header: `soh/soh/native/oot_render.h`.
+
+- `draw_display_list(play, caminho, camada)`, com camada opaca ou translúcida.
+- `matrix_push`/`matrix_pop`, `matrix_translate`, `matrix_scale` e `matrix_rotate_zyx`
+  aplicam sobre a matriz corrente.
+- Só valem em escopo de draw: draw de tipo de ator de mod, hook `oot.actor.draw` e hook
+  `oot.player.limb_draw`. Fora deles, retornam `UNSUPPORTED`.
+- No fim do escopo, o host desfaz os push sem pop (até 16 níveis).
+
+### Hook `oot.player.limb_draw` v1
+
+- Só observe, com payload `ShipOotPlayerLimbHookV1{play_state, actor, limb}`.
+- Dispara no início de `Player_PostLimbDrawGameplay`, com a matriz do limb, e o host
+  restaura a matriz depois.
+- O Dark Link usa o mesmo desenho: filtre por `actor->id`.
+
+### Demo
+
+[`oot-native/view-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/view-demo) desenha o coração na mão direita do Link e alterna 4 s de
+câmera orbitando o Link com 4 s da câmera do jogo. Empacote com
+`tools/package-view-demo.ps1` do link-span-examples.
+
+## Mundo e colliders (OOT-CORE-004)
+
+<a id="service-world"></a>
+
+### `linkspan.oot.world` v1
+
+Header: `soh/soh/native/oot_world.h`. Só em gameplay e sem alterar o jogo:
+
+- `raycast_floor(x, y, z, &hit)`: primeiro chão abaixo do ponto, com posição, normal,
+  `bg_id` e tipo de chão;
+- `line_test(from, to, superfícies, &hit)`: parede, chão e/ou teto entre dois pontos;
+- `wall_check(from, to, raio, altura, &hit)`: esfera em movimento, com a posição
+  corrigida pela parede;
+- `water_surface(x, z, &y)`: altura da água, ou `FAILURE` fora dela.
+
+<a id="service-colliders"></a>
+
+### `linkspan.oot.colliders` v1
+
+Header: `soh/soh/native/oot_colliders.h`.
+
+- `create_cylinder(spec, &handle)`: cilindro com as flags AT/AC/OC do jogo, preso a um
+  ator do mod. O host guarda a memória.
+- `submit(handle)`: chamado do update do ator a cada frame, segue o ator e inscreve o
+  cilindro nas checagens habilitadas.
+- `read_hits(handle, &hits)`: devolve e limpa os acertos do frame anterior, com o ator
+  do outro lado e os `dmgFlags` de quem acertou.
+- `destroy(handle)`: libera no fim do frame seguinte, porque a checagem do frame atual
+  ainda pode usar o cilindro. Colliders que sobram saem no fim da cena (`OnPlayDestroy`)
+  e no reset do host.
+- `knockback_player(fonte, velocidade, direção, vel. vertical, dano, grande)`: empurra
+  o Link.
+
+### Demo
+
+[`oot-native/world-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/world-demo) cria à frente do Link um alvo apoiado no chão por
+`raycast_floor`. Golpes de espada fazem o alvo girar, encostar empurra o Link, e o log
+mostra chão, água, linha e parede. Empacote com `tools/package-world-demo.ps1` do link-span-examples.
+
+## Atores de sala por JSON (OOT-UNBOUND-004A, slice D1)
+
+<a id="room-actors"></a>
+
+### Hook `oot.room.actors` v2
+
+Header: `soh/soh/native/oot_hooks.h`. Aceita TRANSFORM e OBSERVE. Dispara quando o
+comando de lista de atores de uma sala roda, antes do spawn.
+
+O payload `ShipOotRoomActorsHookV2` traz:
+- cena, sala e camada de cena (o cabeçalho alternativo que está executando);
+- o caminho do recurso da sala;
+- uma cópia da lista em `ShipOotActorEntryV2`, com posição float, rotação e params do ator;
+- `count` e `capacity`.
+
+O TRANSFORM pode editar, reordenar, remover ou acrescentar entradas até a
+capacidade. Os atores nascem na ordem final. Um TRANSFORM que falha precisa deixar
+`entries` intacto, porque o host só restaura os campos do payload. Se o payload
+voltar inválido, o host mantém a lista original e registra no log.
+
+### Framework Unbound 0.3.0
+
+O coremod `linkspan.unbound.framework` liga um TRANSFORM nesse hook. Para cada
+sala, ele:
+1. lê `scenes/<cena>/rooms/<n>.json` (SPEC §4.1) em todas as camadas montadas;
+2. mescla sobre a lista vanilla, que entra como camada mais baixa com as chaves
+   `"0"`..`"n-1"`;
+3. devolve `setups.<camada>.actors` na ordem do motor.
+
+A pasta `<cena>` vem da pasta `*_scene` do caminho da sala, e Master Quest ganha
+`_mq`. A mescla segue o SPEC §3:
+- objetos mesclam por chave;
+- `null` apaga;
+- arrays substituem;
+- `$replace` descarta as camadas de baixo;
+- `$order` dá a ordem, e as demais chaves seguem a ordem de chave;
+- o `$schema` final precisa ser `unbound/room/1`.
+
+A leitura segue o §2: inteiros aceitam fração (truncada), string decimal ou `0x` e
+booleano, e valores fora da largura do campo fazem wrap. Uma camada com JSON
+inválido é pulada, e as outras seguem.
+
+A função `room_report` devolve a última sala vista e o último patch. O `main.lua` do
+framework registra o relatório quando ele muda.
+
+### Demo
+
+[`oot-native/unbound/field-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/unbound/field-demo) monta `assets/scenes/spot00/rooms/0.json` e,
+com um save aberto, viaja uma vez para `ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN`. O build
+reaproveita `scene-demo/scene_demo.cpp`. `tools/package-unbound-scene-demo.ps1` do link-span-examples
+empacota a demo de cenas 0.1.3 e a demo do campo 0.1.2, que pedem o framework 0.6.x
+(empacotado por `tools/package-unbound-framework.ps1`).
+
+## Esqueletos animados (OOT-CORE-005B, slice D4)
+
+<a id="service-skeletons"></a>
+
+### `linkspan.oot.skeletons` v1
+
+Header: `soh/soh/native/oot_skeletons.h`. Só na thread do jogo.
+
+- `create(esqueleto, animação, &handle)`: `SkelAnime` normal ou flex, com a animação
+  em loop. Esqueleto de curva ou recurso ausente dá `FAILURE`. As tabelas de juntas
+  ficam no heap do host, fora da arena da cena.
+- `play_animation(handle, animação, velocidade, modo, morph)`: `LINKSPAN_OOT_ANIM_LOOP`
+  ou `LINKSPAN_OOT_ANIM_ONCE`. Com `morph` > 0, transiciona a partir da pose atual.
+- `update(handle, &terminou)`: avança um frame. Chame uma vez por update do ator.
+- `get_frame(handle, &frame, &último)`.
+- `draw(play, handle)`: desenha opaco com a matriz corrente. Só funciona em escopo
+  de draw de `linkspan.oot.render`.
+- `destroy(handle)`.
+
+Os caminhos são do resource manager, sem `__OTR__`. O host não confere se a
+animação combina com as juntas do esqueleto. O reset do host libera os esqueletos
+que sobrarem.
+
+### Demo
+
+[`oot-native/familiar-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/familiar-demo) registra o item `linkspan-demo.keese-whistle` e dá o
+item por `give_item`. O `receive` equipa o item num botão C vazio ou num botão com
+item vanilla.
+
+Usar o item solta um Keese (`object_firefly`) animado, com um cilindro AT de espada
+Kokiri, que voa à frente do Link. Ao acertar, ele bate as asas uma vez em ONCE e
+some. Empacote com `tools/package-familiar-demo.ps1` do link-span-examples; `-Extension shipmod` gera o
+contêiner `.shipmod`.
+
+## Escape hatch (COREEXT-008)
+
+Contrato em `extern/ship-lua/rfcs/0023-native-escape-hatch.md`. Uma core extension com
+`abi_version = "1.3"` e `[provider].host_fingerprints` contendo o SHA-256 do `soh.exe` pode:
+
+- `resolve_symbol("Interface_Draw")` ou `resolve_symbol("z_player.c!Player_Action_Roll")`;
+- `install_patch(alvo, detour, &original, &patch)`: desvio com MinHook v1.3.4, só
+  dentro do executável; segundo patch no mesmo alvo = `LIMIT`;
+- `remove_patch(patch)`; os patches restantes saem no unload do mod.
+
+Patches criados no init são ativados em lote após seu retorno; não dependa
+deles durante o init nem instale patches no shutdown. Se a remoção falhar,
+o runtime pode manter a biblioteca em quarentena para não descarregar código
+ainda referenciado. Layout correspondente sozinho não basta.
+
+O host resolve nomes pelo `soh.symbols` ao lado do executável:
+
+```powershell
+cmake --build build/x64 --config Release --target soh_symbols -- /m:1
+```
+
+O alvo `linkspan_symdump` lê o `soh.pdb` e grava as funções com fonte em
+`soh/src` e `soh/soh` (cerca de 13 mil). Nomes cujo RVA foi fundido com outra
+função por `/OPT:ICF` ficam marcados e são recusados, porque desviar um deles
+desviaria todos. Funções inlined não aparecem. Um `soh.symbols` de outro
+executável é ignorado com aviso no log.
+
+`tools/package-linkspan-overlay.ps1 -HostSymbols x64/Release/soh.symbols` inclui o
+arquivo no overlay e recusa um que não corresponda ao `soh.exe`.
+
+[`oot-native/escape-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/escape-demo) desvia `Interface_Draw` para o HUD piscar;
+`tools/package-escape-demo.ps1` do link-span-examples grava no manifesto o SHA-256 de `x64/Release/soh.exe`.
+
+## Crash log e proteção de boot (COREEXT-009)
+
+O crash log do SoH ganha uma seção `Link-Span native:` logo depois da build:
+
+- a atividade nativa da thread que caiu (`mod 'x' em hook oot.actor.update`);
+- as bibliotecas de mods presentes na pilha, o que cobre detours do escape hatch;
+- os módulos carregados.
+
+Se o jogo cair enquanto carrega um mod nativo, ou antes de 300 frames de jogo com
+um culpado identificado, o próximo início grava o mod em `mods/.shiplua-disabled`
+e o recusa com o motivo no log. Para reativar, apague a linha do mod. O marcador
+`mods/.shiplua-boot` some quando o boot é confirmado.
+
+[`oot-native/crash-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/crash-demo), empacotado com `tools/package-crash-demo.ps1` do link-span-examples, é um
+mod de teste cujo init escreve num ponteiro nulo. Com `-CoreExtension`, a mesma
+queda sai como core extension (`linkspan.crash-coremod`, ABI 1.2, `pre_game`).
+
+## Compilar o host uma vez
+
+Configure o host com `LINKSPAN_SDK_SOURCE_DIR` apontando para o SDK novo. O
+submódulo continua sendo o padrão quando o override não é fornecido. O checkout integrado usa `extern/ship-lua` por padrão; use override somente
+para testar outra fonte compatível, sem misturar ABI ou layout.
+
+```powershell
+cmake -S . -B build/x64 -G "Visual Studio 17 2022" -A x64
+cmake --build build/x64 --config Release --target soh
+```
+
+O CMake gera `build/x64/native-sdk/Release/OotNativeSdk.cmake`, com os includes
+e definições usados pelo host. É um SDK local que referencia seus fontes e as
+dependências. Para autores fora do checkout, a release fornece o ZIP
+relocável `LinkSpan-OoT-SDK-*.zip`, gerado por
+`tools/build-linkspan-sdk-bundle.ps1`: use `find_package(LinkSpanOotSdk CONFIG REQUIRED)` com `CMAKE_PREFIX_PATH` apontando à extração. O bundle também tem
+um `OotNativeSdk.cmake` de compatibilidade. Confira versão MSVC exata, x64,
+Release `/MT` e layout em `linkspan-sdk.json`. Não instale o ZIP do SDK em `mods/`.
+
+## Compilar só o mod
+
+```powershell
+$sdk = (Resolve-Path build/x64/native-sdk/Release/OotNativeSdk.cmake).Path
+$hostExe = (Resolve-Path x64/Release/soh.exe).Path
+cmake -S soh/native-sdk/example -B build/dynamic-movement -A x64 -DOOT_NATIVE_SDK="$sdk" "-DJUMP_VELOCITY=7.0" "-DHOST_EXECUTABLE=$hostExe" -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+cmake --build build/dynamic-movement --config Release
+.\tools\package-linkspan-mod.ps1 -Source build/dynamic-movement/mod -OutputPath build/dynamic-movement-remake.zip
+```
+
+O empacotador cria entradas ZIP com `/`, em ordem e horário fixos, e recusa
+sobrescrever destino existente. Evite `Compress-Archive` e
+`ZipFile.CreateFromDirectory` no Windows PowerShell 5.1: seus separadores
+podem impedir a descoberta do manifesto.
+
+Instale somente esse ZIP em `mods/` do host integrado. O manifesto precisa ficar
+na raiz do ZIP, junto de `main.lua`; a DLL fica em
+`provider/dynamic_movement_remake.dll`. O DMR atual é uma core extension ABI 1.3: o configure usa `HOST_EXECUTABLE`
+para gravar o fingerprint do executável no manifesto. Preserve esse executável
+e seus símbolos correspondentes. Para mudar impulso, tempos ou mecânica,
+edite e recompile somente o mod.
+
+## Perfil Nintendo
+
+O mod lê as posições físicas do Switch Pro: B=`SDL A`, A=`SDL B`, Y=`SDL X` e
+X=`SDL Y`. Os bindings são aplicados somente em memória e o mapeamento do usuário
+é restaurado quando o mod descarrega.
+
+O mod habilita `FreeLook`, `PersistentMasks`, `Controls.RightStickAim` e
+`MoveInFirstPerson` e fixa `FreeLook.InvertYAxis`, `Controls.InvertAimingYAxis` e
+`Controls.InvertZAimingYAxis` em 0 enquanto está carregado; no unload, restaura as
+opções anteriores. O analógico
+direito controla a câmera livre com o eixo vertical normal (sem a chave na config,
+o SoH inverte o eixo): parada, ela mantém o ângulo; quando Link volta a andar com
+o analógico direito parado há 500 ms (`configure "0,500"`, aceita 0 a 60000), o
+`FreeLook` é desligado e a câmera automática assume a partir da posição atual,
+sem salto. O acesso a settings inteiros é uma primitiva genérica do SDK, não uma
+regra fixa deste mod.
+
+Alguns nomes não viram CVar: o host os intercepta e guarda só em memória, então
+nada vai para a config, e a troca da ponte de settings, quando os mods
+descarregam, zera tudo. `linkspan.transient_settings` devolve a soma dos recursos
+que o host suporta:
+
+- `1`: `linkspan.hud.hide_item_button.c_left`, `.c_down` e `.c_right` com 1
+  ocultam o botão C no HUD (botão, seta de vazio, ícone e munição);
+- `2`: `linkspan.input.sword_over_shield` com 1 tira o R do input do Player
+  enquanto B está pressionado. Se B foi apertado com o escudo erguido, o aperto
+  chega no frame seguinte, depois de o escudo baixar; sem isso o OoT não ataca
+  defendendo;
+- `4`: `linkspan.hud.dpad` com 1 mostra o D-pad do HUD mesmo sem `DpadEquips` e
+  tira os ícones dos itens do D-pad. O fundo passa a sair no começo do
+  `hook.oot.hud.draw`, que roda antes do `Interface_Draw`, para os ícones do
+  provider ficarem por cima; o provider os desenha nas posições que
+  `get_item_button_rect` devolve para 4 a 7 (cima, baixo, esquerda e direita).
+
+As CVars de cosméticos do SoH não servem para ocultar botões: qualquer opção
+mudada no menu salva a config com o valor do mod.
+
+O perfil a seguir descreve a versão 0.2.9, como referência histórica do exemplo:
+
+1. X executa o pulo dedicado;
+2. A permanece como ação contextual e produz o rolamento normal quando Link se
+   move; manter A até o fim do rolamento entra em sprint e soltar A encerra;
+3. Y aciona a função normal de espada e B a de cancelar/guardar;
+4. ZR usa o item do botão C equipado e mira enquanto segurado. O HUD mostra só
+   esse botão C, com um anel branco; o host oculta os outros só em memória,
+   sem tocar na config;
+5. segurar R abre o menu de itens com os botões C que têm item, a partir do
+   equipado. O analógico direito anda para a esquerda e para a direita, e soltar o
+   R equipa o destacado no ZR; com o ZR pressionado a troca é recusada;
+6. ZL mira (Z do N64) e ergue o escudo (R do N64). Y ou B pressionado baixa o
+   escudo, e a espada sai mesmo defendendo. `-` é o L do N64 e o L físico fica livre;
+7. toque no R3 liga ou desliga a Lente da Verdade sem ocupar um C; segurar R3 por
+   400 ms coloca ou tira a máscara do slot infantil;
+8. D-pad direita é o C-Up nativo: Navi e primeira pessoa;
+9. D-pad esquerda tira a ocarina do inventário sem ocupar um C;
+10. D-pad cima veste o traje: o toque volta ao último usado;
+11. D-pad baixo alterna as botas com as Kokiri;
+12. segurar D-pad cima ou baixo por 400 ms abre o menu com os ícones no HUD, a
+    partir do equipado. O analógico direito escolhe para os lados, sem ciclo
+    automático, e o destacado é vestido ao soltar;
+13. com um menu aberto o analógico direito não gira a câmera; depois de fechar, a
+    câmera só volta a responder quando o analógico passa pelo centro;
+14. em primeira pessoa (D-pad direita) e na mira de arco, estilingue e gancho, o
+    analógico direito move a visão com o eixo vertical normal e o esquerdo anda com
+    o Link (`Controls.RightStickAim` e `MoveInFirstPerson` do SoH). Na mira com o
+    ZL, o vertical do analógico direito também é o normal. A câmera livre fica
+    parada nesse tempo e só volta depois de o analógico passar pelo centro;
+15. o D-pad do HUD mostra as funções do mod: traje em cima, botas embaixo, ocarina
+    na esquerda e Navi na direita. O ícone da Navi é um PNG convertido por
+    `tools/convert-png-to-hud-icon.ps1` para `assets/`, pasta que o provider monta
+    no configure; o PNG fica fora do git, que ignora `*.png` em `soh/`.
+
+O fonte atual do DMR já contém controle de hotbar; o perfil histórico acima
+não é uma lista completa dos controles atuais.
+
+## Compatibilidade e alcance
+
+O provider confere fingerprint dos headers e tamanhos dos tipos antes de acessar
+layouts. O fingerprint (`LINKSPAN_OOT_LAYOUT_ID`, gerado em `ExportSdk.cmake`)
+cobre apenas a superfície que atravessa a fronteira C: as structs z64 de
+`soh/include`, os contratos de serviço de `soh/soh/native` e os headers
+`shiplua/native` do SDK, além das flags do compilador. Mudanças internas em
+`soh/src`, no restante de `soh/soh` ou no `libultraship` **não** alteram o
+fingerprint por si só; providers que usam escape hatch ainda dependem do fingerprint
+exato do executável e de símbolos correspondentes. Já mudanças em structs z64 ou nos
+contratos de serviço alteram, e nesse caso recompile o provider contra o SDK
+correspondente. Código nativo roda com os poderes do processo; erros de memória
+podem derrubar o jogo. A verificação de layout não transforma a DLL em sandbox.
+
+O serviço é exclusivo de OoT. O núcleo permanece compartilhado, mas a integração
+MM ainda precisa fornecer seu próprio adaptador. Esta etapa não exporta todas
+as funções internas do executável nem implementa Mixins ou hot reload de DLLs.
+O teste `oot_native_independent_mod` usa o bridge real e estruturas reais, com
+stubs de spawn/kill; isso comprova ABI e escrita, mas não gameplay em jogo.
+O serviço `resources` v1, por sua vez, já tem prova em jogo na sessão
+`core-001-20260912-1155`. O registro genérico não interpreta seu payload. O host atual também fornece
+o serviço específico `scenes` e o framework Unbound materializa cenas pelo
+adaptador correspondente; a prova histórica de registry consta na seção acima.
+
+## Validação local de 2026-09-09
+
+A validação de `engine` v1 com `movement` v1 usa o pacote final
+`Dynamic-Movement-Remake-0.2.3.zip`, com impulso 7, animação nativa de salto e cobre pulo em X,
+aterrissagem, rolamento contextual em A, transição para sprint e rearme ao soltar A. O mesmo
+host também carrega uma segunda compilação do provider com impulso 10, sem ser
+recompilado.
+
+## Contratos adicionais do SDK atual
+
+As seções anteriores preservam os recortes e as evidências históricas. Os headers
+atuais e `OotNativeEngine.cpp` também publicam as versões abaixo. Versões de
+serviço são independentes da ABI do provider. Consulte nome, versão e tamanho
+exatos; não presuma que toda versão nova seja um prefixo da anterior.
+
+### `linkspan.oot.resources` v3
+
+Header: `soh/soh/native/oot_resources.h`. Preserva o prefixo v2 e acrescenta
+`register_json_type`/`unregister_json_type`. Um `$schema` registrado encaminha o
+recurso JSON ao transcodificador do provider, que escreve XML aceito pelas
+factories do host. O callback pode executar no pool de threads de recursos:
+proteja seu estado e não chame serviços restritos à thread do jogo. As leituras
+VFS são permitidas nesse escopo. Remova o tipo no shutdown; recursos já criados
+podem continuar no cache até invalidação. O framework Unbound atual usa essa
+ponte para recursos de cenas/salas; a limitação da fatia 002B acima é histórica.
+
+### `linkspan.oot.registry` v2
+
+Header: `soh/soh/native/oot_registry.h`. Preserva v1 e acrescenta
+`create_space_owned`, `register_entry_owned` e `read_entry_owner`. Entradas e
+espaços com dono explícito são removidos no unload, inclusive após falha de init.
+
+### `linkspan.oot.items` v3
+
+Header: `soh/soh/native/oot_items.h`. Preserva v2 e acrescenta `set_item_icon`,
+`set_item_ammo` e `get_language`. O HUD mostra quantidade até 99; o host não
+desconta nem salva esse contador. Use `LINKSPAN_OOT_ITEMS_NO_AMMO` para ocultá-lo.
+
+### `linkspan.oot.scenes` v2/v3
+
+Header: `soh/soh/native/oot_scenes.h`. V2 preserva v1 e acrescenta
+`register_scene_v2`, `get_scene_count`, `get_scene_info` e `override_scene`.
+O título é textura I8 144x24; o override vale no próximo carregamento e seu dono
+deve limpá-lo no shutdown. V3 preserva v2 e acrescenta `register_scene_v3`, com
+suporte de cavalo e spawn opcional por cena.
+
+### `linkspan.oot.render` v2/v3
+
+Header: `soh/soh/native/oot_render.h`. V2 preserva v1 e acrescenta estado de render
+por dono, toon, stencil e sombras. O host remove estados no unload. V3 preserva
+v2 e acrescenta geometria nativa, matriz exportada, dados do frame e filhos de
+interpolação. Display lists do mod precisam valer até o fim do frame e terminar
+em `gSPEndDisplayList`; use macros puros, pois `gSPVertex`/`gSPDisplayList` são
+funções do host. Identidades de interpolação devem ser únicas entre irmãos e
+estáveis entre frames. Siga o escopo de draw de cada operação; `get_frame_info`
+pode ser chamado fora do draw na thread do jogo.
+
+<a id="service-actor-models"></a>
+
+### `linkspan.oot.actor-models` v1
+
+Header: `soh/soh/native/oot_actor_models.h`. `register_type` registra perfil
+estático/animado com modelo, colisão, diálogo e olhar; `list_types` inclui atores
+do jogo e dos mods. `remove_owner` libera recursos e mata instâncias do dono.
+O host copia strings/listas. Registro exige thread do jogo fora do gameplay e
+de callbacks de ator. É a ponte usada pelo Unbound 0.9 para tipos em JSON.
+
+<a id="service-text"></a>
+
+### `linkspan.oot.text` v1
+
+Header: `soh/soh/native/oot_text.h`. `set_message`, `remove_message`,
+`clear_language`, `reset_language` e `list_messages` manipulam tabelas por idioma.
+Use bytes crus do jogo com códigos de controle; o terminador 0x02 é acrescentado
+se faltar. Só na thread do jogo, fora da exibição de caixa de texto. Bytes
+enumerados só valem durante o callback.
+
+<a id="service-randomizer"></a>
+
+### `linkspan.oot.randomizer` v1/v2
+
+Header: `soh/soh/native/oot_randomizer.h`. V1 oferece itens sintéticos com get-item
+a seeds futuras pela opção `Link-Span Mod Items`, substituindo junk sem peso de
+lógica; até 64 itens distintos e 1–4 cópias por item. Seeds existentes não mudam.
+V2 é uma tabela de consulta separada, **não um prefixo v1**: `item_count`,
+`item_info` e `find_uncollected` leem a seed atual sem entregar itens ou alterar
+checks. Seus IDs são `RandomizerGet`, não IDs runtime de itens sintéticos.
+As duas versões exigem a thread do jogo.
+
+<a id="service-anchor"></a>
+
+### `linkspan.oot.anchor` v1
+
+Header: `soh/soh/native/oot_anchor.h`. `connected`, `share_namespace` e
+`unshare_namespace` integram namespaces de `linkspan.oot.save` ao multiplayer
+Anchor, na thread do jogo. Há até 32 namespaces compartilhados no total; versões
+de schema diferentes são recusadas. A atualização do estado dispara
+`oot.anchor.state`. Itens sintéticos são sincronizados pelo nome registrado;
+parceiro sem o item o ignora com diagnóstico.
+
+<a id="service-lights"></a>
+
+### `linkspan.oot.lights` v1
+
+Header: `soh/soh/native/oot_lights.h`. Cria, atualiza, destrói e consulta identidade
+de luzes pontuais por handle. Há até 8 luzes de mod no total, também consumindo
+vagas do buffer de 32 luzes de atores/ambiente. Só na thread do jogo; criação exige
+gameplay. Troca de cena e unload removem as luzes; recrie handles antigos.
+Operações não são reentrantes. `get_point_light_info` fornece identidade apenas
+para comparação, sem permissão para escrever na estrutura do host.
+
+<a id="service-nei-items"></a>
+
+### `linkspan.nei.items` v1 (core extension)
+
+Header: `soh/native-sdk/nei-core/include/linkspan/nei/nei_items.h`. O serviço é
+publicado por `linkspan.nei`, não pelo host sem o NEI. `define_item`/`remove_item`
+gerenciam definições; `give_item`/`grant_item`/`revoke_item` gerenciam posse;
+`set_count`/`add_count`, `set_level`, `equip`/`unequip` e consultas cobrem quantidade,
+upgrades e botões C. Tudo na thread do jogo. O estado persiste no namespace
+`linkspan.nei` pelo ID textual, enquanto o ID runtime pode mudar. Declare a
+dependência do NEI e confira a tabela antes de usar.
