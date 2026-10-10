@@ -278,7 +278,8 @@ configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
     foreach ($relative in @('generated/docs/api-reference.md', 'generated/docs/api-reference.pt-BR.md',
             'generated/docs/api-reference.en.md', 'generated/lua/shiplua.lua', 'schema/api.yml', 'schema/events.yml',
             'schema/capabilities.yml', 'schema/manifest.schema.json', 'rfcs/0011-native-provider-runtime.md',
-            'rfcs/0015-core-extension-abi.md')) {
+            'rfcs/0015-core-extension-abi.md', 'rfcs/0021-native-hooks.md', 'rfcs/0023-native-escape-hatch.md',
+            'rfcs/0024-native-crash-attribution.md', 'rfcs/0025-mod-menu.md', 'rfcs/0026-oot-randomizer-item-hints.md')) {
         $source = Join-Path $coreRoot $relative
         if (Test-Path -LiteralPath $source -PathType Leaf) { Copy-Required $source $relative }
     }
