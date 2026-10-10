@@ -1,9 +1,0 @@
-{
-  "name": "Translucent glass pane",
-  "model": {
-    "displayList": "objects/object_jya_obj/gBigMirror4DL",
-    "scale": 0.1,
-    "yOffset": 471,
-    "translucent": true
-  }
-}

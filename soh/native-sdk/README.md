@@ -25,9 +25,9 @@ cmake --build build/dmr --config Release
 
 A saída do exemplo é `build/dmr/mod/`: `manifest.toml`, `main.lua`,
 `provider/` e os assets que o exemplo copiar. Use `example` (DMR) como modelo de
-CMake, init e verificação de serviços. `hooks-demo`, `item-demo`, `save-demo`,
-`view-demo`, `world-demo`, `familiar-demo`, `escape-demo` e `crash-demo` são
-demos de código; prepare manifesto e README próprios antes de distribuí-los.
+CMake, init e verificação de serviços. Os demos de código (hooks, item, save, view,
+world, familiar, escape, crash, Shovel, render CEL e os do Unbound) moram em
+[link-span-examples](https://github.com/BaiterYamato/link-span-examples) (`oot-native/`), com os scripts de pacote em `tools/`.
 
 ## Layout id
 

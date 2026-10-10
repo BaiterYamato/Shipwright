@@ -11,13 +11,8 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 
-# Exemplos do próprio repositório, relativos a soh/native-sdk/unbound-core.
-_UNBOUND_CORE = Path(__file__).resolve().parent.parent
-DEFAULT_ROOTS = (
-    _UNBOUND_CORE / "custom-actors-demo" / "assets",
-    _UNBOUND_CORE / "scene-demo",
-    _UNBOUND_CORE / "field-demo",
-)
+# Os demos com assets de exemplo moram em https://github.com/BaiterYamato/link-span-examples
+# (oot-native/unbound/); passe as pastas deles com --root.
 
 
 def strip_json_comments(text: str) -> str:
@@ -94,11 +89,12 @@ def load_validators(schema_dir: Path) -> dict[str, Draft202012Validator]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, action="append", help="Asset root to inspect; repeatable.")
+    parser.add_argument("--root", type=Path, action="append", required=True,
+                        help="Asset root to inspect; repeatable.")
     args = parser.parse_args()
     script_dir = Path(__file__).resolve().parent
     validators = load_validators(script_dir / "unbound")
-    roots = tuple(args.root) if args.root else DEFAULT_ROOTS
+    roots = tuple(args.root)
     failures = 0
     validated = 0
     skipped = 0

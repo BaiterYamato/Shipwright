@@ -49,8 +49,8 @@ symbols. A matching layout alone is insufficient. Native DLLs run in process
 and are not sandboxed: use trusted providers.
 
 `examples/example` is DMR source without its assets; compilation is not proof
-of a complete playable package. `shovel-demo` illustrates the NEI item service.
-`item-demo` is source reference without a ready manifest. Heart-seeds is optional
+of a complete playable package. More demos (the NEI Shovel, items, hooks, Unbound)
+live in [link-span-examples](https://github.com/BaiterYamato/link-span-examples). Heart-seeds is optional
 when its source directory exists; inspect metadata. Prepare your own manifest
 and resources before distributing any unfinished example.
 

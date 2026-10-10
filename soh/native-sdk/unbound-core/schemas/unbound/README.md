@@ -14,7 +14,7 @@ These are JSON Schema draft 2020-12 schemas for the JSON documents accepted by t
 | `actor-type.schema.json` | `unbound/actors/<name>.json` |
 | `common.schema.json` | Shared definitions used by the document schemas; not an archive document. |
 
-Run `python ../validate_schemas.py` (in `schemas/`) to validate the example asset roots of this repository. `--root <path>` may be repeated to validate other roots. The script removes `//` and `/* ... */` comments before parsing because the Unbound reader accepts them, while Python's standard JSON parser does not.
+Run `python ../validate_schemas.py --root <path>` (in `schemas/`) to validate an asset root; `--root` may be repeated. The demo asset roots live in [link-span-examples](https://github.com/BaiterYamato/link-span-examples) (`oot-native/unbound/`). The script removes `//` and `/* ... */` comments before parsing because the Unbound reader accepts them, while Python's standard JSON parser does not.
 
 Known limits:
 

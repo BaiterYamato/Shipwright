@@ -189,13 +189,14 @@ unset(_linkspan_sdk_root)
     # Ponte compatível com exemplos antigos, também relocável.
     Write-Text (Join-Path $stage 'OotNativeSdk.cmake') 'include("${CMAKE_CURRENT_LIST_DIR}/lib/cmake/LinkSpanOotSdk/LinkSpanOotSdkConfig.cmake")'
 
-    foreach ($example in @('example', 'shovel-demo', 'item-demo')) {
+    # Os demos (Shovel, item e os demais) moram em https://github.com/BaiterYamato/link-span-examples.
+    foreach ($example in @('example')) {
         $exampleRoot = Join-Path $HostRoot ('soh/native-sdk/' + $example)
         foreach ($file in (Get-ChildItem -LiteralPath $exampleRoot -File | Where-Object { $_.Extension -in @('.cpp', '.h', '.lua', '.toml', '.md') })) {
             Copy-Required $file.FullName ('examples/' + $example + '/' + $file.Name)
         }
-        $target = switch ($example) { 'example' { 'dynamic_movement_remake' } 'shovel-demo' { 'linkspan_shovel_demo' } 'item-demo' { 'linkspan_item_demo' } }
-        $sources = switch ($example) { 'example' { 'provider.cpp package_assets.cpp' } 'shovel-demo' { 'shovel_demo.cpp' } 'item-demo' { 'item_demo.cpp' } }
+        $target = switch ($example) { 'example' { 'dynamic_movement_remake' } }
+        $sources = switch ($example) { 'example' { 'provider.cpp package_assets.cpp' } }
         foreach ($source in $sources.Split(' ')) { Require-File (Join-Path $exampleRoot $source) | Out-Null }
         $exampleCmake = @'
 cmake_minimum_required(VERSION 3.26)
@@ -294,7 +295,7 @@ configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
         hostSha256 = $hostHash; hostRequired = 'Shipwright 9.2.3 com overlay Link-Span correspondente'
         compiler = [ordered]@{ id = $compilerId; version = $compilerVersion; pointerSize = 8; runtime = 'MultiThreaded'; layoutHashFlags = $flags; layoutHashReleaseFlags = $releaseFlags }
         importLibraries = @(); headerCount = $seen.Count; heartSeedsPresent = [bool]$heartPresent
-        limitations = @('Assets do DMR (texturas do HUD) não acompanham o SDK; o pacote do DMR traz os seus', 'item-demo é fonte de referência, sem manifesto', 'shipmod validate usa a checagem estrutural sem o validador C++', 'shipmod test requer o runner externo', 'Sem pacote nativo de conformidade completo; examples/provider-example é o probe mínimo')
+        limitations = @('Assets do DMR (texturas do HUD) não acompanham o SDK; o pacote do DMR traz os seus', 'Demos de código (Shovel, item, hooks...) ficam em https://github.com/BaiterYamato/link-span-examples', 'shipmod validate usa a checagem estrutural sem o validador C++', 'shipmod test requer o runner externo', 'Sem pacote nativo de conformidade completo; examples/provider-example é o probe mínimo')
     }
     Write-Text (Join-Path $stage 'linkspan-sdk.json') (($metadata | ConvertTo-Json -Depth 8) + "`n")
     # Módulo existente é útil como guarda ROM-free, não como empacotador de SDK.

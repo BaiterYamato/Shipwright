@@ -272,6 +272,7 @@ Na raiz da worktree do host:
 
 - `tools/package-unbound-framework.ps1` gera o `.shipmod` único do framework (DLL, Lua, ferramenta,
   header, documentação e licenças), com SHA-256 e relatório de conteúdo;
-- `tools/package-unbound-scene-demo.ps1` gera as demos de cena e de atores;
+- as demos de cena, de atores de sala e de atores 0.9 moram em [link-span-examples](https://github.com/BaiterYamato/link-span-examples)
+  (`oot-native/unbound/`), com os scripts de pacote em `tools/`;
 - `tools/package-unbound-e-fixtures.ps1 -BaseArchive <oot-unbound.o2r>` gera as fixtures da fase E. Elas
   saem da base local e contêm dados do jogo, então ficam em `build/` e não são publicadas.

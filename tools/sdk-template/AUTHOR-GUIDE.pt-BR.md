@@ -45,11 +45,11 @@ Consulte serviços por nome, versão e tamanho. Verifique layout completo e size
 antes de usar structs do jogo. Não guarde PlayState/Player/Actor entre cenas.
 Uma DLL executa dentro do processo: use apenas providers de origem confiável.
 
-Para DMR/shovel, configure `examples/example` ou `examples/shovel-demo` com o
+Para o DMR, configure `examples/example` com o
 mesmo prefixo. O manifesto gerado inclui o SHA do host do bundle; confirme seu
 soh.exe. O DMR precisa dos assets/procedimento da versão original para gameplay;
-compilar suas fontes aqui não entrega um pacote funcional completo. Item-demo
-requer manifesto e revisão de recursos próprios antes de `pack`.
+compilar suas fontes aqui não entrega um pacote funcional completo. Os demais demos
+(Shovel do NEI, itens, hooks, Unbound) moram em [link-span-examples](https://github.com/BaiterYamato/link-span-examples).
 
 ## Instalar, atualizar e provar
 

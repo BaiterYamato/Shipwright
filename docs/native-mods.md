@@ -264,8 +264,8 @@ cai no Hyrule Field com uma linha de log.
 
 O framework `linkspan.unbound.framework` 0.2.0 usa o serviço para ler
 `unbound/scenes.json` de todas as camadas no `game.ready` (§7 do SPEC do
-Unbound). `soh/native-sdk/unbound-core/scene-demo` registra uma cópia do Hyrule
-Field e viaja até ela; `tools/package-unbound-scene-demo.ps1` empacota os dois.
+Unbound). [`oot-native/unbound/scene-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/unbound/scene-demo) registra uma cópia do Hyrule
+Field e viaja até ela; `tools/package-unbound-scene-demo.ps1` do link-span-examples empacota os dois.
 As mudanças em `soh/include` e o header novo mudam o layout id: recompile os
 providers nativos contra o SDK do host novo.
 
@@ -291,8 +291,8 @@ declara em `soh/soh/native/oot_hooks.h`:
 - Um segundo `replace` recebe `SHIP_NATIVE_LIMIT`, com log do dono atual.
 - Os hooks saem no unload do mod, antes do `shutdown`.
 
-`soh/native-sdk/hooks-demo` conta frames e updates por observe e pisca o Link
-pelo replace do draw. Empacote com `tools/package-hooks-demo.ps1`.
+[`oot-native/hooks-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/hooks-demo) conta frames e updates por observe e pisca o Link
+pelo replace do draw. Empacote com `tools/package-hooks-demo.ps1` do link-span-examples.
 
 ## Serviço `linkspan.oot.save` v1 (OOT-CORE-006)
 
@@ -314,8 +314,8 @@ Eventos são hooks observe (ABI 1.2): `oot.save.loaded`, `oot.save.saving`,
 Blocos de mods ausentes são preservados no arquivo. As flags das cenas de mod
 (RFC 0020) passam a ser gravadas no bloco `linkspan.scenes`, pelo nome da cena.
 
-`soh/native-sdk/save-demo` conta as cargas de arquivo no namespace
-`linkspan-demo.save`; empacote com `tools/package-save-demo.ps1`.
+[`oot-native/save-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/save-demo) conta as cargas de arquivo no namespace
+`linkspan-demo.save`; empacote com `tools/package-save-demo.ps1` do link-span-examples.
 
 ## Itens sintéticos e tipos de ator (OOT-CORE-003)
 
@@ -374,11 +374,11 @@ O `ActorDB` passa a ser criado antes da carga dos mods, então o init já pode r
 
 ### Demo
 
-`soh/native-sdk/item-demo` (0.2.0) registra o item `linkspan-demo.orb-wand` e o ator
+[`oot-native/item-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/item-demo) (0.2.0) registra o item `linkspan-demo.orb-wand` e o ator
 `linkspan-demo.orb`. Em gameplay, se nenhum botão C tem o item, o Link o recebe por
 `give_item`, e o `receive` o equipa num botão C vazio, ou no C-Right. Cada
 uso solta um orbe com o modelo do coração, que sobe girando e some. Empacote com
-`tools/package-item-demo.ps1`.
+`tools/package-item-demo.ps1` do link-span-examples.
 
 ## Câmera, render e limb do Player (OOT-CORE-005)
 
@@ -416,9 +416,9 @@ Header: `soh/soh/native/oot_render.h`.
 
 ### Demo
 
-`soh/native-sdk/view-demo` desenha o coração na mão direita do Link e alterna 4 s de
+[`oot-native/view-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/view-demo) desenha o coração na mão direita do Link e alterna 4 s de
 câmera orbitando o Link com 4 s da câmera do jogo. Empacote com
-`tools/package-view-demo.ps1`.
+`tools/package-view-demo.ps1` do link-span-examples.
 
 ## Mundo e colliders (OOT-CORE-004)
 
@@ -451,9 +451,9 @@ Header: `soh/soh/native/oot_colliders.h`.
 
 ### Demo
 
-`soh/native-sdk/world-demo` cria à frente do Link um alvo apoiado no chão por
+[`oot-native/world-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/world-demo) cria à frente do Link um alvo apoiado no chão por
 `raycast_floor`. Golpes de espada fazem o alvo girar, encostar empurra o Link, e o log
-mostra chão, água, linha e parede. Empacote com `tools/package-world-demo.ps1`.
+mostra chão, água, linha e parede. Empacote com `tools/package-world-demo.ps1` do link-span-examples.
 
 ## Atores de sala por JSON (OOT-UNBOUND-004A, slice D1)
 
@@ -500,9 +500,9 @@ framework registra o relatório quando ele muda.
 
 ### Demo
 
-`soh/native-sdk/unbound-core/field-demo` monta `assets/scenes/spot00/rooms/0.json` e,
+[`oot-native/unbound/field-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/unbound/field-demo) monta `assets/scenes/spot00/rooms/0.json` e,
 com um save aberto, viaja uma vez para `ENTR_HYRULE_FIELD_PAST_BRIDGE_SPAWN`. O build
-reaproveita `scene-demo/scene_demo.cpp`. `tools/package-unbound-scene-demo.ps1`
+reaproveita `scene-demo/scene_demo.cpp`. `tools/package-unbound-scene-demo.ps1` do link-span-examples
 empacota a demo de cenas 0.1.3 e a demo do campo 0.1.2, que pedem o framework 0.6.x
 (empacotado por `tools/package-unbound-framework.ps1`).
 
@@ -529,13 +529,13 @@ que sobrarem.
 
 ### Demo
 
-`soh/native-sdk/familiar-demo` registra o item `linkspan-demo.keese-whistle` e dá o
+[`oot-native/familiar-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/familiar-demo) registra o item `linkspan-demo.keese-whistle` e dá o
 item por `give_item`. O `receive` equipa o item num botão C vazio ou num botão com
 item vanilla.
 
 Usar o item solta um Keese (`object_firefly`) animado, com um cilindro AT de espada
 Kokiri, que voa à frente do Link. Ao acertar, ele bate as asas uma vez em ONCE e
-some. Empacote com `tools/package-familiar-demo.ps1`; `-Extension shipmod` gera o
+some. Empacote com `tools/package-familiar-demo.ps1` do link-span-examples; `-Extension shipmod` gera o
 contêiner `.shipmod`.
 
 ## Escape hatch (COREEXT-008)
@@ -563,8 +563,8 @@ executável é ignorado com aviso no log.
 `tools/package-linkspan-overlay.ps1 -HostSymbols x64/Release/soh.symbols` inclui o
 arquivo no overlay e recusa um que não corresponda ao `soh.exe`.
 
-`soh/native-sdk/escape-demo` desvia `Interface_Draw` para o HUD piscar;
-`tools/package-escape-demo.ps1` grava no manifesto o SHA-256 de `x64/Release/soh.exe`.
+[`oot-native/escape-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/escape-demo) desvia `Interface_Draw` para o HUD piscar;
+`tools/package-escape-demo.ps1` do link-span-examples grava no manifesto o SHA-256 de `x64/Release/soh.exe`.
 
 ## Crash log e proteção de boot (COREEXT-009)
 
@@ -579,7 +579,7 @@ um culpado identificado, o próximo início grava o mod em `mods/.shiplua-disabl
 e o recusa com o motivo no log. Para reativar, apague a linha do mod. O marcador
 `mods/.shiplua-boot` some quando o boot é confirmado.
 
-`soh/native-sdk/crash-demo`, empacotado com `tools/package-crash-demo.ps1`, é um
+[`oot-native/crash-demo`](https://github.com/BaiterYamato/link-span-examples/tree/main/oot-native/crash-demo), empacotado com `tools/package-crash-demo.ps1` do link-span-examples, é um
 mod de teste cujo init escreve num ponteiro nulo. Com `-CoreExtension`, a mesma
 queda sai como core extension (`linkspan.crash-coremod`, ABI 1.2, `pre_game`).
 
