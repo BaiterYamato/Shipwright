@@ -1,103 +1,105 @@
-# Instalar o Link-Span sobre o Shipwright 9.2.3
+**English** · [Português (Brasil)](install-linkspan-overlay.pt-BR.md)
 
-O pacote Windows é um overlay ZIP. Ele foi desenhado para ser extraído na raiz
-de uma instalação nova da [release Shipwright 9.2.3](https://github.com/HarbourMasters/Shipwright/releases/tag/9.2.3),
-substituindo os arquivos do host que precisam conhecer o Link-Span.
+# Install Link-Span over Shipwright 9.2.3
 
-Desde `OOT-UPSTREAM-001`, o host do overlay é compilado a partir da `develop`
-oficial `78dc6d970` com o Link-Span integrado. A instalação base continua sendo
-a 9.2.3 oficial: a `develop` ainda se declara 9.2.3 e aceita o `oot.o2r` gerado
-por ela, porque só pede nova extração quando a versão principal gravada no
-arquivo muda.
+The Windows package is an overlay ZIP. It is designed to be extracted into the root
+of a fresh [Shipwright 9.2.3 release](https://github.com/HarbourMasters/Shipwright/releases/tag/9.2.3) installation,
+replacing the host files that need Link-Span support.
 
-## O que o overlay altera
+Since `OOT-UPSTREAM-001`, the overlay host has been built from the official
+`develop` commit `78dc6d970` with Link-Span integrated. The base installation is still
+the official 9.2.3 release: `develop` still reports itself as 9.2.3 and accepts the `oot.o2r` generated
+by that release, because it only requires a new extraction when the major version stored in
+the archive changes.
 
-- substitui `soh.exe` pelo host compilado com o Link-Span;
-- substitui `soh.o2r` pela versão gerada junto com esse executável;
-- substitui `gamecontrollerdb.txt` pela base de controles baixada pelo build;
-- adiciona em `assets` os `.yml` do extrator Torch da `develop` (`config.yml` e
-  uma pasta por versão de ROM). A 9.2.3 extraía com XML e ZAPD; esses arquivos
-  antigos ficam na pasta sem uso, e nenhum deles é sobrescrito;
-- adiciona a pasta `mods` e, quando solicitado no empacotamento, mods de teste;
-- adiciona metadados, instruções e checksums do pacote.
+## What the overlay changes
 
-O overlay não inclui nem substitui `oot.o2r`, ROMs, saves ou arquivos pessoais.
-`soh.exe` e `soh.o2r` devem sempre ser distribuídos e instalados como o mesmo
-par. Misturar o executável Link-Span com o `soh.o2r` oficial causa falha durante
-o carregamento da interface.
+- replaces `soh.exe` with the host built with Link-Span;
+- replaces `soh.o2r` with the version generated alongside that executable;
+- replaces `gamecontrollerdb.txt` with the controller database downloaded by the build;
+- adds the `develop` Torch extractor's `.yml` files to `assets` (`config.yml` and
+  one folder per ROM version). 9.2.3 used XML and ZAPD for extraction; those
+  old files remain unused in the folder, and none of them are overwritten;
+- adds the `mods` folder and, when requested during packaging, test mods;
+- adds package metadata, instructions and checksums.
 
-A `develop` registra o `ConfigVersion7Updater`, que migra `shipofharkinian.json`
-para um formato que a 9.2.3 oficial não conhece. Quem já usou a pasta deve
-guardar esse arquivo e a pasta `Save` antes de aplicar o overlay.
+The overlay neither includes nor replaces `oot.o2r`, ROMs, saves or personal files.
+`soh.exe` and `soh.o2r` must always be distributed and installed as a matching
+pair. Mixing the Link-Span executable with the official `soh.o2r` causes a failure while
+loading the interface.
 
-## Instalação para o jogador
+`develop` registers `ConfigVersion7Updater`, which migrates `shipofharkinian.json`
+to a format the official 9.2.3 release does not recognize. If you have already used the folder,
+back up that file and the `Save` folder before applying the overlay.
 
-1. Extraia `SoH-Ackbar-Delta-Win64.zip` da release 9.2.3 em uma pasta nova.
-2. Execute o Shipwright uma vez e conclua a geração normal do seu `oot.o2r`.
-3. Feche o jogo.
-4. Se a pasta já foi usada, copie `shipofharkinian.json` e `Save` para outro
-   lugar.
-5. Extraia `LinkSpan-Shipwright-9.2.3-Upstream-78dc6d970-Win64-overlay.zip`
-   nessa mesma pasta e confirme a substituição dos arquivos.
-6. Coloque mods `.zip` ou `.shipmod` diretamente em `mods` e execute `soh.exe`.
+## Player installation
 
-O pacote do mod precisa ter `manifest.toml` na raiz. Um mod nativo pode carregar
-uma DLL própria declarada no manifesto; por isso ele tem a mesma capacidade de
-acesso ao processo e o mesmo risco de crash que um mod nativo tradicional.
-Core extensions usam `kind = "core_extension"`, `load_phase = "pre_game"` e
-provider ABI 1.1. Elas carregam antes dos mods comuns e podem publicar serviços
-versionados para outros ZIPs sem recompilar novamente o Shipwright.
+1. Extract `SoH-Ackbar-Delta-Win64.zip` from release 9.2.3 into a new folder.
+2. Run Shipwright once and complete the normal generation of your `oot.o2r`.
+3. Close the game.
+4. If the folder has already been used, copy `shipofharkinian.json` and `Save` to another
+   location.
+5. Extract `LinkSpan-Shipwright-9.2.3-Upstream-78dc6d970-Win64-overlay.zip`
+   into that same folder and confirm file replacement.
+6. Place `.zip` or `.shipmod` mods directly in `mods` and run `soh.exe`.
 
-Mods nativos que consultam `linkspan.oot.engine` ou `linkspan.oot.movement`
-comparam o `LINKSPAN_OOT_LAYOUT_ID` com o do host e são recusados quando ele
-difere. Como a `develop` mudou headers de `soh/include`, DLLs compiladas para os
-hosts anteriores precisam ser recompiladas contra o SDK deste build. O id do
-host fica em `linkspan-overlay.json`, no campo `linkSpan.ootLayoutId`.
+The mod package must have `manifest.toml` at its root. A native mod can load
+its own DLL declared in the manifest; it therefore has the same access to
+the process and the same crash risk as a traditional native mod.
+Core extensions use `kind = "core_extension"`, `load_phase = "pre_game"` and
+provider ABI 1.1. They load before regular mods and can publish versioned
+services for other ZIPs without rebuilding Shipwright.
 
-## Compilar o host
+Native mods that query `linkspan.oot.engine` or `linkspan.oot.movement`
+compare their `LINKSPAN_OOT_LAYOUT_ID` with the host's and are rejected when it
+differs. Since `develop` changed headers in `soh/include`, DLLs built for
+previous hosts must be rebuilt against this build's SDK. The host's id
+is in `linkspan-overlay.json`, in the `linkSpan.ootLayoutId` field.
 
-O host compila o core Link-Span a partir de `LINKSPAN_SDK_SOURCE_DIR`, cujo
-default é o submódulo `extern/ship-lua`. Desde `OOT-UPSTREAM-001`, o submódulo
-aponta para o core dos hosts OoT: o commit `4244f7d` da branch
-`agent/NATIVE-001-provider-runtime` de `BaiterYamato/link-span` (`ship-lua.git`
-é o nome antigo desse repositório). Um clone com submódulos compila sem ajuste
-de cache. Só aponte `LINKSPAN_SDK_SOURCE_DIR` para outra pasta, como a worktree
-`NATIVE-001`, ao desenvolver o próprio core: outro checkout pode trazer outra
-descoberta de pacotes, outro ABI de provider e outro layout id.
+## Build the host
 
-O `CMakeLists.txt` raiz prefixa com `shiplua_` os símbolos do miniz do Link-Span:
-gera `build/x64/ship-lua/shiplua_miniz_prefix.h` e o injeta com `/FI`. O Torch da
-`develop` embute outro miniz, o 9.1.15, com os mesmos nomes em C e antes na linha
-de link. Sem o prefixo, o `soh.exe` ligava o ship-lua a essa cópia; o host abria
-normalmente, mas carregava 0 mods em ZIP, sem nenhuma linha de rejeição.
+The host builds the Link-Span core from `LINKSPAN_SDK_SOURCE_DIR`, which
+defaults to the `extern/ship-lua` submodule. Since `OOT-UPSTREAM-001`, the submodule
+has pointed to the core used by the OoT hosts: commit `4244f7d` on the
+`agent/NATIVE-001-provider-runtime` branch of `BaiterYamato/link-span` (`ship-lua.git`
+is that repository's former name). A clone with submodules builds without cache
+adjustments. Only point `LINKSPAN_SDK_SOURCE_DIR` to another folder, such as the
+`NATIVE-001` worktree, when developing the core itself: another checkout may have different
+package discovery, a different provider ABI and a different layout id.
 
-O mesmo arquivo declara o tinyxml2 antes do Torch. O Torch baixa o tinyxml2
-10.0.0 com `OVERRIDE_FIND_PACKAGE`, e a libultraship liga essa cópia. O vcpkg
-também instala o tinyxml2 (11.0.0), e o include dele vem antes do baixado no
-Torch, na libultraship e no soh: todos compilavam com o header 11 e ligavam a
-lib 10. Entre as duas versões, o `DynArray` trocou `int` por `size_t`, e o
-layout de `XMLPrinter` e `XMLDocument` mudou. Com
-`gDeveloperTools.ResourceLogging` ligado, `XMLPrinter::CStr()` devolvia o
-próprio texto como ponteiro, e o host caía no primeiro carregamento de cena. A
-declaração reaproveita o pacote do vcpkg, e o configure falha se o vcpkg tiver
-o header sem o pacote CMake.
+The root `CMakeLists.txt` prefixes Link-Span's miniz symbols with `shiplua_`:
+it generates `build/x64/ship-lua/shiplua_miniz_prefix.h` and injects it with `/FI`. Torch in
+`develop` embeds another miniz, 9.1.15, with the same C names and earlier on the
+link line. Without the prefix, `soh.exe` linked Link-Span to that copy; the host opened
+normally, but loaded 0 ZIP mods, without any rejection lines.
+
+The same file declares tinyxml2 before Torch. Torch downloads tinyxml2
+10.0.0 with `OVERRIDE_FIND_PACKAGE`, and libultraship links that copy. vcpkg
+also installs tinyxml2 (11.0.0), and its include path comes before the downloaded one in
+Torch, libultraship and soh: all compiled with header 11 and linked against
+library 10. Between the two versions, `DynArray` changed from `int` to `size_t`, and the
+layout of `XMLPrinter` and `XMLDocument` changed. With
+`gDeveloperTools.ResourceLogging` enabled, `XMLPrinter::CStr()` returned the
+text itself as a pointer, and the host crashed on the first scene load. The
+declaration reuses the vcpkg package, and configuration fails if vcpkg has
+the header without the CMake package.
 
 ```powershell
 git submodule update --init --recursive
-cmake -S . -B build/x64   # mais as opções de docs/BUILDING.md
+cmake -S . -B build/x64   # plus the options in docs/BUILDING.md
 cmake --build build/x64 --config Release --target soh -- /m:1
 ```
 
-O `LINKSPAN_OOT_LAYOUT_ID` sai em `build/x64/native-sdk/oot_layout_id.h` e muda
-junto com a fonte do core. O cálculo usa os bytes dos headers: com
-`core.autocrlf=true`, o mesmo commit do core sai com CRLF num checkout e com LF
-em outro, e o id muda. Compile os mods nativos contra o
-`build/x64/native-sdk/Release/OotNativeSdk.cmake` do mesmo build que vai no
+`LINKSPAN_OOT_LAYOUT_ID` is written to `build/x64/native-sdk/oot_layout_id.h` and changes
+with the core source. The calculation uses the header bytes: with
+`core.autocrlf=true`, the same core commit has CRLF in one checkout and LF
+in another, changing the id. Build native mods against the
+`build/x64/native-sdk/Release/OotNativeSdk.cmake` from the same build used in the
 overlay.
 
-## Gerar o overlay
+## Generate the overlay
 
-O script roda no Windows PowerShell 5.1 e no PowerShell 7:
+The script runs in Windows PowerShell 5.1 and PowerShell 7:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/package-linkspan-overlay.ps1 `
@@ -111,39 +113,39 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/package-linkspan-o
   -OutputPath build/distribution/LinkSpan-Shipwright-9.2.3-Upstream-78dc6d970-Win64-overlay.zip
 ```
 
-O script cria o ZIP por um diretório temporário único, confere que o layout id
-do SDK está dentro do executável, gera `linkspan-overlay.json` e
-`checksums.sha256`, grava as entradas do ZIP com `/` e não lê nem empacota
-`oot.o2r`. `-ExampleMod` aceita vários pacotes.
+The script creates the ZIP through a unique temporary directory, checks that the SDK's layout id
+is embedded in the executable, generates `linkspan-overlay.json` and
+`checksums.sha256`, writes ZIP entries with `/`, and neither reads nor packages
+`oot.o2r`. `-ExampleMod` accepts multiple packages.
 
-## Validar o overlay
+## Validate the overlay
 
-`tools/package-linkspan-mod.ps1` empacota a pasta `mod` que o CMake de um mod
-nativo gera: `manifest.toml` na raiz e entradas com `/`.
+`tools/package-linkspan-mod.ps1` packages the `mod` folder generated by a native
+mod's CMake: `manifest.toml` at the root and entries with `/`.
 
-`tools/test-linkspan-overlay.ps1` faz a prova limpa:
+`tools/test-linkspan-overlay.ps1` performs a clean validation:
 
-1. copia uma instalação oficial que já tem `oot.o2r`;
-2. extrai o overlay por cima;
-3. confere o `checksums.sha256` e a preservação, byte a byte, dos arquivos do
-   usuário;
-4. com `-ResourceLogging`, liga `gDeveloperTools.ResourceLogging` na cópia;
-5. roda o jogo numa sessão da skill `soh-runtime-playtest`;
-6. falha se o log não mostrar a quantidade esperada de mods carregados, se
-   registrar exceção do `CrashHandler` ou se, com `-ResourceLogging`, não tiver
-   comandos de cena em XML.
+1. copies an official installation that already has `oot.o2r`;
+2. extracts the overlay on top of it;
+3. checks `checksums.sha256` and verifies that user files are preserved
+   byte for byte;
+4. with `-ResourceLogging`, enables `gDeveloperTools.ResourceLogging` in the copy;
+5. runs the game in a session of the `soh-runtime-playtest` skill;
+6. fails if the log does not show the expected number of loaded mods, if
+   it records a `CrashHandler` exception or if, with `-ResourceLogging`, there are no
+   XML scene commands.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-linkspan-overlay.ps1 `
   -Overlay build/distribution/LinkSpan-Shipwright-9.2.3-Upstream-78dc6d970-Win64-overlay.zip `
-  -Base <instalação 9.2.3 limpa com oot.o2r> `
-  -Smoke <pasta nova para a prova> `
+  -Base <clean 9.2.3 install with oot.o2r> `
+  -Smoke <new folder for the smoke test> `
   -Evidence <pasta de evidências> `
   -PlaytestScripts <scripts da skill soh-runtime-playtest> `
   -ExpectedMods 1 -ResourceLogging -NoCapture
 ```
 
-A contagem de mods é o que pega regressão de link: com o miniz errado, o host
-abre e passa nos testes ROM-free, mas carrega 0 mods. O `-ResourceLogging` pega
-a mistura de tinyxml2: o host carrega os mods e cai no primeiro carregamento de
-cena.
+The mod count catches linking regressions: with the wrong miniz, the host
+opens and passes ROM-free tests, but loads 0 mods. `-ResourceLogging` catches
+the tinyxml2 version mismatch: the host loads the mods and crashes on the first scene
+load.

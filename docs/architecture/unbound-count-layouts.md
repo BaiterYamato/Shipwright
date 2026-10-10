@@ -1,45 +1,47 @@
-# Unbound: fundação de contagens ampliadas
+**English** · [Português (Brasil)](unbound-count-layouts.pt-BR.md)
 
-## Objetivo
+# Unbound: foundation for expanded counts
 
-O recorte `OOT-UNBOUND-003A` remove os primeiros limites estruturais herdados do N64 que impediam cenas e mods
-maiores. Ele altera o host uma única vez para que pacotes externos possam usar capacidades maiores sem recompilar o
-Shipwright para cada mod.
+## Goal
 
-## Capacidades
+The `OOT-UNBOUND-003A` work item removes the first structural limits inherited from the N64 that prevented larger
+scenes and mods. It changes the host once so that external packages can use higher capacities without recompiling
+Shipwright for each mod.
 
-| Estrutura | Antes | Agora |
+## Capabilities
+
+| Structure | Before | Now |
 | --- | ---: | ---: |
-| Atores vivos (`ACTOR_NUMBER_MAX`) | 2.000 | 8.192 |
-| Contador de atores vivos | 8 bits | 16 bits |
-| Banco de objetos | 128 | 1.024 |
-| Índice de objeto no `Actor` | 8 bits com sinal | 16 bits com sinal |
-| Atores de setup, salas e atores de transição | 8 bits | 16 bits |
-| Contagem de display lists de mesh tipo 0/2 | 8 bits | 32 bits |
-| Meshes tipo 2 ordenadas por sala | 64 | 1.024 |
+| Live actors (`ACTOR_NUMBER_MAX`) | 2.000 | 8.192 |
+| Live actor counter | 8 bits | 16 bits |
+| Object bank | 128 | 1.024 |
+| Object index in `Actor` | signed 8 bits | signed 16 bits |
+| Setup actors, rooms, and transition actors | 8 bits | 16 bits |
+| Display list count for type 0/2 meshes | 8 bits | 32 bits |
+| Type 2 meshes sorted per room | 64 | 1.024 |
 
-O importador binário continua lendo a contagem de mesh do formato OTR v0 como `u8`, mas agora preserva corretamente
-valores entre 128 e 255. O importador XML e futuros produtores de recursos podem preencher a representação de 32 bits.
-As contagens de atores, salas e transições vindas de recursos de 32 bits são limitadas explicitamente ao maior valor
-representável no runtime, com diagnóstico, em vez de sofrer wrap silencioso.
+The binary importer still reads the mesh count in the OTR v0 format as `u8`, but now correctly preserves values
+between 128 and 255. The XML importer and future resource producers can populate the 32-bit representation.
+Actor, room, and transition counts from 32-bit resources are explicitly clamped to the largest value representable
+at runtime, with a diagnostic, instead of silently wrapping.
 
-Quando uma lista de objetos excede 1.024 entradas, o carregador mantém a contagem interna dentro do banco, registra o
-número descartado e evita que um recurso inválido deixe o `ObjectContext` apontando além do array. Quando uma sala tem
-mais de 1.024 meshes tipo 2, o renderizador registra o excesso e desenha somente as primeiras 1.024.
+When an object list exceeds 1.024 entries, the loader keeps the internal count within the bank, logs the number
+discarded, and prevents an invalid resource from leaving `ObjectContext` pointing beyond the array. When a room has
+more than 1.024 type 2 meshes, the renderer logs the excess and draws only the first 1.024.
 
-`Object_Spawn` também recusa uma inserção quando o banco está cheio antes de acessar o array, e `Object_IsLoaded`
-recusa índices negativos ou fora da contagem ativa. O espaço em bytes reservado para os dados dos objetos continua
-limitado pelo alocador da cena; ampliar essa memória e os índices privados `s8` mantidos por atores específicos pertence
-aos próximos recortes.
+`Object_Spawn` also rejects an insertion when the bank is full before accessing the array, and `Object_IsLoaded`
+rejects negative indices or indices outside the active count. The space in bytes reserved for object data remains
+limited by the scene allocator; expanding this memory and the private `s8` indices kept by specific actors belongs
+to subsequent work items.
 
-## Verificação incorporada
+## Built-in verification
 
-`soh/soh/unbound/UnboundLayoutChecks.cpp` é compilado junto do host e contém `static_assert`s para impedir que uma
-alteração futura volte silenciosamente aos tipos estreitos ou crie divergência entre o layout do recurso e o runtime.
+`soh/soh/unbound/UnboundLayoutChecks.cpp` is compiled with the host and contains `static_assert`s to prevent a future
+change from silently reverting to narrow types or creating a mismatch between the resource layout and the runtime.
 
-## Limites que continuam para os próximos recortes
+## Limits left for subsequent work items
 
-Este recorte ainda não amplia coordenadas de atores, caminhos e colisão, IDs de sala armazenados em `s8`, tabelas de
-colisão dinâmica, índices privados de objeto mantidos por alguns atores ou o catálogo dinâmico de cenas e entradas.
-Essas mudanças exigem auditoria de ponteiros e conversões para evitar truncamento e serão implementadas em etapas
-separadas.
+This work item does not yet expand actor, path, and collision coordinates, room IDs stored in `s8`, dynamic collision
+tables, private object indices kept by some actors, or the dynamic catalog of scenes and entrances.
+These changes require an audit of pointers and conversions to prevent truncation and will be implemented in separate
+stages.

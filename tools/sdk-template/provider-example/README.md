@@ -1,11 +1,11 @@
-# Provider mínimo para a prova do SDK
+# Minimal provider for SDK validation
 
-Compile em Release conforme o guia de autor. Exporta `ShipNative_Query`, consulta
-`linkspan.oot.engine` v1 e recusa layout ou sizeof incompatíveis. O manifesto pede
-ABI 1.2, disponível no descriptor atual 1.3. Não instala patches, não carrega assets
-e não altera o jogo. `doctor` analisa o PE sem carregar a DLL.
+Build in Release following the author guide. Exports `ShipNative_Query`, queries
+`linkspan.oot.engine` v1 and rejects incompatible layouts or sizeof values. The manifest requests
+ABI 1.2, available in the current 1.3 descriptor. It installs no patches, loads no assets
+and does not alter the game. `doctor` analyzes the PE without loading the DLL.
 
-Este probe é um rascunho para o gate externo. Não é uma suíte completa de
-conformidade nativa: falta execução com o host e negativos de ABI, rollback,
-hooks/unload, lifetime e conflito entre serviços. Não instalar junto de variantes
-com o mesmo ID. A presença do ZIP nunca prova execução em jogo.
+This probe is a draft for the external gate. It is not a complete native
+conformance suite: host execution and negative tests for ABI, rollback,
+hooks/unload, lifetime and service conflicts are still missing. Do not install it alongside variants
+with the same ID. The presence of the ZIP never proves in-game execution.
