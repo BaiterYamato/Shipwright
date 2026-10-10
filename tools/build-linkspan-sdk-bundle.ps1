@@ -265,8 +265,22 @@ configure_file(manifest.toml "${CMAKE_BINARY_DIR}/mod/manifest.toml" COPYONLY)
 configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
 '@
     Write-Text (Join-Path $stage 'examples/heart-seeds/CMakeLists.txt') ($heartCmake + "`n")
-    foreach ($file in @('writing-mods.md', 'writing-mods.en.md', 'native-providers.md', 'shipmod-cli.md', 'shipmod-cli.en.md', 'manifest-validator.md', 'manifest-validator.en.md', 'host-integration.md', 'host-integration.en.md')) {
-        Copy-Required (Join-Path $coreRoot ('docs/' + $file)) ('docs/' + $file)
+    # Guias do core com os irmãos de idioma (x.pt-BR.md no core novo, x.en.md no antigo) e o que eles linkam:
+    # a referência gerada, os schemas e as RFCs nativas, nos mesmos caminhos relativos do repositório.
+    foreach ($stem in @('writing-mods', 'native-providers', 'shipmod-cli', 'manifest-validator', 'host-integration')) {
+        Require-File (Join-Path $coreRoot ('docs/' + $stem + '.md')) | Out-Null
+    }
+    # O docs/README do core indexa o repositório inteiro (PLAN, coordination...) e não cabe no SDK.
+    foreach ($file in (Get-ChildItem -LiteralPath (Join-Path $coreRoot 'docs') -Filter '*.md' -File |
+            Where-Object { $_.Name -notlike 'README*' })) {
+        Copy-Required $file.FullName ('docs/' + $file.Name)
+    }
+    foreach ($relative in @('generated/docs/api-reference.md', 'generated/docs/api-reference.pt-BR.md',
+            'generated/docs/api-reference.en.md', 'generated/lua/shiplua.lua', 'schema/api.yml', 'schema/events.yml',
+            'schema/capabilities.yml', 'schema/manifest.schema.json', 'rfcs/0011-native-provider-runtime.md',
+            'rfcs/0015-core-extension-abi.md')) {
+        $source = Join-Path $coreRoot $relative
+        if (Test-Path -LiteralPath $source -PathType Leaf) { Copy-Required $source $relative }
     }
     foreach ($dir in @('api', 'architecture')) {
         foreach ($file in (Get-ChildItem -LiteralPath (Join-Path $coreRoot ('docs/' + $dir)) -Filter '*.md' -Recurse -File)) {
@@ -278,17 +292,20 @@ configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
     }
     foreach ($file in @('shipmod.py', 'LinkSpanPackaging.psm1')) { Copy-Required (Join-Path $coreRoot ('tools/' + $file)) ('tools/' + $file) }
     foreach ($file in @('package-linkspan-mod.ps1', 'linkspan-zip.ps1', 'scan-protected-content.py')) { Copy-Required (Join-Path $HostRoot ('tools/' + $file)) ('tools/' + $file) }
-    foreach ($file in @('README.md', 'AUTHOR-GUIDE.pt-BR.md', 'AUTHOR-GUIDE.en.md', 'OOT-NATIVE-CONTRACT.md', 'NOTICE.md')) {
+    foreach ($file in @('README.md', 'README.pt-BR.md', 'AUTHOR-GUIDE.md', 'AUTHOR-GUIDE.pt-BR.md',
+            'OOT-NATIVE-CONTRACT.md', 'OOT-NATIVE-CONTRACT.pt-BR.md', 'SERVICES.md', 'SERVICES.pt-BR.md', 'NOTICE.md')) {
         Copy-Required (Join-Path $PSScriptRoot ('sdk-template/' + $file)) $file
     }
     Copy-Required (Join-Path $HostRoot 'soh/native-sdk/README.md') 'docs/oot-native-sdk-source.md'
     Copy-Required (Join-Path $HostRoot 'libultraship/LICENSE') 'licenses/libultraship-LICENSE.txt'
     # CC0 do trabalho do Link-Span; NOTICE.md (do template) separa os headers do Shipwright e do libultraship.
     Copy-Required (Join-Path $HostRoot 'docs/licensing/LICENSE-PACKAGE.txt') 'LICENSE'
-    # Documentação histórica é preservada com aviso explícito sobre afirmação obsoleta.
+    # O native-providers do core antigo ainda diz que nenhum host integra os providers; o novo não diz.
     $nativeDoc = Join-Path $stage 'docs/native-providers.md'
     $historical = [IO.File]::ReadAllText($nativeDoc)
-    Write-Text $nativeDoc ("> Nota deste bundle: o OoT RC4 já integra os serviços nativos. A frase abaixo sobre ausência de integração é histórica; consulte ../OOT-NATIVE-CONTRACT.md. Exemplos genéricos do core não acompanham este recorte.`n`n" + $historical)
+    if ($historical.Contains('ainda não foi integrada')) {
+        Write-Text $nativeDoc ("> Bundle note: the OoT host already integrates the native services. The sentence below about the missing integration is historical; see ../OOT-NATIVE-CONTRACT.md.`n`n" + $historical)
+    }
     $metadata = [ordered]@{
         schemaVersion = 1; packageType = 'linkspan.oot.sdk'; version = $Version; game = 'oot'; platform = 'windows-x64'
         configuration = 'Release'; nativeProviderAbi = '1.3'; ootLayoutId = $layoutId
