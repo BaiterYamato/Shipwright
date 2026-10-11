@@ -244,7 +244,7 @@ typedef struct SoundFont {
 
 typedef struct {
     /* 0x0 */ size_t heapSize; // total number of bytes allocated to the audio heap. Must be <= the size of `gAudioHeap` (ideally about the same size)
-    /* 0x4 */ size_t initPoolSize; // The entire audio heap is split into two pools. 
+    /* 0x4 */ size_t initPoolSize; // The entire audio heap is split into two pools.
     /* 0x8 */ size_t permanentPoolSize;
 } AudioHeapInitSizes; // size = 0xC
 
@@ -322,7 +322,7 @@ typedef struct {
 typedef struct {
     /* 0x0 */ size_t miscPoolSize;
     /* 0x4 */ size_t unusedSizes[2];
-    /* 0xC */ size_t cachePoolSize; 
+    /* 0xC */ size_t cachePoolSize;
 } AudioSessionPoolSplit; // size = 0x10
 
 
@@ -1049,7 +1049,7 @@ typedef struct {
     /* 0x7C */ UNK_TYPE1 pad7C[0x4];
     /* 0x80 */ u8 unk_80;
     /* 0x84 */ u32 startSamplePos;
-    /* 0x88 */ UNK_TYPE1 unk_BC[0x1C]; 
+    /* 0x88 */ UNK_TYPE1 unk_BC[0x1C];
 } NotePlaybackState; // size = 0xA4
 
 typedef struct {
@@ -1100,7 +1100,7 @@ typedef struct Note {
 /**
  * The high-level audio specifications requested when initializing or resetting the audio pool.
  * Most often resets during scene transitions, but will highly depend on game play.
- */ 
+ */
 typedef struct {
     /* 0x00 */ u32 samplingFreq; // Target sampling rate in Hz
     /* 0x04 */ u8 unk_04;
@@ -1263,7 +1263,7 @@ typedef struct {
     /* 0x29C0 */ AudioAllocPool sessionPool; // A sub-pool to main pool, contains all sub-pools and data that changes every audio reset
     /* 0x29D0 */ AudioAllocPool externalPool; // pool allocated on an external device. Never used in game
     /* 0x29E0 */ AudioAllocPool initPool; // A sub-pool to the main pool, contains all sub-pools and data that persists every audio reset
-    /* 0x29F0 */ AudioAllocPool miscPool; // A sub-pool to the session pool, 
+    /* 0x29F0 */ AudioAllocPool miscPool; // A sub-pool to the session pool,
     /* 0x2A00 */ char unk_29D0[0x20]; // probably two unused pools
     /* 0x2A20 */ AudioAllocPool cachePool; // The common pool for all cache entries
     /* 0x2A30 */ AudioAllocPool persistentCommonPool; // A sub-pool to the cache pool, contains all caches for data stored persistently
