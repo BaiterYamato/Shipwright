@@ -45,7 +45,7 @@ void ExtBitWrite(ExtBitset& bits, int32_t bit, bool value) {
 }
 
 // Rooms >= 32: one word array per scene, keyed by the stable scene name so it survives id reassignment.
-void SaveSection(SaveContext*, int, bool) {
+void SaveSection(const SaveContext&, int, bool) {
     nlohmann::json scenes = nlohmann::json::object();
     for (const auto& [id, bits] : sExtClearFlags) {
         std::string name;

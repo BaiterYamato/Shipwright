@@ -39,6 +39,7 @@ s32 Camera_UpdateWater(Camera* camera);
 
 #include "z_camera_data.inc"
 #include "linkspan_vanilla.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 /*===============================================================*/
 

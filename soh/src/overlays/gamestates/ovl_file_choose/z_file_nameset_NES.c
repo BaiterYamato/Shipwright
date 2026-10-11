@@ -5,6 +5,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/SaveManager.h"
 #include "soh/ResourceManagerHelpers.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 // File based on matching decomp for z_file_nameset_NES on N64 1.0 https://decomp.me/scratch/1tru6
 // Edited to follow port's stage of documentation and implemented enhancements found in z_file_nameset_PAL.c
@@ -547,8 +548,8 @@ void FileChoose_DrawNameEntryNES(GameState* thisx) {
                     this->newFileNameCharCount = 0;
                     if (this->prevConfigMode == CM_QUEST_MENU) {
                         this->configMode = CM_NAME_ENTRY_TO_QUEST_MENU;
-                    } else if (this->prevConfigMode == CM_RANDOMIZER_SETTINGS_MENU) {
-                        this->configMode = CM_NAME_ENTRY_TO_RANDOMIZER_SETTINGS_MENU;
+                    } else if (this->prevConfigMode == CM_SETTINGS_MENU) {
+                        this->configMode = CM_NAME_ENTRY_TO_SETTINGS_MENU;
                     } else {
                         this->configMode = CM_NAME_ENTRY_TO_MAIN;
                     }

@@ -5,6 +5,7 @@
 #include <string>
 
 #include <fast/Fast3dGui.h>
+#include <ship/Context.h>
 
 #include "debugSaveEditor.h"
 #include "soh/Enhancements/randomizer/randomizer.h"
@@ -113,6 +114,7 @@ ButtonOptions buttonOptionsBase;
 CheckboxOptions checkboxOptionsBase;
 ComboboxOptions comboboxOptionsBase;
 static std::map<std::string, ImGuiTextFilter> flagTableFilters;
+static ImGuiTextFilter playerStateFilter;
 
 // Modification of gAmmoItems that replaces ITEM_NONE with the item in inventory slot it represents
 u8 gAllAmmoItems[] = {
@@ -602,7 +604,7 @@ void DrawGeneralTab() {
     }
 
     PushStyleSlider(Colors::DarkRed);
-    static const int16_t HEART_COUNT_MIN = 3;
+    static const int16_t HEART_COUNT_MIN = 1;
     static const int16_t HEART_COUNT_MAX = 20;
     static const int16_t S16_ZERO = 0;
     int16_t heartCount = (int16_t)gSaveContext.healthCapacity / 16;
@@ -1351,6 +1353,35 @@ void DrawFlagArrayWithTooltips(const std::string& name, T& flags, Colors color, 
     ImGui::PopID();
 }
 
+// List state flags matching the search, returns whether any matched
+template <typename T>
+bool DrawStateSearchResults(const char* label, T& flags, const std::vector<std::string>& names,
+                            ImGuiTextFilter& filter) {
+    bool hasMatches = false;
+    ImGui::PushID(label);
+    for (size_t flagIndex = 0; flagIndex < names.size() && flagIndex < sizeof(T) * 8; flagIndex++) {
+        std::string text = spdlog::fmt_lib::format("{} Bit {}: {}", label, flagIndex, names[flagIndex]);
+        if (!filter.PassFilter(text.c_str())) {
+            continue;
+        }
+        hasMatches = true;
+
+        ImGui::PushID(static_cast<int>(flagIndex));
+        uint32_t bitMask = 1u << flagIndex;
+        bool flag = (flags & bitMask) != 0;
+        PushStyleCheckbox(THEME_COLOR);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 3.0f));
+        if (ImGui::Checkbox(text.c_str(), &flag)) {
+            flags ^= bitMask;
+        }
+        ImGui::PopStyleVar();
+        PopStyleCheckbox();
+        ImGui::PopID();
+    }
+    ImGui::PopID();
+    return hasMatches;
+}
+
 static const char* GetFlagDescription(const FlagTable& flagTable, uint16_t index) {
     if (flagTable.flagTableType == RANDOMIZER_INF) {
         std::string_view name = EnumToString(static_cast<RandomizerInf>(index));
@@ -1432,7 +1463,7 @@ void DrawActiveStates(const std::string& label, uint32_t states, const std::vect
     if (!hasAny)
         active += "None";
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-    ImGui::Text("%s", active.c_str());
+    ImGui::TextWrapped("%s", active.c_str());
     ImGui::PopStyleColor();
 }
 
@@ -1500,10 +1531,16 @@ static void DrawFlagTableSearchResults(const FlagTable& flagTable, ImGuiTextFilt
             }
 
             ImGui::SameLine();
+            ImVec2 labelPos = ImGui::GetCursorScreenPos();
             if (hasDescription) {
                 ImGui::TextWrapped("0x%02X: %s", index, desc);
             } else {
                 ImGui::Text("0x%02X", index);
+            }
+
+            ImGui::SetCursorScreenPos(labelPos);
+            if (ImGui::InvisibleButton("##label", ImGui::GetItemRectSize())) {
+                flags ^= bitMask;
             }
 
             ImGui::PopID();
@@ -2097,6 +2134,7 @@ void DrawEquipmentTab() {
             randomizer.GetRandoSettingValue(RSK_SHUFFLE_OPEN_CHEST) ||
             randomizer.GetRandoSettingValue(RSK_SHUFFLE_SPEAK) ||
             randomizer.GetRandoSettingValue(RSK_SHUFFLE_OCARINA_BUTTONS) ||
+            randomizer.GetRandoSettingValue(RSK_SHUFFLE_SCARECROWS_SONG) ||
             randomizer.GetRandoSettingValue(RSK_ROCS_FEATHER);
 
         if (bombchuProgressive || triforceHunt || anyAbilityShuffle) {
@@ -2181,6 +2219,8 @@ void DrawEquipmentTab() {
                             static_cast<RandomizerInf>(RAND_INF_HAS_OCARINA_A + i));
                     }
                 }
+                if (randomizer.GetRandoSettingValue(RSK_SHUFFLE_SCARECROWS_SONG))
+                    add(RG_SCARECROWS_SONG, RAND_INF_HAS_SCARECROWS_SONG);
                 if (randomizer.GetRandoSettingValue(RSK_ROCS_FEATHER))
                     add(RG_ROCS_FEATHER, RAND_INF_OBTAINED_ROCS_FEATHER);
                 if (randomizer.GetRandoSettingValue(RSK_SHUFFLE_FISHING_POLE))
@@ -2604,31 +2644,46 @@ void DrawPlayerTab() {
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Player State");
         ImGui::Spacing();
 
-        // State Flags 1
-        ImGui::Text("State 1");
-        DrawFlagArrayWithTooltips("State1", player->stateFlags1, THEME_COLOR, state1);
-
-        // Show active State 1 flags
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+        PushStyleInput(THEME_COLOR);
+        playerStateFilter.Draw();
+        PopStyleInput();
         ImGui::Spacing();
-        DrawActiveStates("State1", player->stateFlags1, state1);
 
-        ImGui::Spacing();
-        // State Flags 2
-        ImGui::Text("State 2");
-        DrawFlagArrayWithTooltips("State2", player->stateFlags2, THEME_COLOR, state2);
+        if (playerStateFilter.IsActive()) {
+            bool hasMatches = DrawStateSearchResults("State 1", player->stateFlags1, state1, playerStateFilter);
+            hasMatches |= DrawStateSearchResults("State 2", player->stateFlags2, state2, playerStateFilter);
+            hasMatches |= DrawStateSearchResults("State 3", player->stateFlags3, state3, playerStateFilter);
+            if (!hasMatches) {
+                ImGui::Text("No flags match the current search.");
+            }
+        } else {
+            // State Flags 1
+            ImGui::Text("State 1");
+            DrawFlagArrayWithTooltips("State1", player->stateFlags1, THEME_COLOR, state1);
 
-        // Show active State 2 flags
-        ImGui::Spacing();
-        DrawActiveStates("State2", player->stateFlags2, state2);
+            // Show active State 1 flags
+            ImGui::Spacing();
+            DrawActiveStates("State1", player->stateFlags1, state1);
 
-        ImGui::Spacing();
-        // State Flags 3
-        ImGui::Text("State 3");
-        DrawFlagArrayWithTooltips("State3", player->stateFlags3, THEME_COLOR, state3);
+            ImGui::Spacing();
+            // State Flags 2
+            ImGui::Text("State 2");
+            DrawFlagArrayWithTooltips("State2", player->stateFlags2, THEME_COLOR, state2);
 
-        // Show active State 3 flags
-        ImGui::Spacing();
-        DrawActiveStates("State3", player->stateFlags3, state3);
+            // Show active State 2 flags
+            ImGui::Spacing();
+            DrawActiveStates("State2", player->stateFlags2, state2);
+
+            ImGui::Spacing();
+            // State Flags 3
+            ImGui::Text("State 3");
+            DrawFlagArrayWithTooltips("State3", player->stateFlags3, THEME_COLOR, state3);
+
+            // Show active State 3 flags
+            ImGui::Spacing();
+            DrawActiveStates("State3", player->stateFlags3, state3);
+        }
 
         ImGui::Spacing();
         // Rotation Flags (unk_6AE_rotFlags)

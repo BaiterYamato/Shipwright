@@ -8,6 +8,7 @@
 #include "objects/object_mb/object_mb.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "../../../code/linkspan_vanilla.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 /*
  * This actor can have three behaviors:

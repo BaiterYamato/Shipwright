@@ -14,8 +14,8 @@ void RegionTable_Init_KokiriForest() {
         //Locations
         LOCATION(RC_KF_GS_KNOW_IT_ALL_HOUSE,                  logic->IsChild && logic->CanKillEnemy(RE_GOLD_SKULLTULA, ED_CLOSE) && logic->CanGetNightTimeGS()),
         LOCATION(RC_KF_GS_BEAN_PATCH,                         logic->CanSpawnSoilSkull(RG_KOKIRI_FOREST_BEAN_SOUL) && logic->CanKillEnemy(RE_GOLD_SKULLTULA, ED_CLOSE)),
-        LOCATION(RC_KF_GS_HOUSE_OF_TWINS,                     logic->IsAdult && logic->CanGetNightTimeGS() && 
-                                                              (logic->CanGetEnemyDrop(RE_GOLD_SKULLTULA, ED_BOOMERANG) || 
+        LOCATION(RC_KF_GS_HOUSE_OF_TWINS,                     logic->IsAdult && logic->CanGetNightTimeGS() &&
+                                                              (logic->CanGetEnemyDrop(RE_GOLD_SKULLTULA, ED_BOOMERANG) ||
                                                                (ctx->GetTrickOption(RT_KF_ADULT_GS) && logic->CanUse(RG_HOVER_BOOTS) && logic->CanKillEnemy(RE_GOLD_SKULLTULA, ED_SHORT_JUMPSLASH)))),
         LOCATION(RC_KF_BEAN_SPROUT_FAIRY_1,                   logic->IsChild && logic->BeanPlanted(LOGIC_PLANT_KOKIRI_FOREST_BEAN) && logic->CanUse(RG_SONG_OF_STORMS)),
         LOCATION(RC_KF_BEAN_SPROUT_FAIRY_2,                   logic->IsChild && logic->BeanPlanted(LOGIC_PLANT_KOKIRI_FOREST_BEAN) && logic->CanUse(RG_SONG_OF_STORMS)),
@@ -90,19 +90,19 @@ void RegionTable_Init_KokiriForest() {
         LOCATION(RC_KF_TRAINING_CENTER_ENTRANCE_ARROW_SIGN,   logic->IsChild && logic->CanRead()),
         LOCATION(RC_KF_INNER_TRAINING_CENTER_ARROW_SIGN,      logic->IsChild && logic->CanRead()),
         LOCATION(RC_KF_KNOW_IT_ALL_BROTHERS_HOUSE_ARROW_SIGN, logic->CanRead()),
-        LOCATION(RC_KF_WONDER_TRAINING_1,       			  logic->IsChild),
-        LOCATION(RC_KF_WONDER_TRAINING_2,       			  logic->IsChild),
-        LOCATION(RC_KF_WONDER_TRAINING_3,       			  logic->IsChild),
-        LOCATION(RC_KF_WONDER_SIGN,             			  logic->IsChild && logic->CanJumpslashExceptHammer()),
-        LOCATION(RC_KF_WONDER_PLATFORMS_1,      			  logic->IsChild),
-        LOCATION(RC_KF_WONDER_PLATFORMS_2,      			  logic->IsChild),
+        LOCATION(RC_KF_WONDER_TRAINING_1,                     logic->IsChild),
+        LOCATION(RC_KF_WONDER_TRAINING_2,                     logic->IsChild),
+        LOCATION(RC_KF_WONDER_TRAINING_3,                     logic->IsChild),
+        LOCATION(RC_KF_WONDER_SIGN,                           logic->IsChild && logic->CanJumpslashExceptHammer()),
+        LOCATION(RC_KF_WONDER_PLATFORMS_1,                    logic->IsChild),
+        LOCATION(RC_KF_WONDER_PLATFORMS_2,                    logic->IsChild),
         //Technically bad logic, because we can move Mido out of logic, but then we already have KSword...
-        LOCATION(RC_MIDO_HINT,      			              !ctx->GetOption(RSK_FOREST).Is(RO_CLOSED_FOREST_OFF) && logic->IsChild && logic->HasItem(RG_SPEAK_KOKIRI)),
+        LOCATION(RC_MIDO_HINT,                                !ctx->GetOption(RSK_FOREST).Is(RO_CLOSED_FOREST_OFF) && logic->IsChild && logic->HasItem(RG_SPEAK_KOKIRI)),
     }, {
         //Exits
         ENTRANCE(RR_KF_BOULDER_LOOP,       logic->CanUse(RG_CRAWL)),
         //The Deku Baba blocks the setup as Adult, and stunning doesn't last long enough to perform it.
-        ENTRANCE(RR_KF_LINKS_PORCH,        logic->HasItem(RG_CLIMB) || logic->CanUse(RG_HOVER_BOOTS) || 
+        ENTRANCE(RR_KF_LINKS_PORCH,        logic->HasItem(RG_CLIMB) || logic->CanUse(RG_HOVER_BOOTS) ||
                                            ((logic->IsChild || logic->CanKillEnemy(RE_DEKU_BABA) || logic->Get(LOGIC_FOREST_TEMPLE_CLEAR)) && logic->CanClimbLadder())),
         ENTRANCE(RR_KF_MIDOS_HOUSE,        true),
         ENTRANCE(RR_KF_SARIAS_HOUSE,       true),
@@ -161,8 +161,8 @@ void RegionTable_Init_KokiriForest() {
         LOCATION(RC_KF_CHILD_GRASS_MAZE_3,              logic->IsChild && logic->CanCutShrubs()),
         LOCATION(RC_KF_AFTER_CRAWLSPACE_RECTANGLE_SIGN, logic->IsChild && logic->CanRead()),
         LOCATION(RC_KF_BOULDER_MAZE_RECTANGLE_SIGN,     logic->IsChild && logic->CanRead()),
-        LOCATION(RC_KF_WONDER_CRAWL_GRASS_1, 		   logic->IsChild),
-        LOCATION(RC_KF_WONDER_CRAWL_GRASS_2, 		   logic->IsChild),
+        LOCATION(RC_KF_WONDER_CRAWL_GRASS_1,            logic->IsChild),
+        LOCATION(RC_KF_WONDER_CRAWL_GRASS_2,            logic->IsChild),
     }, {
         //Exits
         ENTRANCE(RR_KOKIRI_FOREST, logic->CanUse(RG_CRAWL)),
@@ -209,7 +209,7 @@ void RegionTable_Init_KokiriForest() {
         LOCATION(RC_KF_MIDOS_TOP_RIGHT_CHEST,    logic->HasItem(RG_OPEN_CHEST)),
         LOCATION(RC_KF_MIDOS_BOTTOM_LEFT_CHEST,  logic->HasItem(RG_OPEN_CHEST)),
         LOCATION(RC_KF_MIDOS_BOTTOM_RIGHT_CHEST, logic->HasItem(RG_OPEN_CHEST)),
-        LOCATION(RC_MIDO_HINT,      			 logic->Get(LOGIC_SHOWED_MIDO_SWORD_AND_SHIELD) && logic->IsChild && logic->HasItem(RG_SPEAK_KOKIRI)),
+        LOCATION(RC_MIDO_HINT,                   logic->Get(LOGIC_SHOWED_MIDO_SWORD_AND_SHIELD) && logic->IsChild && logic->HasItem(RG_SPEAK_KOKIRI)),
     }, {
         //Exits
         ENTRANCE(RR_KOKIRI_FOREST, true),
