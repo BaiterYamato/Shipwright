@@ -672,13 +672,16 @@ void Entrance_OverrideSpawnScene(s32 sceneNum, s32 spawn) {
     modifiedLinkActorEntry.rot = gPlayState->linkActorEntry->rot;
     modifiedLinkActorEntry.params = gPlayState->linkActorEntry->params;
 
+    // SOH [Unbound] ActorEntry.pos is f32 (world extent): the negative s16 literals below go through (s16),
+    // or 0xFEA8 would land at 65192 instead of -344.
+
     // Move Ganon's Castle exit spawn to be on the small ledge near the castle and not over the void
     // to prevent Link from falling if the bridge isn't spawned
     if (sceneNum == SCENE_OUTSIDE_GANONS_CASTLE && spawn == 1 &&
         (Randomizer_GetSettingValue(RSK_SHUFFLE_DUNGEON_ENTRANCES) == RO_DUNGEON_ENTRANCE_SHUFFLE_ON_PLUS_GANON ||
          Randomizer_GetSettingValue(RSK_SHUFFLE_BOSS_ENTRANCES) != RO_BOSS_ROOM_ENTRANCE_SHUFFLE_OFF ||
          Randomizer_GetSettingValue(RSK_SHUFFLE_GANONS_TOWER_ENTRANCE))) {
-        modifiedLinkActorEntry.pos.x = 0xFEA8;
+        modifiedLinkActorEntry.pos.x = (s16)0xFEA8;
         modifiedLinkActorEntry.pos.y = 0x065C;
         modifiedLinkActorEntry.pos.z = 0x0290;
         modifiedLinkActorEntry.rot.y = 0x0700;
@@ -690,7 +693,7 @@ void Entrance_OverrideSpawnScene(s32 sceneNum, s32 spawn) {
         // Repair the authentically bugged entrance when leaving Barinade's boss room -> Jabu Jabu's belly
         // Link's position needs to be adjusted to prevent him from falling through the floor
         if (sceneNum == SCENE_JABU_JABU && spawn == 1) {
-            modifiedLinkActorEntry.pos.z = 0xF7F4;
+            modifiedLinkActorEntry.pos.z = (s16)0xF7F4;
             gPlayState->linkActorEntry = &modifiedLinkActorEntry;
         }
 
@@ -698,9 +701,9 @@ void Entrance_OverrideSpawnScene(s32 sceneNum, s32 spawn) {
         // Link's position was at the start of the Water Temple entrance
         // This updates it to place him in the hallway outside of Morpha's boss room.
         if (sceneNum == SCENE_WATER_TEMPLE && spawn == 1) {
-            modifiedLinkActorEntry.pos.x = 0xFF4C;
+            modifiedLinkActorEntry.pos.x = (s16)0xFF4C;
             modifiedLinkActorEntry.pos.y = 0x0406;
-            modifiedLinkActorEntry.pos.z = 0xF828;
+            modifiedLinkActorEntry.pos.z = (s16)0xF828;
             modifiedLinkActorEntry.rot.y = 0x0;
             gPlayState->linkActorEntry = &modifiedLinkActorEntry;
         }

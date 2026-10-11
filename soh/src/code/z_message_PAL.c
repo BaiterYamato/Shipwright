@@ -2886,7 +2886,9 @@ static bool Message_DecodeChecked(PlayState* play) {
                          font->msgBuf[msgCtx->msgBufPos + 1]);
             if (GameInteractor_Should(VB_LOAD_ITEM_ICON, (uint8_t)font->msgBuf[msgCtx->msgBufPos + 1] < ITEM_CUSTOM,
                                       sDisplayNextMessageAsEnglish)) {
-                Message_LoadItemIcon(play, font->msgBuf[msgCtx->msgBufPos + 1], R_TEXTBOX_Y + 10);
+                // SOH [Bugfix] msgBuf is signed char: read the item byte as u8 like the check above, or items
+                // 0x80 and up would reach gItemIcons as a negative index.
+                Message_LoadItemIcon(play, (u8)font->msgBuf[msgCtx->msgBufPos + 1], R_TEXTBOX_Y + 10);
             }
         } else if (temp_s2 == MESSAGE_BACKGROUND) {
             msgCtx->textboxBackgroundIdx = font->msgBuf[msgCtx->msgBufPos + 1] * 2;

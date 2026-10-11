@@ -101,6 +101,13 @@ extern "C" SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum) {
     return ShipLuaHost::OotCustomSceneFlags(sceneNum);
 }
 
+// Anchor (SetFlag/UnsetFlag): id acima de SCENE_ID_MAX só tem flags quando a cena de mod está registrada nesta
+// sessão; sem registro, LinkSpan_SceneFlags devolveria o armazenamento descartável.
+extern "C" bool LinkSpan_IsRegisteredModScene(s32 sceneNum) {
+    ShipLuaHost::OotCustomScene scene;
+    return sceneNum > SCENE_ID_MAX && ShipLuaHost::FindOotCustomScene(sceneNum, scene);
+}
+
 // TitleCard_InitPlaceName (z_actor.c): textura do título da cena de mod, ou NULL. O TitleCard_Draw carrega um
 // bloco I8 de 144x24 com esses números fixos; textura menor seria lida além do fim, então ela só vale se o
 // recurso tiver pelo menos esse tamanho (conferido uma vez por caminho).
