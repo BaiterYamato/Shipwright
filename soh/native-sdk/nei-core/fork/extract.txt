@@ -17,3 +17,6 @@ soh/src/overlays/actors/ovl_En_M_Thunder/z_en_m_thunder.c: EnMThunder_DrawCharge
 # (fork/inventory_unit.c), senão as duas TUs definiriam as mesmas funções.
 soh/src/overlays/misc/ovl_kaleido_scope/z_kaleido_item.c: >KaleidoScope_DrawItemSelect >KaleidoScope_SetupItemEquip >KaleidoScope_UpdateItemEquip >KaleidoScope_DrawAmmoCount >KaleidoScope_HandleItemCycles >KaleidoScope_DrawItemCycles >KaleidoScope_DrawItemCycleExtras >KaleidoScope_HandleItemCycleExtras | -mods/extended_inventory.c
 +soh/mods/nei_save.cpp: Nei_Save Nei_UltrashotOwned Nei_GetOwnedItem Nei_SetOwnedItem Nei_CaneTypeCount Nei_CaneNextType Nei_CaneActiveSkill Nei_CaneGetSkillSlot Nei_CaneGetType Nei_CaneGrantSkill Nei_CaneHasSkill Nei_CaneOwned Nei_CaneSetSkillSlot Nei_CaneSetType Nei_TrirodEchoLearned Nei_TrirodFullList Nei_TrirodGetSel Nei_TrirodLearnEcho Nei_TrirodSetSel | mods/nei_save.h
+# O SoH 9.3.0 passou o puxão do buraco para o VB_DOOR_ANA_GRAB_PLAYER (9eafd15fe1): o DoorAna_WaitOpen
+# mesclado pelo overlay.py usa o GameInteractor, que o z_door_ana.c do fork não inclui.
+soh/src/overlays/actors/ovl_Door_Ana/z_door_ana.c: | soh/Enhancements/game-interactor/GameInteractor.h soh/Enhancements/game-interactor/GameInteractor_Hooks.h

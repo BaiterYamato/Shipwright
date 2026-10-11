@@ -1,4 +1,4 @@
-/* overlay-extra 6b51213f1019 da39a3ee5e6b da39a3ee5e6b */
+/* overlay-extra 89254b60afcb da39a3ee5e6b da39a3ee5e6b */
 static bool Message_DecodeChecked(PlayState* play) {
     u8 temp_s2;
     u8 phi_s1;
