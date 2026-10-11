@@ -2237,13 +2237,15 @@ int main(int argc, char** argv) {
                   settingWrites == writesBefore + 2 && settingValue == previousFreeLook,
               "setting do SoH deve chegar ao bridge ao alternar e restaurar");
         const char* transientSettings[] = {
-            "linkspan.hud.hide_item_button.c_left", "linkspan.hud.hide_item_button.c_down",
-            "linkspan.hud.hide_item_button.c_right", "linkspan.input.sword_over_shield",
-            "linkspan.hud.dpad", "linkspan.pause.equip_selector",
+            "linkspan.hud.hide_item_button.c_left",
+            "linkspan.hud.hide_item_button.c_down",
+            "linkspan.hud.hide_item_button.c_right",
+            "linkspan.input.sword_over_shield",
+            "linkspan.hud.dpad",
+            "linkspan.pause.equip_selector",
         };
         for (const char* name : transientSettings) {
-            Check(movementV2->set_setting_int(name, 1) == SHIP_NATIVE_OK &&
-                      movementV2->get_setting_int(name, 0) == 1 &&
+            Check(movementV2->set_setting_int(name, 1) == SHIP_NATIVE_OK && movementV2->get_setting_int(name, 0) == 1 &&
                       movementV2->set_setting_int(name, 0) == SHIP_NATIVE_OK &&
                       movementV2->get_setting_int(name, 1) == 0,
                   "setting transitório deve alternar e restaurar somente no host");
