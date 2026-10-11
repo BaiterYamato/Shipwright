@@ -268,6 +268,10 @@ void GameState_Update(GameState* gameState) {
 
     GameState_SetFrameBuffer(gfxCtx);
 
+    // SOH [Link-Span] Também antes do update: hotkeys e menu rodam no Graph_StartFrame, antes deste ponto, e uma
+    // máscara equipada por elas já precisa do hook de PersistentMasks no Player_ProcessItemButtons deste frame.
+    LinkSpan_ApplyPendingSettings();
+
     GameInteractor_ExecuteOnGameStateMainStart();
 
     gameState->main(gameState);

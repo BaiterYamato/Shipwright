@@ -412,10 +412,10 @@ int32_t NativeGetSettingInt(const char* name, int32_t fallback) {
 }
 
 // Opções do SoH registram hooks COND_* com o valor do CVar no ShipInit::InitAll, e só o menu chama ShipInit::Init
-// ao mudar o valor. O que o Link-Span grava por código (mods nativos, API Lua) entra nesta fila, reaplicada no fim
-// do frame por LinkSpan_ApplyPendingSettings (game.c), fora de qualquer despacho do GameInteractor: registrar um hook
-// no mesmo mapa durante o despacho dele invalidaria o iterador. Antes do InitAll não roda frame; a primeira volta
-// só reaplica o que o InitAll acabou de registrar.
+// ao mudar o valor. O que o Link-Span grava por código (mods nativos, API Lua) entra nesta fila, reaplicada no
+// começo e no fim do frame por LinkSpan_ApplyPendingSettings (game.c), fora de despacho do GameInteractor:
+// registrar um hook no mesmo mapa durante o despacho dele invalidaria o iterador. Antes do InitAll não roda frame;
+// a primeira volta só reaplica o que o InitAll acabou de registrar.
 std::vector<std::string> gPendingShipInit;
 
 void SetSohCVarInt(const char* name, int32_t value) {
@@ -6601,8 +6601,10 @@ extern "C" void ShipLua_DrawMaskTransitionHead(PlayState* play, Player* player) 
     DrawMaskTransitionHeadImpl(play, player);
 }
 
-// Chamada no fim de GameState_Update (game.c), depois do OnGameFrameUpdate: reaplica as opções do SoH gravadas por
-// código nesta volta (ver SetSohCVarInt). Sem mod nada grava, e a fila fica vazia.
+// Chamada duas vezes por volta em GameState_Update (game.c), fora de despacho do GameInteractor: antes do update (o
+// que hotkeys e menu gravaram no Graph_StartFrame) e no fim, depois do OnGameFrameUpdate (timers e game.frame).
+// Sobra uma janela: gravação feita em callback de ator antes do update do jogador só vale no frame seguinte.
+// Sem mod nada grava, e a fila fica vazia.
 extern "C" void LinkSpan_ApplyPendingSettings(void) {
     if (gPendingShipInit.empty()) {
         return;
