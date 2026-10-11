@@ -98,6 +98,12 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y $(cat linux-build-deps/apt.txt)
+    # shipmod_cli_tests (CTest) valida manifestos com tomllib, que só existe a partir do Python 3.11;
+    # o ubuntu-22.04 traz o 3.10.
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
     - name: Configure ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
       with:

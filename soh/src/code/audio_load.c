@@ -1350,8 +1350,17 @@ void AudioLoad_Init(void* heap, size_t heapSize) {
     memset(gAudioContext.seqLoadStatus, 5, sequenceMapSize + 0xF);
     for (size_t i = 0; i < seqListSize; i++) {
         SequenceData sDat = ResourceMgr_LoadSeqByName(seqList[i]);
+        // SOH [Bugfix] The number comes from the resource (a mod archive can ship any): skip one that does not fit
+        // sequenceMap instead of writing past it. The cache policy map only has the vanilla ids.
+        if (sDat.seqNumber >= sequenceMapSize + 0xF) {
+            LUSLOG_ERROR("Sequence \"%s\" has number %d, past the %zu slots; skipped.", seqList[i], sDat.seqNumber,
+                         sequenceMapSize + 0xF);
+            continue;
+        }
         sequenceMap[sDat.seqNumber] = strdup(seqList[i]);
-        seqCachePolicyMap[sDat.seqNumber] = sDat.cachePolicy;
+        if (sDat.seqNumber < MAX_AUTHENTIC_SEQID) {
+            seqCachePolicyMap[sDat.seqNumber] = sDat.cachePolicy;
+        }
     }
 
     for (int i = 0; i < seqListSize; i++) {
@@ -1371,6 +1380,11 @@ void AudioLoad_Init(void* heap, size_t heapSize) {
     fontMapSize = customFntListSize + fntListSize;
     for (int i = 0; i < fntListSize; i++) {
         SoundFont* sf = ResourceMgr_LoadAudioSoundFontByName(fntList[i]);
+        // SOH [Bugfix] Same as the sequences: the index is the resource's own, so it is checked against fontMap.
+        if (sf == NULL || (size_t)sf->fntIndex >= fontMapSize) {
+            LUSLOG_ERROR("Sound font \"%s\" has an index past the %zu slots; skipped.", fntList[i], fontMapSize);
+            continue;
+        }
         fontMap[sf->fntIndex] = strdup(fntList[i]);
     }
 

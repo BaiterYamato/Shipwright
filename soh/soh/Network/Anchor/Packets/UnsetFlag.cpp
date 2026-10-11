@@ -7,6 +7,7 @@ extern "C" {
 #include "functions.h"
 #include "soh/Enhancements/randomizer/ShuffleTradeItems.h"
 extern PlayState* gPlayState;
+bool LinkSpan_IsRegisteredModScene(int32_t sceneNum);
 }
 
 /**
@@ -40,9 +41,9 @@ void Anchor::HandlePacket_UnsetFlag(nlohmann::json payload) {
     s16 flagType = payload.at("flagType").get<s16>();
     s16 flag = payload.at("flag").get<s16>();
 
-    // sceneNum == SCENE_ID_MAX is a sentinel meaning "global flag" (handled below); only larger
-    // values would index gSaveContext.sceneFlags out of bounds.
-    if (sceneNum < 0 || sceneNum > SCENE_ID_MAX) {
+    // sceneNum == SCENE_ID_MAX is a sentinel meaning "global flag" (handled below). Larger values are mod
+    // scenes: UnsetSceneFlag clears them by scene name through LinkSpan_SceneFlags, so only registered ones pass.
+    if (sceneNum < 0 || (sceneNum > SCENE_ID_MAX && !LinkSpan_IsRegisteredModScene(sceneNum))) {
         SPDLOG_ERROR("[Anchor] UNSET_FLAG: sceneNum {} out of range", sceneNum);
         return;
     }
