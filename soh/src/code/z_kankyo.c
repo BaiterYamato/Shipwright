@@ -65,6 +65,7 @@ static void Environment_LerpWorldFog(EnvLightSettings* out, const EnvLightSettin
 
     Environment_SetWorldFog(out, Environment_LerpWorldFogParams(pa, pb, t), a->worldFog || b->worldFog);
 }
+#include <libultraship/bridge/consolevariablebridge.h>
 
 typedef enum {
     /* 0 */ LENS_FLARE_CIRCLE0,

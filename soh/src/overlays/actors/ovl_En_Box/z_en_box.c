@@ -7,6 +7,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/randomizer/item_category_adj.h"
 #include "../../../code/linkspan_vanilla.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #define FLAGS 0
 

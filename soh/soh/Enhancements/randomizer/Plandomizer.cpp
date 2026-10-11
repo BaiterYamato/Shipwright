@@ -3,6 +3,7 @@
 #include <filesystem>
 
 #include <fast/Fast3dGui.h>
+#include <ship/Context.h>
 
 #include "Plandomizer.h"
 #include <soh/SohGui/SohGui.hpp>
@@ -10,6 +11,7 @@
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/randomizer/3drando/hints.hpp"
 #include "soh/OTRGlobals.h"
+#include "soh/SaveManager.h"
 #include "soh/SohGui/ImGuiUtils.h"
 #include "soh/Enhancements/randomizer/logic.h"
 #include "soh/Enhancements/randomizer/rando_hash.h"
@@ -414,6 +416,12 @@ void PlandomizerItemImageCorrection(Rando::Item randoItem) {
         textureID = gui->GetTextureByName("ITEM_OCARINA_TIME");
     }
 
+    if (randoItem.GetRandomizerGet() == RG_SCARECROWS_SONG) {
+        textureID = gui->GetTextureByName("RG_SCARECROWS_SONG");
+        imageSize = ImVec2(24.0f, 32.0f);
+        imagePadding = 6.0f;
+    }
+
     if (textureID == 0) {
         textureID = gui->GetTextureByName(itemMapping[randoItem.GetGIEntry()->itemId].name);
     }
@@ -546,11 +554,7 @@ void PlandomizerSaveSpoilerLog() {
         }
     }
 
-    std::ofstream outputFile(filename);
-    if (outputFile.is_open()) {
-        outputFile << spoilerSave.dump(4);
-        outputFile.close();
-    }
+    SaveManager::WriteFileSafely(filename, spoilerSave.dump(4));
 }
 
 void PlandomizerLoadSpoilerLog(std::string logFile) {

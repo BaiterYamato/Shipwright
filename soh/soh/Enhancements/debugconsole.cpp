@@ -21,6 +21,7 @@
 #define PATH_HACK
 
 #include <ship/Context.h>
+#include <ship/window/Window.h>
 #undef PATH_HACK
 #undef Path
 

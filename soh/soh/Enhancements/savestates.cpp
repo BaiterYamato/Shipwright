@@ -1,6 +1,8 @@
 #include "savestates.h"
 #include "../../src/buffers/heap_sizes.h"
 #include "../../src/code/linkspan_vanilla.h"
+#include <algorithm>
+#include <memory>
 
 #include <algorithm>
 #include <memory>

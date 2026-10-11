@@ -7,6 +7,7 @@
 
 #include "converter.h"
 #include "transcode.h"
+#include "unbound_docs.h"
 #include "unbound_format.h"
 
 namespace {
@@ -186,6 +187,16 @@ void TestConvert() {
     CHECK(!ConvertScene(readBroken, "scenes/shared/test_scene/test_scene", "scenes/test", none, failed));
     CHECK(none.empty() && failed.failures == 1 && failed.scenes == 0 && failed.rooms == 0 && failed.errors.size() == 1);
 
+    ConvertReport baseReport;
+    const auto base = BuildBase(read, { { "scenes/shared/test_scene/test_scene", "scenes/test" } },
+                                R"({"converter":"outro build","host":"informativo"})", baseReport);
+    CHECK(baseReport.failures == 0 && baseReport.scenes == 1);
+    CHECK(!base.empty() && base.front().path == "unbound.json");
+    const Json manifest = Json::parse(base.front().bytes);
+    CHECK(manifest["formatVersion"] == kReaderFormatVersion && manifest["baseVersion"] == kBaseVersion);
+    CHECK(manifest["source"]["converter"] == kConverterVersion && manifest["source"]["host"] == "informativo");
+    CHECK(manifest["features"][0] == "scenes");
+
     // ZIP: o arquivo gerado deve abrir com qualquer leitor (verificado pelo script de teste em Python).
     const std::string zip = BuildStoredZip(files);
     CHECK(zip.size() > 22 && zip.compare(0, 4, "PK\x03\x04") == 0);
@@ -194,10 +205,77 @@ void TestConvert() {
     }
 }
 
+void TestBaseCache() {
+    const Json current = Json::parse(R"({"formatVersion":2,"baseVersion":1,"sohMajor":9,
+        "gameVersions":[3960922551],"archives":{"oot.o2r":{"size":100,"mtime":20},"oot-mq.o2r":null},
+        "converter":"linkspan-unbound-converter 1","game":{"size":200,"mtime":30},"host":"build atual"})");
+    CHECK(CanReuseBase(current.dump(), current.dump()));
+    auto previous = current;
+    previous["converter"] = "outro conversor";
+    previous["game"] = { { "size", 300 }, { "mtime", 40 } };
+    previous["host"] = "outro fingerprint";
+    CHECK(CanReuseBase(previous.dump(), current.dump()));
+    previous.erase("converter");
+    previous.erase("game");
+    previous.erase("host");
+    CHECK(CanReuseBase(previous.dump(), current.dump()));
+
+    for (const char* key : { "size", "mtime" }) {
+        previous = current;
+        previous["archives"]["oot.o2r"][key] = 999;
+        CHECK(!CanReuseBase(previous.dump(), current.dump()));
+    }
+    previous = current;
+    previous["archives"]["oot-mq.o2r"] = { { "size", 400 }, { "mtime", 50 } };
+    CHECK(!CanReuseBase(previous.dump(), current.dump()));
+    previous = current;
+    previous["archives"]["outro.o2r"] = previous["archives"]["oot.o2r"];
+    previous["archives"].erase("oot.o2r");
+    CHECK(!CanReuseBase(previous.dump(), current.dump()));
+    previous = current;
+    previous["gameVersions"] = Json::array({ 1 });
+    CHECK(!CanReuseBase(previous.dump(), current.dump()));
+    for (const char* key : { "formatVersion", "baseVersion", "sohMajor" }) {
+        previous = current;
+        previous[key] = 10;
+        CHECK(!CanReuseBase(previous.dump(), current.dump()));
+        previous = current;
+        previous.erase(key); // sidecar antigo/incompleto: refazer sem exceção
+        CHECK(!CanReuseBase(previous.dump(), current.dump()));
+        CHECK(!CanReuseBase(current.dump(), previous.dump()));
+    }
+    previous = current;
+    previous.erase("baseVersion");
+    previous.erase("sohMajor");
+    CHECK(!CanReuseBase(previous.dump(), current.dump()));
+    CHECK(!CanReuseBase("nada", current.dump()));
+    CHECK(!CanReuseBase("[]", current.dump()));
+    CHECK(!CanReuseBase(current.dump(), "{"));
+    CHECK(!CanReuseBase("{}", "{}"));
+    previous = current;
+    previous["sohMajor"] = -1;
+    CHECK(!CanReuseBase(previous.dump(), previous.dump()));
+    previous = current;
+    previous["archives"]["oot.o2r"] = nullptr;
+    CHECK(!CanReuseBase(previous.dump(), previous.dump()));
+    previous = current;
+    previous["archives"]["oot.o2r"].erase("mtime");
+    CHECK(!CanReuseBase(previous.dump(), previous.dump()));
+
+    // Major apenas: minor/patch do host não invalidam a base. Bytes não levam cabeçalho OTR.
+    CHECK(SohMajorFromPortVersion(std::string("\x00\x09\x00\x02\x00\x03\x00", 7)) == 9);
+    CHECK(SohMajorFromPortVersion(std::string("\x01\x00\x09\x00\x03\x00\x00", 7)) == 9);
+    CHECK(SohMajorFromPortVersion(std::string("\x00\x34\x12\x00\x00\x00\x00", 7)) == 0x1234);
+    CHECK(SohMajorFromPortVersion(std::string("\x01\x12\x34\x00\x00\x00\x00", 7)) == 0x1234);
+    CHECK(SohMajorFromPortVersion(std::string("\x02\x00\x09\x00\x00\x00\x00", 7)) == -1);
+    CHECK(SohMajorFromPortVersion("curto") == -1);
+}
+
 } // namespace
 
 int main() {
     TestConvert();
+    TestBaseCache();
     if (gFailures) {
         std::fprintf(stderr, "unbound converter: %d falhas\n", gFailures);
         return EXIT_FAILURE;

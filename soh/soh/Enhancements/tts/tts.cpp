@@ -7,6 +7,7 @@
 #include <ship/resource/ResourceManager.h>
 #include <ship/resource/type/Json.h>
 #include <nlohmann/json.hpp>
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #include "soh/ShipInit.hpp"
 #include "message_data_fmt.h"
@@ -814,6 +815,16 @@ void RegisterOnUpdateMainMenuSelection() {
             }
             case QUEST_BOSSRUSH: {
                 auto translation = GetParameritizedText("quest_sel_boss_rush", TEXT_BANK_FILECHOOSE, nullptr);
+                SpeechSynthesizer::Instance->Speak(translation.c_str(), GetLanguageCode());
+                break;
+            }
+            case QUEST_SPEEDRUN: {
+                auto translation = GetParameritizedText("quest_sel_speedrun", TEXT_BANK_FILECHOOSE, nullptr);
+                SpeechSynthesizer::Instance->Speak(translation.c_str(), GetLanguageCode());
+                break;
+            }
+            case QUEST_SPEEDRUN_MASTER: {
+                auto translation = GetParameritizedText("quest_sel_speedrun_mq", TEXT_BANK_FILECHOOSE, nullptr);
                 SpeechSynthesizer::Instance->Speak(translation.c_str(), GetLanguageCode());
                 break;
             }

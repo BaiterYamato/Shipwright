@@ -9,7 +9,6 @@
 #include "soh/Enhancements/gameplaystats.h"
 #include "soh/Enhancements/custom-message/CustomMessageInterfaceAddon.h"
 #include "soh/Enhancements/cosmetics/cosmeticsTypes.h"
-#include "soh/Enhancements/enhancementTypes.h"
 #include "soh/ShipUtils.h"
 
 #include <string.h>
@@ -23,8 +22,10 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/gameplaystats.h"
 #include "soh/ObjectExtension/ActorMaximumHealth.h"
+#include "soh/Enhancements/speedrun/Speedrun.h"
 
 #include "message_data_static.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 extern MessageTableEntry* sNesMessageEntryTablePtr;
 extern MessageTableEntry* sGerMessageEntryTablePtr;
 extern MessageTableEntry* sFraMessageEntryTablePtr;
@@ -1849,7 +1850,9 @@ u8 Return_Item(u8 itemID, ModIndex modId, ItemID returnItem) {
     RandomizerGet randomizerGet = RetrieveRandomizerGetFromItemID(itemID);
     if (randomizerGet != RG_MAX) {
         // Vanilla ItemID with an associated RandomizerGet (These are items in extendedVanillaGetItemTable)
-        return Return_Item_Entry(ItemTable_RetrieveEntry(MOD_RANDOMIZER, randomizerGet), returnItem);
+        GetItemEntry itemEntry = ItemTable_RetrieveEntry(MOD_RANDOMIZER, randomizerGet);
+        itemEntry.modIndex = modId;
+        return Return_Item_Entry(itemEntry, returnItem);
     }
 
     // All randomizer items should go through Randomizer_Item_Give, so this should never be reached
@@ -6525,6 +6528,7 @@ void Interface_DrawTotalGameplayTimer(PlayState* play) {
                 rectLeftOri = -9999;
             }
         }
+        Ship_PinSpeedrunTimer(&rectLeftOri, &rectTopOri);
 
         s32 rectLeft;
         s32 rectTop;

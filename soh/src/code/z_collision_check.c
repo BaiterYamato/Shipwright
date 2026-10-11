@@ -4,6 +4,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include <assert.h>
 #include "linkspan_vanilla.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 typedef s32 (*ColChkResetFunc)(PlayState*, Collider*);
 typedef void (*ColChkBloodFunc)(PlayState*, Collider*, Vec3f*);

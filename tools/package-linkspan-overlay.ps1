@@ -25,7 +25,7 @@ param(
 
     [string]$HostBase,
 
-    [string]$ShipwrightVersion = '9.2.3',
+    [string]$ShipwrightVersion = '9.3.0',
 
     [string]$LinkSpanVersion = '0.5.0'
 )

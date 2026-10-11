@@ -55,7 +55,7 @@ carry those notices too.
 
 ## Projects without a published license
 
-Ship of Harkinian / Shipwright (HarbourMasters and contributors, base `78dc6d970`), the zeldaret decompilation of
+Ship of Harkinian / Shipwright (HarbourMasters and contributors, base 9.3.0, `ecd889c201`), the zeldaret decompilation of
 Ocarina of Time it builds on, Not Enough Items (skijer, commit `c29262b`), Unbound (roborich, tag
 `9.2.3-unbound0.9` and earlier) and Wind Waker Style (roborich, commit `cbcd3e719d`) publish no license. Their code
 and assets stay with their authors; Link-Span grants no license for them.

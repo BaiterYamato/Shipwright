@@ -3,6 +3,7 @@
 #include <ship/Context.h>
 #include <ship/resource/ResourceManager.h>
 #include <spdlog/spdlog.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"

@@ -37,7 +37,7 @@ constexpr uint32_t kHorseSceneVersion = 1;
 constexpr const char* kEntrancesBlock = "linkspan.entrances";
 constexpr uint32_t kEntrancesVersion = 1;
 
-void SaveSection(SaveContext*, int, bool) {
+void SaveSection(const SaveContext&, int, bool) {
     auto section = ShipLuaHost::ExportOotSaveSection();
     SaveManager::Instance->SaveData("namespaces", section["namespaces"]);
 }

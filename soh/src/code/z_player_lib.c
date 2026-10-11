@@ -12,6 +12,7 @@
 #include "soh/ResourceManagerHelpers.h"
 
 #include <stdlib.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 
 // Desenha a máscara de transformação do ShipLua enquanto as matrizes dos
 // membros ainda estão ativas. No MM ela sai do bolso na mão esquerda e só

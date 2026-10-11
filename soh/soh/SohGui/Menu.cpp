@@ -3,10 +3,12 @@
 
 #include <ship/config/Config.h>
 #include <spdlog/common.h>
+#include <ship/Context.h>
 
 #include "Menu.h"
 #include "BackendTypes.h"
 #include "UIWidgets.hpp"
+#include "soh/Enhancements/speedrun/Speedrun.h"
 #include "soh/OTRGlobals.h"
 #include "SohModals.h"
 
@@ -240,7 +242,7 @@ uint32_t Menu::DrawSearchResults(std::string& menuSearchText) {
                                 std::static_pointer_cast<UIWidgets::ComboboxOptions>(info.options)->labelPosition =
                                     UIWidgets::LabelPositions::Above;
                             }
-                            MenuDrawItem(info, 400, menuThemeIndex);
+                            MenuDrawItem(info, menuThemeIndex);
                             ImGui::PushStyleColor(ImGuiCol_Text, UIWidgets::ColorValues.at(UIWidgets::Colors::Gray));
                             std::string origin =
                                 spdlog::fmt_lib::format("  ({} -> {}, Col {})", menuEntry.label, sidebarLabel, i + 1);
@@ -268,7 +270,7 @@ uint32_t Menu::DrawSearchResults(std::string& menuSearchText) {
             std::transform(widgetStr.begin(), widgetStr.end(), widgetStr.begin(), ::tolower);
             widgetStr.erase(std::remove(widgetStr.begin(), widgetStr.end(), ' '), widgetStr.end());
             if (widgetStr.find(menuSearchText) != std::string::npos) {
-                MenuDrawItem(entry.info, 400, menuThemeIndex);
+                MenuDrawItem(entry.info, menuThemeIndex);
                 ImGui::PushStyleColor(ImGuiCol_Text, UIWidgets::ColorValues.at(UIWidgets::Colors::Gray));
                 std::string origin =
                     spdlog::fmt_lib::format("  ({} -> {}, {})", entry.menuName, entry.sidebarName, entry.location);
@@ -295,7 +297,7 @@ std::unordered_map<uint32_t, disabledInfo>& Menu::GetDisabledMap() {
     return disabledMap;
 }
 
-void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors menuThemeIndex) {
+void Menu::MenuDrawItem(WidgetInfo& widget, UIWidgets::Colors menuThemeIndex) {
     disabledTempTooltip = "This setting is disabled because: \n";
     disabledValue = false;
     disabledTooltip = " ";
@@ -335,8 +337,7 @@ void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors me
                 }
                 auto options = std::static_pointer_cast<UIWidgets::CheckboxOptions>(widget.options);
                 options->color = menuThemeIndex;
-                if (UIWidgets::Checkbox(UIWidgets::WrappedText(widget.name.c_str(), width).c_str(), pointer,
-                                        *options)) {
+                if (UIWidgets::Checkbox(widget.name.c_str(), pointer, *options)) {
                     if (widget.callback != nullptr) {
                         widget.callback(widget);
                     }
@@ -345,8 +346,7 @@ void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors me
             case WIDGET_CVAR_CHECKBOX: {
                 auto options = std::static_pointer_cast<UIWidgets::CheckboxOptions>(widget.options);
                 options->color = menuThemeIndex;
-                if (UIWidgets::CVarCheckbox(UIWidgets::WrappedText(widget.name.c_str(), width).c_str(), widget.cVar,
-                                            *options)) {
+                if (UIWidgets::CVarCheckbox(widget.name.c_str(), widget.cVar, *options)) {
                     if (widget.callback != nullptr) {
                         widget.callback(widget);
                     }
@@ -570,6 +570,10 @@ void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors me
 }
 
 void Menu::Draw() {
+    // Runs before the other windows draw, so this also keeps them hidden during a speedrun.
+    if (Speedrun_EnforceGuiLockdown(*this)) {
+        return;
+    }
     if (!IsVisible()) {
         return;
     }
@@ -935,7 +939,7 @@ void Menu::DrawElement() {
             }
             // for (auto& entryName : sidebar->at(sectionIndex).sidebarOrder) {
             for (auto& entry : sidebar->at(sectionIndex).columnWidgets.at(i)) {
-                MenuDrawItem(entry, 90 / sidebar->at(sectionIndex).columnCount, menuThemeIndex);
+                MenuDrawItem(entry, menuThemeIndex);
             }
             //}
             if (useColumns) {

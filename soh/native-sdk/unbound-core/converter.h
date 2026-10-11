@@ -47,6 +47,13 @@ struct SceneSource {
 std::vector<ConvertedFile> BuildBase(const ReadResourceFn& read, const std::vector<SceneSource>& scenes,
                                      const std::string& sourceJson, ConvertReport& report);
 
+// Major do portVersion binário do SoH (7 bytes, sem cabeçalho OTR); -1 se inválido.
+int SohMajorFromPortVersion(const std::string& bytes);
+
+// Compara compatibilidade e procedência da ROM nos sidecars. Build/exe/conversor são informativos.
+// Sidecar antigo, incompleto ou inválido pede reconversão (false), sem lançar erro de JSON.
+bool CanReuseBase(const std::string& previousJson, const std::string& currentJson);
+
 // Arquivo ZIP sem compressão (entradas "stored"), com CRC-32, em ordem.
 std::string BuildStoredZip(const std::vector<ConvertedFile>& files);
 

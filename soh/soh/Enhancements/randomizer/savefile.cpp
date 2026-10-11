@@ -344,6 +344,9 @@ void SetStartingItems() {
         Randomizer_GetSettingValue(RSK_SHUFFLE_ZELDAS_LETTER)) {
         Item_Give(NULL, ITEM_LETTER_ZELDA);
     }
+    if (Randomizer_GetSettingValue(RSK_STARTING_SCARECROWS_SONG)) {
+        Flags_SetRandomizerInf(RAND_INF_HAS_SCARECROWS_SONG);
+    }
     if (Randomizer_GetSettingValue(RSK_STARTING_CLAIM_CHECK)) {
         Item_Give(NULL, ITEM_CLAIM_CHECK);
     }
@@ -449,6 +452,12 @@ extern "C" void Randomizer_InitSaveFile() {
     gSaveContext.ship.quest.data.randomizer.bombchuUpgradeLevel = 0;
 
     SetStartingItems();
+
+    // Debug saves start with bombchus but no bag level, which would cap them at 0
+    if (Randomizer_GetSettingValue(RSK_BOMBCHU_BAG) == RO_BOMBCHU_BAG_PROGRESSIVE &&
+        INV_CONTENT(ITEM_BOMBCHU) == ITEM_BOMBCHU && gSaveContext.ship.quest.data.randomizer.bombchuUpgradeLevel == 0) {
+        gSaveContext.ship.quest.data.randomizer.bombchuUpgradeLevel = 3;
+    }
 
     // Set Cutscene flags and texts to skip them.
     Flags_SetEventChkInf(EVENTCHKINF_FIRST_SPOKE_TO_MIDO);

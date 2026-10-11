@@ -1,9 +1,12 @@
 #include <spdlog/spdlog.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "soh/Enhancements/TimeSavers/SkipCutscene/CutsceneTime.h"
 #include "soh/Enhancements/enhancementTypes.h"
 #include "soh/Enhancements/randomizer/SeedContext.h"
 #include "soh/Enhancements/randomizer/randomizer_entrance.h"
+#include "soh/ShipInit.hpp"
 
 extern "C" {
 #include "src/overlays/actors/ovl_En_Wonder_Talk2/z_en_wonder_talk2.h"
@@ -32,11 +35,11 @@ extern "C" {
 #include "src/overlays/actors/ovl_En_Po_Sisters/z_en_po_sisters.h"
 #include "src/overlays/actors/ovl_Obj_Lightswitch/z_obj_lightswitch.h"
 #include "src/overlays/actors/ovl_Bg_Jya_Bombchuiwa/z_bg_jya_bombchuiwa.h"
-#include <overlays/actors/ovl_Boss_Ganondrof/z_boss_ganondrof.h>
 #include <overlays/actors/ovl_En_Ik/z_en_ik.h>
-#include <objects/object_gnd/object_gnd.h>
+#include "scenes/overworld/spot06/spot06_scene.h"
 extern SaveContext gSaveContext;
 extern PlayState* gPlayState;
+extern u16 gTimeSpeed;
 extern int32_t D_8011D3AC;
 
 extern void BgSpot03Taki_HandleWaterfallState(BgSpot03Taki* bgSpot03Taki, PlayState* play);
@@ -222,6 +225,7 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
         case VB_PLAY_ENTRANCE_CS: {
             s32 entranceFlag = va_arg(args, s32);
             s32 entranceIndex = va_arg(args, s32);
+            void* cutscene = va_arg(args, void*);
 
             // Epona LLR fence jump cutscenes not skipped to allow the player and epona to load in the world correctly
             // Nabooru fight cutscene is handled by boss intro skip instead (which deals with other flags needing to be
@@ -229,6 +233,12 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Entrances"), IS_RANDO) &&
                 (entranceFlag != EVENTCHKINF_EPONA_OBTAINED) && entranceIndex != ENTR_SPIRIT_TEMPLE_BOSS_ENTRANCE) {
                 *should = false;
+                // Time keeps running during the cutscene in fields.
+                // Left alone elsewhere, as the scene has already snapped skyboxTime.
+                uint16_t dayTime = CutsceneTime_SimulateScript(cutscene, gSaveContext.dayTime, gTimeSpeed);
+                if (dayTime != gSaveContext.dayTime) {
+                    gSaveContext.dayTime = gSaveContext.skyboxTime = dayTime;
+                }
 
                 // Check for dispulsion of Ganon's Tower barrier
                 switch (entranceIndex) {
@@ -456,6 +466,11 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
             if (ForcedDialogIsDisabled(FORCED_DIALOG_SKIP_NPC) &&
                 !(gPlayState->sceneNum == SCENE_ZORAS_RIVER && IS_RANDO && RAND_GET_OPTION(RSK_FROGS_HINT))) {
                 *should = false;
+
+                // We should still come out of a softlock if the setting was changed during forced dialogue
+                if (GET_PLAYER(gPlayState)->csAction != 7) {
+                    Player_SetCsAction(gPlayState, NULL, 7);
+                }
             }
 
             // If it's near a jailed carpenter, skip it along with introduction of Gerudo mini-boss
@@ -529,24 +544,6 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
                 *should = false;
             }
             break;
-        case VB_PLAY_PULL_MASTER_SWORD_CS:
-            if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Story"), IS_RANDO)) {
-                if (!Flags_GetEventChkInf(EVENTCHKINF_PULLED_MASTER_SWORD_FROM_PEDESTAL)) {
-                    // Normally, these would be done in the cutscene, but we're skipping it
-                    Flags_SetEventChkInf(EVENTCHKINF_PULLED_MASTER_SWORD_FROM_PEDESTAL);
-                    Flags_SetEventChkInf(EVENTCHKINF_ENTERED_MASTER_SWORD_CHAMBER);
-                    Flags_SetEventChkInf(EVENTCHKINF_SHEIK_SPAWNED_AT_MASTER_SWORD_PEDESTAL);
-                    Flags_SetEventChkInf(EVENTCHKINF_TIME_TRAVELED_TO_ADULT);
-                    if (!IS_RANDO) {
-                        gSaveContext.dayTime = gSaveContext.skyboxTime = 0x8000;
-                    }
-                    if (GameInteractor_Should(VB_GIVE_ITEM_LIGHT_MEDALLION, true)) {
-                        Item_Give(gPlayState, ITEM_MEDALLION_LIGHT);
-                    }
-                }
-                *should = false;
-            }
-            break;
         case VB_PLAY_DISPEL_BARRIER_CS: {
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Story"), IS_RANDO)) {
                 static s16 trialEntrances[] = {
@@ -589,14 +586,6 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
                     *textId = 0x3036;
                     *should = true;
                 }
-            }
-            break;
-        }
-        case VB_PLAY_MWEEP_CS: {
-            if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Story"), 0)) {
-                *should = false;
-                Inventory_ReplaceItem(gPlayState, ITEM_LETTER_RUTO, ITEM_BOTTLE);
-                Flags_SetEventChkInf(EVENTCHKINF_KING_ZORA_MOVED);
             }
             break;
         }
@@ -654,7 +643,10 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
                                 } else {
                                     gPlayState->nextEntranceIndex = ENTR_HYRULE_FIELD_17;
                                 }
-                                gSaveContext.dayTime = gSaveContext.skyboxTime = 0x8000;
+                                // Normally set in Impa's escort cutscene, which keeps the time and lets it run.
+                                // Its fade in is a slow circle, 50 frames.
+                                gSaveContext.dayTime = gSaveContext.skyboxTime =
+                                    CutsceneTime_Simulate(SCENE_HYRULE_FIELD, 0xFFF8, gSaveContext.dayTime, 50);
                                 gPlayState->transitionType = TRANS_TYPE_FADE_WHITE;
                                 gPlayState->transitionTrigger = TRANS_TRIGGER_START;
                                 gSaveContext.nextTransitionType = 2;
@@ -701,9 +693,8 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.LearnSong"), IS_RANDO) || IS_RANDO) {
                 *should = false;
                 Flags_SetEventChkInf(EVENTCHKINF_LEARNED_SUNS_SONG);
-                // SoH [Randomizer] TODO: Increment time X amount (find out X)
-                // When time is 0, it's changed to 0x46A7
-                // When it's 0x8000, it's changed to 0xC090
+                gSaveContext.dayTime = gSaveContext.skyboxTime =
+                    CutsceneTime_Simulate(SCENE_GRAVEYARD, 0xFFF1, gSaveContext.dayTime, 11);
             }
             break;
         case VB_PLAY_ROYAL_FAMILY_TOMB_CS: {
@@ -754,6 +745,9 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
         case VB_PLAY_FIRE_ARROW_CS: {
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipMiscInteractions"), IS_RANDO)) {
                 *should = false;
+                // Cutscene sets the time to 7:00
+                gSaveContext.dayTime = gSaveContext.skyboxTime =
+                    CutsceneTime_SimulateScript(gLakeHyliaFireArrowsCS, gSaveContext.dayTime, gTimeSpeed);
             }
             break;
         }
@@ -883,31 +877,6 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
             }
             break;
         }
-        case VB_PHANTOM_GANON_DEATH_SCENE: {
-            if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.QuickBossDeaths"), IS_RANDO || IS_BOSS_RUSH)) {
-                *should = false;
-                BossGanondrof* pg = va_arg(args, BossGanondrof*);
-                Player* player = GET_PLAYER(gPlayState);
-                if (pg->work[GND_ACTION_STATE] == DEATH_SPASM) {
-                    // Skip to death scream animation and move ganondrof to middle
-                    pg->deathState = DEATH_SCREAM;
-                    pg->timers[0] = 50;
-                    AnimationHeader* screamAnim = (AnimationHeader*)gPhantomGanonScreamAnim;
-                    Animation_MorphToLoop(&pg->skelAnime, screamAnim, -10.0f);
-                    pg->actor.world.pos.x = GND_BOSSROOM_CENTER_X;
-                    pg->actor.world.pos.y = GND_BOSSROOM_CENTER_Y + 83.0f;
-                    pg->actor.world.pos.z = GND_BOSSROOM_CENTER_Z;
-                    pg->actor.shape.rot.y = 0;
-                    pg->work[GND_BODY_DECAY_INDEX] = 0;
-                    Audio_PlayActorSound2(&pg->actor, NA_SE_EN_FANTOM_LAST);
-
-                    // Move Player out of the center of the room
-                    player->actor.world.pos.x = GND_BOSSROOM_CENTER_X - 200.0f;
-                    player->actor.world.pos.z = GND_BOSSROOM_CENTER_Z;
-                }
-            }
-            break;
-        }
         case VB_NABOORU_KNUCKLE_DEATH_SCENE: {
             EnIk* ik = va_arg(args, EnIk*);
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.QuickBossDeaths"), IS_RANDO)) {
@@ -947,6 +916,9 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
             break;
         }
         case VB_SKIP_SCARECROWS_SONG: {
+            if (IS_RANDO && RAND_GET_OPTION(RSK_SHUFFLE_SCARECROWS_SONG)) {
+                break;
+            }
             if (gPlayState->msgCtx.msgMode == MSGMODE_OCARINA_PLAYING &&
                 CVarGetInteger(CVAR_ENHANCEMENT("InstantScarecrow"), 0) && gSaveContext.scarecrowSpawnSongSet) {
                 *should = true;
@@ -1250,13 +1222,6 @@ void TimeSaverOnSceneInitHandler(int16_t sceneNum) {
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.BossIntro"), IS_RANDO)) {
                 if (!Flags_GetEventChkInf(EVENTCHKINF_BEGAN_BONGO_BONGO_BATTLE)) {
                     Flags_SetEventChkInf(EVENTCHKINF_BEGAN_BONGO_BONGO_BATTLE);
-                }
-            }
-            break;
-        case SCENE_GANONDORF_BOSS:
-            if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.BossIntro"), IS_RANDO)) {
-                if (!Flags_GetEventChkInf(EVENTCHKINF_BEGAN_GANONDORF_BATTLE)) {
-                    Flags_SetEventChkInf(EVENTCHKINF_BEGAN_GANONDORF_BATTLE);
                 }
             }
             break;

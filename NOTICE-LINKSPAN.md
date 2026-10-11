@@ -1,6 +1,6 @@
 # Notice — Link-Span fork of Ship of Harkinian
 
-This repository is a fork of Ship of Harkinian (HarbourMasters/Shipwright, base `78dc6d970`) that hosts the
+This repository is a fork of Ship of Harkinian (HarbourMasters/Shipwright, base 9.3.0, `ecd889c201`) that hosts the
 Link-Span modloader (`extern/ship-lua`) and its OoT mods.
 
 - **Shipwright** publishes no license. Its code and assets, and the zeldaret decompilation of Ocarina of Time it

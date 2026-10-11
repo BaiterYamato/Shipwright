@@ -2,6 +2,7 @@
 #include "objects/object_ice_objects/object_ice_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "../../../code/linkspan_vanilla.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #define FLAGS 0
 

@@ -19,11 +19,36 @@ typedef enum {
 
     // #### `result`
     // ```c
+    // (this->actionFunc != BossSst_HeadLurk) && (this->actionFunc != BossSst_HeadIntro)
+    // ```
+    // #### `args`
+    // - None
+    VB_ALLOW_QUICK_BONGO_KILL,
+
+    // #### `result`
+    // ```c
+    // !(this->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM)
+    // ```
+    // #### `args`
+    // - None
+    VB_ALLOW_QUICK_PUTAWAY,
+
+    // #### `result`
+    // ```c
     // sPuzzleState == 0xF
     // ```
     // #### `args`
     // - None
     VB_AMY_SOLVE,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
+    // - `*BossVa`
+    // - `s8*` sCsState
+    VB_BARINADE_DEATH_SCENE,
 
     // #### `result`
     // ```c
@@ -255,6 +280,20 @@ typedef enum {
     // #### `args`
     // - None
     VB_BIGGORON_CONSIDER_TRADE_COMPLETE,
+
+    // #### `result`
+    // ```c
+    // this->timer == 0
+    // ```
+    // or while the body darkens
+    // ```c
+    // this->timer != 0
+    // ```
+    // #### `args`
+    // - `*BossSst` (head)
+    // - `*BossSst` (left hand)
+    // - `*BossSst` (right hand)
+    VB_BONGO_BONGO_DEATH_SCENE,
 
     // #### `result`
     // Actor is ACTOR_EN_ELF, ACTOR_EN_FISH, ACTOR_EN_ICE_HONO, or ACTOR_EN_INSECT
@@ -589,6 +628,16 @@ typedef enum {
 
     // #### `result`
     // ```c
+    // !Player_InCsMode(play) && !(player->stateFlags1 & (PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_WATER)) &&
+    // this->actor.xzDistToPlayer <= 15.0f && -50.0f <= this->actor.yDistToPlayer &&
+    // this->actor.yDistToPlayer <= 15.0f
+    // ```
+    // #### `args`
+    // - None
+    VB_DOOR_ANA_GRAB_PLAYER,
+
+    // #### `result`
+    // ```c
     // !Flags_GetSwitch(play, this->actor.params & 0x3F)
     // ```
     // #### `args`
@@ -889,6 +938,14 @@ typedef enum {
 
     // #### `result`
     // ```c
+    // gSaveContext.health < STARTING_HEALTH
+    // ```
+    // #### `args`
+    // - None
+    VB_FULL_HEALTH_SPAWN,
+
+    // #### `result`
+    // ```c
     // true
     // ```
     // #### `args`
@@ -926,6 +983,14 @@ typedef enum {
     // #### `args`
     // - None
     VB_FROGS_OCARINA_GAME_TIMER_TICK,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
+    // - `*BossGanon`
+    VB_GANONDORF_DEATH_SCENE,
 
     // #### `result`
     // ```c
@@ -987,6 +1052,14 @@ typedef enum {
     // #### `args`
     // - `*EnJs`
     VB_GIVE_BOMBCHUS_FROM_CARPET_SALESMAN,
+
+    // #### `result`
+    // ```c
+    // false
+    // ```
+    // #### `args`
+    // - None
+    VB_GIVE_EYEBALL_FROG_EARLY,
 
     // #### `result`
     // ```c
@@ -1218,6 +1291,14 @@ typedef enum {
 
     // #### `result`
     // ```c
+    // !Flags_GetEventChkInf(EVENTCHKINF_PLAYED_SONG_FOR_SCARECROW_AS_ADULT)
+    // ```
+    // #### `args`
+    // - None
+    VB_GIVE_ITEM_FROM_SCARECROW,
+
+    // #### `result`
+    // ```c
     // true
     // ```
     // #### `args`
@@ -1375,6 +1456,18 @@ typedef enum {
     // #### `args`
     // - '*Fishing'
     VB_GIVE_RANDO_GLITCH_FISHING_PRIZE,
+
+    // #### `result`
+    // ```c
+    // this->timer == 80
+    // ```
+    // or once the blue warp has spawned
+    // ```c
+    // this->timer == 0
+    // ```
+    // #### `args`
+    // - `*BossGoma`
+    VB_GOHMA_DEATH_SCENE,
 
     // #### `result`
     // ```c
@@ -1578,6 +1671,14 @@ typedef enum {
 
     // #### `result`
     // ```c
+    // true
+    // ```
+    // #### `args`
+    // - `*EnItem00`
+    VB_ITEM00_REQUIRE_OBJECT,
+
+    // #### `result`
+    // ```c
     // this->unk_15A > 0
     // ```
     // #### `args`
@@ -1647,6 +1748,14 @@ typedef enum {
     // #### `args`
     // - `*EnFirefly`
     VB_KEESE_SETUP_FROZENFALL,
+
+    // #### `result`
+    // ```c
+    // this->unk_1DA == 600
+    // ```
+    // #### `args`
+    // - `*BossDodongo`
+    VB_KING_DODONGO_DEATH_SCENE,
 
     // #### `result`
     // ```c
@@ -1791,6 +1900,15 @@ typedef enum {
     // #### `args`
     // - `f32*` speed
     VB_MODIFY_WATER_TEMPLE_WATER_LEVEL_SPEED,
+
+    // #### `result`
+    // ```c
+    // this->timers[0] == 0
+    // ```
+    // #### `args`
+    // - `*BossMo` (core)
+    // - `*BossMo` (tentacle)
+    VB_MORPHA_DEATH_SCENE,
 
     // #### `result`
     // ```c
@@ -2060,10 +2178,20 @@ typedef enum {
     // ##### In `z_demo.c`:
     // - `int32_t` (entranceCutscene->flag) (promoted from `uint8_t` by va_arg)
     // - `int32_t` (entranceCutscene->entrance) (promoted from `uint16_t` by va_arg)
+    // - `void*` (entranceCutscene->segAddr)
     // ##### In `z_bg_breakwall.c` and `z_bg_toki_swd.c`:
     // - `int32_t` (EVENTCHKINF)
     // - `int32_t` (gSaveContext.entranceIndex)
+    // - `void*` (cutscene)
     VB_PLAY_ENTRANCE_CS,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
+    // - `*BossGanon2`
+    VB_PLAY_ESCAPED_TOWER_CS,
 
     // #### `result`
     // ```c
@@ -2105,6 +2233,23 @@ typedef enum {
     // true
     // ```
     // #### `args`
+    // - `*BossGanon`
+    VB_PLAY_GANONDORF_INTRO_CS,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
+    // - `*BossGanon2`
+    // - `*EnZl3`
+    VB_PLAY_GANON_INTRO_CS,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
     // - `*EnHeishi2`
     // - `bool` (clearCamera - true if the code clears a sub-camera, false otherwise)
     VB_PLAY_GATE_OPENING_OR_CLOSING_CS,
@@ -2135,14 +2280,6 @@ typedef enum {
 
     // #### `result`
     // ```c
-    // true
-    // ```
-    // #### `args`
-    // - None
-    VB_PLAY_MWEEP_CS,
-
-    // #### `result`
-    // ```c
     // this->getItemId == GI_GAUNTLETS_SILVER
     // ```
     // #### `args`
@@ -2157,6 +2294,14 @@ typedef enum {
     // - `*BossTw`
     // - `*PlayState`
     VB_PLAY_TWINROVA_INTRO_CS,
+
+    // #### `result`
+    // ```c
+    // this->work[CS_TIMER_2] >= 120 && this->work[CS_TIMER_2] < 500
+    // ```
+    // #### `args`
+    // - `*BossTw`
+    VB_TWINROVA_DEATH_SCENE,
 
     // #### `result`
     // ```c
@@ -2328,6 +2473,23 @@ typedef enum {
     // true
     // ```
     // #### `args`
+    // - `*BossGanon`
+    VB_PLAY_ZELDA_CRYSTAL_CS,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // Whether the left stick aims in first person. Off when it moves Link instead.
+    // #### `args`
+    // - `*Player`
+    VB_PLAYER_AIM_WITH_LEFT_STICK,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
     // - `*Player`
     // - `int32_t` (magicArrowType)
     // - `*int32_t` (arrowType)
@@ -2341,6 +2503,24 @@ typedef enum {
     // - `void*` player (Player*)
     // - `PlayState*` play
     VB_PLAYER_DRAW_BOTTLE,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // Whether Link's movement direction is set to where he faces in first person.
+    // #### `args`
+    // - `*Player`
+    VB_PLAYER_FIRST_PERSON_ALIGN_YAW,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // Whether Link slows to a stop in first person. Hooks may set his speed instead.
+    // #### `args`
+    // - `*Player`
+    VB_PLAYER_FIRST_PERSON_DECELERATE,
 
     // #### `result`
     // ```c
@@ -2635,6 +2815,14 @@ typedef enum {
     // true
     // ```
     // #### `args`
+    // - `*Actor` (spawnedActor)
+    VB_SET_CHILD_ACTOR_PARENT,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
     // - `*EnNiwLady`
     VB_SET_CUCCO_COUNT,
 
@@ -2856,6 +3044,14 @@ typedef enum {
     // #### `args`
     // - None
     VB_SKIP_SCARECROWS_SONG,
+
+    // #### `result`
+    // ```c
+    // !gMapLoading
+    // ```
+    // #### `args`
+    // - `s16` (actorId)
+    VB_SPAWN_ACTOR_WITHOUT_OBJECT,
 
     // #### `result`
     // ```c
@@ -3199,6 +3395,14 @@ typedef enum {
     // #### `args`
     // - `*Player`
     VB_USE_HELD_ITEM_AFTER_CHANGE,
+
+    // #### `result`
+    // ```c
+    // this->timers[0] == 0
+    // ```
+    // #### `args`
+    // - `*BossFd2`
+    VB_VOLVAGIA_DEATH_SCENE,
 
     // #### `result`
     // ```c
@@ -3937,4 +4141,13 @@ typedef enum {
     // #### `args`
     // - `*Player`
     VB_PLAYER_UNEQUIP_MASK_WITHOUT_BUTTON,
+
+    // #### `result`
+    // ```c
+    // this->itemAction != PLAYER_IA_BOTTLE
+    // ```
+    // #### `args`
+    // - none
+    VB_EMPTY_BOTTLE_OI,
+
 } GIVanillaBehavior;

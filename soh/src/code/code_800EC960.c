@@ -7,6 +7,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -2099,7 +2100,8 @@ void AudioOcarina_PlaybackSong(void) {
                 }
                 return;
             } else {
-                sPlaybackNoteTimer -= nextNoteTimerStep;
+                // SoH [Fix] several audio tasks can run between updates, don't wrap below zero
+                sPlaybackNoteTimer -= MIN(nextNoteTimerStep, sPlaybackNoteTimer);
             }
 
             // Update volume
@@ -5041,8 +5043,8 @@ void func_800F5C2C(void) {
 void Audio_PlayFanfare(u16 seqId) {
     u16 curSeqId;
     u32 outNumFonts;
-    u8* curFontId;
-    u8* requestedFontId;
+    u16* curFontId;
+    u16* requestedFontId;
 
     curSeqId = func_800FA0B4(SEQ_PLAYER_FANFARE);
 

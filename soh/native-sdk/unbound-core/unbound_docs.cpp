@@ -62,15 +62,33 @@ ManifestCheck CheckManifest(const std::string& json) {
         check.note = "requires.formatVersion diferente de 2";
         return check;
     }
-    check.valid = true;
+    bool base = false;
     const auto features = doc.find("features");
     if (features != doc.end() && features->is_array()) {
         for (const auto& feature : *features) {
             if (feature.is_string() && feature.get<std::string>() == "scenes") {
-                check.base = true;
+                base = true;
             }
         }
     }
+    if (base) {
+        const auto field = doc.find("baseVersion");
+        const Json version = field == doc.end() ? Json(1) : *field; // ausente = 1, mesmo após um bump
+        if (!version.is_number_integer()) {
+            check.note = "baseVersion deve ser um inteiro";
+            return check;
+        }
+        if (version > kBaseVersion) {
+            check.note = "base convertida por uma versão mais nova; atualize o framework ou converta de novo";
+            return check;
+        }
+        if (version != kBaseVersion) {
+            check.note = "baseVersion incompatível; converta a base de novo";
+            return check;
+        }
+    }
+    check.valid = true;
+    check.base = base;
     return check;
 }
 

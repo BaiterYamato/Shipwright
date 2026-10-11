@@ -14,6 +14,7 @@
 #include "../../../code/linkspan_vanilla.h"
 
 s32 LinkSpan_UsesGeneratedHorseCall(s32 sceneNum);
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 

@@ -19,6 +19,7 @@
 #include "mmform/MmGoronForm.h"
 #include "soh/Enhancements/item-tables/ItemTableTypes.h"
 #include "soh/Enhancements/item-tables/ItemTableManager.h"
+#include "soh/SaveManager.h"
 // gMagicMeterFillTex: textura de preenchimento sólido reaproveitada por
 // ship.hud.draw_rect (mesma que o medidor de magia usa).
 #include "textures/parameter_static/parameter_static.h"
@@ -109,7 +110,6 @@ LinkAnimationHeader* Player_GetIdleAnim(Player* player);
 void func_8083FB7C(Player* player, PlayState* play);
 void Player_Action_80845EF8(Player* player, PlayState* play);
 void FileChoose_LoadGame(GameState* gameState);
-u32 Save_Exist(int fileNum);
 
 static void ShipLuaEmitDisplayList(PlayState* play, const char* path) {
     OPEN_DISPS(play->state.gfxCtx);
@@ -6646,7 +6646,7 @@ void Initialize() {
                  }
                  return 1;
              }
-             if (Save_Exist(slot) == 0) {
+             if (!SaveManager::Instance->SaveFile_Exist(slot)) {
                  if (output != nullptr) {
                      *output = "slot vazio; nenhum arquivo foi aberto";
                  }
