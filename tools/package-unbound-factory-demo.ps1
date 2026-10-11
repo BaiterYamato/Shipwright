@@ -119,7 +119,7 @@ Write-Utf8NoBom (Join-Path $bundleStage 'README-Unbound-Factory.txt') @'
 LINK-SPAN OOT — UNBOUND JSON FACTORY 0.1.0
 
 REQUISITO
-- Overlay Link-Span para Shipwright 9.2.3 com Core Extensions ABI 1.1 e
+- Overlay Link-Span para Shipwright 9.3.0 com Core Extensions ABI 1.1 e
   linkspan.oot.resources v2.
 
 INSTALAÇÃO
