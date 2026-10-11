@@ -708,17 +708,32 @@ LinkSpanUnbound::Json FileStamp(const fs::path& path) {
     return { { "size", size }, { "mtime", error ? 0 : static_cast<int64_t>(time.time_since_epoch().count()) } };
 }
 
-// Proveniência da base (plano UNBOUND-006): muda quando a ROM exportada, a build do jogo ou o conversor
-// mudam, e então a base é gerada de novo.
+// Sidecar da base: compatibilidade e procedência da ROM decidem o reaproveitamento.
+// Conversor, exe e fingerprint continuam registrados como informação sobre quem converteu.
 std::string BaseProvenance(const ShipNativeRuntime* runtime, const State& state, const fs::path& gameDir) {
     LinkSpanUnbound::Json source = LinkSpanUnbound::Json::object();
     source["converter"] = LinkSpanUnbound::kConverterVersion;
     source["formatVersion"] = LinkSpanUnbound::kReaderFormatVersion;
+    source["baseVersion"] = LinkSpanUnbound::kBaseVersion;
+    // No Init só os archives do jogo estão montados. O host já validou sua major no boot;
+    // a ABI de recursos expõe portVersion, não uma versão semântica do executável.
+    uint8_t portVersion[7] = {};
+    uint32_t portSize = 0;
+    if (state.resources->read_file("portVersion", portVersion, sizeof(portVersion), &portSize) == SHIP_NATIVE_OK &&
+        portSize == sizeof(portVersion)) {
+        const int major = LinkSpanUnbound::SohMajorFromPortVersion(
+            std::string(reinterpret_cast<const char*>(portVersion), sizeof(portVersion)));
+        if (major > 0) {
+            source["sohMajor"] = major;
+        }
+    }
     std::vector<uint32_t> versions(16);
     uint32_t count = 0;
     if (state.resources->get_game_versions(versions.data(), static_cast<uint32_t>(versions.size()), &count) ==
         SHIP_NATIVE_OK) {
         versions.resize(std::min<size_t>(count, versions.size()));
+        std::sort(versions.begin(), versions.end());
+        versions.erase(std::unique(versions.begin(), versions.end()), versions.end());
         source["gameVersions"] = versions;
     }
     LinkSpanUnbound::Json archives = LinkSpanUnbound::Json::object();
@@ -806,7 +821,8 @@ void PrepareBase(const ShipNativeRuntime* runtime, State& state) {
     std::string previous;
     std::error_code exists;
     std::string summary;
-    if (fs::is_regular_file(archive, exists) && ReadWholeFile(stamp, previous) && previous == provenance) {
+    if (fs::is_regular_file(archive, exists) && ReadWholeFile(stamp, previous) &&
+        LinkSpanUnbound::CanReuseBase(previous, provenance)) {
         summary = "cache";
     } else {
         const LinkSpanUnbound::ReadResourceFn read = [&state](const std::string& path, std::string& bytes) {

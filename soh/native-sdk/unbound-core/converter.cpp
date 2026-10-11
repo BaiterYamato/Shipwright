@@ -7,6 +7,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "unbound_docs.h"
+
 namespace LinkSpanUnbound {
 namespace {
 
@@ -734,13 +736,84 @@ std::vector<ConvertedFile> BuildBase(const ReadResourceFn& read, const std::vect
     source["scenes"] = report.scenes;
     source["failures"] = report.failures;
     const Json manifest{ { "format", "unbound" },
-                         { "formatVersion", 2 },
+                         { "formatVersion", kReaderFormatVersion },
+                         { "baseVersion", kBaseVersion },
                          { "game", "oot" },
                          { "source", source },
                          { "features", features },
-                         { "requires", { { "formatVersion", 2 } } } };
+                         { "requires", { { "formatVersion", kReaderFormatVersion } } } };
     files.insert(files.begin(), ConvertedFile{ "unbound.json", manifest.dump(2) });
     return files;
+}
+
+int SohMajorFromPortVersion(const std::string& bytes) {
+    if (bytes.size() != 7) {
+        return -1;
+    }
+    const auto endian = static_cast<uint8_t>(bytes[0]);
+    const auto a = static_cast<uint8_t>(bytes[1]);
+    const auto b = static_cast<uint8_t>(bytes[2]);
+    if (endian > 1) {
+        return -1;
+    }
+    return endian == 1 ? (a << 8) | b : a | (b << 8);
+}
+
+bool CanReuseBase(const std::string& previousJson, const std::string& currentJson) {
+    if (!JsonDepthWithin(previousJson) || !JsonDepthWithin(currentJson)) {
+        return false;
+    }
+    // O sidecar é um conjunto de campos, independentemente da ordem das chaves no arquivo.
+    const auto previous = nlohmann::json::parse(previousJson, nullptr, false);
+    const auto current = nlohmann::json::parse(currentJson, nullptr, false);
+    for (const auto* doc : { &previous, &current }) {
+        if (!doc->is_object()) {
+            return false;
+        }
+        for (const char* key : { "formatVersion", "baseVersion", "sohMajor" }) {
+            const auto field = doc->find(key);
+            if (field == doc->end() || !field->is_number_integer()) {
+                return false;
+            }
+        }
+        if ((*doc)["formatVersion"] != kReaderFormatVersion || (*doc)["baseVersion"] != kBaseVersion ||
+            (*doc)["sohMajor"] <= 0 || (*doc)["sohMajor"] > 65535) {
+            return false;
+        }
+        const auto versions = doc->find("gameVersions");
+        const auto archives = doc->find("archives");
+        if (versions == doc->end() || !versions->is_array() || versions->empty() ||
+            archives == doc->end() || !archives->is_object() || archives->empty()) {
+            return false;
+        }
+        for (const auto& version : *versions) {
+            if (!version.is_number_integer() || version < 0 || version > UINT32_MAX) {
+                return false;
+            }
+        }
+        bool hasArchive = false;
+        for (const auto& archive : *archives) {
+            if (archive.is_null()) {
+                continue; // oot-mq.o2r pode estar ausente.
+            }
+            const auto size = archive.find("size");
+            const auto mtime = archive.find("mtime");
+            if (!archive.is_object() || size == archive.end() || !size->is_number_integer() || *size < 0 ||
+                mtime == archive.end() || !mtime->is_number_integer()) {
+                return false;
+            }
+            hasArchive = true;
+        }
+        if (!hasArchive) {
+            return false;
+        }
+    }
+    for (const char* key : { "sohMajor", "gameVersions", "archives" }) {
+        if (previous[key] != current[key]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 namespace {

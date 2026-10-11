@@ -11,6 +11,9 @@
 namespace LinkSpanUnbound {
 
 constexpr int kReaderFormatVersion = 2;
+// Subir quando a saída do BuildBase mudar de modo que uma base antiga deixe de servir ao leitor.
+// Não acompanha a versão do framework nem a identidade do build do host.
+constexpr int kBaseVersion = 1;
 
 struct ManifestCheck {
     bool valid = false; // objeto JSON com a versão do leitor

@@ -345,6 +345,21 @@ void TestManifest() {
     CHECK(!CheckManifest(R"({"formatVersion":1,"features":["scenes"]})").valid);
     CHECK(!CheckManifest(R"({"formatVersion":2,"requires":{"formatVersion":3},"features":["scenes"]})").valid);
     CHECK(!CheckManifest("[1,2]").valid && !CheckManifest("nada").valid);
+    const auto legacyBase = CheckManifest(R"({"formatVersion":2,"features":["scenes"]})");
+    CHECK(legacyBase.valid && legacyBase.base && legacyBase.note.empty()); // baseVersion ausente = 1
+    CHECK(CheckManifest(R"({"baseVersion":1,"features":["scenes"]})").base);
+    const auto newerBase = CheckManifest(R"({"baseVersion":2,"features":["scenes"]})");
+    CHECK(!newerBase.valid && !newerBase.base);
+    CHECK(newerBase.note == "base convertida por uma versão mais nova; atualize o framework ou converta de novo");
+    CHECK(!CheckManifest(R"({"baseVersion":4294967297,"features":["scenes"]})").valid);
+    CHECK(!CheckManifest(R"({"baseVersion":0,"features":["scenes"]})").valid);
+    CHECK(!CheckManifest(R"({"baseVersion":"1","features":["scenes"]})").valid);
+    CHECK(!CheckManifest(R"({"baseVersion":null,"features":["scenes"]})").valid);
+    for (const char* json : { R"({"baseVersion":2,"features":["text"]})",
+                             R"({"baseVersion":"futuro","features":["text"]})" }) {
+        const auto mod = CheckManifest(json);
+        CHECK(mod.valid && !mod.base && mod.note.empty());
+    }
 }
 
 TextTable Text(std::vector<std::string> jsons) {
