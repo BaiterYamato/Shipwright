@@ -411,8 +411,23 @@ int32_t NativeGetSettingInt(const char* name, int32_t fallback) {
     return CVarGetInteger(name, fallback);
 }
 
-ShipNativeStatus NativeSetSettingInt(const char* name, int32_t value) {
+// Opções do SoH registram hooks COND_* com o valor do CVar no ShipInit::InitAll, e só o menu chama ShipInit::Init
+// ao mudar o valor. O que o Link-Span grava por código (mods nativos, API Lua) entra nesta fila, reaplicada no fim
+// do frame por LinkSpan_ApplyPendingSettings (game.c), fora de qualquer despacho do GameInteractor: registrar um hook
+// no mesmo mapa durante o despacho dele invalidaria o iterador. Antes do InitAll não roda frame; a primeira volta
+// só reaplica o que o InitAll acabou de registrar.
+std::vector<std::string> gPendingShipInit;
+
+void SetSohCVarInt(const char* name, int32_t value) {
+    const bool changed = CVarGetInteger(name, ~value) != value;
     CVarSetInteger(name, value);
+    if (changed && std::find(gPendingShipInit.begin(), gPendingShipInit.end(), name) == gPendingShipInit.end()) {
+        gPendingShipInit.emplace_back(name);
+    }
+}
+
+ShipNativeStatus NativeSetSettingInt(const char* name, int32_t value) {
+    SetSohCVarInt(name, value);
     return SHIP_NATIVE_OK;
 }
 // Timers por frame (ship.timer.after/every). Precisa de Tick() todo frame —
@@ -5019,7 +5034,7 @@ void MaskTransitionClearForcedMask(Player* player) {
     }
     gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
     if (gMaskForced) {
-        CVarSetInteger(CVAR_ENHANCEMENT("PersistentMasks"), gMaskPreviousPersistent);
+        SetSohCVarInt(CVAR_ENHANCEMENT("PersistentMasks"), gMaskPreviousPersistent);
         gMaskForced = false;
     }
 }
@@ -5045,7 +5060,7 @@ int LuaSetMask(lua_State* state) {
         player->currentMask = PLAYER_MASK_NONE;
         gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
         if (gMaskForced) {
-            CVarSetInteger(CVAR_ENHANCEMENT("PersistentMasks"), gMaskPreviousPersistent);
+            SetSohCVarInt(CVAR_ENHANCEMENT("PersistentMasks"), gMaskPreviousPersistent);
             gMaskForced = false;
         }
         SPDLOG_INFO("ShipLua set_mask: máscara removida");
@@ -5068,7 +5083,7 @@ int LuaSetMask(lua_State* state) {
     }
     // Sem PersistentMasks o jogo zera currentMask no frame seguinte quando a
     // máscara não está num botão C.
-    CVarSetInteger(CVAR_ENHANCEMENT("PersistentMasks"), 1);
+    SetSohCVarInt(CVAR_ENHANCEMENT("PersistentMasks"), 1);
     player->currentMask = found->mask;
     gSaveContext.ship.maskMemory = found->mask;
     SPDLOG_INFO("ShipLua set_mask: máscara '{}' equipada", requested);
@@ -5262,7 +5277,7 @@ int LuaAttachModel(lua_State* state) {
     gAttachedHeadModel = std::string("__OTR__") + path;
     // Máscara-veículo: o engine só entra no bloco de desenho quando há uma
     // máscara equipada. A DL dela é substituída pela do mod no hook.
-    CVarSetInteger(CVAR_ENHANCEMENT("PersistentMasks"), 1);
+    SetSohCVarInt(CVAR_ENHANCEMENT("PersistentMasks"), 1);
     player->currentMask = PLAYER_MASK_KEATON;
     gSaveContext.ship.maskMemory = PLAYER_MASK_KEATON;
     SPDLOG_INFO("ShipLua attach_model: '{}' anexado ao slot 'head'", path);
@@ -5987,7 +6002,7 @@ int LuaSetBunnyHood(lua_State* state) {
         // Sem PersistentMasks, Player_ProcessItemButtons zera currentMask no
         // frame seguinte quando a máscara não está num botão C — e a Bunny
         // Hood some antes de ser desenhada.
-        CVarSetInteger(CVAR_ENHANCEMENT("PersistentMasks"), 1);
+        SetSohCVarInt(CVAR_ENHANCEMENT("PersistentMasks"), 1);
         player->currentMask = PLAYER_MASK_BUNNY;
         gSaveContext.ship.maskMemory = PLAYER_MASK_BUNNY;
         SPDLOG_INFO("ShipLua set_bunny_hood: Bunny Hood equipada com o comportamento de MM");
@@ -5998,7 +6013,7 @@ int LuaSetBunnyHood(lua_State* state) {
         gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
         if (gBunnyHoodForced) {
             CVarSetInteger(CVAR_ENHANCEMENT("MMBunnyHood"), gBunnyHoodPreviousMode);
-            CVarSetInteger(CVAR_ENHANCEMENT("PersistentMasks"), gBunnyHoodPreviousPersistent);
+            SetSohCVarInt(CVAR_ENHANCEMENT("PersistentMasks"), gBunnyHoodPreviousPersistent);
             gBunnyHoodForced = false;
         }
         SPDLOG_INFO("ShipLua set_bunny_hood: Bunny Hood removida");
@@ -6584,6 +6599,19 @@ extern "C" void ShipLua_DrawMaskTransitionHand(PlayState* play, Player* player) 
 
 extern "C" void ShipLua_DrawMaskTransitionHead(PlayState* play, Player* player) {
     DrawMaskTransitionHeadImpl(play, player);
+}
+
+// Chamada no fim de GameState_Update (game.c), depois do OnGameFrameUpdate: reaplica as opções do SoH gravadas por
+// código nesta volta (ver SetSohCVarInt). Sem mod nada grava, e a fila fica vazia.
+extern "C" void LinkSpan_ApplyPendingSettings(void) {
+    if (gPendingShipInit.empty()) {
+        return;
+    }
+    std::vector<std::string> pending;
+    pending.swap(gPendingShipInit);
+    for (const auto& name : pending) {
+        ShipInit::Init(name);
+    }
 }
 
 void Initialize() {

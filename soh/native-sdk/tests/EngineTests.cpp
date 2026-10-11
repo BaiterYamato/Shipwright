@@ -86,6 +86,7 @@ std::vector<uint16_t> clearedButtons;
 std::vector<std::pair<uint16_t, uint8_t>> boundButtons;
 int mappingReloads = 0;
 int32_t settingValue = 0;
+int settingWrites = 0;
 std::map<std::string, int32_t> otherSettings;
 std::array<int16_t, 6> gamepadAxes{};
 std::vector<std::tuple<uint16_t, uint8_t, int8_t>> boundAxes;
@@ -131,6 +132,7 @@ int32_t GetSettingInt(const char* name, int32_t fallback) {
 }
 ShipNativeStatus SetSettingInt(const char* name, int32_t value) {
     if (!name || !*name) return SHIP_NATIVE_INVALID_ARGUMENT;
+    ++settingWrites;
     if (std::string(name) == "gSettings.FreeLook.Enabled") settingValue = value;
     else otherSettings[name] = value;
     return SHIP_NATIVE_OK;
@@ -2224,6 +2226,32 @@ int main(int argc, char** argv) {
               OotNative_TakePendingOcarinaSong() == -1,
           "fechar a ocarina deve descartar a música pendente");
     OotNative_PublishOcarinaState(1, uint16_t(1u << OCARINA_SONG_SARIAS));
+    {
+        // O teste usa um bridge simulado: cobre o roteamento, não ShipInit no host.
+        const int writesBefore = settingWrites;
+        const int32_t previousFreeLook = settingValue;
+        const int32_t nextFreeLook = previousFreeLook == 0 ? 1 : 0;
+        Check(movementV2->set_setting_int("gSettings.FreeLook.Enabled", nextFreeLook) == SHIP_NATIVE_OK &&
+                  settingWrites == writesBefore + 1 && settingValue == nextFreeLook &&
+                  movementV2->set_setting_int("gSettings.FreeLook.Enabled", previousFreeLook) == SHIP_NATIVE_OK &&
+                  settingWrites == writesBefore + 2 && settingValue == previousFreeLook,
+              "setting do SoH deve chegar ao bridge ao alternar e restaurar");
+        const char* transientSettings[] = {
+            "linkspan.hud.hide_item_button.c_left", "linkspan.hud.hide_item_button.c_down",
+            "linkspan.hud.hide_item_button.c_right", "linkspan.input.sword_over_shield",
+            "linkspan.hud.dpad", "linkspan.pause.equip_selector",
+        };
+        for (const char* name : transientSettings) {
+            Check(movementV2->set_setting_int(name, 1) == SHIP_NATIVE_OK &&
+                      movementV2->get_setting_int(name, 0) == 1 &&
+                      movementV2->set_setting_int(name, 0) == SHIP_NATIVE_OK &&
+                      movementV2->get_setting_int(name, 1) == 0,
+                  "setting transitório deve alternar e restaurar somente no host");
+        }
+        Check(movementV2->set_setting_int("linkspan.transient_settings", 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  settingWrites == writesBefore + 2,
+              "settings transitórios e probe não devem chamar o bridge nem ShipInit");
+    }
     Check(movementV2->get_setting_int("linkspan.transient_settings", 0) == 15 &&
               movementV2->set_setting_int("linkspan.hud.hide_item_button.c_down", 1) == SHIP_NATIVE_OK &&
               movementV2->get_setting_int("linkspan.hud.hide_item_button.c_down", 0) == 1 &&
