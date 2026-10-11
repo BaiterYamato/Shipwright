@@ -3,7 +3,7 @@
 # Framework Unbound (Link-Span)
 
 `linkspan.unbound.framework` é a core extension que lê o formato 2 do SoH: Unbound (a SPEC do fork
-`roborich/Shipwright`, `unbound-docs/SPEC.md`) sobre o host Link-Span do Shipwright 9.2.3. Não linka
+`roborich/Shipwright`, `unbound-docs/SPEC.md`) sobre o host Link-Span do Shipwright 9.3.0. Não linka
 `soh.exe`: usa só os serviços `linkspan.oot.*`.
 
 Camadas Unbound (`.o2r` com `unbound.json`), soltas em `mods/` ou dentro de um mod, só entram no jogo com este

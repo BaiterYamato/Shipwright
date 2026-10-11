@@ -1,16 +1,15 @@
 [English](install-linkspan-overlay.md) · **Português (Brasil)**
 
-# Instalar o Link-Span sobre o Shipwright 9.2.3
+# Instalar o Link-Span sobre o Shipwright 9.3.0
 
 O pacote Windows é um overlay ZIP. Ele foi desenhado para ser extraído na raiz
-de uma instalação nova da [release Shipwright 9.2.3](https://github.com/HarbourMasters/Shipwright/releases/tag/9.2.3),
+de uma instalação nova da [release Shipwright 9.3.0](https://github.com/HarbourMasters/Shipwright/releases/tag/9.3.0),
 substituindo os arquivos do host que precisam conhecer o Link-Span.
 
-Desde `OOT-UPSTREAM-001`, o host do overlay é compilado a partir da `develop`
-oficial `78dc6d970` com o Link-Span integrado. A instalação base continua sendo
-a 9.2.3 oficial: a `develop` ainda se declara 9.2.3 e aceita o `oot.o2r` gerado
-por ela, porque só pede nova extração quando a versão principal gravada no
-arquivo muda.
+Desde `OOT-UPSTREAM-001`, o host do overlay é compilado a partir do código oficial
+do Shipwright com o Link-Span integrado. Hoje ele tem como base a tag oficial 9.3.0
+(`ecd889c201`), então a instalação base é a release oficial 9.3.0 ("Dewey Alpha") e
+o host aceita o `oot.o2r` gerado por ela.
 
 ## O que o overlay altera
 
@@ -34,12 +33,12 @@ guardar esse arquivo e a pasta `Save` antes de aplicar o overlay.
 
 ## Instalação para o jogador
 
-1. Extraia `SoH-Ackbar-Delta-Win64.zip` da release 9.2.3 em uma pasta nova.
+1. Extraia `SoH-Dewey-Alpha-Win64.zip` da release 9.3.0 em uma pasta nova.
 2. Execute o Shipwright uma vez e conclua a geração normal do seu `oot.o2r`.
 3. Feche o jogo.
 4. Se a pasta já foi usada, copie `shipofharkinian.json` e `Save` para outro
    lugar.
-5. Extraia `LinkSpan-Shipwright-9.2.3-Upstream-78dc6d970-Win64-overlay.zip`
+5. Extraia `LinkSpan-Shipwright-9.3.0-Upstream-ecd889c20-layout-<id>-Win64-overlay.zip`
    nessa mesma pasta e confirme a substituição dos arquivos.
 6. Coloque mods `.zip` ou `.shipmod` diretamente em `mods` e execute `soh.exe`.
 
@@ -60,8 +59,8 @@ host fica em `linkspan-overlay.json`, no campo `linkSpan.ootLayoutId`.
 
 O host compila o core Link-Span a partir de `LINKSPAN_SDK_SOURCE_DIR`, cujo
 default é o submódulo `extern/ship-lua`. Desde `OOT-UPSTREAM-001`, o submódulo
-aponta para o core dos hosts OoT: o commit `4244f7d` da branch
-`agent/NATIVE-001-provider-runtime` de `BaiterYamato/link-span` (`ship-lua.git`
+aponta para o core dos hosts OoT: o commit `4766532` de `BaiterYamato/link-span`,
+na `main` desde a CORE-INTEGRATE-001 (`ship-lua.git`
 é o nome antigo desse repositório). Um clone com submódulos compila sem ajuste
 de cache. Só aponte `LINKSPAN_SDK_SOURCE_DIR` para outra pasta, como a worktree
 `NATIVE-001`, ao desenvolver o próprio core: outro checkout pode trazer outra
@@ -108,9 +107,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/package-linkspan-o
   -ExtractorAssets soh/assets/yml `
   -ControllerDatabase build/x64/gamecontrollerdb.txt `
   -LayoutIdHeader build/x64/native-sdk/oot_layout_id.h `
-  -HostBase "HarbourMasters/Shipwright develop 78dc6d970 + Link-Span core 4244f7d" `
+  -HostBase "HarbourMasters/Shipwright 9.3.0 ecd889c201 + Link-Span core 4766532" `
   -ExampleMod build/distribution/Dynamic-Movement-Remake-0.2.8-layout-16ff0d5a.zip `
-  -OutputPath build/distribution/LinkSpan-Shipwright-9.2.3-Upstream-78dc6d970-Win64-overlay.zip
+  -OutputPath build/distribution/LinkSpan-Shipwright-9.3.0-Upstream-ecd889c20-layout-<id>-Win64-overlay.zip
 ```
 
 O script cria o ZIP por um diretório temporário único, confere que o layout id
@@ -137,8 +136,8 @@ nativo gera: `manifest.toml` na raiz e entradas com `/`.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-linkspan-overlay.ps1 `
-  -Overlay build/distribution/LinkSpan-Shipwright-9.2.3-Upstream-78dc6d970-Win64-overlay.zip `
-  -Base <instalação 9.2.3 limpa com oot.o2r> `
+  -Overlay build/distribution/LinkSpan-Shipwright-9.3.0-Upstream-ecd889c20-layout-<id>-Win64-overlay.zip `
+  -Base <instalação 9.3.0 limpa com oot.o2r> `
   -Smoke <pasta nova para a prova> `
   -Evidence <pasta de evidências> `
   -PlaytestScripts <scripts da skill soh-runtime-playtest> `

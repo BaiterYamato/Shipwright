@@ -1,9 +1,9 @@
-# Notice — Link-Span overlay for Ship of Harkinian 9.2.3
+# Notice — Link-Span overlay for Ship of Harkinian 9.3.0
 
-This overlay replaces `soh.exe` and `soh.o2r` of a Ship of Harkinian 9.2.3 installation and adds the Link-Span
+This overlay replaces `soh.exe` and `soh.o2r` of a Ship of Harkinian 9.3.0 installation and adds the Link-Span
 files (`soh.symbols`, extractor YAMLs, controller database, README).
 
-- `soh.exe` and `soh.o2r` are built from Ship of Harkinian (HarbourMasters/Shipwright, base `78dc6d970`), which
+- `soh.exe` and `soh.o2r` are built from Ship of Harkinian (HarbourMasters/Shipwright, base 9.3.0, `ecd889c201`), which
   publishes no license, and from the zeldaret decompilation it builds on. That code and those assets stay with
   their authors; this overlay grants no license for them.
 - Link-Span's own work in them — the modloader, the native services and SDK, and the Link-Span changes to
