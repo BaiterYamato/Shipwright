@@ -89,7 +89,8 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         --probe $<TARGET_FILE:oot_native_engine_tests> --host $<TARGET_FILE:soh>
         --sdk "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake"
         --example "${CMAKE_SOURCE_DIR}/soh/native-sdk/example"
-        --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}")
+        --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}"
+        --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
 endif()
 
 # Escape hatch (COREEXT-008, RFC 0023): MinHook v1.3.4 compilada direto das fontes, sem o

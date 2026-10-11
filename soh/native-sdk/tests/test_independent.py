@@ -23,13 +23,22 @@ def main():
     parser.add_argument("--example", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--cmake", required=True)
+    # O mesmo gerador do build do host: o runner do CI usa Ninja com o ambiente do MSVC e não tem o VS 2022.
+    parser.add_argument("--generator", default="Visual Studio 17 2022")
+    parser.add_argument("--make-program", default="")
     args = parser.parse_args()
+    if args.generator.startswith("Visual Studio"):
+        generator = ["-G", args.generator, "-A", "x64"]
+    else:
+        generator = ["-G", args.generator, "-DCMAKE_BUILD_TYPE=Release"]
+        if args.make_program:
+            generator.append(f"-DCMAKE_MAKE_PROGRAM={args.make_program}")
     before = hashlib.sha256(args.host.read_bytes()).hexdigest()
     args.output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="oot-independent-") as temporary:
         build = Path(temporary) / "build"
         for velocity in (7, 10):
-            run(args.cmake, "-S", args.example, "-B", build, "-G", "Visual Studio 17 2022", "-A", "x64",
+            run(args.cmake, "-S", args.example, "-B", build, *generator,
                 f"-DOOT_NATIVE_SDK={args.sdk}", f"-DJUMP_VELOCITY={velocity}.0")
             run(args.cmake, "--build", build, "--config", "Release")
             print(run(args.probe, build / "mod", velocity).strip())
