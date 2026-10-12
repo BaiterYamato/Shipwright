@@ -28,6 +28,7 @@ their code stays with their authors, and this overlay grants no license for it.
 | Not Enough Items (skijer and contributors) | [skijer/Shipwright, branch `Not-Enough-Items`](https://github.com/skijer/Shipwright/tree/Not-Enough-Items), commit `c29262b` | the item code in the NEI mod, the MM Goron form in `soh/soh/mmform`, and the `nei-assets` players generate on their own machine | none published |
 | Unbound mod API (skijer) | [skijer/Shipwright, branch `unbound-modapi`](https://github.com/skijer/Shipwright/tree/unbound-modapi), commit `27bb6c445` | host fixes (UNBOUND-032): unsigned item icon byte in messages, test order in the kaleido equipment panel, bounds in the audio tables | none published |
 | Unbound (roborich and contributors) | [roborich/Shipwright](https://github.com/roborich/Shipwright), releases up to [9.3.0-unbound0.11](https://github.com/roborich/Shipwright/releases/tag/9.3.0-unbound0.11), including [9.2.3-unbound0.9](https://github.com/roborich/Shipwright/releases/tag/9.2.3-unbound0.9) and [9.3.0-unbound0.10](https://github.com/roborich/Shipwright/releases/tag/9.3.0-unbound0.10) | the Unbound Framework mod (format, type reader, `baseVersion` from `504e2c0c4`) and host fixes (UNBOUND-032): randomizer spawn points (`e4e933ff8`), Anchor flags in mod scenes (`28ecc36ef`), 16-bit room ids (`53d903e58`) | none published |
+| Mic Ocarina (skijer) | [`MicOcarina.cpp` in skijer/2ship2harkinian, branch `Not-Enough-Items`](https://github.com/skijer/2ship2harkinian/blob/Not-Enough-Items/mm/2s2h/Enhancements/Ocarina/MicOcarina.cpp), commit `5608ab477d` | the pitch detector of the Mic Ocarina mod, modified by the maintainer | CC0 1.0 |
 | Wind Waker Style (roborich) | [roborich/Shipwright, branch `wind-waker-style-cel-shading`](https://github.com/roborich/Shipwright/tree/wind-waker-style-cel-shading), commit `cbcd3e719d` | the Wind Waker Style mod | none published |
 | libultraship and Torch | [Kenix3/libultraship](https://github.com/Kenix3/libultraship), [HarbourMasters/Torch](https://github.com/HarbourMasters/Torch) | engine and asset extractor, listed with the other compiled components in `THIRD-PARTY-NOTICES` | MIT |
 
@@ -35,3 +36,7 @@ Consulted while designing, with no code taken from them: [OoTMM](https://github.
 [ComboShip](https://github.com/Varuuna/ComboShip), on how MM forms can run inside OoT; and
 [noclip.website](https://noclip.website), whose reproduction of Wind Waker's torch light the Wind Waker Style fork
 credits.
+
+The Navi icon on the DMR D-pad HUD is a cropped, downscaled capture of Navi from Ocarina of Time; the reference
+image is [Zelda Wiki's `File:OoT_Navi_Model.png`](https://zeldawiki.wiki/wiki/File:OoT_Navi_Model.png). Navi belongs to Nintendo, so the icon is not
+covered by the CC0 dedication.

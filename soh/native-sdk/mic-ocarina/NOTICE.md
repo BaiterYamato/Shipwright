@@ -1,7 +1,9 @@
 # Notice — Mic Ocarina
 
 - Mic Ocarina is Link-Span's own work, dedicated to the public domain under CC0 1.0 Universal (`LICENSE`): the
-  provider DLL (the pitch detector was ported from the `MicOcarina.cpp` prototype supplied by the maintainer), the
+  provider DLL (the pitch detector was ported from skijer's `MicOcarina.cpp`, in the
+  [`Not-Enough-Items` branch of skijer/2ship2harkinian](https://github.com/skijer/2ship2harkinian/blob/Not-Enough-Items/mm/2s2h/Enhancements/Ocarina/MicOcarina.cpp), which is CC0 1.0, as
+  modified by the maintainer), the
   Lua, and the HUD textures in `assets/`, which `tools/generate-ocarina-hud-assets.ps1` draws; its labels are
   rasterized from the Segoe UI system font, and no font file is included.
 - No game data is in this package.
