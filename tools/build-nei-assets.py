@@ -42,7 +42,7 @@ FORK_COMMIT = "c29262b"
 FORK_COMMIT_FULL = "c29262b76ead6f00786885ae4be68916cbee77f5"
 FORK_BASE = "783139310"
 PREFIX = cmodels.ASSET_PREFIX
-VERSION = "0.3.7"
+VERSION = "0.3.8"
 SPINNER_TEXTURE = "objects/object_nei_spinner/sSpinnerTex"
 SPINNER_REPAIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "soh", "native-sdk",
                               "nei-core", "assets", "spinner-bronze.otex")
@@ -306,6 +306,24 @@ def rewrite_xml(data, by_path):
     return new if new != data else None
 
 
+def strip_port_version(archive):
+    """Tira o portVersion que o soh-o2r-packer grava na raiz (com a versão passada, aqui a do gerador).
+
+    O NEI monta estes .o2r depois do soh.o2r, e no VFS o portVersion deles encobria o do host: o Unbound lê dali a
+    major do SoH e, com 0.3.x, reconvertia a base sem o sohMajor. Asset de mod não declara versão do port.
+    """
+    with zipfile.ZipFile(archive) as z:
+        infos = z.infolist()
+        kept = [(info, z.read(info)) for info in infos if info.filename != "portVersion"]
+    if len(kept) == len(infos):
+        return
+    temp = archive + ".tmp"
+    with zipfile.ZipFile(temp, "w") as z:
+        for info, data in kept:
+            z.writestr(info, data)
+    os.replace(temp, archive)
+
+
 def user_component(path):
     for prefix, name in USER_COMPONENTS:
         if path.startswith(prefix):
@@ -465,6 +483,7 @@ def main():
     for component, entries in sorted(by_component.items()):
         archive = os.path.join(out, "nei-assets-%s.o2r" % component)
         subprocess.run([packer, os.path.join(stage_root, component), archive, VERSION], check=True)
+        strip_port_version(archive)
         with open(archive, "rb") as f:
             digest = hashlib.sha256(f.read()).hexdigest()
         # O fork guarda parte das texturas em PNG, que só vira OTEX no packer: a troca acima não as vê. Esta conta,
@@ -542,6 +561,11 @@ def main():
         report["code_replaced"] = sorted(p for p in code if p in replaced)
     report["stats"].update({"files": len(own), "display_lists": dl_count, "dl_refs": ref_count,
                             "base_paths": len(base)})
+    report["port_version"] = []
+    for info in manifest["components"].values():
+        with zipfile.ZipFile(os.path.join(out, info["archive"])) as z:
+            if "portVersion" in z.namelist():
+                report["port_version"].append(info["archive"])
 
     shutil.rmtree(stage_root, ignore_errors=True)
     with open(os.path.join(out, "nei-assets-manifest.json"), "w", encoding="utf-8") as f:
@@ -569,8 +593,10 @@ def main():
         print("  sem destino (%s): %s -> %s" % (item["componente"], item["recurso"], item.get("caminho", item.get("hash"))))
     for path in report.get("code_replaced", []):
         print("  o código do fork pede pelo nome uma textura trocada: %s" % path)
+    for archive in report["port_version"]:
+        print("  portVersion na raiz (encobre o do soh.o2r): %s" % archive)
     return 1 if (report["overrides"] or core_dangling or report.get("code_missing") or
-                 report.get("code_replaced")) else 0
+                 report.get("code_replaced") or report["port_version"]) else 0
 
 
 if __name__ == "__main__":
