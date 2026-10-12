@@ -12,6 +12,8 @@ extern "C" {
 #include "src/overlays/actors/ovl_En_Zl3/z_en_zl3.h"
 extern PlayState* gPlayState;
 void BossGanon2_SetObjectSegment(BossGanon2* ganon, PlayState* play, s32 objectId, u8 setRSPSegment);
+// SOH [Link-Span] OotNativeHooksGame.cpp: entrega oot.actor.update antes do update original.
+void LinkSpan_ActorUpdate(Actor* actor, PlayState* play);
 }
 
 // Ganon's intro state where he knocks the sword out of Link's hand
@@ -46,7 +48,9 @@ void RegisterGanonIntros() {
             for (Actor* actor = gPlayState->actorCtx.actorLists[ACTORCAT_PROP].head; actor != NULL;
                  actor = actor->next) {
                 if (actor->id == ACTOR_DEMO_GJ && actor->update != NULL) {
-                    actor->update(actor, gPlayState);
+                    // SOH [Link-Span] Pelo mesmo ponto do loop comum (z_actor.c), para OBSERVE/REPLACE dos mods verem
+                    // esses dois passos; sem hook registrado ele chama o update direto.
+                    LinkSpan_ActorUpdate(actor, gPlayState);
                 }
             }
         }

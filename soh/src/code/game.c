@@ -29,6 +29,8 @@ GameState* gGameState;
 int gfx_create_framebuffer(uint32_t width, uint32_t height, uint32_t native_width, uint32_t native_height,
                            uint8_t resize, bool forceFixedAspect);
 void gfx_texture_cache_clear();
+// SOH [Link-Span] Definida em soh/soh/ShipLuaBootstrap.cpp; declarada aqui para não mudar header do layout do SDK.
+void LinkSpan_ApplyPendingSettings(void);
 
 void GameState_FaultPrint(void) {
     static char sBtnChars[] = "ABZSuldr*+LRudlr";
@@ -266,6 +268,10 @@ void GameState_Update(GameState* gameState) {
 
     GameState_SetFrameBuffer(gfxCtx);
 
+    // SOH [Link-Span] Também antes do update: hotkeys e menu rodam no Graph_StartFrame, antes deste ponto, e uma
+    // máscara equipada por elas já precisa do hook de PersistentMasks no Player_ProcessItemButtons deste frame.
+    LinkSpan_ApplyPendingSettings();
+
     GameInteractor_ExecuteOnGameStateMainStart();
 
     gameState->main(gameState);
@@ -355,6 +361,9 @@ void GameState_Update(GameState* gameState) {
     }
 
     GameInteractor_ExecuteOnGameFrameUpdate();
+    // SOH [Link-Span] Opções do SoH gravadas por mods nesta volta reaplicam os hooks condicionais aqui, fora de
+    // qualquer despacho do GameInteractor.
+    LinkSpan_ApplyPendingSettings();
     gameState->frames++;
 }
 
