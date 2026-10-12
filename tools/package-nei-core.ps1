@@ -7,19 +7,22 @@ param(
     [string]$OutputDirectory = 'build\nei-core',
     [string]$HostExecutable = 'x64\Release\soh.exe',
     [string]$HostSymbols = 'x64\Release\soh.symbols',
+    # Saída do tools/build-nei-assets.py: nei-assets-<componente>.o2r e nei-assets-manifest.json.
+    [string]$AssetsDirectory = 'build\nei-assets',
     # O mod de exemplo como pacote próprio, para testar o serviço em jogo; o fonte dele já vai no .shipmod.
     [switch]$Demo
 )
 
 # NEI-016: o .shipmod único do coremod Not Enough Items (linkspan.nei). Leva:
 # - DLL, Lua e o header público de add-ons;
-# - guia de instalação e de add-ons, componentes opcionais e licenças;
+# - os assets do fork (modelos, ícones, texturas) em assets/, que a DLL monta de dentro do pacote (NEI-BUNDLE-001);
+# - guia de instalação e de add-ons, componentes e licenças;
 # - o fonte do add-on de exemplo.
 # Ao lado do pacote fica o relatório com SHA-256 de cada arquivo.
 # O código de itens do fork NEI chama o soh.exe pelo escape hatch (ABI 1.3): o manifesto lista o SHA-256 do
 # executável alvo, e em outro executável só o registro de itens funciona.
-# Os assets do fork (modelos, ícones, texturas) não vão no pacote: não têm licença. Quem joga gera
-# <jogo>/nei-assets/nei-assets-<componente>.o2r com tools/build-nei-assets.py (NEI-007), e o README explica.
+# Os assets vêm do fork NEI (skijer/Shipwright, branch Not-Enough-Items, c29262b), que não declara licença; o
+# NOTICE.md e o docs/LICENSES.md do pacote dizem a origem.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -41,8 +44,57 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
     New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
-$version = '0.3.23'
+$version = '0.3.24'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_nei_core.dll') 'NEI core DLL'
+
+# Assets: o manifesto tem de ser da versão atual do gerador, conferido contra o oot.o2r e o mm.o2r (textura igual à
+# do jogo vira referência ao caminho do jogo, não cópia) e cada .o2r tem de bater com o SHA-256 dele. Uma pasta velha
+# ou gerada sem os arquivos do jogo falha aqui, não no jogo.
+# Só vão os componentes que a DLL usa (ComponentOf em fork/fork_items.c): formas e rede não entram na DLL.
+$bundledComponents = @('core', 'expansion.sm64', 'expansion.ssbb')
+$assetsManifestFile = Resolve-InputFile (Join-Path $AssetsDirectory 'nei-assets-manifest.json') 'NEI assets manifest'
+$assetsManifest = [System.IO.File]::ReadAllText($assetsManifestFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+$generatorText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'build-nei-assets.py') -Raw
+$generatorVersion = [regex]::Match($generatorText, '(?m)^VERSION = "([^"]+)"').Groups[1].Value
+if ($assetsManifest.version -ne $generatorVersion) {
+    throw "Assets do NEI na versão $($assetsManifest.version); o gerador está na $generatorVersion. Gere de novo: $AssetsDirectory"
+}
+$checked = @($assetsManifest.game_data.checked_against)
+foreach ($game in @('oot.o2r', 'mm.o2r')) {
+    if ($checked -notcontains $game) {
+        throw "Assets do NEI gerados sem conferir o $game (--base/--mm do build-nei-assets.py): $AssetsDirectory"
+    }
+}
+$assetFiles = @()
+foreach ($name in $bundledComponents) {
+    $component = $assetsManifest.components.$name
+    if (-not $component) {
+        throw "Manifesto sem o componente ${name}: $assetsManifestFile"
+    }
+    $copies = @($component.game_copies)
+    if ($copies.Count -gt 0) {
+        throw "O componente $name leva $($copies.Count) cópia(s) de textura do jogo (ex.: $($copies[0].path) = $($copies[0].game))"
+    }
+    $archive = Resolve-InputFile (Join-Path $AssetsDirectory $component.archive) "NEI assets ($name)"
+    $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne $component.sha256) {
+        throw "SHA-256 de $archive não bate com o manifesto ($hash, esperado $($component.sha256))"
+    }
+    $assetFiles += $archive
+}
+# O manifesto do pacote descreve só o que vai nele.
+$packageManifest = [ordered]@{
+    format = $assetsManifest.format
+    version = $assetsManifest.version
+    source = $assetsManifest.source
+    license = $assetsManifest.license
+    game_data = $assetsManifest.game_data
+    components = [ordered]@{}
+    files = @($assetsManifest.files | Where-Object { $bundledComponents -contains $_.component })
+}
+foreach ($name in $bundledComponents) {
+    $packageManifest.components[$name] = $assetsManifest.components.$name
+}
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
 $jsonCopyright = Resolve-InputFile $JsonLicense 'nlohmann/json license'
 $layoutText = Get-Content -LiteralPath (Resolve-InputFile $LayoutHeader 'Layout id header') -Raw
@@ -66,7 +118,7 @@ $coreStage = Join-Path $staging 'nei'
 if (Test-Path -LiteralPath $staging) {
     Remove-Item -LiteralPath $staging -Recurse -Force
 }
-foreach ($directory in @('provider', 'include\linkspan\nei', 'docs\examples\heart-seeds')) {
+foreach ($directory in @('provider', 'assets', 'include\linkspan\nei', 'docs\examples\heart-seeds')) {
     [System.IO.Directory]::CreateDirectory((Join-Path $coreStage $directory)) | Out-Null
 }
 Copy-Item -LiteralPath $symbolsFile -Destination (Join-Path $packageRoot 'soh.symbols') -Force
@@ -91,6 +143,11 @@ Write-Utf8NoBom (Join-Path $coreStage 'manifest.toml') $coreManifest.Replace('__
     '__FINGERPRINT__', $fingerprint)
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'core-main.lua') -Destination (Join-Path $coreStage 'main.lua')
 Copy-Item -LiteralPath $coreDll -Destination (Join-Path $coreStage 'provider\linkspan_nei_core.dll')
+# A DLL procura <pacote>/assets antes de <jogo>/nei-assets (assets.cpp).
+foreach ($archive in $assetFiles) {
+    Copy-Item -LiteralPath $archive -Destination (Join-Path $coreStage 'assets')
+}
+Write-Utf8NoBom (Join-Path $coreStage 'assets\nei-assets-manifest.json') ($packageManifest | ConvertTo-Json -Depth 6)
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\nei\nei_items.h') `
     -Destination (Join-Path $coreStage 'include\linkspan\nei\nei_items.h')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'README.md') -Destination (Join-Path $coreStage 'docs\README.md')
@@ -119,25 +176,41 @@ Write-Utf8NoBom (Join-Path $example 'manifest.toml') $demoManifest
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'demo\main.lua') -Destination (Join-Path $example 'main.lua')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'demo\nei_demo.cpp') -Destination (Join-Path $example 'nei_demo.cpp')
 
-# Componentes externos: descobertos na máquina de quem joga, nunca empacotados.
+# Componentes: os assets vão no pacote; a ROM do SM64 nunca.
 $components = [ordered]@{
-    version = 1
+    version = 2
     components = @(
         [ordered]@{
             id = 'nei-assets-core'
-            path = 'nei-assets/nei-assets-core.o2r'
-            required = $false
+            path = 'assets/nei-assets-core.o2r'
+            bundled = $true
             source = 'tools/build-nei-assets.py, a partir de skijer/Shipwright (branch Not-Enough-Items) c29262b'
-            license = 'sem licença declarada: não redistribuível'
+            license = 'sem licença declarada; direitos de skijer e colaboradores (NOTICE.md)'
             without = 'só a Roc''s Feather e a Roc''s Cape, com ícone e modelo provisórios'
         },
         [ordered]@{
-            id = 'nei-assets-form-*, nei-assets-expansion-*'
-            path = 'nei-assets/nei-assets-<componente>.o2r'
-            required = $false
+            id = 'nei-assets-expansion.sm64, nei-assets-expansion.ssbb'
+            path = 'assets/nei-assets-expansion.<nome>.o2r'
+            bundled = $true
+            source = 'tools/build-nei-assets.py, a partir do mesmo commit'
+            license = 'sem licença declarada; direitos de skijer e colaboradores (NOTICE.md)'
+            without = 'a Mario Mask e a Poké Ball ficam fora do registro'
+        },
+        [ordered]@{
+            id = 'nei-assets-form.*, nei-assets-network.*'
+            path = $null
+            bundled = $false
             source = 'tools/build-nei-assets.py'
-            license = 'sem licença declarada: não redistribuível'
-            without = 'sem efeito nesta versão (formas e expansões ficam para o NEI-015)'
+            license = 'sem licença declarada'
+            without = 'sem efeito nesta versão: o código das formas e da rede não entra na DLL'
+        },
+        [ordered]@{
+            id = 'oot.o2r, mm.o2r'
+            path = $null
+            bundled = $false
+            source = 'arquivos do jogo do próprio usuário'
+            license = 'nunca distribuídos'
+            without = 'texturas que o fork copiou do jogo (pá, vara de pesca, máscara do Mario) são lidas daqui, pelo caminho do jogo; sem o mm.o2r a máscara do Mario fica sem duas texturas'
         },
         [ordered]@{
             id = 'sm64-rom'
@@ -158,8 +231,11 @@ $notice = @"
   público pela CC0 1.0 Universal (``LICENSE``).
 - Código de itens do fork Not Enough Items (``skijer/Shipwright``, branch ``Not-Enough-Items``, commit ``c29262b``), compilado na DLL: o
   fork não publica licença; esse código segue com skijer e colaboradores (``NOTICE.md``).
-- Nenhum asset do fork (modelos, ícones, texturas, sons) vai neste pacote: eles não têm licença declarada. Quem
-  joga os gera no próprio computador (``docs/README.md``, ``docs/components.json``).
+- Assets do mesmo fork (modelos, ícones, texturas e nomes dos itens), em ``assets/nei-assets-*.o2r``: gerados do
+  commit ``c29262b`` por ``tools/build-nei-assets.py``. O fork não publica licença; os direitos seguem com skijer e
+  colaboradores. O ``assets/nei-assets-manifest.json`` lista a origem e o SHA-256 de cada arquivo; a única troca é a
+  textura do Spinner, material gerado para o Link-Span. Texturas do fork iguais às do jogo não vão: o modelo aponta
+  para o caminho delas no ``oot.o2r`` ou no ``mm.o2r`` do jogador (``game_data`` no manifesto).
 - Nenhum dado do jogo e nenhuma ROM vão neste pacote.
 
 ## nlohmann/json (compilado na DLL)

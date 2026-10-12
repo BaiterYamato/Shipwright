@@ -29,3 +29,15 @@ unit/z_player.c ::: } else if (GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE
 unit/z_player.c ::: if (GameInteractor_Should(VB_INFLICT_VOID_DAMAGE, (respawnFlag == 1) || (respawnFlag == -1), respawnFlag)) { ::: if (!SeasonScene_ConsumeVoidDamage(play) && GameInteractor_Should(VB_INFLICT_VOID_DAMAGE, (respawnFlag == 1) || (respawnFlag == -1), respawnFlag)) {
 
 z_player_lib.c ::: sPlayerBodyEnvColor = *color; ::: if (FourSwordClone_ActiveTint(&sTemp)) color = &sTemp; sPlayerBodyEnvColor = *color;
+
+# Nome do kaleido sem recurso no VFS (pacote sem assets, mm.o2r ausente): o gSPSegment do nameSegment no host chama o
+# ResourceMgr_LoadIfDListByName, que não testa nulo, e o jogo caía ao selecionar o item (NEI-BUNDLE-001). Nome que falta
+# vira o substituto que o próprio fork usa (iconNameTextures[0]); sobreposição que falta é ignorada.
+z_kaleido_scope_PAL.c ::: const char* twilightOverride = KaleidoScope_GetTwilightNameOverride(pauseCtx->namedItem); ::: if (!ResourceMgr_FileExists(textureName)) { textureName = iconNameTextures[0]; } const char* twilightOverride = NeiResource_ExistingName(KaleidoScope_GetTwilightNameOverride(pauseCtx->namedItem));
+z_kaleido_scope_PAL.c ::: const char* weaponUpgradeOverride = KaleidoScope_GetWeaponUpgradeNameOverride(pauseCtx->namedItem); ::: const char* weaponUpgradeOverride = NeiResource_ExistingName(KaleidoScope_GetWeaponUpgradeNameOverride(pauseCtx->namedItem));
+z_kaleido_scope_PAL.c ::: const char* weaponUpgradeOverrideDraw = KaleidoScope_GetWeaponUpgradeNameOverride(pauseCtx->namedItem); ::: const char* weaponUpgradeOverrideDraw = NeiResource_ExistingName(KaleidoScope_GetWeaponUpgradeNameOverride(pauseCtx->namedItem));
+z_kaleido_scope_PAL.c ::: const char* twilightOverrideDraw = KaleidoScope_GetTwilightNameOverride(pauseCtx->namedItem); ::: const char* twilightOverrideDraw = NeiResource_ExistingName(KaleidoScope_GetTwilightNameOverride(pauseCtx->namedItem));
+
+# A troca de página do NEI marca moveCursorResult = 2, que pula a releitura do item sob o cursor: nome e alvo de equipar
+# ficavam os do slot da página anterior.
+z_kaleido_item.c ::: ExtInv_SwitchPage(); ::: ExtInv_SwitchPage(); cursorItem = ExtInv_GetSlotItem(ExtInv_GetInventorySlot(pauseCtx->cursorPoint[PAUSE_ITEM]));

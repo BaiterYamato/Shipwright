@@ -118,6 +118,9 @@ void StoreValue(uint8_t* address, const NeiSaveField& field, int64_t signedValue
 void ForkSave::Attach(const ShipOotSaveV1* save, uint64_t handle) {
     mSave = save;
     mSaveHandle = handle;
+    // Até o primeiro oot.save.loaded (Scene Select, Boss Rush, mod ligado com o jogo já rodando) o gNeiSave fica como
+    // a DLL o carregou: zerado, e 0 é ITEM_DEKU_STICK nas 48 células da página do NEI. Vazio é 0xFF.
+    NeiSave_Reset();
 }
 
 void ForkSave::Detach() {

@@ -20,6 +20,11 @@ extern PlayState* gPlayState;
 // O cache de existência do host é criado antes da montagem dos .o2r do NEI.
 // Consulte o VFS atual para modelos, animações e texturas do fork.
 #define ResourceMgr_FileExists NeiResource_FileExists
+// resource_guard.c: o caminho quando ele existe no VFS, senão NULL. O nome do kaleido vai para o nameSegment, e o
+// gSPSegment do host derruba o jogo com caminho que não existe (extracted-fixes.txt, NEI-BUNDLE-001).
+const char* NeiResource_ExistingName(const char* path);
+// assets.cpp: 1 quando o arquivo existe no VFS, contando os archives que o NEI montou.
+int NeiAssets_HasFile(const char* path);
 
 // resource_guard.c + text.cpp: o fork monta alguns textos por hook C++ na hora de abrir a caixa (Time Gate, Lantern,
 // Pictobox); o desvio grava o texto do id no host antes de abrir.

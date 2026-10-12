@@ -1,6 +1,6 @@
-// Assets do NEI (NEI-007): os arquivos .o2r que tools/build-nei-assets.py gera, a partir do fork, no computador
-// de quem joga. Não vêm no pacote (o fork não tem licença declarada); o coremod monta os que encontrar em
-// <pasta do jogo>/nei-assets/ e segue com ícones e modelos provisórios quando não há nenhum.
+// Assets do NEI (NEI-007): os arquivos nei-assets-<componente>.o2r que tools/build-nei-assets.py gera a partir do
+// fork. Vêm dentro do .shipmod, em assets/ (NEI-BUNDLE-001); <pasta do jogo>/nei-assets/ fica como alternativa para
+// um pacote sem eles. Sem nenhum dos dois, o coremod segue com ícones e modelos provisórios.
 #ifndef LINKSPAN_NEI_ASSETS_H
 #define LINKSPAN_NEI_ASSETS_H
 

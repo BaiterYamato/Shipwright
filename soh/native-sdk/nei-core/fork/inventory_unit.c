@@ -6,11 +6,37 @@
  * chama tudo isso; antes do NEI-003 essas funções eram stub de "recurso ausente".
  *
  * Fica numa unidade própria, e não colado no player_unit.c, porque o arquivo do fork já é uma TU
- * completa com os próprios includes — o z_player.c do fork nunca o inclui. */
+ * completa com os próprios includes — o z_player.c do fork nunca o inclui.
+ *
+ * Os dois getters de ícone ganham um envoltório (fim do bloco de includes): ícone que falta no VFS desenhava a última
+ * textura carregada no quad. */
+#define ExtInv_GetItemIcon NeiFork_ItemIconRaw
+#define ExtInv_GetInventoryItemIcon NeiFork_InventoryItemIconRaw
 #include "mods/extended_inventory.c"
+#undef ExtInv_GetItemIcon
+#undef ExtInv_GetInventoryItemIcon
 #include "progression.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <stdio.h>
+#include <string.h>
+
+/* Caminho "__OTR__..." que não existe no VFS (pacote sem assets, mm.o2r ausente) vira o ícone provisório que o registro
+ * já usa para item sem assets (fork_glue.cpp). Ponteiro baixo é o que o interpretador também descarta. */
+static void* ExistingIcon(void* tex) {
+    if ((uintptr_t)tex >= 0x10000 && strncmp((const char*)tex, "__OTR__", 7) == 0 &&
+        !NeiAssets_HasFile((const char*)tex)) {
+        return (void*)"__OTR__textures/icon_item_static/gItemIconHookshotTex";
+    }
+    return tex;
+}
+
+void* ExtInv_GetItemIcon(uint16_t itemId) {
+    return ExistingIcon(NeiFork_ItemIconRaw(itemId));
+}
+
+void* ExtInv_GetInventoryItemIcon(uint16_t itemId) {
+    return ExistingIcon(NeiFork_InventoryItemIconRaw(itemId));
+}
 
 unsigned NeiSensor_GetWish(unsigned slot) {
     if (slot >= 5) return 0;

@@ -58,6 +58,32 @@ fs::path GameDirectory() {
     return fs::current_path();
 }
 
+// <pacote>/assets: o core extrai o .shipmod e carrega a DLL de <pacote>/provider. Vazio fora do Windows ou se o
+// módulo não se acha.
+fs::path PackageAssetsDirectory() {
+#ifdef _WIN32
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&PackageAssetsDirectory), &module)) {
+        return {};
+    }
+    std::wstring buffer(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD length = GetModuleFileNameW(module, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (length == 0) {
+            return {};
+        }
+        if (length < buffer.size()) {
+            buffer.resize(length);
+            return fs::path(buffer).parent_path().parent_path() / "assets";
+        }
+        buffer.resize(buffer.size() * 2);
+    }
+#else
+    return {};
+#endif
+}
+
 // "nei-assets-form.kafei.o2r" -> "form.kafei"; outro nome -> vazio.
 std::string ComponentOf(const fs::path& file) {
     const std::string name = file.filename().string();
@@ -81,22 +107,36 @@ void MountAssets(const ShipNativeRuntime* runtime) {
         gAssets.status = "desligados: host sem linkspan.oot.resources v2";
         return;
     }
-    const fs::path folder = GameDirectory() / kFolder;
-    std::error_code error;
+    // Os assets vêm dentro do .shipmod (<pacote>/assets). <jogo>/nei-assets fica só para quem gera os próprios com
+    // tools/build-nei-assets.py e instala um pacote sem eles.
+    const fs::path packageFolder = PackageAssetsDirectory();
+    const fs::path gameFolder = GameDirectory() / kFolder;
     std::vector<std::pair<std::string, fs::path>> found;
-    for (fs::directory_iterator it(folder, error), end; !error && it != end; it.increment(error)) {
-        const std::string component = ComponentOf(it->path());
-        if (!component.empty() && it->is_regular_file(error)) {
-            found.emplace_back(component, it->path());
+    const char* source = "";
+    for (const auto& [folder, label] : { std::pair{ packageFolder, "pacote" }, std::pair{ gameFolder, "jogo" } }) {
+        if (folder.empty()) {
+            continue;
         }
+        std::error_code error;
+        found.clear();
+        for (fs::directory_iterator it(folder, error), end; !error && it != end; it.increment(error)) {
+            const std::string component = ComponentOf(it->path());
+            if (!component.empty() && it->is_regular_file(error)) {
+                found.emplace_back(component, it->path());
+            }
+        }
+        // O núcleo primeiro; componentes opcionais sem ele não servem para nada (os itens vivem no núcleo).
+        std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
+            return (a.first == kCore) != (b.first == kCore) ? a.first == kCore : a.first < b.first;
+        });
+        if (!found.empty() && found.front().first == kCore) {
+            source = label;
+            break;
+        }
+        found.clear();
     }
-    // O núcleo primeiro; componentes opcionais sem ele não servem para nada (os itens vivem no núcleo).
-    std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
-        return (a.first == kCore) != (b.first == kCore) ? a.first == kCore : a.first < b.first;
-    });
-    if (found.empty() || found.front().first != kCore) {
-        gAssets.status = "ausentes (" + (folder / (std::string(kPrefix) + kCore + ".o2r")).string() +
-                         "); ícones e modelos provisórios";
+    if (found.empty()) {
+        gAssets.status = "ausentes (nem no pacote nem em " + gameFolder.string() + "); ícones e modelos provisórios";
         return;
     }
     std::string list;
@@ -114,8 +154,9 @@ void MountAssets(const ShipNativeRuntime* runtime) {
         gAssets.mounted.push_back({ component, handle });
         list += (list.empty() ? "" : "+") + component;
     }
-    gAssets.status = list.empty() ? "montagem falhou (" + failures + ")"
-                                  : list + (failures.empty() ? "" : " | falharam: " + failures);
+    gAssets.status = list.empty()
+                         ? "montagem falhou (" + failures + ")"
+                         : std::string(source) + ": " + list + (failures.empty() ? "" : " | falharam: " + failures);
 }
 
 void UnmountAssets() {

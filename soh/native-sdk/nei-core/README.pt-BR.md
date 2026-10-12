@@ -27,7 +27,7 @@ Ao desativar um item equipado, ele também sai do botão C. Pressione **L** na
 página de itens do jogo para chegar à página do NEI. A grade inclui itens de
 add-ons registrados nesta sessão. O resultado aparece em **Status** e no log.
 
-## Itens e habilidades na versão 0.3.23
+## Itens e habilidades na versão 0.3.24
 
 ### Animações e efeitos
 
@@ -89,40 +89,64 @@ O pacote traz o SHA-256 do `soh.exe` para o qual foi compilado:
 - **Com outro:** só o registro de itens funciona, e a linha do log mostra o fork desligado. O jogo segue
   normal nos dois casos.
 
-## Componentes opcionais
+## Assets dos itens
 
-Nenhum destes vai no pacote.
+Os modelos, ícones, texturas e nomes dos itens do fork vêm dentro do pacote, na pasta `assets/`. Não há nada para
+gerar nem copiar. Ao iniciar, o coremod monta os arquivos `nei-assets-*.o2r` que achar na pasta `assets/` do
+pacote, e o log mostra `assets: pacote: core+...` (depois de `pacote` vêm os componentes montados).
+O `assets/nei-assets-manifest.json` lista cada arquivo com a origem e o SHA-256.
 
-| Componente | O que muda | Como obter |
-|---|---|---|
-| `nei-assets/nei-assets-core.o2r` | modelos, ícones e texturas dos itens | gerado no seu computador (abaixo) |
-| `nei-assets-form.*`, `nei-assets-expansion.*` | formas e expansões | gerados pelo mesmo script; ainda sem uso nesta versão |
-| ROM de Super Mario 64 | expansão Mario | não usada nesta versão; nunca é distribuída |
+| Em `assets/` | O que contém |
+|---|---|
+| `nei-assets-core.o2r` | modelos, ícones, texturas e nomes dos itens; animações do Link; o HUD da Cane |
+| `nei-assets-expansion.sm64.o2r` | a Mario Mask |
+| `nei-assets-expansion.ssbb.o2r` | a Poké Ball |
 
-**Sem o `nei-assets-core.o2r`:** o coremod define só a Roc's Feather e a Roc's Cape, com ícone e modelo
-provisórios. Os assets do fork não têm licença declarada, por isso não entram em nenhum pacote do Link-Span.
+As formas do fork (Garo, Gerudo, Kafei, Keaton, Rito) e o modo de rede não vão no pacote: o código delas não entra na
+DLL desta versão.
 
-**Para gerar**, a partir de um checkout do host Link-Span com o commit do fork buscado
+Nenhum dado do jogo vai no pacote. Algumas texturas do fork são cópias das do próprio jogo (as do Dampé na pá, um
+segmento da vara de pesca, duas do Vendedor de Máscaras na Mario Mask). Elas ficam de fora, e os modelos as leem pelo
+caminho do jogo no seu `oot.o2r` e no `mm.o2r`. Sem o `mm.o2r`, a Mario Mask fica sem essas duas texturas. A ROM de
+Super Mario 64 não é usada nesta versão e nunca é distribuída.
+
+O fork não publica licença, então os assets seguem com skijer e colaboradores. Eles são gerados do commit
+`c29262b`, e a única troca é a textura do Spinner, um material gerado para o Link-Span (veja `NOTICE.md`).
+
+**Sem o núcleo** (pacote sem `assets/nei-assets-core.o2r` e nada em `<jogo>/nei-assets/`): o coremod define só a
+Roc's Feather e a Roc's Cape, com ícone e modelo provisórios. Se faltar a textura do ícone ou do nome de um item, o
+jogo mostra o ícone provisório e o nome substituto do fork, em vez de travar no menu de pausa.
+
+O gerador substitui apenas `sSpinnerTex`, cuja imagem do fork é um padrão colorido inadequado ao modelo, pelo
+material de bronze em `assets/spinner-bronze.otex`. O modelo e a movimentação do Spinner continuam os do fork. O
+modelo da Deku Leaf e de outros itens montados depois da inicialização é localizado pelo serviço de recursos ativo;
+a folha aparece na mão quando Link sopra e acima das mãos quando plana.
+
+O Gust Jar desenha o cone e as fitas de vento do fork. O modo de sucção mostra vento branco; ao soprar, a cor
+segue o elemento selecionado (gelo azul, por exemplo). Esse efeito usa os recursos `object_nei_tornado` de
+`nei-assets-core.o2r`, que vêm no pacote.
+
+### Para desenvolvedores: gerar os assets de novo
+
+Só é preciso para alterar os assets ou montar um pacote por conta própria. A partir de um checkout do host Link-Span
+com o commit do fork buscado
 (`git fetch https://github.com/skijer/Shipwright c29262b76ead6f00786885ae4be68916cbee77f5`):
 
 ```text
 python tools/build-nei-assets.py --repo . --packer build/x64/Release/soh-o2r-packer.exe \
-    --base <oot.o2r> --base <soh.o2r> --fork-source build/nei-core-native/nei-fork/fork --out build/nei-assets
+    --base <oot.o2r> --base <soh.o2r> --mm <mm.o2r> --fork-source <build do NEI>/nei-fork/fork --out build/nei-assets
 ```
 
-Copie `build/nei-assets/nei-assets-*.o2r` para `<jogo>/nei-assets/`. O coremod monta o que achar ali ao iniciar,
-e o log mostra `assets: core+...`.
+`<build do NEI>` é a pasta de build do coremod NEI, a que contém `nei-fork/fork`.
 
-A partir da versão 0.3.6, o gerador substitui apenas `sSpinnerTex`, cuja imagem do fork é um padrão colorido
-inadequado ao modelo, pelo material de bronze em `assets/spinner-bronze.otex`. O modelo e a movimentação do
-Spinner continuam os do fork. O modelo da Deku Leaf e de outros itens montados depois da inicialização é
-localizado pelo serviço de recursos ativo; a folha aparece na mão quando Link sopra e acima das mãos quando plana.
-É necessário gerar novamente `nei-assets-core.o2r` e instalar um pacote NEI 0.3.6 ou mais recente.
+`tools/package-nei-core.ps1 -AssetsDirectory <saída>` (a pasta do `--out` acima) coloca os arquivos gerados na
+pasta `assets/` do pacote: o núcleo e as duas expansões. Ele recusa assets de outra versão do gerador, assets
+gerados sem o `oot.o2r` e o `mm.o2r` (o gerador precisa deles para achar texturas copiadas do jogo), componente que
+ainda leve textura do jogo e `.o2r` cujo SHA-256 não bata com o manifesto.
 
-Na versão 0.3.7, o Gust Jar volta a desenhar o cone e as fitas de vento do fork. O modo de sucção mostra
-vento branco; ao soprar, a cor segue o elemento selecionado (gelo azul, por exemplo). Esse efeito usa os
-recursos `object_nei_tornado` de `nei-assets-core.o2r`, portanto o pacote e os assets gerados localmente
-precisam estar juntos na instalação.
+**Alternativa para um pacote sem assets:** copie `nei-assets-*.o2r` para `<jogo>/nei-assets/`. O coremod só olha
+ali quando a pasta `assets/` do pacote não tem o núcleo, e o log passa a mostrar `assets: jogo: core+...` (`jogo` é
+a pasta do jogo).
 
 ## Randomizer e Anchor
 
