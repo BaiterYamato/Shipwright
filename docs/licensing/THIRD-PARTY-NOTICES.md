@@ -55,10 +55,16 @@ carry those notices too.
 
 ## Projects without a published license
 
-Ship of Harkinian / Shipwright (HarbourMasters and contributors, base 9.3.0, `ecd889c201`), the zeldaret decompilation of
-Ocarina of Time it builds on, Not Enough Items (skijer, commit `c29262b`), Unbound (roborich, tag
-`9.2.3-unbound0.9` and earlier) and Wind Waker Style (roborich, commit `cbcd3e719d`) publish no license. Their code
-and assets stay with their authors; Link-Span grants no license for them.
+[Ship of Harkinian / Shipwright](https://github.com/HarbourMasters/Shipwright) (HarbourMasters and contributors,
+base 9.3.0, `ecd889c201`), the zeldaret decompilations of [Ocarina of Time](https://github.com/zeldaret/oot) and
+[Majora's Mask](https://github.com/zeldaret/mm) (the MM sound effect engine in `soh.exe` is ported from the latter,
+through the copy in 2Ship2Harkinian), [Not Enough Items](https://github.com/skijer/Shipwright/tree/Not-Enough-Items) (skijer, commit `c29262b`) and skijer's
+[`unbound-modapi` branch](https://github.com/skijer/Shipwright/tree/unbound-modapi) (`27bb6c445`),
+[Unbound](https://github.com/roborich/Shipwright) (roborich, releases up to `9.3.0-unbound0.11`) and
+[Wind Waker Style](https://github.com/roborich/Shipwright/tree/wind-waker-style-cel-shading) (roborich, commit `cbcd3e719d`) publish no license.
+Their code and assets stay with their authors; Link-Span grants no license for them.
+[2Ship2Harkinian](https://github.com/2ship2harkinian/2ship2harkinian), the MM host whose `mm.o2r` Link-Span mounts,
+is CC0 1.0. The overlay's `NOTICE` lists what comes from each project.
 
 ## Fonts
 

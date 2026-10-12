@@ -17,7 +17,7 @@
 ## Research, not code
 
 - **Torch light pool:** the fork's documentation credits its Light Casting flicker and tumble constants to the
-  noclip.website reproduction of Wind Waker's torch light (`bonbori`). They reach this mod only through the fork's
+  [noclip.website](https://noclip.website) reproduction of Wind Waker's torch light (`bonbori`). They reach this mod only through the fork's
   code.
 
 ## Host

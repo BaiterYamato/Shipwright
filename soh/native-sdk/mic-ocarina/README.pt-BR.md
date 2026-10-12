@@ -54,4 +54,4 @@ CTest inclui o detector original, conversão real de áudio estéreo de 48 kHz, 
 
 ## Origem
 
-O detector foi portado do protótipo MicOcarina.cpp fornecido anteriormente. A interface utiliza arte própria gerada por tools/generate-ocarina-hud-assets.ps1; as imagens de referência não são distribuídas no pacote.
+O detector foi portado do [MicOcarina.cpp](https://github.com/skijer/2ship2harkinian/blob/Not-Enough-Items/mm/2s2h/Enhancements/Ocarina/MicOcarina.cpp) do skijer (skijer/2ship2harkinian, CC0 1.0), com as modificações do mantenedor. A interface utiliza arte própria gerada por tools/generate-ocarina-hud-assets.ps1; as imagens de referência não são distribuídas no pacote.

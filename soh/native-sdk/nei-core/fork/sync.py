@@ -1,7 +1,7 @@
-"""Prepara o código do fork NEI (skijer/Not-Enough-Items) para compilar dentro da DLL do linkspan.nei.
+"""Prepara o código do fork NEI (skijer/Shipwright, branch Not-Enough-Items) para compilar dentro da DLL do linkspan.nei.
 
 O fonte não é copiado para o repositório: sai do commit fixo FORK_COMMIT (precisa estar no git do host:
-`git fetch https://github.com/skijer/Not-Enough-Items c29262b`), recebe os patches de patches/ e ganha a
+`git fetch https://github.com/skijer/Shipwright c29262b76ead6f00786885ae4be68916cbee77f5`), recebe os patches de patches/ e ganha a
 camada de compatibilidade de gen_compat.py. Saída em <out>/fork (fonte) e <out>/compat (/FI e sombras).
 
 Também gera <out>/compat/nei_host_data.h: cada variável global declarada `extern` nos headers do host que

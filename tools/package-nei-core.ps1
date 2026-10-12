@@ -127,7 +127,7 @@ $components = [ordered]@{
             id = 'nei-assets-core'
             path = 'nei-assets/nei-assets-core.o2r'
             required = $false
-            source = 'tools/build-nei-assets.py, a partir de skijer/Not-Enough-Items c29262b'
+            source = 'tools/build-nei-assets.py, a partir de skijer/Shipwright (branch Not-Enough-Items) c29262b'
             license = 'sem licença declarada: não redistribuível'
             without = 'só a Roc''s Feather e a Roc''s Cape, com ícone e modelo provisórios'
         },
@@ -156,7 +156,7 @@ $notice = @"
 
 - Código do Link-Span neste pacote (cola do coremod, registro, save, Lua, header e documentação): domínio
   público pela CC0 1.0 Universal (``LICENSE``).
-- Código de itens do fork Not Enough Items (``skijer/Not-Enough-Items``, commit ``c29262b``), compilado na DLL: o
+- Código de itens do fork Not Enough Items (``skijer/Shipwright``, branch ``Not-Enough-Items``, commit ``c29262b``), compilado na DLL: o
   fork não publica licença; esse código segue com skijer e colaboradores (``NOTICE.md``).
 - Nenhum asset do fork (modelos, ícones, texturas, sons) vai neste pacote: eles não têm licença declarada. Quem
   joga os gera no próprio computador (``docs/README.md``, ``docs/components.json``).
