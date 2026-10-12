@@ -11,6 +11,9 @@ O leitor de tipos em `actor_registry.cpp` foi adaptado de `ActorRegistry.cpp` e
 `DeclaredActorType.h` do projeto [roborich/Shipwright, tag 9.2.3-unbound0.9](https://github.com/roborich/Shipwright/releases/tag/9.2.3-unbound0.9),
 commit `cf7db7f7f9b65247347d54abea386669ce9c909f`.
 
+A base grava um `baseVersion` e é reaproveitada ou recusada por ele, seguindo o commit `504e2c0c4` do roborich
+([tag 9.3.0-unbound0.11](https://github.com/roborich/Shipwright/releases/tag/9.3.0-unbound0.11)); o código é do próprio Link-Span.
+
 O host Link-Span adapta `DeclaredActor.cpp` no serviço genérico `linkspan.oot.actor-models`.
 O formato JSON e os comportamentos seguem `unbound-docs/SPEC.md`, §§4.3 e 7.2.
 

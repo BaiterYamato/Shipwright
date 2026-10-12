@@ -1,6 +1,6 @@
 """Gera, no computador de quem joga, os arquivos de assets do Not Enough Items (NEI-007).
 
-Os assets do fork NEI (skijer/Not-Enough-Items) não têm licença declarada, então não entram em nenhum pacote do
+Os assets do fork NEI (skijer/Shipwright, branch Not-Enough-Items) não têm licença declarada, então não entram em nenhum pacote do
 Link-Span. Este script tira do commit congelado do fork os arquivos que ele acrescentou em soh/assets/custom, separa
 por componente (núcleo, formas e expansões, que são componentes opcionais do NEI-015), empacota cada componente
 num .o2r com o soh-o2r-packer do host e escreve o manifesto com origem, licença, hash e associação de cada arquivo.
@@ -17,7 +17,7 @@ Uso:
   python tools/build-nei-assets.py --repo . --packer build/x64/Release/soh-o2r-packer.exe \
       --base <oot.o2r> --base <soh.o2r> --fork-source build/nei-core-native/nei-fork/fork --out build/nei-assets
 
-Precisa do commit do fork no git do repositório (git fetch https://github.com/skijer/Not-Enough-Items c29262b).
+Precisa do commit do fork no git do repositório (git fetch https://github.com/skijer/Shipwright c29262b76ead6f00786885ae4be68916cbee77f5).
 """
 import argparse
 import hashlib
@@ -272,7 +272,7 @@ def main():
         "format": "linkspan.nei.assets/1",
         "version": VERSION,
         "source": {
-            "repository": "https://github.com/skijer/Not-Enough-Items",
+            "repository": "https://github.com/skijer/Shipwright/tree/Not-Enough-Items",
             "commit": FORK_COMMIT_FULL,
             "base": FORK_BASE,
             "tree": PREFIX,

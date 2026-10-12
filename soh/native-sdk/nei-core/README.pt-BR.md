@@ -2,8 +2,8 @@
 
 # Not Enough Items (Link-Span)
 
-Coremod `linkspan.nei`. Traz os itens do fork [skijer/Not-Enough-Items](https://github.com/skijer/Not-Enough-Items)
-(commit `c29262b`) para o Ship of Harkinian com Link-Span, sem recompilar o jogo:
+Coremod `linkspan.nei`. Traz os itens do fork [Not Enough Items](https://github.com/skijer/Shipwright/tree/Not-Enough-Items)
+(skijer/Shipwright, branch `Not-Enough-Items`, commit `c29262b`) para o Ship of Harkinian com Link-Span, sem recompilar o jogo:
 
 - página extra do inventário (o L troca de página no menu de itens);
 - itens com get-item, modelo e texto próprios;
@@ -103,7 +103,7 @@ Nenhum destes vai no pacote.
 provisórios. Os assets do fork não têm licença declarada, por isso não entram em nenhum pacote do Link-Span.
 
 **Para gerar**, a partir de um checkout do host Link-Span com o commit do fork buscado
-(`git fetch https://github.com/skijer/Not-Enough-Items c29262b`):
+(`git fetch https://github.com/skijer/Shipwright c29262b76ead6f00786885ae4be68916cbee77f5`):
 
 ```text
 python tools/build-nei-assets.py --repo . --packer build/x64/Release/soh-o2r-packer.exe \
