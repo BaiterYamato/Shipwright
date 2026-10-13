@@ -15,6 +15,10 @@
 
 static NeiItemMapping sMapping;
 
+// inventory_unit.c: o getter do fork sem a troca por ícone provisório. O registro já decide pelos assets montados, e
+// a descrição pode sair antes da montagem ou fora da thread do jogo, quando o has_file responde 0.
+void* NeiFork_InventoryItemIconRaw(uint16_t itemId);
+
 void NeiFork_MapItem(u8 runtimeId, u16 logicalId) {
     NeiMapping_Set(&sMapping, runtimeId, logicalId);
 }
@@ -141,7 +145,7 @@ int NeiFork_DescribeItem(u16 logicalId, NeiForkItemInfo* info) {
         info->logicalId = logicalId;
         info->age = LINKSPAN_OOT_ITEM_AGE_ANY;
         info->component = "core";
-        info->icon = StripOtr(ExtInv_GetInventoryItemIcon(logicalId));
+        info->icon = StripOtr(NeiFork_InventoryItemIconRaw(logicalId));
         info->modelScale = 0.015f;
         if (logicalId == EXT_ITEM_SHEIKAH_SLATE) {
             info->slot = SLOT_SHEIKAH_SLATE;
@@ -170,7 +174,7 @@ int NeiFork_DescribeItem(u16 logicalId, NeiForkItemInfo* info) {
                                                : LINKSPAN_OOT_ITEM_AGE_ANY;
     // Lantern's row icon is intentionally NULL: its artwork depends on the flame.
     // The host C-button registry still needs a real initial icon.
-    info->icon = StripOtr(logicalId == ITEM_LANTERN ? ExtInv_GetInventoryItemIcon(logicalId) : row->iconTex);
+    info->icon = StripOtr(logicalId == ITEM_LANTERN ? NeiFork_InventoryItemIconRaw(logicalId) : row->iconTex);
     info->message = row->nameEn;
     info->component = ComponentOf(logicalId);
     for (u32 i = 0; i < gNeiItemModelCount; i++) {

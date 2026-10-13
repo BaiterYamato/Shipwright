@@ -423,7 +423,10 @@ void TestForkSaveRoundTrip() {
     FakeSave::slot = 0;
     FakeSave::hasBlock = false;
     LinkSpanNei::ForkSave save;
+    std::memset(&gForkSave, 0, sizeof(gForkSave));
     save.Attach(&FakeSave::table, 8);
+    // Antes de qualquer save carregado, as células já estão vazias (0 seria Deku Stick).
+    CHECK(gForkSave.ownedItems[0] == 0xFF && gForkSave.ownedItems[47] == 0xFF);
     save.OnSaveLoaded();
     CHECK(gForkSave.ownedItems[0] == 0xFF && gForkSave.bottleSlots[0] == 0xFF);
 

@@ -225,9 +225,18 @@ void UpdateModFiles(bool init = false, bool reset = false) {
     if (modsPath.length() > 0 && std::filesystem::exists(modsPath)) {
         std::vector<std::filesystem::path> enabledFiles;
         if (std::filesystem::is_directory(modsPath)) {
-            for (const std::filesystem::directory_entry& p : std::filesystem::recursive_directory_iterator(
-                     modsPath, std::filesystem::directory_options::follow_directory_symlink)) {
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     modsPath, std::filesystem::directory_options::follow_directory_symlink);
+                 it != std::filesystem::recursive_directory_iterator(); ++it) {
+                const std::filesystem::directory_entry& p = *it;
                 if (p.is_directory()) {
+                    // Link-Span: mods/.shiplua-cache guarda os pacotes extraídos pelo modloader, que monta os
+                    // .o2r de cada um pelo provider e os solta no unload. Montados aqui também, ficavam abertos
+                    // até o fim e o modloader não apagava a pasta extraída (NEI-BUNDLE-001). O .shiplua-disabled
+                    // guarda mods que o boot guard desligou.
+                    if (p.path().filename().generic_string().rfind(".shiplua-", 0) == 0) {
+                        it.disable_recursion_pending();
+                    }
                     continue;
                 }
                 std::string filename =
