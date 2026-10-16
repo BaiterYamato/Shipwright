@@ -22,8 +22,8 @@ struct SkySlot {
 };
 
 constexpr SkySlot kSeaPalette[2][6] = {
-    { // limpo (colpat 0)
-      { { 79, 70, 78 }, { 180, 142, 121 }, { 113, 90, 73 }, { 74, 71, 79 }, { 108, 96, 92 } },            // aurora
+    {                                                                                          // limpo (colpat 0)
+      { { 79, 70, 78 }, { 180, 142, 121 }, { 113, 90, 73 }, { 74, 71, 79 }, { 108, 96, 92 } }, // aurora
       { { 180, 188, 201 }, { 241, 230, 220 }, { 193, 190, 197 }, { 247, 232, 216 }, { 255, 241, 223 } }, // manhã
       { { 80, 120, 255 }, { 163, 210, 255 }, { 80, 120, 255 }, { 255, 255, 255 }, { 255, 255, 255 } },   // meio-dia
       { { 219, 154, 99 }, { 236, 202, 137 }, { 200, 160, 100 }, { 233, 177, 108 }, { 208, 155, 98 } },   // tarde
@@ -91,7 +91,8 @@ SkyWeather SampleWeather(PlayState* play) {
     const float cur = env.unk_17 == 1 ? 1.0f : 0.0f;
     const float next = env.unk_18 == 1 ? 1.0f : 0.0f;
     float cloudiness = cur;
-    if (env.unk_19 >= 3 && cur != next) cloudiness = cur + ((next - cur) * (env.skyboxBlend / 255.0f));
+    if (env.unk_19 >= 3 && cur != next)
+        cloudiness = cur + ((next - cur) * (env.skyboxBlend / 255.0f));
     // unk_EE[1] é a contagem de gotas já suavizada; LIGHTNING_MODE_LAST ainda deve um raio.
     const float rain = std::clamp(env.unk_EE[1] / 30.0f, 0.0f, 1.0f);
     const bool lightning = env.lightningMode == LIGHTNING_MODE_ON || env.lightningMode == LIGHTNING_MODE_LAST;
@@ -106,7 +107,8 @@ SkyWeather SampleWeather(PlayState* play) {
         sLastFrame = static_cast<uint32_t>(play->state.frames);
         const float rate = target > sEasedCloudiness ? 0.06f : 0.012f; // ~1 s para fechar, ~10 s para abrir
         sEasedCloudiness += (target - sEasedCloudiness) * rate;
-        if (std::fabs(target - sEasedCloudiness) < 0.001f) sEasedCloudiness = target;
+        if (std::fabs(target - sEasedCloudiness) < 0.001f)
+            sEasedCloudiness = target;
     }
     SkyWeather w{};
     w.cloudiness = sEasedCloudiness;
@@ -189,16 +191,19 @@ bool SkyAvailable(const PlayState* play) {
 // Debug de tela dividida: o céu do mod só na metade esquerda, o skybox vanilla (desenhado por baixo) à direita.
 // Cada desenho restaura a tela cheia no fim, para o mundo desenhado depois nunca sair recortado.
 void SplitBegin(const Settings& cfg, Gfx*& g) {
-    if (cfg.debugSkySplit) gDPSetScissor(g++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH / 2, SCREEN_HEIGHT);
+    if (cfg.debugSkySplit)
+        gDPSetScissor(g++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH / 2, SCREEN_HEIGHT);
 }
 
 void SplitEnd(const Settings& cfg, Gfx*& g) {
-    if (cfg.debugSkySplit) gDPSetScissor(g++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    if (cfg.debugSkySplit)
+        gDPSetScissor(g++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 }
 
 const void* SkyMatrix(Mod& mod, float x, float y, float z) {
-    ShipOotRenderFrameInfoV1 info{sizeof(info)};
-    if (mod.render->get_frame_info(&info) != SHIP_NATIVE_OK) return nullptr;
+    ShipOotRenderFrameInfoV1 info{ sizeof(info) };
+    if (mod.render->get_frame_info(&info) != SHIP_NATIVE_OK)
+        return nullptr;
     // Filho por camera_epoch, como o SkyboxDraw_Draw: a translação que segue a câmera interpola entre os frames de
     // 20 Hz mas pula no corte de câmera, em vez de o céu deslizar um frame.
     const void* mtx = nullptr;
@@ -215,7 +220,7 @@ const void* SkyMatrix(Mod& mod, float x, float y, float z) {
 }
 
 float SkyTicks(Mod& mod) {
-    ShipOotRenderFrameInfoV1 info{sizeof(info)};
+    ShipOotRenderFrameInfoV1 info{ sizeof(info) };
     const float dt =
         mod.render->get_frame_info(&info) == SHIP_NATIVE_OK && info.delta_seconds > 0.0f ? info.delta_seconds : 0.05f;
     return dt * 30.0f;

@@ -110,7 +110,7 @@ struct State {
     std::vector<uint64_t> jsonTypes;
     // Base convertida (oot-unbound.o2r), montada no Init abaixo dos mods.
     uint64_t baseArchive = 0;
-    std::string basePath;  // caminho montado, para separar a base das camadas de mod
+    std::string basePath; // caminho montado, para separar a base das camadas de mod
     std::string baseReport = "-";
     bool baseActive = false;
     std::vector<std::pair<int32_t, uint8_t>> overrides;
@@ -349,8 +349,8 @@ std::string ApplySceneRegistry(State& state) {
     UnregisterScenes(state);
     const std::string layers = "layers=" + std::to_string(collector.layers.size());
     if (read != SHIP_NATIVE_OK || collector.layers.empty()) {
-        return "scenes=0; entrances=0; notes=0; " + layers + "; read=" +
-               (read == SHIP_NATIVE_OK ? "ok" : StatusName(read));
+        return "scenes=0; entrances=0; notes=0; " + layers +
+               "; read=" + (read == SHIP_NATIVE_OK ? "ok" : StatusName(read));
     }
     LinkSpanUnbound::MergeResult merged;
     LinkSpanUnbound::SceneRegistryDocument document;
@@ -434,8 +434,9 @@ std::string ApplySceneRegistry(State& state) {
             }
         }
     }
-    std::string text = "scenes=" + std::to_string(scenesRegistered) + "; entrances=" +
-                       std::to_string(entrancesRegistered) + "; notes=" + std::to_string(notes.size()) + "; " + layers;
+    std::string text = "scenes=" + std::to_string(scenesRegistered) +
+                       "; entrances=" + std::to_string(entrancesRegistered) +
+                       "; notes=" + std::to_string(notes.size()) + "; " + layers;
     for (const auto& note : notes) {
         text += "; " + note;
     }
@@ -453,9 +454,7 @@ ShipNativeStatus SHIP_NATIVE_CALL LoadSceneRegistry(void* user, const char*, uin
     }
     try {
         return WriteText(write, writer, ApplySceneRegistry(*state));
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 std::string DescribeActors(const std::vector<LinkSpanUnbound::RoomActor>& actors, size_t limit) {
@@ -464,8 +463,8 @@ std::string DescribeActors(const std::vector<LinkSpanUnbound::RoomActor>& actors
         const auto& actor = actors[i];
         char entry[96];
         std::snprintf(entry, sizeof(entry), "%s%zu:0x%04X@%.0f,%.0f,%.0f/0x%04X", text.empty() ? "" : " ", i,
-                      static_cast<unsigned>(static_cast<uint16_t>(actor.id)), actor.pos[0], actor.pos[1],
-                      actor.pos[2], static_cast<unsigned>(static_cast<uint16_t>(actor.params)));
+                      static_cast<unsigned>(static_cast<uint16_t>(actor.id)), actor.pos[0], actor.pos[1], actor.pos[2],
+                      static_cast<unsigned>(static_cast<uint16_t>(actor.params)));
         text += entry;
     }
     if (actors.size() > limit) {
@@ -499,9 +498,9 @@ ShipNativeStatus SHIP_NATIVE_CALL OnRoomActors(void* user, const ShipNativeHookC
         const std::string document = LinkSpanUnbound::RoomDocumentPath(roomPath, payload->room);
         ++state->roomsSeen;
         state->lastRoom = "scene=" + std::to_string(payload->scene_id) + " room=" + std::to_string(payload->room) +
-                          " layer=" + std::to_string(payload->layer) + " doc=" +
-                          (document.empty() ? std::string("-") : document) + " atores=" +
-                          std::to_string(vanilla.size()) + " | " + DescribeActors(vanilla, 64);
+                          " layer=" + std::to_string(payload->layer) +
+                          " doc=" + (document.empty() ? std::string("-") : document) +
+                          " atores=" + std::to_string(vanilla.size()) + " | " + DescribeActors(vanilla, 64);
         // Com a base convertida a sala já é um documento: as camadas dos mods mesclam nele direto.
         if (document.empty() || state->baseActive) {
             return SHIP_NATIVE_UNSUPPORTED;
@@ -514,19 +513,20 @@ ShipNativeStatus SHIP_NATIVE_CALL OnRoomActors(void* user, const ShipNativeHookC
         LinkSpanUnbound::RoomActorsResult result;
         std::string error;
         std::string notes;
-        const bool applied = LinkSpanUnbound::ApplyRoomActorLayers(vanilla, payload->layer, collector.layers, result,
-            error, [state](const std::string& name) { return ResolveActor(*state, name); });
+        const bool applied = LinkSpanUnbound::ApplyRoomActorLayers(
+            vanilla, payload->layer, collector.layers, result, error,
+            [state](const std::string& name) { return ResolveActor(*state, name); });
         for (const auto& note : result.notes) {
             notes += "; " + note;
         }
         if (!applied || !result.layersUsed) {
-            state->lastPatch = document + ": recusado (" + (applied ? std::string("nenhuma camada válida") : error) +
-                               ")" + notes;
+            state->lastPatch =
+                document + ": recusado (" + (applied ? std::string("nenhuma camada válida") : error) + ")" + notes;
             return SHIP_NATIVE_UNSUPPORTED;
         }
         if (result.actors.size() > payload->capacity) {
-            state->lastPatch = document + ": " + std::to_string(result.actors.size()) + " atores excedem a capacidade " +
-                               std::to_string(payload->capacity) + notes;
+            state->lastPatch = document + ": " + std::to_string(result.actors.size()) +
+                               " atores excedem a capacidade " + std::to_string(payload->capacity) + notes;
             return SHIP_NATIVE_UNSUPPORTED;
         }
         for (size_t i = 0; i < result.actors.size(); ++i) {
@@ -543,9 +543,7 @@ ShipNativeStatus SHIP_NATIVE_CALL OnRoomActors(void* user, const ShipNativeHookC
                            std::to_string(vanilla.size()) + "->" + std::to_string(result.actors.size()) + notes +
                            " | " + DescribeActors(result.actors, 64);
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 // Relatório das salas vistas pelo hook, para o main.lua registrar quando muda.
@@ -561,9 +559,7 @@ ShipNativeStatus SHIP_NATIVE_CALL RoomReport(void* user, const char*, uint32_t l
                              " salas=" + std::to_string(state->roomsSeen) +
                              " alteradas=" + std::to_string(state->roomsPatched) + "\nultima: " + state->lastRoom +
                              "\npatch: " + (state->lastPatch.empty() ? std::string("-") : state->lastPatch));
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 void AppendLog(const State& state, const std::string& line) {
@@ -843,8 +839,8 @@ void PrepareBase(const ShipNativeRuntime* runtime, State& state) {
         const auto files = LinkSpanUnbound::BuildBase(read, scenes, provenance, report);
         std::string error;
         if (report.scenes == 0) {
-            state.baseReport = "nenhuma cena vanilla convertida (" + std::to_string(scenes.size()) +
-                               " encontradas); base desligada";
+            state.baseReport =
+                "nenhuma cena vanilla convertida (" + std::to_string(scenes.size()) + " encontradas); base desligada";
             return;
         }
         if (!WriteAtomically(archive, LinkSpanUnbound::BuildStoredZip(files), error) ||
@@ -951,8 +947,8 @@ std::string ApplyText(State& state) {
         }
         LinkSpanUnbound::TextTable table;
         const bool built = LinkSpanUnbound::BuildTextTable(collector.layers, table);
-        std::string line = std::string("texto ") + TEXT_LANGUAGES[language] + ": camadas=" +
-                           std::to_string(table.layersUsed);
+        std::string line =
+            std::string("texto ") + TEXT_LANGUAGES[language] + ": camadas=" + std::to_string(table.layersUsed);
         if (built) {
             state.textTouched[language] = true;
             if (table.replaceTable) {
@@ -966,9 +962,9 @@ std::string ApplyText(State& state) {
             uint32_t defined = 0;
             uint32_t failed = 0;
             for (const auto& message : table.messages) {
-                const auto status = state.text->set_message(
-                    language, message.id, message.box, message.ypos,
-                    reinterpret_cast<const uint8_t*>(message.bytes.data()), static_cast<uint32_t>(message.bytes.size()));
+                const auto status = state.text->set_message(language, message.id, message.box, message.ypos,
+                                                            reinterpret_cast<const uint8_t*>(message.bytes.data()),
+                                                            static_cast<uint32_t>(message.bytes.size()));
                 (status == SHIP_NATIVE_OK ? defined : failed) += 1;
             }
             line += " definidas=" + std::to_string(defined) + " removidas=" + std::to_string(removed) +
@@ -990,12 +986,14 @@ ShipNativeStatus SHIP_NATIVE_CALL CollectActorFile(void* user, const char* path,
     auto* files = static_cast<std::map<std::string, std::string>*>(user);
     const std::string full(path, length);
     const auto name = LinkSpanUnbound::ActorNameFromPath(full);
-    if (!name.empty()) files->emplace(name, full);
+    if (!name.empty())
+        files->emplace(name, full);
     return SHIP_NATIVE_OK;
 }
 
 std::string ApplyActorRegistry(State& state) {
-    if (state.actorsReady) return std::to_string(state.actorTypesLoaded) + " tipos já registrados";
+    if (state.actorsReady)
+        return std::to_string(state.actorTypesLoaded) + " tipos já registrados";
     state.actorNames.clear();
     if (state.actorModels->list_types(CollectActorName, &state) != SHIP_NATIVE_OK)
         throw std::runtime_error("não foi possível listar os atores do host");
@@ -1024,10 +1022,12 @@ std::string ApplyActorRegistry(State& state) {
                     state.actorNames[name] = id;
                     ++state.actorTypesLoaded;
                     AppendLog(state, "actor type '" + name + "' -> id " + std::to_string(id));
-                } else notes.push_back(std::string("host recusou o tipo (") + StatusName(status) + ")");
+                } else
+                    notes.push_back(std::string("host recusou o tipo (") + StatusName(status) + ")");
             }
         }
-        for (const auto& note : notes) AddNote(state, path + ": " + note);
+        for (const auto& note : notes)
+            AddNote(state, path + ": " + note);
     }
     state.actorsReady = true;
     return std::to_string(state.actorTypesLoaded) + " tipos personalizados; " +
@@ -1103,7 +1103,7 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         bool modded = false; // alguma camada de mod traz o caminho
         bool base = false;   // o oot-unbound.o2r também traz
         bool baseDone = false;
-        bool baseSkipped = false; // a releitura da base não coube no orçamento
+        bool baseSkipped = false;                    // a releitura da base não coube no orçamento
         LinkSpanUnbound::ReferenceReport baseReport; // só da base, sob demanda
     };
     std::map<std::string, Loaded> loaded;
@@ -1179,7 +1179,8 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
         }
         return found->second.read == SHIP_NATIVE_OK ? &found->second : nullptr;
     };
-    const LinkSpanUnbound::GraphLookup lookup = [&](const std::string& path) -> const LinkSpanUnbound::ReferenceReport* {
+    const LinkSpanUnbound::GraphLookup lookup =
+        [&](const std::string& path) -> const LinkSpanUnbound::ReferenceReport* {
         const Loaded* dependency = resolve(path);
         return dependency ? &dependency->report : nullptr;
     };
@@ -1277,8 +1278,7 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
                             inherited += LinkSpanUnbound::DropInheritedFindings(
                                 graph, LinkSpanUnbound::CollectSceneGraph(*base, baseLookup));
                         }
-                    } catch (const std::exception&) {
-                    }
+                    } catch (const std::exception&) {}
                     if (document.baseSkipped) {
                         graph.gaps.push_back(path + ": comparação com a base fora do orçamento; notas herdadas não "
                                                     "separadas");
@@ -1286,9 +1286,7 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
                 }
                 notes.insert(notes.end(), graph.notes.begin(), graph.notes.end());
                 gaps.insert(gaps.end(), graph.gaps.begin(), graph.gaps.end());
-            } catch (const std::exception& error) {
-                gaps.push_back(path + ": grafo falhou (" + error.what() + ")");
-            }
+            } catch (const std::exception& error) { gaps.push_back(path + ": grafo falhou (" + error.what() + ")"); }
         }
         if (report.kind == LinkSpanUnbound::DocumentKind::Scene) {
             // A cena não é dependência de outra: o documento inteiro não fica no cache.
@@ -1299,8 +1297,8 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
             ++checked;
             const std::string lookup = LinkSpanUnbound::ResourceLookupPath(field, resource);
             // O ResourceManager também resolve um alias <caminho>.meta sem arquivo real no caminho; arquivo cru não.
-            const bool alias = !LinkSpanUnbound::IsRawFileReference(field) &&
-                               state.resources->has_file((lookup + ".meta").c_str());
+            const bool alias =
+                !LinkSpanUnbound::IsRawFileReference(field) && state.resources->has_file((lookup + ".meta").c_str());
             if (!state.resources->has_file(lookup.c_str()) && !alias) {
                 ++missing;
                 lines.push_back("aviso: " + path + ": " + field + " aponta para " + resource +
@@ -1325,11 +1323,12 @@ std::string CheckReferences(State& state, const std::map<std::string, std::vecto
     return "referências: documentos=" + std::to_string(documents) + " conferidas=" + std::to_string(checked) +
            " ausentes=" + std::to_string(missing) + " recusados=" + std::to_string(refused) +
            (notes.empty() ? "" : " notas=" + std::to_string(notes.size())) + " ms=" +
-           std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                                                                started)
-                              .count()) +
+           std::to_string(
+               std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started)
+                   .count()) +
            " grafos=" + std::to_string(graphs) + (gaps.empty() ? "" : " incompletos=" + std::to_string(gaps.size())) +
-           (inherited == 0 ? "" : " herdadas=" + std::to_string(inherited)) + " dependencias="+ std::to_string(dependencyReads) + " jogo=" + GameVersionsText(state);
+           (inherited == 0 ? "" : " herdadas=" + std::to_string(inherited)) +
+           " dependencias=" + std::to_string(dependencyReads) + " jogo=" + GameVersionsText(state);
 }
 
 // §10.5/§14.3: dois mods no mesmo caminho do VFS, verificado no game.ready, antes do gameplay. Documento JSON que
@@ -1486,9 +1485,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Ready(void* user, const char*, uint32_t length
         text += "\nregistro: " + (state->scenes ? ApplySceneRegistry(*state) : std::string("sem linkspan.oot.scenes"));
         text += "\n" + CheckSceneConflicts(*state);
         return WriteText(write, writer, std::move(text));
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 // Primeiro frame: o SoH carrega as tabelas de mensagens depois do game.ready (OTRMessage_Init vem depois do
@@ -1501,9 +1498,7 @@ ShipNativeStatus SHIP_NATIVE_CALL ApplyTextFunction(void* user, const char*, uin
     }
     try {
         return WriteText(write, writer, ApplyText(*state));
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 // Estado da base e dos documentos transcodificados, para o main.lua registrar quando muda.
@@ -1515,21 +1510,18 @@ ShipNativeStatus SHIP_NATIVE_CALL UnboundReport(void* user, const char*, uint32_
     }
     try {
         std::lock_guard lock(state->noteMutex);
-        std::string text = "base: " + state->baseReport + "\njson: tipos=" + std::to_string(state->jsonTypes.size()) +
-                           " scene=" + std::to_string(state->transcoded[0]) +
-                           " room=" + std::to_string(state->transcoded[1]) +
-                           " collision=" + std::to_string(state->transcoded[2]) +
-                           " paths=" + std::to_string(state->transcoded[3]) +
-                           " recusados=" + std::to_string(state->transcodeFailures);
+        std::string text =
+            "base: " + state->baseReport + "\njson: tipos=" + std::to_string(state->jsonTypes.size()) +
+            " scene=" + std::to_string(state->transcoded[0]) + " room=" + std::to_string(state->transcoded[1]) +
+            " collision=" + std::to_string(state->transcoded[2]) + " paths=" + std::to_string(state->transcoded[3]) +
+            " recusados=" + std::to_string(state->transcodeFailures);
         text += "\natores: tipos=" + std::to_string(state->actorTypesLoaded) +
                 " nomes=" + std::to_string(state->actorNames.size());
         for (const auto& note : state->notes) {
             text += "\nnota: " + note;
         }
         return WriteText(write, writer, std::move(text));
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 bool RegisterJsonTypes(State& state) {
@@ -1546,8 +1538,9 @@ bool RegisterJsonTypes(State& state) {
     for (size_t i = 0; i < std::size(kTypes); ++i) {
         auto& binding = state.bindings[i];
         binding = { &state, kTypes[i].type, kTypes[i].version, kTypes[i].kind };
-        ShipOotJsonTypeSpecV1 spec{ sizeof(ShipOotJsonTypeSpecV1), binding.type, binding.version, binding.version,
-                                    TranscodeJson, &binding };
+        ShipOotJsonTypeSpecV1 spec{
+            sizeof(ShipOotJsonTypeSpecV1), binding.type, binding.version, binding.version, TranscodeJson, &binding
+        };
         uint64_t handle = 0;
         if (state.resourcesV3->register_json_type(&spec, &handle) != SHIP_NATIVE_OK) {
             return false;
@@ -1582,10 +1575,13 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         return SHIP_NATIVE_FAILURE;
     }
     state->resources = resources;
-    state->actorModels = static_cast<const ShipOotActorModelsV1*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_ACTOR_MODELS_SERVICE, LINKSPAN_OOT_ACTOR_MODELS_VERSION,
-        sizeof(ShipOotActorModelsV1)));
-    if (!state->actorModels) { delete state; return SHIP_NATIVE_UNSUPPORTED; }
+    state->actorModels = static_cast<const ShipOotActorModelsV1*>(
+        runtime->get_service(runtime->context, LINKSPAN_OOT_ACTOR_MODELS_SERVICE, LINKSPAN_OOT_ACTOR_MODELS_VERSION,
+                             sizeof(ShipOotActorModelsV1)));
+    if (!state->actorModels) {
+        delete state;
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
     state->resourcesV3 = static_cast<const ShipOotResourcesV3*>(
         runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_3,
                              sizeof(ShipOotResourcesV3)));
@@ -1597,12 +1593,11 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
                                             LINKSPAN_OOT_SCENES_VERSION_2, sizeof(ShipOotScenesV2)));
     // ShipOotScenesV2 começa com a tabela V1.
     state->scenes = state->scenesV2 ? reinterpret_cast<const ShipOotScenesV1*>(state->scenesV2)
-                                    : static_cast<const ShipOotScenesV1*>(runtime->get_service(
-                                          runtime->context, LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION,
-                                          sizeof(ShipOotScenesV1)));
-    state->text = static_cast<const ShipOotTextV1*>(
-        runtime->get_service(runtime->context, LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION,
-                             sizeof(ShipOotTextV1)));
+                                    : static_cast<const ShipOotScenesV1*>(
+                                          runtime->get_service(runtime->context, LINKSPAN_OOT_SCENES_SERVICE,
+                                                               LINKSPAN_OOT_SCENES_VERSION, sizeof(ShipOotScenesV1)));
+    state->text = static_cast<const ShipOotTextV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION, sizeof(ShipOotTextV1)));
     state->ownerThread = std::this_thread::get_id();
     try {
         std::error_code error;
@@ -1610,9 +1605,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         fs::create_directories(logs, error);
         state->logPath = logs / "linkspan-unbound.log";
         std::ofstream(state->logPath, std::ios::binary | std::ios::trunc);
-    } catch (...) {
-        state->logPath.clear();
-    }
+    } catch (...) { state->logPath.clear(); }
     if (!runtime->register_function ||
         runtime->register_function(runtime->context, "load_scene_registry", LoadSceneRegistry, state) !=
             SHIP_NATIVE_OK ||
@@ -1625,9 +1618,15 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     // Host sem oot.room.actors (ou ABI < 1.2) segue sem alterar salas.
     if (runtime->abi_minor >= 2 && runtime->register_hook) {
-        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ROOM_ACTORS,
-                                       LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION, sizeof(ShipOotRoomActorsHookV2),
-                                       SHIP_NATIVE_HOOK_TRANSFORM, 0, 0, OnRoomActors, state };
+        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec),
+                                       LINKSPAN_OOT_HOOK_ROOM_ACTORS,
+                                       LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION,
+                                       sizeof(ShipOotRoomActorsHookV2),
+                                       SHIP_NATIVE_HOOK_TRANSFORM,
+                                       0,
+                                       0,
+                                       OnRoomActors,
+                                       state };
         uint64_t handle = 0;
         state->roomHook = runtime->register_hook(runtime->context, &spec, &handle) == SHIP_NATIVE_OK;
     }

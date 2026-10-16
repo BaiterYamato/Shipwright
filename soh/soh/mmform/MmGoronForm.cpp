@@ -71,18 +71,18 @@ struct FormState {
     f32 savedCylinderRadius = 0;
     // Campos da bola, com o nome do campo original do Player de MM ao lado —
     // e por eles que a referencia se le (mm_player_form.cpp:984-999).
-    float rollBallSpeed = 0.0f;  // unk_B08: velocidade real da esfera (max 18)
-    float rollBounce = 0.0f;     // unk_B0C: energia de quique acumulada
-    float rollTilt = 0.0f;       // unk_B48: velocidade da deformacao visual
-    float rollSquash = 0.0f;     // unk_ABC: achatamento/alongamento da esfera
-    float rollColorLerp = 0.0f;  // unk_B10[0]: 0 branco, 1 azul (ground pound)
-    std::int16_t rollHomeYaw = 0;      // actor.home.rot.y: direcao REAL do movimento
-    std::int16_t rollChargeLevel = 0;  // av1: contador de carga (4 -> 0x36 -> espinhos)
-    std::int16_t rollSpinRate = 0;     // av2: giro visual da esfera
-    std::int16_t rollSpikeActive = 0;  // unk_B86[1]: 0 desligado, 1-7 ativo
-    std::int16_t rollSfxCounter = 0;   // unk_B86[0]: contador do som de rolar
-    std::int16_t rollDriftYaw = 0;     // unk_B28: direcao da derrapagem
-    std::int16_t magicDrainTimer = 0;  // magicConsumptionTimer: 1 de magia a cada 10 frames
+    float rollBallSpeed = 0.0f;            // unk_B08: velocidade real da esfera (max 18)
+    float rollBounce = 0.0f;               // unk_B0C: energia de quique acumulada
+    float rollTilt = 0.0f;                 // unk_B48: velocidade da deformacao visual
+    float rollSquash = 0.0f;               // unk_ABC: achatamento/alongamento da esfera
+    float rollColorLerp = 0.0f;            // unk_B10[0]: 0 branco, 1 azul (ground pound)
+    std::int16_t rollHomeYaw = 0;          // actor.home.rot.y: direcao REAL do movimento
+    std::int16_t rollChargeLevel = 0;      // av1: contador de carga (4 -> 0x36 -> espinhos)
+    std::int16_t rollSpinRate = 0;         // av2: giro visual da esfera
+    std::int16_t rollSpikeActive = 0;      // unk_B86[1]: 0 desligado, 1-7 ativo
+    std::int16_t rollSfxCounter = 0;       // unk_B86[0]: contador do som de rolar
+    std::int16_t rollDriftYaw = 0;         // unk_B28: direcao da derrapagem
+    std::int16_t magicDrainTimer = 0;      // magicConsumptionTimer: 1 de magia a cada 10 frames
     std::uint8_t rollWallBounceTimer = 0;  // unk_B8C
     std::uint8_t rollNoInputTimer = 0;     // unk_B8E
     std::uint8_t rollGroundPoundTimer = 0; // unk_B8A
@@ -655,14 +655,14 @@ void ActionGoronRoll(Player* player, PlayState* play) {
                             static_cast<int>(gState.rollSpikeActive), static_cast<int>(gState.rollChargeLevel),
                             static_cast<int>(player->doorType), static_cast<int>(player->actor.wallBgId),
                             (!fastEnough && player->doorType == PLAYER_DOORTYPE_NONE) ? "NENHUM(lento)"
-                            : headOnNow                                              ? "FRONTAL(freia)"
-                                                                                     : "RASPAO(reflete)");
+                            : headOnNow                                               ? "FRONTAL(freia)"
+                                                                                      : "RASPAO(reflete)");
             }
         }
         // A porta de escada usa limiar 0.0f no MM — qualquer velocidade serve.
         const bool doorOverride = player->doorType != PLAYER_DOORTYPE_NONE;
-        const bool headOn = (player->actor.bgCheckFlags & BGCHECKFLAG_PLAYER_WALL_INTERACT) != 0 &&
-                            ABS(relWallAngle) < 0x1C00;
+        const bool headOn =
+            (player->actor.bgCheckFlags & BGCHECKFLAG_PLAYER_WALL_INTERACT) != 0 && ABS(relWallAngle) < 0x1C00;
 
         if ((fastEnough || doorOverride) && headOn) {
             player->linearVelocity *= 0.1f;
@@ -683,8 +683,7 @@ void ActionGoronRoll(Player* player, PlayState* play) {
             PlaySfx(player, NA_SE_PL_BODY_HIT);
             SPDLOG_INFO("ShipLua bola/parede: EXECUTOU FRONTAL — velocidade cortada para {:.2f}, vy={:.2f}, "
                         "carga={}",
-                        player->linearVelocity, player->actor.velocity.y,
-                        static_cast<int>(gState.rollChargeLevel));
+                        player->linearVelocity, player->actor.velocity.y, static_cast<int>(gState.rollChargeLevel));
         } else if ((player->actor.bgCheckFlags & BGCHECKFLAG_WALL) && fastEnough) {
             // Reflexao de raspao. Sem excecao de dyna: o MM nao tem nenhuma —
             // aquilo era invencao da referencia skijer, e fazia a bola atravessar
@@ -1806,9 +1805,8 @@ bool EnterDamage(Player* player) {
     gState.damageWasAirborne = !OnGround(player) || player->actor.velocity.y > 0.0f;
 
     if (!HasAnim("damage") || !StartAnim("damage", 1.0f, true)) {
-        SetAction(gState.damageWasAirborne
-                      ? (player->actor.velocity.y < 0.0f ? GoronAction::Fall : GoronAction::Jump)
-                      : GoronAction::Idle);
+        SetAction(gState.damageWasAirborne ? (player->actor.velocity.y < 0.0f ? GoronAction::Fall : GoronAction::Jump)
+                                           : GoronAction::Idle);
         return false;
     }
 
@@ -1847,7 +1845,7 @@ void ActionDamage(Player* player, bool animationFinished) {
 
 void UpdateLocomotion(Player* player) {
     const float speed = std::fabs(player->linearVelocity);
-    const GoronAction wanted = speed >= kRunThreshold  ? GoronAction::Run
+    const GoronAction wanted = speed >= kRunThreshold    ? GoronAction::Run
                                : speed >= kWalkThreshold ? GoronAction::Walk
                                                          : GoronAction::Idle;
     if (gState.action != wanted) {

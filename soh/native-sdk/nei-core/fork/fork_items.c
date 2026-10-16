@@ -49,10 +49,12 @@ u16 NeiFork_ExtendedItem(u8 runtimeId) {
 // usando somente IDs runtime, inclusive quando outro mod ocupa a mesma faixa numérica.
 static u8 IsEquippedSword(s32 item) {
     const u8 sword = ExtEquip_GetCurrent(EQUIP_TYPE_SWORD);
-    return sword >= 1 && sword <= 3 && ExtEquip_IsEnabled() &&
-           ExtEquip_HasItem(EQUIP_TYPE_SWORD, sword) && item == ExtEquip_GetItemId(EQUIP_TYPE_SWORD,sword);
+    return sword >= 1 && sword <= 3 && ExtEquip_IsEnabled() && ExtEquip_HasItem(EQUIP_TYPE_SWORD, sword) &&
+           item == ExtEquip_GetItemId(EQUIP_TYPE_SWORD, sword);
 }
-u8 NeiFork_BButtonItem(u8 storedId) { return IsEquippedSword(storedId) ? storedId : NeiFork_ToLogicalItem(storedId); }
+u8 NeiFork_BButtonItem(u8 storedId) {
+    return IsEquippedSword(storedId) ? storedId : NeiFork_ToLogicalItem(storedId);
+}
 
 // Chamado antes de Player_GetItemOnButton converter o id para o mundo do fork.
 // O host valida registro e idade no hook VB_CHANGE_HELD_ITEM_AND_USE_ITEM.
@@ -70,19 +72,23 @@ u8 NeiFork_IsForeignRuntimeButton(s32 button) {
 // o host bloqueia o uso vanilla (VB_CHANGE_HELD_ITEM_AND_USE_ITEM) e zera a ação (VB_ITEM_ACTION_BE_NONE), e o fork
 // precisa do Player_UseItem dele para montar a ação do item (PLAYER_IA_ROD_FIRE golpeia com B).
 u8 NeiFork_IsForkItem(s32 item) {
-    if (IsEquippedSword(item)) return 1;
+    if (IsEquippedSword(item))
+        return 1;
     if (item == ITEM_EXT_BUTTON) {
-        for (u32 i = 0; i < 256; ++i) if (sMapping.logical[i] > 0xFF) return 1;
+        for (u32 i = 0; i < 256; ++i)
+            if (sMapping.logical[i] > 0xFF)
+                return 1;
     }
-    return item >= 0 && item <= 0xFFFF &&
-           NeiMapping_Runtime(&sMapping, (u16)item, ITEM_NONE) != ITEM_NONE;
+    return item >= 0 && item <= 0xFFFF && NeiMapping_Runtime(&sMapping, (u16)item, ITEM_NONE) != ITEM_NONE;
 }
 
 // O id de outro mod pode coincidir numericamente com um id lógico do NEI. O botão
 // guarda o id runtime original, então compare os dois antes de pular o hook do host.
 u8 NeiFork_IsForkButtonItem(s32 item, s32 button) {
-    if (button < 0 || button >= 4) return 0;
-    if (button == 0 && IsEquippedSword(item) && gSaveContext.equips.buttonItems[0] == item) return 1;
+    if (button < 0 || button >= 4)
+        return 0;
+    if (button == 0 && IsEquippedSword(item) && gSaveContext.equips.buttonItems[0] == item)
+        return 1;
     const u8 runtime = gSaveContext.equips.buttonItems[button];
     const u16 logical = NeiMapping_Logical(&sMapping, runtime);
     return logical != 0 && (logical == item || (logical > 0xFF && item == ITEM_EXT_BUTTON));
@@ -102,8 +108,8 @@ u8 NeiFork_ToRuntimeItem(u16 logicalId) {
 }
 
 // Itens que não são célula da página do NEI mas entram no registro.
-static const u16 sExtraItems[] = { ITEM_ROCS_CAPE, EXT_ITEM_SHEIKAH_SLATE,
-                                  EXT_ITEM_PHANTOM_HOURGLASS, EXT_ITEM_ROD_OF_SEASONS };
+static const u16 sExtraItems[] = { ITEM_ROCS_CAPE, EXT_ITEM_SHEIKAH_SLATE, EXT_ITEM_PHANTOM_HOURGLASS,
+                                   EXT_ITEM_ROD_OF_SEASONS };
 
 u32 NeiFork_ListItems(u16* out, u32 capacity) {
     u32 count = 0;
@@ -138,7 +144,8 @@ static const char* ComponentOf(u16 item) {
 }
 
 int NeiFork_DescribeItem(u16 logicalId, NeiForkItemInfo* info) {
-    if (info == NULL) return 0;
+    if (info == NULL)
+        return 0;
     if (logicalId == EXT_ITEM_SHEIKAH_SLATE || logicalId == EXT_ITEM_PHANTOM_HOURGLASS ||
         logicalId == EXT_ITEM_ROD_OF_SEASONS) {
         memset(info, 0, sizeof(*info));

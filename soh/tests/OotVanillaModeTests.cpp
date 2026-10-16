@@ -31,8 +31,8 @@ float UpstreamS16Field(double value) {
 
 void TestVanillaTruncatesLikeAnS16Field() {
     gLinkSpanEngineExtended = 0;
-    const double values[] = { 0.0, 1.7, -1.7, 0.49, -0.49, 100.5, -100.5, 32767.9, -32768.9, 32768.0, 40000.25,
-                              -40000.25, 65536.0 + 12.0 };
+    const double values[] = { 0.0,     1.7,      -1.7,    0.49,     -0.49,     100.5,         -100.5,
+                              32767.9, -32768.9, 32768.0, 40000.25, -40000.25, 65536.0 + 12.0 };
     for (double value : values) {
         Check(LinkSpan_S16F(value) == UpstreamS16Field(value), "S16F sem mod diverge da gravação em s16");
     }

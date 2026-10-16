@@ -59,7 +59,7 @@ struct GraphFindings {
 struct SceneGraph {
     std::vector<GraphFindings> findings; // por item, para comparar com a base
     std::vector<std::string> notes;      // uma por grupo de findings: o jogo leria fora da lista, ou sem efeito
-    std::vector<std::string> gaps;       // o que não deu para conferir (dependência ausente ou recusada, exits de sala)
+    std::vector<std::string> gaps; // o que não deu para conferir (dependência ausente ou recusada, exits de sala)
 };
 // Relatório já mesclado de um caminho (sem __OTR__); nullptr é desconhecido, nunca lista vazia. Os ponteiros
 // precisam viver até o retorno.

@@ -2914,11 +2914,13 @@ s16 func_80823A0C(PlayState* play, Vtx* vtx, s16 pageIndex, s16 arg3) {
 
                 if (colorIndex) {}
 
-                vtx[vtxIndex + 1].v.ob[0] = vtx[vtxIndex + 3].v.ob[0] = vtx[vtxIndex + 0].v.ob[0] + D_8082B08C[colorIndex];
+                vtx[vtxIndex + 1].v.ob[0] = vtx[vtxIndex + 3].v.ob[0] =
+                    vtx[vtxIndex + 0].v.ob[0] + D_8082B08C[colorIndex];
 
                 vtx[vtxIndex + 0].v.ob[1] = vtx[vtxIndex + 1].v.ob[1] = D_8082B0B8[colorIndex] + pauseCtx->offsetY;
 
-                vtx[vtxIndex + 2].v.ob[1] = vtx[vtxIndex + 3].v.ob[1] = vtx[vtxIndex + 0].v.ob[1] - D_8082B0E4[colorIndex];
+                vtx[vtxIndex + 2].v.ob[1] = vtx[vtxIndex + 3].v.ob[1] =
+                    vtx[vtxIndex + 0].v.ob[1] - D_8082B0E4[colorIndex];
             }
 
             vtxIndex += 12;

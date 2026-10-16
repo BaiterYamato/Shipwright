@@ -39,14 +39,18 @@ void* ExtInv_GetInventoryItemIcon(uint16_t itemId) {
 }
 
 unsigned NeiSensor_GetWish(unsigned slot) {
-    if (slot >= 5) return 0;
-    char key[32]; snprintf(key, sizeof(key), "gNei.SensorDesire%u", slot);
+    if (slot >= 5)
+        return 0;
+    char key[32];
+    snprintf(key, sizeof(key), "gNei.SensorDesire%u", slot);
     const int item = CVarGetInteger(key, 0);
     return item > 0 ? (unsigned)item : 0;
 }
 void NeiSensor_SetWish(unsigned slot, unsigned item) {
-    if (slot >= 5) return;
-    char key[32]; snprintf(key, sizeof(key), "gNei.SensorDesire%u", slot);
+    if (slot >= 5)
+        return;
+    char key[32];
+    snprintf(key, sizeof(key), "gNei.SensorDesire%u", slot);
     CVarSetInteger(key, item);
     CVarSave();
 }
@@ -78,10 +82,14 @@ u8 Cane_GiveSkill(u8 skill); /* item_cane_of_somaria.c, no player_unit.c */
 
 static uint8_t LogicalSlot(uint16_t logicalId) {
     switch (logicalId) {
-        case EXT_ITEM_SHEIKAH_SLATE: return SLOT_SHEIKAH_SLATE;
-        case EXT_ITEM_PHANTOM_HOURGLASS: return SLOT_PHANTOM_HOURGLASS;
-        case EXT_ITEM_ROD_OF_SEASONS: return SLOT_ROD_OF_SEASONS;
-        default: return ExtInv_GetItemSlot((uint8_t)logicalId);
+        case EXT_ITEM_SHEIKAH_SLATE:
+            return SLOT_SHEIKAH_SLATE;
+        case EXT_ITEM_PHANTOM_HOURGLASS:
+            return SLOT_PHANTOM_HOURGLASS;
+        case EXT_ITEM_ROD_OF_SEASONS:
+            return SLOT_ROD_OF_SEASONS;
+        default:
+            return ExtInv_GetItemSlot((uint8_t)logicalId);
     }
 }
 void NeiInv_PlaceItem(uint16_t logicalId) {
@@ -89,9 +97,12 @@ void NeiInv_PlaceItem(uint16_t logicalId) {
     if (slot == 0xFF || slot < 24) {
         return;
     }
-    if (logicalId == EXT_ITEM_SHEIKAH_SLATE && !Nei_Save()->slateRunesOwned) Slate_GrantRune(SLATE_RUNE_BOMB);
-    if (logicalId == EXT_ITEM_ROD_OF_SEASONS && !Nei_Save()->seasonsOwned) Seasons_GrantSeason(SEASON_SPRING);
-    if (logicalId == ITEM_ELEMENTAL_WAND && !Nei_Save()->wandRodsOwned) Wand_GrantMode(WAND_MODE_SAND);
+    if (logicalId == EXT_ITEM_SHEIKAH_SLATE && !Nei_Save()->slateRunesOwned)
+        Slate_GrantRune(SLATE_RUNE_BOMB);
+    if (logicalId == EXT_ITEM_ROD_OF_SEASONS && !Nei_Save()->seasonsOwned)
+        Seasons_GrantSeason(SEASON_SPRING);
+    if (logicalId == ITEM_ELEMENTAL_WAND && !Nei_Save()->wandRodsOwned)
+        Wand_GrantMode(WAND_MODE_SAND);
     /* A Cane é seis skills numa célula só, e a posse é o bit da skill: o Cane_GiveSkill da primeira é que põe a
      * Cane na célula. Sem skill, a Cane na célula não lança nada. */
     if (logicalId == ITEM_CANE_OF_SOMARIA) {
@@ -121,11 +132,15 @@ void NeiInv_ReceiveItem(uint16_t logicalId) {
     }
     if (logicalId == EXT_ITEM_SHEIKAH_SLATE || logicalId == EXT_ITEM_ROD_OF_SEASONS ||
         logicalId == ITEM_ELEMENTAL_WAND) {
-        const unsigned family = logicalId == ITEM_ELEMENTAL_WAND ? NEI_POWER_WAND
-                                : logicalId == EXT_ITEM_SHEIKAH_SLATE ? NEI_POWER_SLATE : NEI_POWER_SEASONS;
+        const unsigned family = logicalId == ITEM_ELEMENTAL_WAND      ? NEI_POWER_WAND
+                                : logicalId == EXT_ITEM_SHEIKAH_SLATE ? NEI_POWER_SLATE
+                                                                      : NEI_POWER_SEASONS;
         const uint8_t mask = NeiProgress_GetMask(family);
         for (unsigned i = 0; i < NeiProgress_Limit(family); ++i) {
-            if (!(mask & (1u << i))) { NeiProgress_SetMask(family, mask | (1u << i)); break; }
+            if (!(mask & (1u << i))) {
+                NeiProgress_SetMask(family, mask | (1u << i));
+                break;
+            }
         }
     }
     NeiInv_PlaceItem(logicalId);
@@ -137,9 +152,14 @@ void NeiInv_RemoveItem(uint16_t logicalId) {
     if (logicalId == ITEM_CANE_OF_SOMARIA) {
         Nei_Save()->caneSkills = 0;
     }
-    if (logicalId == ITEM_ELEMENTAL_WAND) Nei_Save()->wandRodsOwned = 0;
-    if (logicalId == EXT_ITEM_SHEIKAH_SLATE) Nei_Save()->slateRunesOwned = 0;
-    if (logicalId == EXT_ITEM_ROD_OF_SEASONS) { Nei_Save()->seasonsOwned = 0; Nei_Save()->season = SEASON_OFF; }
+    if (logicalId == ITEM_ELEMENTAL_WAND)
+        Nei_Save()->wandRodsOwned = 0;
+    if (logicalId == EXT_ITEM_SHEIKAH_SLATE)
+        Nei_Save()->slateRunesOwned = 0;
+    if (logicalId == EXT_ITEM_ROD_OF_SEASONS) {
+        Nei_Save()->seasonsOwned = 0;
+        Nei_Save()->season = SEASON_OFF;
+    }
     const uint8_t slot = LogicalSlot(logicalId);
     if (slot != 0xFF && slot >= 24 && ExtInv_GetSlotItem(slot) == logicalId) {
         ExtInv_SetSlotItem(slot, ITEM_NONE);
@@ -153,7 +173,8 @@ int NeiInv_HasItem(uint16_t logicalId) {
 
 const char* NeiInv_CurrentIcon(uint16_t logicalId) {
     const char* path = (const char*)ExtInv_GetInventoryItemIcon(logicalId);
-    if (path && !strncmp(path, "__OTR__", 7)) path += 7;
+    if (path && !strncmp(path, "__OTR__", 7))
+        path += 7;
     return path;
 }
 

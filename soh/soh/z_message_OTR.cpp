@@ -46,8 +46,8 @@ const LanguageSpec kLanguages[MSG_LANGUAGE_COUNT] = {
       0x0001 },
     { MSG_JPN, "text/jpn_message_data_static", "text/jpn_message_data_static/jpn_message_data_static", nullptr,
       0x0001 },
-    { MSG_STAFF, "text/staff_message_data_static", "text/staff_message_data_static/staff_message_data_static",
-      nullptr, 0x0500 },
+    { MSG_STAFF, "text/staff_message_data_static", "text/staff_message_data_static/staff_message_data_static", nullptr,
+      0x0500 },
 };
 
 /**

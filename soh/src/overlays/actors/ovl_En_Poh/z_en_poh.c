@@ -923,7 +923,8 @@ void EnPoh_Update(Actor* thisx, PlayState* play) {
                                this->morphTable, 12);
             this->actor.draw = EnPoh_DrawComposer;
             this->colliderSph.elements[0].dim.limb = 9;
-            this->colliderSph.elements[0].dim.modelSphere.center.y = LinkSpan_S16F(this->colliderSph.elements[0].dim.modelSphere.center.y * (-1));
+            this->colliderSph.elements[0].dim.modelSphere.center.y =
+                LinkSpan_S16F(this->colliderSph.elements[0].dim.modelSphere.center.y * (-1));
             this->actor.shape.rot.y = this->actor.world.rot.y = -0x4000;
             this->colliderCyl.dim.radius = LinkSpan_S16F(20);
             this->colliderCyl.dim.height = LinkSpan_S16F(55);

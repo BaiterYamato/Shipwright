@@ -101,8 +101,8 @@ std::string InventoryStatus() {
     int32_t current = 0;
     uint32_t occupied = 0;
     NeiInv_ReadState(&pages, &current, &occupied);
-    return "inventário: " + std::to_string(pages) + " páginas (" + std::to_string(pages * 24) + " slots), atual=" +
-           std::to_string(current) + ", ocupados fora da vanilla=" + std::to_string(occupied);
+    return "inventário: " + std::to_string(pages) + " páginas (" + std::to_string(pages * 24) +
+           " slots), atual=" + std::to_string(current) + ", ocupados fora da vanilla=" + std::to_string(occupied);
 }
 
 } // namespace LinkSpanNei

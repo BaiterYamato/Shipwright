@@ -24,7 +24,6 @@ ShipNativeStatus SHIP_NATIVE_CALL UnregisterOotJsonType(uint64_t handle);
 
 // Chamado pela fábrica proxy: XML do documento `path`. UNSUPPORTED sem dono para o tipo,
 // INVALID_ARGUMENT com versão fora da faixa; outros status vêm do transcodificador.
-ShipNativeStatus TranscodeOotJson(const std::string& type, const std::string& path, uint32_t version,
-                                  std::string& xml);
+ShipNativeStatus TranscodeOotJson(const std::string& type, const std::string& path, uint32_t version, std::string& xml);
 
 } // namespace ShipLuaHost

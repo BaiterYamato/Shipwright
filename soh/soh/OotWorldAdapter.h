@@ -17,9 +17,8 @@ class OotWorldAdapter final : public ShipLua::IWorldAdapter {
     ShipLua::WorldId Id() const noexcept override;
     ShipLua::Result<ShipLua::PortablePlayerState> CapturePlayerState() override;
     bool CanResolveAsset(const ShipLua::AssetReference& asset) const noexcept override;
-    ShipLua::Result<ShipLua::WorldImportPreview> PrepareImport(
-        const ShipLua::PortablePlayerState& state,
-        const ShipLua::WorldDestination& destination) override;
+    ShipLua::Result<ShipLua::WorldImportPreview> PrepareImport(const ShipLua::PortablePlayerState& state,
+                                                               const ShipLua::WorldDestination& destination) override;
     ShipLua::Result<void> CommitImport() override;
     void AbortImport() noexcept override;
 

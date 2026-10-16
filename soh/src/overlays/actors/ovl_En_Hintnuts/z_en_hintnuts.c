@@ -300,7 +300,8 @@ void EnHintnuts_Burrow(EnHintnuts* this, PlayState* play) {
     if (SkelAnime_Update(&this->skelAnime)) {
         EnHintnuts_SetupWait(this);
     } else {
-        this->collider.dim.height = LinkSpan_S16F(5.0f + ((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f));
+        this->collider.dim.height =
+            LinkSpan_S16F(5.0f + ((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f));
     }
     if (Animation_OnFrame(&this->skelAnime, 4.0f)) {
         this->collider.base.acFlags &= ~AC_ON;

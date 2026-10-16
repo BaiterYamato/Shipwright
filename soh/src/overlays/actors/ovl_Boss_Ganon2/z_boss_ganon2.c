@@ -116,8 +116,8 @@ void func_808FD080(s32 idx, ColliderJntSph* collider, Vec3f* arg2) {
     collider->elements[idx].dim.worldSphere.center.y = LinkSpan_S16F(arg2->y);
     collider->elements[idx].dim.worldSphere.center.z = LinkSpan_S16F(arg2->z);
 
-    collider->elements[idx].dim.worldSphere.radius = LinkSpan_S16F(
-        collider->elements[idx].dim.modelSphere.radius * collider->elements[idx].dim.scale);
+    collider->elements[idx].dim.worldSphere.radius =
+        LinkSpan_S16F(collider->elements[idx].dim.modelSphere.radius * collider->elements[idx].dim.scale);
 }
 
 void BossGanon2_SetObjectSegment(BossGanon2* this, PlayState* play, s32 objectId, u8 setRSPSegment) {

@@ -238,10 +238,14 @@ Json ReadLighting(Reader& r) {
         const uint16_t fogFar = r.U16();
         const auto rgb = [&](int at) { return Rgb(c[at], c[at + 1], c[at + 2]); };
         const auto dir = [&](int at) { return Json::array({ c[at], c[at + 1], c[at + 2] }); };
-        list[Key(i)] = Json{ { "ambient", rgb(0) },           { "light1Dir", dir(3) },
-                             { "light1Color", rgb(6) },       { "light2Dir", dir(9) },
-                             { "light2Color", rgb(12) },      { "fogColor", rgb(15) },
-                             { "fogNear", fogNear & 0x3FF },  { "fogBlendRate", (fogNear >> 10) & 0x3F },
+        list[Key(i)] = Json{ { "ambient", rgb(0) },
+                             { "light1Dir", dir(3) },
+                             { "light1Color", rgb(6) },
+                             { "light2Dir", dir(9) },
+                             { "light2Color", rgb(12) },
+                             { "fogColor", rgb(15) },
+                             { "fogNear", fogNear & 0x3FF },
+                             { "fogBlendRate", (fogNear >> 10) & 0x3F },
                              { "fogFar", fogFar } };
     }
     return list;
@@ -295,7 +299,8 @@ Json ReadSetup(const std::string& bytes, const std::string& path, Refs& refs) {
                 const int vertical = r.S8();
                 const int south = r.S8();
                 const int speed = r.U8();
-                setup["wind"] = Json{ { "west", west }, { "vertical", vertical }, { "south", south }, { "speed", speed } };
+                setup["wind"] =
+                    Json{ { "west", west }, { "vertical", vertical }, { "south", south }, { "speed", speed } };
                 break;
             }
             case 0x06: {
@@ -388,7 +393,8 @@ Json ReadSetup(const std::string& bytes, const std::string& path, Refs& refs) {
                 const int skybox = r.U8();
                 const int weather = r.U8();
                 const int indoors = r.U8();
-                setup["skybox"] = Json{ { "id", skybox }, { "weather", weather }, { "indoors", indoors }, { "unk", unk } };
+                setup["skybox"] =
+                    Json{ { "id", skybox }, { "weather", weather }, { "indoors", indoors }, { "unk", unk } };
                 break;
             }
             case 0x12: {
@@ -618,8 +624,8 @@ std::string ConvertCollision(Context& ctx, const std::string& resource) {
                                                    { "notSwimmable", (properties >> 19) & 1 } };
     }
     Json doc{ { "$schema", "unbound/collision/3" },
-              { "bounds", { { "min", Vec(bounds[0], bounds[1], bounds[2]) },
-                            { "max", Vec(bounds[3], bounds[4], bounds[5]) } } },
+              { "bounds",
+                { { "min", Vec(bounds[0], bounds[1], bounds[2]) }, { "max", Vec(bounds[3], bounds[4], bounds[5]) } } },
               { "bulk", { { "file", binPath }, { "vertices", vertices }, { "polys", polys } } },
               { "surfaceTypes", surfaces },
               { "cameras", cameraList },
@@ -782,8 +788,8 @@ bool CanReuseBase(const std::string& previousJson, const std::string& currentJso
         }
         const auto versions = doc->find("gameVersions");
         const auto archives = doc->find("archives");
-        if (versions == doc->end() || !versions->is_array() || versions->empty() ||
-            archives == doc->end() || !archives->is_object() || archives->empty()) {
+        if (versions == doc->end() || !versions->is_array() || versions->empty() || archives == doc->end() ||
+            !archives->is_object() || archives->empty()) {
             return false;
         }
         for (const auto& version : *versions) {

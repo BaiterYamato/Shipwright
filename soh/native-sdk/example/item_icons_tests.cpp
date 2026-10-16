@@ -18,6 +18,5 @@ int main() {
     if (ItemSelectorIcons(2, items, icons.data()).find("1:162:\t2:7:") == std::string::npos)
         return EXIT_FAILURE;
     items[1] = items[2] = 0xFF;
-    return ItemSelectorIcons(1, items, nullptr) == "1;1:255:\t2:255:\t3:255:"
-               ? EXIT_SUCCESS : EXIT_FAILURE;
+    return ItemSelectorIcons(1, items, nullptr) == "1;1:255:\t2:255:\t3:255:" ? EXIT_SUCCESS : EXIT_FAILURE;
 }

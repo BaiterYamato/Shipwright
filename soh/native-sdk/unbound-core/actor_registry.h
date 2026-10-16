@@ -6,7 +6,9 @@
 #include <functional>
 
 namespace LinkSpanUnbound {
-struct ActorAxis { float x, y, z; };
+struct ActorAxis {
+    float x, y, z;
+};
 struct ActorDefinition {
     // Every asset path carries this prefix, which the game's asset loaders look for.
     static constexpr const char* kOtrPrefix = "__OTR__";
@@ -29,11 +31,11 @@ struct ActorDefinition {
     bool translucent = false;
     float scale = 0.01f; // positive and finite
     float yOffset = 0.0f;
-    float shadow = 0.0f;                                // round shadow size at scale 0.01; 0 = none
-    float cullRadius = 0.0f;                            // world units around the origin; 0 = the default zone
-    float drawDistance = 0.0f;                          // world units; 0 = the default
+    float shadow = 0.0f;                                   // round shadow size at scale 0.01; 0 = none
+    float cullRadius = 0.0f;                               // world units around the origin; 0 = the default zone
+    float drawDistance = 0.0f;                             // world units; 0 = the default
     std::vector<std::pair<uint8_t, std::string>> segments; // segment 8-12 -> texture path
-    std::vector<int32_t> hideLimbs;                       // limb-draw numbering (root = 1)
+    std::vector<int32_t> hideLimbs;                        // limb-draw numbering (root = 1)
 
     // Collision: a solid cylinder, present when radius and height are both positive.
     int16_t radius = 0;
@@ -64,7 +66,7 @@ bool MergeActorLayers(const std::vector<LayerDocument>& layers, Json& merged, st
 bool ReadActorDefinition(const std::string& name, const Json& doc, ActorDefinition& type,
                          std::vector<std::string>& notes);
 ShipOotActorModelSpecV1 ModelSpec(const ActorDefinition& type, const char* owner,
-                                std::vector<ShipOotActorModelSegmentV1>& segments);
-bool ResolveRoomActorId(const Json& actor, const std::function<int32_t(const std::string&)>& resolve,
-                        int16_t& id, std::vector<std::string>& notes, const std::string& where);
-}
+                                  std::vector<ShipOotActorModelSegmentV1>& segments);
+bool ResolveRoomActorId(const Json& actor, const std::function<int32_t(const std::string&)>& resolve, int16_t& id,
+                        std::vector<std::string>& notes, const std::string& where);
+} // namespace LinkSpanUnbound

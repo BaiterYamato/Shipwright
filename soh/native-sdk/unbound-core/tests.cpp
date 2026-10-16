@@ -56,7 +56,8 @@ int main() {
     };
     Check(LinkSpanUnbound::MergeSchemaFreeDocuments(registryLayers, result, error) && result.layerCount == 2,
           "registro sem $schema deve mesclar");
-    Check(result.json.find("mod/gone") == std::string::npos && result.json.find(R"("sceneId":200)") != std::string::npos,
+    Check(result.json.find("mod/gone") == std::string::npos &&
+              result.json.find(R"("sceneId":200)") != std::string::npos,
           "null deve remover a cena e a camada de baixo deve sobreviver ao patch");
     LinkSpanUnbound::SceneRegistryDocument registry;
     Check(LinkSpanUnbound::ParseSceneRegistry(result.json, registry, error), "registro mesclado deve ser lido");
@@ -66,10 +67,10 @@ int main() {
           "cenas válidas devem sair em ordem de chave");
     const auto& sceneA = registry.scenes[0];
     Check(sceneA.displayName == "Cena A" && sceneA.path == "scenes/a" && sceneA.drawConfig == 3 &&
-              sceneA.entrances.size() == 1 && sceneA.entrances[0].key == "north" &&
-              sceneA.entrances[0].showTitleCard && sceneA.entrances[0].endTransition == 5 &&
-              sceneA.entrances[0].startTransition == 2 && sceneA.titleCard == "textures/a_title" && sceneA.horse &&
-              sceneA.horseHasSpawn && sceneA.horseX == 1.5f && sceneA.horseAngle == -16384,
+              sceneA.entrances.size() == 1 && sceneA.entrances[0].key == "north" && sceneA.entrances[0].showTitleCard &&
+              sceneA.entrances[0].endTransition == 5 && sceneA.entrances[0].startTransition == 2 &&
+              sceneA.titleCard == "textures/a_title" && sceneA.horse && sceneA.horseHasSpawn && sceneA.horseX == 1.5f &&
+              sceneA.horseAngle == -16384,
           "campos da cena e da entrada devem vir do documento com os padrões do SPEC");
     const auto& sceneB = registry.scenes[1];
     Check(sceneB.displayName == "mod/b" && sceneB.entrances.size() == 1 && sceneB.entrances[0].spawn == 1,
@@ -84,8 +85,8 @@ int main() {
     Check(!LinkSpanUnbound::ParseSceneRegistry("[]", registry, error) && !error.empty(),
           "raiz que não é objeto deve ser recusada");
     Check(LinkSpanUnbound::ParseSceneRegistry(R"({"mod/horse":{"scene":"x","horse":{"pos":[0,1],"angle":0}}})",
-                                               registry, error) && registry.scenes.size() == 1 && !registry.scenes[0].horse &&
-              registry.notes.size() == 1,
+                                              registry, error) &&
+              registry.scenes.size() == 1 && !registry.scenes[0].horse && registry.notes.size() == 1,
           "horse malformado deve ser recusado e registrado sem descartar a cena");
     Check(LinkSpanUnbound::ParseSceneRegistry(
               R"({"z":{"scene":"s"},"10":{"scene":"s"},"9":{"scene":"s"},"a":{"scene":"s"},"$order":["z"]})", registry,
@@ -95,15 +96,14 @@ int main() {
           "o registro deve seguir $order, depois inteiros em ordem numérica, depois bytes (§3.5)");
 
     using LinkSpanUnbound::RoomActor;
-    Check(LinkSpanUnbound::RoomDocumentPath("scenes/shared/spot00_scene/spot00_room_0", 0) ==
-                  "scenes/spot00/rooms/0.json" &&
-              LinkSpanUnbound::RoomDocumentPath("scenes/mq/ydan_scene/ydan_room_3", 3) ==
-                  "scenes/ydan_mq/rooms/3.json" &&
-              LinkSpanUnbound::RoomDocumentPath("scenes/nonmq/ydan_scene/ydan_room_1", 1) ==
-                  "scenes/ydan/rooms/1.json" &&
-              LinkSpanUnbound::RoomDocumentPath("rooms/qualquer", 0).empty() &&
-              LinkSpanUnbound::RoomDocumentPath("scenes/shared/spot00_scene/x", -1).empty(),
-          "caminho do documento da sala");
+    Check(
+        LinkSpanUnbound::RoomDocumentPath("scenes/shared/spot00_scene/spot00_room_0", 0) ==
+                "scenes/spot00/rooms/0.json" &&
+            LinkSpanUnbound::RoomDocumentPath("scenes/mq/ydan_scene/ydan_room_3", 3) == "scenes/ydan_mq/rooms/3.json" &&
+            LinkSpanUnbound::RoomDocumentPath("scenes/nonmq/ydan_scene/ydan_room_1", 1) == "scenes/ydan/rooms/1.json" &&
+            LinkSpanUnbound::RoomDocumentPath("rooms/qualquer", 0).empty() &&
+            LinkSpanUnbound::RoomDocumentPath("scenes/shared/spot00_scene/x", -1).empty(),
+        "caminho do documento da sala");
     const std::vector<RoomActor> vanilla{
         { 0x0015, { 10, 20, 30 }, { 0, 0x4000, 0 }, 3 },
         { 0x0095, { -5, 0, 5 }, { 0, 0, 0 }, 0x0100 },
@@ -142,8 +142,7 @@ int main() {
           R"({"setups":{"0":{"actors":{"$replace":true,"a":{"id":21,"pos":[40000,0,0],"params":65535}}}}})", 1 },
     };
     Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 0, replaceLayers, room, error) && room.actors.size() == 1 &&
-              room.actors[0].id == 21 &&
-              room.actors[0].pos[0] == 40000.0f && room.actors[0].params == -1,
+              room.actors[0].id == 21 && room.actors[0].pos[0] == 40000.0f && room.actors[0].params == -1,
           "$replace descarta a lista de baixo; params faz wrap, id deve ser estável, posição é f32");
     Check(LinkSpanUnbound::ApplyRoomActorLayers(vanilla, 2, replaceLayers, room, error) && room.actors.size() == 3,
           "patch de outra camada de cena não mexe na lista atual");

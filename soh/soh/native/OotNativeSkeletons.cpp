@@ -29,7 +29,8 @@ bool OnOwnerThread() {
 
 // "__OTR__" + caminho, internado até o fim do processo: o SkelAnime guarda o ponteiro.
 const char* InternPath(const char* path) {
-    if (!path || !*path || std::strlen(path) >= LINKSPAN_OOT_SKELETONS_MAX_PATH || std::strncmp(path, "__OTR__", 7) == 0) {
+    if (!path || !*path || std::strlen(path) >= LINKSPAN_OOT_SKELETONS_MAX_PATH ||
+        std::strncmp(path, "__OTR__", 7) == 0) {
         return nullptr;
     }
     static std::set<std::string> paths;
@@ -89,7 +90,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Destroy(uint64_t skeleton) {
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL PlayAnimation(uint64_t skeleton, const char* animationPath, float speed, uint8_t mode,
-                                               float morphFrames) {
+                                                float morphFrames) {
     if (!OnOwnerThread() || !std::isfinite(speed) || !std::isfinite(morphFrames) || morphFrames < 0.0f ||
         (mode != LINKSPAN_OOT_ANIM_LOOP && mode != LINKSPAN_OOT_ANIM_ONCE)) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -145,8 +146,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Draw(void* play, uint64_t skeleton) {
     return SHIP_NATIVE_OK;
 }
 
-const ShipOotSkeletonsV1 skeletonsV1{ sizeof(ShipOotSkeletonsV1), Create, Destroy, PlayAnimation, Update, GetFrame,
-                                      Draw };
+const ShipOotSkeletonsV1 skeletonsV1{
+    sizeof(ShipOotSkeletonsV1), Create, Destroy, PlayAnimation, Update, GetFrame, Draw
+};
 
 } // namespace
 

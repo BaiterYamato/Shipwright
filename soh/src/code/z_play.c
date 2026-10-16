@@ -615,8 +615,8 @@ void Play_Init(GameState* thisx) {
     // SOH [Unbound] Expõe o orçamento real após eventual redução pelo SystemArena.
     if (LinkSpan_EngineExtended()) {
         LUSLOG_INFO("Unbound Play heap: requested=%zu actual=%zu ZeldaArena=%zu EnItem00=%zu",
-                    (size_t)SOH_PLAY_HEAP_SIZE, (size_t)play->state.tha.size,
-                    zAllocSize - (zAllocAligned - zAlloc), sizeof(EnItem00));
+                    (size_t)SOH_PLAY_HEAP_SIZE, (size_t)play->state.tha.size, zAllocSize - (zAllocAligned - zAlloc),
+                    sizeof(EnItem00));
     }
     // "Zelda Heap"
     osSyncPrintf("ゼルダヒープ %08x-%08x\n", zAllocAligned,

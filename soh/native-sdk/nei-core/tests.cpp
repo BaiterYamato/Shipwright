@@ -15,7 +15,7 @@
 namespace {
 NeiSaveData gForkSave;
 uint8_t gRestoredLanternFire = 0;
-}
+} // namespace
 
 extern "C" NeiSaveData* Nei_Save(void) {
     return &gForkSave;
@@ -29,12 +29,12 @@ namespace {
 
 int gFailures = 0;
 
-#define CHECK(expr)                                                         \
-    do {                                                                    \
-        if (!(expr)) {                                                      \
+#define CHECK(expr)                                                                 \
+    do {                                                                            \
+        if (!(expr)) {                                                              \
             std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr); \
-            ++gFailures;                                                    \
-        }                                                                   \
+            ++gFailures;                                                            \
+        }                                                                           \
     } while (0)
 
 namespace FakeItems {
@@ -129,8 +129,17 @@ ShipNativeStatus Press(uint8_t button) {
     return registered.use(registered.user, buttons[button], button);
 }
 
-const ShipOotItemsV3 table{ sizeof(ShipOotItemsV3), Register, Unregister, Find, GetButton, SetButton,
-                            SetGetItem,              Give,     SetIcon,    SetAmmo, Language };
+const ShipOotItemsV3 table{ sizeof(ShipOotItemsV3),
+                            Register,
+                            Unregister,
+                            Find,
+                            GetButton,
+                            SetButton,
+                            SetGetItem,
+                            Give,
+                            SetIcon,
+                            SetAmmo,
+                            Language };
 } // namespace FakeItems
 
 namespace FakeSave {
@@ -177,8 +186,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Required(uint64_t, uint8_t) {
 int32_t SHIP_NATIVE_CALL Slot() {
     return slot;
 }
-const ShipOotSaveV1 table{ sizeof(ShipOotSaveV1), Open, Read, Write, Handle, Version, Required,
-                           Handle,                Handle, Handle, Slot };
+const ShipOotSaveV1 table{
+    sizeof(ShipOotSaveV1), Open, Read, Write, Handle, Version, Required, Handle, Handle, Handle, Slot
+};
 } // namespace FakeSave
 
 uint32_t gUses = 0;
@@ -335,8 +345,8 @@ void TestGiveUseAndLevels() {
     const uint32_t iconWrites = FakeSave::writes;
     CHECK(registry.UpdateIcon(handle, "textures/rune/stasis") == SHIP_NATIVE_OK);
     CHECK(FakeItems::items.at(runtime).icon == "textures/rune/stasis");
-    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && state.owned && state.count == 12 &&
-          state.level == 1 && state.button == 3 && state.runtime_id == runtime);
+    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && state.owned && state.count == 12 && state.level == 1 &&
+          state.button == 3 && state.runtime_id == runtime);
     CHECK(FakeSave::writes == iconWrites);
     CHECK(registry.UpdateIcon(handle, "__OTR__textures/bad") == SHIP_NATIVE_INVALID_ARGUMENT);
     CHECK(registry.UpdateIcon(handle, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT);
@@ -370,8 +380,8 @@ void TestSaveRoundTrip() {
     // O host restaura o botão pelo nome antes do hook oot.save.loaded.
     FakeItems::buttons[2] = runtime;
     registry.OnSaveLoaded();
-    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && state.owned && state.level == 1 &&
-          state.count == 12 && state.max_count == 20 && state.button == 2);
+    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && state.owned && state.level == 1 && state.count == 12 &&
+          state.max_count == 20 && state.button == 2);
     CHECK(FakeItems::items.at(runtime).icon == "textures/b" && FakeItems::items.at(runtime).ammo == 12);
     CHECK(FakeItems::Press(2) == SHIP_NATIVE_OK);
 
@@ -384,8 +394,8 @@ void TestSaveRoundTrip() {
     FakeSave::block = "{\"items\":{}}";
     registry.OnSaveLoaded();
     CHECK(FakeItems::buttons[2] == 0xFF);
-    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && !state.owned && state.count == 0 &&
-          state.level == 0 && state.max_count == 10);
+    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && !state.owned && state.count == 0 && state.level == 0 &&
+          state.max_count == 10);
     CHECK(FakeItems::items.at(runtime).icon == "textures/a");
 
     // JSON válido com tipo trocado num campo: só aquele campo vale o padrão; o resto do item e os outros ids
@@ -393,11 +403,9 @@ void TestSaveRoundTrip() {
     FakeSave::block = "{\"items\":{\"test.nei.seeds\":{\"owned\":\"sim\",\"count\":\"12\",\"level\":1},"
                       "\"other.mod.thing\":{\"owned\":true,\"count\":3,\"level\":0}}}";
     registry.OnSaveLoaded();
-    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && !state.owned && state.count == 0 &&
-          state.level == 1);
+    CHECK(registry.GetState(handle, &state) == SHIP_NATIVE_OK && !state.owned && state.count == 0 && state.level == 1);
     CHECK(registry.SetLevel(handle, 0) == SHIP_NATIVE_OK);
-    CHECK(FakeSave::block.find("\"other.mod.thing\":{\"count\":3,\"level\":0,\"owned\":true}") !=
-          std::string::npos);
+    CHECK(FakeSave::block.find("\"other.mod.thing\":{\"count\":3,\"level\":0,\"owned\":true}") != std::string::npos);
 
     // Bloco corrompido é ignorado; sem arquivo carregado nada é gravado.
     FakeSave::block = "{nao e json";

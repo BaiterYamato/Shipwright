@@ -62,7 +62,8 @@ float WrapFrac(float v) {
 // log2 inteiro para as máscaras de tile (as texturas são potência de 2).
 int Log2i(int v) {
     int l = 0;
-    while ((1 << (l + 1)) <= v) ++l;
+    while ((1 << (l + 1)) <= v)
+        ++l;
     return l;
 }
 
@@ -72,9 +73,12 @@ int Log2i(int v) {
 float AddCalc(float src, float target, float speed, float maxVel, float minVel) {
     const float delta = target - src;
     float mag = std::fabs(speed * delta);
-    if (mag < minVel) mag = minVel;
-    if (mag > maxVel) mag = maxVel;
-    if (mag > std::fabs(delta)) return target;
+    if (mag < minVel)
+        mag = minVel;
+    if (mag > maxVel)
+        mag = maxVel;
+    if (mag > std::fabs(delta))
+        return target;
     return src + (delta < 0.0f ? -mag : mag);
 }
 
@@ -83,9 +87,12 @@ float AddCalcAngle(float src, float target, float speed, float maxVel, float min
     const float da = std::fmod(target - src, kTau);
     const float delta = std::fmod(2.0f * da, kTau) - da;
     float mag = std::fabs(delta / speed);
-    if (mag < minVel) mag = minVel;
-    if (mag > maxVel) mag = maxVel;
-    if (mag > std::fabs(delta)) return src + delta;
+    if (mag < minVel)
+        mag = minVel;
+    if (mag > maxVel)
+        mag = maxVel;
+    if (mag > std::fabs(delta))
+        return src + delta;
     return src + (delta < 0.0f ? -mag : mag);
 }
 
@@ -165,14 +172,18 @@ bool IsPow2(uint32_t v) {
 // vértice estoura. Devolve os bytes do arquivo e onde estão os pixels.
 bool ReadOverride(const ShipOotResourcesV1& res, const char* path, uint32_t maxWidth, std::vector<uint8_t>& bytes,
                   uint32_t& offset, int& width, int& height) {
-    if (!res.has_file(path)) return false;
+    if (!res.has_file(path))
+        return false;
     uint32_t size = 0;
-    if (res.read_file(path, nullptr, 0, &size) != SHIP_NATIVE_OK || size < 0x50u || size > (1u << 22)) return false;
+    if (res.read_file(path, nullptr, 0, &size) != SHIP_NATIVE_OK || size < 0x50u || size > (1u << 22))
+        return false;
     bytes.assign(size, 0);
     uint32_t read = 0;
-    if (res.read_file(path, bytes.data(), size, &read) != SHIP_NATIVE_OK || read != size) return false;
+    if (res.read_file(path, bytes.data(), size, &read) != SHIP_NATIVE_OK || read != size)
+        return false;
     const uint8_t* p = bytes.data();
-    if (p[0] != 0 || std::memcmp(p + 4, "XETO", 4) != 0) return false;
+    if (p[0] != 0 || std::memcmp(p + 4, "XETO", 4) != 0)
+        return false;
     const uint32_t version = ReadU32(p + 0x08);
     uint32_t dataSize = 0;
     if (version == 0) {
@@ -212,24 +223,26 @@ void ResolveTexture(const Mod& mod, int slot, const char* path, uint32_t maxWidt
         sPackFiles.push_back(std::make_unique<std::vector<uint8_t>>(std::move(bytes)));
         sPackInUse[slot] = sPackFiles.back().get();
     }
-    live = {sPackInUse[slot]->data() + offset, width, height};
+    live = { sPackInUse[slot]->data() + offset, width, height };
 }
 
 // Gera as cinco texturas uma vez; a cada carga de cena confere de novo o que um pacote montado traz (montar,
 // trocar ou tirar um pacote vale na próxima cena).
 void EnsureTextures(Mod& mod, const PlayState* play) {
     if (!sTexturesGenerated) {
-        constexpr uint32_t kSpriteSeeds[kLayers] = {0x1A2B3C4Du, 0x2B3C4D5Eu, 0x3C4D5E6Fu};
-        for (int i = 0; i < kLayers; ++i) GenerateCloudSprite(kSpriteSeeds[i], sSpritePx[i]);
+        constexpr uint32_t kSpriteSeeds[kLayers] = { 0x1A2B3C4Du, 0x2B3C4D5Eu, 0x3C4D5E6Fu };
+        for (int i = 0; i < kLayers; ++i)
+            GenerateCloudSprite(kSpriteSeeds[i], sSpritePx[i]);
         GenerateCloudBand(0x5E6F7081u, 4, 4, 1.0, false, sBandPx[0]); // frente: grupos espalhados
         GenerateCloudBand(0x4D5E6F70u, 5, 5, 1.5, true, sBandPx[1]);  // fundo: massa contínua
         sTexturesGenerated = true;
     }
-    if (!IsNewPlay(sTextureStamp, play)) return;
+    if (!IsNewPlay(sTextureStamp, play))
+        return;
     for (int i = 0; i < kLayers; ++i)
-        ResolveTexture(mod, i, kCloudRes[i], 512u, {sSpritePx[i], kSprite, kSprite}, sSpriteTex[i]);
+        ResolveTexture(mod, i, kCloudRes[i], 512u, { sSpritePx[i], kSprite, kSprite }, sSpriteTex[i]);
     for (int i = 0; i < 2; ++i)
-        ResolveTexture(mod, kLayers + i, kBandRes[i], 256u, {sBandPx[i], kBandW, kBandH}, sBandTex[i]);
+        ResolveTexture(mod, kLayers + i, kBandRes[i], 256u, { sBandPx[i], kBandW, kBandH }, sBandTex[i]);
     mod.stats.skyTexOverrides = static_cast<uint32_t>(
         std::count_if(std::begin(sPackInUse), std::end(sPackInUse), [](const auto* file) { return file != nullptr; }));
 }
@@ -246,9 +259,9 @@ struct BandRing {
     int tex;          // 0 = mae, 1 = naka
 };
 constexpr BandRing kBandRings[3] = {
-    {14424.7f, 6.0f, 1.0f, 0},
-    {14530.5f, 4.0f, 0.8f, 1},
-    {14424.7f, 8.0f, 1.6f, 0},
+    { 14424.7f, 6.0f, 1.0f, 0 },
+    { 14530.5f, 4.0f, 0.8f, 1 },
+    { 14424.7f, 8.0f, 1.6f, 0 },
 };
 constexpr float kBandHeight = 2665.2f;
 constexpr int kBandSegs = 8;
@@ -256,7 +269,7 @@ constexpr int kBandSegs = 8;
 // câmera, o raio só muda a distância, e o ângulo de elevação se mantém).
 constexpr float kBandScale = 0.55f;
 
-float sBandScroll[3] = {0.0f, 0.0f, 0.0f}; // fase da cópia que rola, em voltas de textura
+float sBandScroll[3] = { 0.0f, 0.0f, 0.0f }; // fase da cópia que rola, em voltas de textura
 Vtx sBandVtx[3][kBandSegs * 6];
 GfxList sBandList;
 
@@ -272,11 +285,12 @@ void UpdateBandScroll(const PlayState* play, float dt, float driftTrim) {
     }
     const float windScroll = wind.power * ((-wind.x * fz) - (-wind.z * fx));
     const float s0 = dt * 0.0005f * windScroll * driftTrim;
-    for (int r = 0; r < 3; ++r) sBandScroll[r] = WrapFrac(sBandScroll[r] + (s0 * kBandRings[r].scrollMult));
+    for (int r = 0; r < 3; ++r)
+        sBandScroll[r] = WrapFrac(sBandScroll[r] + (s0 * kBandRings[r].scrollMult));
 }
 
 void BuildBand(float opacity, const uint8_t tint[3]) {
-    const uint8_t col[4] = {tint[0], tint[1], tint[2], ClampU8(255.0f * opacity)};
+    const uint8_t col[4] = { tint[0], tint[1], tint[2], ClampU8(255.0f * opacity) };
     for (int r = 0; r < 3; ++r) {
         const BandRing& ring = kBandRings[r];
         const float rad = ring.radius * kBandScale;
@@ -293,10 +307,10 @@ void BuildBand(float opacity, const uint8_t tint[3]) {
             const float base = u0f - (texW * std::floor(u0f / texW));
             const auto u0 = static_cast<int16_t>(base + 0.5f);
             const auto u1 = static_cast<int16_t>(base + texelsPerSeg + 0.5f);
-            const V3 t0{rad * std::sin(az0), top, rad * std::cos(az0)};
-            const V3 t1{rad * std::sin(az1), top, rad * std::cos(az1)};
-            const V3 b0{rad * std::sin(az0), 0.0f, rad * std::cos(az0)};
-            const V3 b1{rad * std::sin(az1), 0.0f, rad * std::cos(az1)};
+            const V3 t0{ rad * std::sin(az0), top, rad * std::cos(az0) };
+            const V3 t1{ rad * std::sin(az1), top, rad * std::cos(az1) };
+            const V3 b0{ rad * std::sin(az0), 0.0f, rad * std::cos(az0) };
+            const V3 b1{ rad * std::sin(az1), 0.0f, rad * std::cos(az1) };
             Vtx* q = &sBandVtx[r][i * 6];
             WriteVtx(q[0], t0, u0, 0, col); // v = 0 na borda de cima, como no modelo
             WriteVtx(q[1], t1, u1, 0, col);
@@ -349,7 +363,8 @@ void EmitBand(Mod& mod, float eyeX, float horizonY, float eyeZ) {
         for (int first = 0; first < kBandVerts; first += 30) {
             const int verts = std::min(30, kBandVerts - first);
             __gSPVertex(g++, reinterpret_cast<uintptr_t>(&sBandVtx[r][first]), verts, 0);
-            for (int t = 0; t + 6 <= verts; t += 6) gSP2Triangles(g++, t + 0, t + 1, t + 2, 0, t + 3, t + 4, t + 5, 0);
+            for (int t = 0; t + 6 <= verts; t += 6)
+                gSP2Triangles(g++, t + 0, t + 1, t + 2, 0, t + 3, t + 4, t + 5, 0);
         }
     }
     gSPTexture(g++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_OFF);
@@ -384,14 +399,15 @@ VrKumo sClouds[kMaxClouds];
 bool sCloudsInit = false;
 float sStrength = 0.0f; // nublado 0..1, a cobertura
 float sBounceTimer = 0.0f;
-Rng sCloudRng{0x1a2b3c4du};
+Rng sCloudRng{ 0x1a2b3c4du };
 Vtx sCloudVtx[kLayers][kMaxClouds * 6]; // uma quadra (6 vértices) por nuvem e camada, refeita todo frame
 GfxList sCloudList;
 
 void SpawnCloud(VrKumo& k) {
     const float angle = sCloudRng.F(2.0f * kPi);
     float dist = sCloudRng.F(18000.0f);
-    if (dist > 15000.0f) dist = 14000.0f + sCloudRng.F(1000.0f);
+    if (dist > 15000.0f)
+        dist = 14000.0f + sCloudRng.F(1000.0f);
     k.posX = dist * std::sin(angle);
     k.posY = 0.0f;
     k.posZ = dist * std::cos(angle);
@@ -456,8 +472,8 @@ void UpdateClouds(const PlayState* play, float dt, int count, float driftTrim) {
 V3 DomePoint(float polar, float azimuth) {
     const float cp = std::cos(polar);
     const float sp = std::sin(polar);
-    return {cp * std::sin(azimuth) * kCloudDomeRadius, sp * kCloudDomeRadius,
-            cp * std::cos(azimuth) * kCloudDomeRadius};
+    return { cp * std::sin(azimuth) * kCloudDomeRadius, sp * kCloudDomeRadius,
+             cp * std::cos(azimuth) * kCloudDomeRadius };
 }
 
 // O Wind Waker desloca o segundo e o terceiro billboard de cada nuvem por um de quatro padrões (cloudRep = i & 3),
@@ -465,40 +481,41 @@ V3 DomePoint(float polar, float azimuth) {
 void CloudRepOffsets(int textureIdx, int i, float m0, float m1, float& polarOffs, float& azimuthOffs) {
     polarOffs = 0.0f;
     azimuthOffs = 0.0f;
-    if (textureIdx == 0) return;
+    if (textureIdx == 0)
+        return;
     switch (i & 3) {
-    case 0:
-        if (textureIdx == 2) {
-            polarOffs = m1;
-            azimuthOffs = m0;
-        }
-        break;
-    case 1:
-        if (textureIdx == 1) {
-            polarOffs = -m0;
-            azimuthOffs = m0;
-        } else {
-            polarOffs = -m1;
-            azimuthOffs = m1;
-        }
-        break;
-    case 2:
-        if (textureIdx == 1) {
-            polarOffs = m1;
-            azimuthOffs = -m1;
-        } else {
-            polarOffs = m0;
-            azimuthOffs = -m1;
-        }
-        break;
-    default:
-        if (textureIdx == 1) {
-            polarOffs = -m1;
-        } else {
-            polarOffs = -m0;
-            azimuthOffs = m0;
-        }
-        break;
+        case 0:
+            if (textureIdx == 2) {
+                polarOffs = m1;
+                azimuthOffs = m0;
+            }
+            break;
+        case 1:
+            if (textureIdx == 1) {
+                polarOffs = -m0;
+                azimuthOffs = m0;
+            } else {
+                polarOffs = -m1;
+                azimuthOffs = m1;
+            }
+            break;
+        case 2:
+            if (textureIdx == 1) {
+                polarOffs = m1;
+                azimuthOffs = -m1;
+            } else {
+                polarOffs = m0;
+                azimuthOffs = -m1;
+            }
+            break;
+        default:
+            if (textureIdx == 1) {
+                polarOffs = -m1;
+            } else {
+                polarOffs = -m0;
+                azimuthOffs = m0;
+            }
+            break;
     }
 }
 
@@ -507,13 +524,14 @@ int BuildClouds(float opacity, const uint8_t edge[3], const uint8_t center[3]) {
     int n = 0;
     for (int i = 0; i < kMaxClouds; ++i) {
         const VrKumo& k = sClouds[i];
-        if (k.alpha <= 0.000001f) continue;
+        if (k.alpha <= 0.000001f)
+            continue;
         const float distXZ = std::sqrt((k.posX * k.posX) + (k.posZ * k.posZ));
         // Tom da borda ao centro pela queda (vrKumoCol↔vrKumoCenterCol); alfa = da nuvem × opacidade.
         const float t = k.distFalloff;
-        const uint8_t col[4] = {ClampU8(edge[0] + ((center[0] - edge[0]) * t)),
-                                ClampU8(edge[1] + ((center[1] - edge[1]) * t)),
-                                ClampU8(edge[2] + ((center[2] - edge[2]) * t)), ClampU8(255.0f * k.alpha * opacity)};
+        const uint8_t col[4] = { ClampU8(edge[0] + ((center[0] - edge[0]) * t)),
+                                 ClampU8(edge[1] + ((center[1] - edge[1]) * t)),
+                                 ClampU8(edge[2] + ((center[2] - edge[2]) * t)), ClampU8(255.0f * k.alpha * opacity) };
         for (int textureIdx = 0; textureIdx < kLayers; ++textureIdx) {
             const float size = k.distFalloff *
                                (1.0f - std::pow(static_cast<float>((textureIdx + i) & 0x0F) / 16.0f, 3.0f)) *
@@ -585,7 +603,8 @@ void EmitClouds(Mod& mod, const Vec3f& eye, int clouds) {
         for (int first = 0; first < verts; first += 30) {
             const int v = std::min(30, verts - first);
             __gSPVertex(g++, reinterpret_cast<uintptr_t>(&sCloudVtx[textureIdx][first]), v, 0);
-            for (int t = 0; t + 6 <= v; t += 6) gSP2Triangles(g++, t + 0, t + 1, t + 2, 0, t + 3, t + 4, t + 5, 0);
+            for (int t = 0; t + 6 <= v; t += 6)
+                gSP2Triangles(g++, t + 0, t + 1, t + 2, 0, t + 3, t + 4, t + 5, 0);
         }
     }
     gSPTexture(g++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_OFF);
@@ -638,7 +657,7 @@ WindEff sWisps[kMaxWisps];
 uint32_t sWispFrame = 0;
 bool sWispsSeeded = false;
 PlayStamp sWispStamp;
-Rng sWispRng{0x77123455u};
+Rng sWispRng{ 0x77123455u };
 // Uma região de vértices por fiapo: o gSPVertex guarda o ponteiro e o renderer só o lê no fim do frame.
 Vtx sWispVtx[kMaxWisps][kTrailLen * 4];
 GfxList sWispList;
@@ -651,11 +670,12 @@ void SpawnWisp(const View& view, float aspect, WindEff& e, float windX, float wi
     float fy = std::max(view.lookAt.y - view.eye.y, 0.0f);
     float fz = view.lookAt.z - view.eye.z;
     float fl = std::sqrt((fx * fx) + (fy * fy) + (fz * fz));
-    if (fl < 0.001f) fl = 1.0f;
+    if (fl < 0.001f)
+        fl = 1.0f;
     fx /= fl;
     fy /= fl;
     fz /= fl;
-    e.basePos = {view.eye.x + (fx * 6000.0f), view.eye.y + (fy * 6000.0f) + 2200.0f, view.eye.z + (fz * 6000.0f)};
+    e.basePos = { view.eye.x + (fx * 6000.0f), view.eye.y + (fy * 6000.0f) + 2200.0f, view.eye.z + (fz * 6000.0f) };
     // Espalhamento lateral pelo tamanho da tela: meia largura do frustum na distância de nascimento
     // (tan(fovy/2) × aspecto × distância), com uma folga, ao longo do eixo direito da tela.
     const float halfW = std::min(std::tan(view.fovy * 0.5f * kPi / 180.0f) * aspect * 6000.0f * 1.15f, 8500.0f);
@@ -693,7 +713,8 @@ void SpawnWisp(const View& view, float aspect, WindEff& e, float windX, float wi
     // No lugar da checagem de chão do Wind Waker, bem acima do olho: abaixo dele o terreno esconde o fiapo, e como o
     // voo é horizontal a altura do nascimento é a do voo inteiro.
     const float minY = view.eye.y + 1500.0f;
-    if (e.basePos.y + e.animPos.y < minY) e.animPos.y = minY - e.basePos.y + sWispRng.F(1500.0f);
+    if (e.basePos.y + e.animPos.y < minY)
+        e.animPos.y = minY - e.basePos.y + sWispRng.F(1500.0f);
     e.swerveAnimCounter = sWispRng.F(kTau);
     e.swerveAngleXZ = std::atan2(windX, windZ);
     e.swerveAngleY = 0.0f;
@@ -725,7 +746,8 @@ void UpdateWisps(const PlayState* play, float aspect, int count, float dt, float
     ++sWispFrame;
     // Na primeira ativação, espalha os nascimentos por um ciclo inteiro: a população começa sem onda.
     if (!sWispsSeeded) {
-        for (WindEff& e : sWisps) e.respawnTimer = sWispRng.F(200.0f);
+        for (WindEff& e : sWisps)
+            e.respawnTimer = sWispRng.F(200.0f);
         sWispsSeeded = true;
     }
     for (int i = 0; i < kMaxWisps; ++i) {
@@ -734,7 +756,8 @@ void UpdateWisps(const PlayState* play, float aspect, int count, float dt, float
             // Intervalo aleatório em vez do rodízio do Wind Waker: o ciclo de fade é quase fixo (~170 frames) e
             // qualquer cadência fixa mais curta trava a população em ondas de nascer e morrer juntos.
             e.respawnTimer -= dt;
-            if (i < count && e.respawnTimer <= 0.0f) SpawnWisp(view, aspect, e, wind.x, wind.z);
+            if (i < count && e.respawnTimer <= 0.0f)
+                SpawnWisp(view, aspect, e, wind.x, wind.z);
             continue;
         }
         // Ondulação: uma senoide por cima da volta suave à direção do vento.
@@ -747,65 +770,71 @@ void UpdateWisps(const PlayState* play, float aspect, int count, float dt, float
             // A suavização por tick do Wind Waker em tempo de relógio: o divisor encolhe com o passo e os limites
             // por frame crescem com ele.
             const float targetXZ = std::atan2(wind.x, wind.z);
-            e.swerveAngleXZ = AddCalcAngle(e.swerveAngleXZ, targetXZ, 10.0f / mdt, kS2Rad * 1000.0f * mdt,
-                                           kS2Rad * 1.0f * mdt);
-            e.swerveAngleY = AddCalcAngle(e.swerveAngleY, 0.0f, 10.0f / mdt, kS2Rad * 1000.0f * mdt,
-                                          kS2Rad * 1.0f * mdt);
+            e.swerveAngleXZ =
+                AddCalcAngle(e.swerveAngleXZ, targetXZ, 10.0f / mdt, kS2Rad * 1000.0f * mdt, kS2Rad * 1.0f * mdt);
+            e.swerveAngleY =
+                AddCalcAngle(e.swerveAngleY, 0.0f, 10.0f / mdt, kS2Rad * 1000.0f * mdt, kS2Rad * 1.0f * mdt);
         } else {
             // A volta completa, e depois segue cruzando. 2000 por tick é a taxa do noclip (o hardware usa 3600).
             const float loopStep = kS2Rad * 2000.0f * mdt;
             e.loopCounter += loopStep;
             e.swerveAngleY += loopStep;
-            if (e.loopCounter > kS2Rad * 60535.0f) e.doLoop = false;
+            if (e.loopCounter > kS2Rad * 60535.0f)
+                e.doLoop = false;
         }
         const float swerveT = Saturate(e.swerveAnimCounter / kTau);
         const float mag = ((1.3f * 80.0f) - (0.2f * 80.0f * (1.0f - wind.power))) * swerveT;
         e.animPos.x += std::cos(e.swerveAngleY) * std::sin(e.swerveAngleXZ) * mag * mdt;
         e.animPos.y += std::sin(e.swerveAngleY) * mag * mdt;
         e.animPos.z += std::cos(e.swerveAngleY) * std::cos(e.swerveAngleXZ) * mag * mdt;
-        const V3 head{e.basePos.x + e.animPos.x, e.basePos.y + e.animPos.y, e.basePos.z + e.animPos.z};
+        const V3 head{ e.basePos.x + e.animPos.x, e.basePos.y + e.animPos.y, e.basePos.z + e.animPos.z };
         // Além do plano distante do OoT o fiapo é voo invisível: força a saída para a vaga soltar logo, mas nunca
         // mata na hora (o rastro inteiro sumiria num frame).
         const float ddx = head.x - view.eye.x;
         const float ddy = head.y - view.eye.y;
         const float ddz = head.z - view.eye.z;
         if ((ddx * ddx) + (ddy * ddy) + (ddz * ddz) > 11500.0f * 11500.0f) {
-            if (e.state == 1) e.state = 2;
+            if (e.state == 1)
+                e.state = 2;
             e.stateTimer = std::min(e.stateTimer, 0.45f); // abaixo de 0,5: o alfa começa a descer agora
         }
         // Grava a cabeça no anel do rastro, com o lado da fita congelado: direção do voo × raio da vista agora.
         TrailPt& pt = e.trail[e.trailNext];
         pt.pos = head;
         pt.alpha = e.alpha;
-        V3 along{wind.x, 0.0f, wind.z};
+        V3 along{ wind.x, 0.0f, wind.z };
         if (e.trailCount > 0) {
             const V3& prev = e.trail[(e.trailNext - 1 + kTrailLen) % kTrailLen].pos;
-            along = {head.x - prev.x, head.y - prev.y, head.z - prev.z};
+            along = { head.x - prev.x, head.y - prev.y, head.z - prev.z };
         }
-        const V3 toEye{view.eye.x - head.x, view.eye.y - head.y, view.eye.z - head.z};
-        V3 side{(along.y * toEye.z) - (along.z * toEye.y), (along.z * toEye.x) - (along.x * toEye.z),
-                (along.x * toEye.y) - (along.y * toEye.x)};
+        const V3 toEye{ view.eye.x - head.x, view.eye.y - head.y, view.eye.z - head.z };
+        V3 side{ (along.y * toEye.z) - (along.z * toEye.y), (along.z * toEye.x) - (along.x * toEye.z),
+                 (along.x * toEye.y) - (along.y * toEye.x) };
         const float sl = std::sqrt((side.x * side.x) + (side.y * side.y) + (side.z * side.z));
         if (sl > 0.001f) {
-            side = {side.x / sl, side.y / sl, side.z / sl};
+            side = { side.x / sl, side.y / sl, side.z / sl };
             e.lastSide = side;
         } else {
             side = e.lastSide;
         }
         pt.side = side;
         e.trailNext = (e.trailNext + 1) % kTrailLen;
-        if (e.trailCount < kTrailLen) ++e.trailCount;
+        if (e.trailCount < kTrailLen)
+            ++e.trailCount;
         // Os limites do AddCalc são por frame na simulação de 30 fps: escalam com dt, senão o fiapo ficava ~50%
         // mais tempo invisível depois de nascer.
         const float maxVel = 0.08f + (0.008f * (static_cast<float>(i) / 30.0f));
         if (e.state == 1) {
             e.stateTimer = AddCalc(e.stateTimer, 1.0f, 0.3f * dt, 0.1f * maxVel * dt, 0.01f * dt);
-            if (e.stateTimer >= 1.0f) e.state = 2;
-            if (e.stateTimer > 0.5f) e.alpha = AddCalc(e.alpha, 1.0f, 0.5f * dt, 0.05f * dt, 0.001f * dt);
+            if (e.stateTimer >= 1.0f)
+                e.state = 2;
+            if (e.stateTimer > 0.5f)
+                e.alpha = AddCalc(e.alpha, 1.0f, 0.5f * dt, 0.05f * dt, 0.001f * dt);
         } else {
             e.stateTimer = AddCalc(e.stateTimer, 0.0f, 0.5f * dt,
                                    maxVel * (0.1f + (0.01f * (static_cast<float>(i) / 30.0f))) * dt, 0.01f * dt);
-            if (e.stateTimer < 0.5f) e.alpha = AddCalc(e.alpha, 0.0f, 0.5f * dt, 0.05f * dt, 0.001f * dt);
+            if (e.stateTimer < 0.5f)
+                e.alpha = AddCalc(e.alpha, 0.0f, 0.5f * dt, 0.05f * dt, 0.001f * dt);
             if (e.stateTimer <= 0.0f) {
                 e.state = 0;
                 e.respawnTimer = sWispRng.F(60.0f);
@@ -829,7 +858,8 @@ void WriteWispVtx(Vtx& v, float x, float y, float z, const uint8_t col[3], uint8
 // cheio, borda transparente). Posições e lados nunca mudam depois de emitidos, então o risco fica preso ao mundo.
 bool EmitWisp(Mod& mod, const WindEff& e, int slot, const uint8_t col[3], float alphaScale, Gfx*& g) {
     const int n = e.trailCount;
-    if (n < 2) return false;
+    if (n < 2)
+        return false;
     Vtx* vtx = sWispVtx[slot];
     const int tail = (e.trailNext - n + kTrailLen) % kTrailLen;
     const V3 origin = e.trail[tail].pos; // qualquer referência fixa serve; os vértices são posições exatas
@@ -837,7 +867,8 @@ bool EmitWisp(Mod& mod, const WindEff& e, int slot, const uint8_t col[3], float 
     // interpolados. Precisa: a origem anda a cada tick com os vértices compensando, e interpolar a matriz com os
     // vértices parados fazia o rastro nadar de lado. A câmera continua suave: a vista interpolada vai por cima.
     const void* mtx = nullptr;
-    if (mod.render->interpolation_begin(&e, static_cast<int32_t>(sWispFrame)) != SHIP_NATIVE_OK) return false;
+    if (mod.render->interpolation_begin(&e, static_cast<int32_t>(sWispFrame)) != SHIP_NATIVE_OK)
+        return false;
     if (mod.render->matrix_push() == SHIP_NATIVE_OK) {
         if (mod.render->matrix_translate_new(origin.x, origin.y, origin.z) != SHIP_NATIVE_OK ||
             mod.render->export_current_matrix(&mtx) != SHIP_NATIVE_OK)
@@ -845,7 +876,8 @@ bool EmitWisp(Mod& mod, const WindEff& e, int slot, const uint8_t col[3], float 
         mod.render->matrix_pop();
     }
     mod.render->interpolation_end();
-    if (mtx == nullptr) return false;
+    if (mtx == nullptr)
+        return false;
     gSPMatrix(g++, const_cast<void*>(mtx), G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
     for (int k = 0; k < n; ++k) {
         const TrailPt& pt = e.trail[(tail + k) % kTrailLen];
@@ -880,9 +912,11 @@ bool EmitWisp(Mod& mod, const WindEff& e, int slot, const uint8_t col[3], float 
 void DrawClouds(Mod& mod, PlayState* play) {
     const Settings& cfg = mod.cfg;
     mod.stats.skyClouds = 0;
-    if (!cfg.skyEnabled || !cfg.cloudsEnabled || !SkyAvailable(play) || mod.engine == nullptr) return;
+    if (!cfg.skyEnabled || !cfg.cloudsEnabled || !SkyAvailable(play) || mod.engine == nullptr)
+        return;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (save == nullptr) return;
+    if (save == nullptr)
+        return;
     EnsureTextures(mod, play);
     const float dt = SkyTicks(mod);
     // O céu fechado sobe a cobertura até o nublado cheio do Wind Waker (o slider é o piso do céu limpo) e a
@@ -898,7 +932,8 @@ void DrawClouds(Mod& mod, PlayState* play) {
     BuildBand(cfg.cloudsOpacity, colors.kumo);
     EmitBand(mod, play->view.eye.x, HorizonYForEye(cfg, play->view.eye.y), play->view.eye.z);
     if (!sCloudsInit) {
-        for (VrKumo& k : sClouds) SpawnCloud(k);
+        for (VrKumo& k : sClouds)
+            SpawnCloud(k);
         sCloudsInit = true;
     }
     // A cobertura decide quantas nuvens ficam ativas, como a força do clima do Wind Waker (50 limpo, 100 fechado).
@@ -906,17 +941,20 @@ void DrawClouds(Mod& mod, PlayState* play) {
     const int count = std::min(static_cast<int>(50.0f + (50.0f * coverage)), kMaxClouds);
     UpdateClouds(play, dt, count, drift);
     const int clouds = BuildClouds(cfg.cloudsOpacity, colors.kumo, colors.kumoCenter);
-    if (clouds > 0) EmitClouds(mod, play->view.eye, clouds);
+    if (clouds > 0)
+        EmitClouds(mod, play->view.eye, clouds);
 }
 
 // Os fiapos vão para a camada XLU, que roda depois do mundo não importa quando este hook a alimenta.
 void DrawWindWisps(Mod& mod, PlayState* play) {
     const Settings& cfg = mod.cfg;
     mod.stats.skyWisps = 0;
-    if (!cfg.skyEnabled || !cfg.wispsEnabled || !SkyAvailable(play) || mod.engine == nullptr) return;
+    if (!cfg.skyEnabled || !cfg.wispsEnabled || !SkyAvailable(play) || mod.engine == nullptr)
+        return;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (save == nullptr) return;
-    ShipOotRenderFrameInfoV1 info{sizeof(info)};
+    if (save == nullptr)
+        return;
+    ShipOotRenderFrameInfoV1 info{ sizeof(info) };
     const bool haveInfo = mod.render->get_frame_info(&info) == SHIP_NATIVE_OK;
     const float aspect = haveInfo && info.aspect_ratio >= 0.1f ? info.aspect_ratio : 4.0f / 3.0f;
     const float dt = SkyTicks(mod);
@@ -933,7 +971,8 @@ void DrawWindWisps(Mod& mod, PlayState* play) {
     const float colorAvg =
         static_cast<float>(colors.kumoCenter[0] + colors.kumoCenter[1] + colors.kumoCenter[2]) / (3.0f * 255.0f);
     const auto visible = [](const WindEff& e) { return e.state != 0 && e.alpha > 0.01f; };
-    if (std::none_of(std::begin(sWisps), std::end(sWisps), visible)) return;
+    if (std::none_of(std::begin(sWisps), std::end(sWisps), visible))
+        return;
     Gfx* const start = sWispList.Begin(16 + (kMaxWisps * (1 + ((kTrailLen - 1) * 4))));
     Gfx* g = start;
     gDPPipeSync(g++);
@@ -947,13 +986,15 @@ void DrawWindWisps(Mod& mod, PlayState* play) {
     uint32_t drawn = 0;
     for (int i = 0; i < kMaxWisps; ++i) {
         const WindEff& e = sWisps[i];
-        if (!visible(e)) continue;
+        if (!visible(e))
+            continue;
         const float dx = e.basePos.x + e.animPos.x - play->view.eye.x;
         const float dy = e.basePos.y + e.animPos.y - play->view.eye.y;
         const float dz = e.basePos.z + e.animPos.z - play->view.eye.z;
         const float distFade = std::min(std::sqrt((dx * dx) + (dy * dy) + (dz * dz)) / 200.0f, 1.0f);
         const float alphaFade = std::max(wind.power * distFade * colorAvg * colorAvg, 0.5f);
-        if (EmitWisp(mod, e, i, colors.kumoCenter, alphaFade * e.alpha, g)) ++drawn;
+        if (EmitWisp(mod, e, i, colors.kumoCenter, alphaFade * e.alpha, g))
+            ++drawn;
     }
     gSPEndDisplayList(g++);
     if (mod.render->draw_native_display_list(start, LINKSPAN_OOT_RENDER_TRANSLUCENT) == SHIP_NATIVE_OK)

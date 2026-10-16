@@ -60,7 +60,7 @@ ShipNativeStatus SHIP_NATIVE_CALL RaycastFloor(float x, float y, float z, ShipOo
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL LineTest(const float* from, const float* to, uint32_t surfaces,
-                                          ShipOotWorldHitV1* hit) {
+                                           ShipOotWorldHitV1* hit) {
     const uint32_t all = LINKSPAN_OOT_WORLD_LINE_WALL | LINKSPAN_OOT_WORLD_LINE_FLOOR | LINKSPAN_OOT_WORLD_LINE_CEILING;
     if (!OnOwnerThread() || !Finite(from) || !Finite(to) || !surfaces || (surfaces & ~all) || !ValidHit(hit)) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -72,7 +72,7 @@ ShipNativeStatus SHIP_NATIVE_CALL LineTest(const float* from, const float* to, u
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL WallCheck(const float* from, const float* to, float radius, float height,
-                                           ShipOotWorldHitV1* hit) {
+                                            ShipOotWorldHitV1* hit) {
     if (!OnOwnerThread() || !Finite(from) || !Finite(to) || !std::isfinite(radius) || radius <= 0.0f ||
         !std::isfinite(height) || !ValidHit(hit)) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -179,7 +179,7 @@ ShipNativeStatus SHIP_NATIVE_CALL ReadHits(uint64_t handle, ShipOotColliderHitsV
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL KnockbackPlayer(void* source, float speed, int16_t yaw, float yVelocity,
-                                                 uint32_t damage, uint8_t large) {
+                                                  uint32_t damage, uint8_t large) {
     if (!OnOwnerThread() || !source || !std::isfinite(speed) || !std::isfinite(yVelocity) || damage > 0xFF ||
         large > 1) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -194,8 +194,9 @@ ShipNativeStatus SHIP_NATIVE_CALL KnockbackPlayer(void* source, float speed, int
 }
 
 const ShipOotWorldV1 worldV1{ sizeof(ShipOotWorldV1), RaycastFloor, LineTest, WallCheck, WaterSurface };
-const ShipOotCollidersV1 collidersV1{ sizeof(ShipOotCollidersV1), CreateCylinder, Destroy, Submit, ReadHits,
-                                      KnockbackPlayer };
+const ShipOotCollidersV1 collidersV1{
+    sizeof(ShipOotCollidersV1), CreateCylinder, Destroy, Submit, ReadHits, KnockbackPlayer
+};
 
 void FreeRecord(const ColliderRecord& record, void* currentPlay) {
     const auto& bridge = State().bridge;

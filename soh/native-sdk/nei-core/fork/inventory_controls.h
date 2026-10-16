@@ -2,11 +2,7 @@
 #include <stdint.h>
 #include "../../example/menu_input.h"
 
-typedef enum NeiInventoryAction {
-    NEI_INVENTORY_NONE,
-    NEI_INVENTORY_EQUIP,
-    NEI_INVENTORY_VARIANT
-} NeiInventoryAction;
+typedef enum NeiInventoryAction { NEI_INVENTORY_NONE, NEI_INVENTORY_EQUIP, NEI_INVENTORY_VARIANT } NeiInventoryAction;
 
 typedef struct NeiInventoryGesture {
     uint64_t pressedAt;
@@ -24,10 +20,11 @@ static inline void NeiInventoryCancel(NeiInventoryGesture* gesture, int down) {
 
 /* A tap is committed on release. A hold fires once, and can never become an
  * equip tap when released. Changing slot/page cancels the pending gesture. */
-static inline NeiInventoryAction NeiInventoryInput(NeiInventoryGesture* gesture, int down,
-                                                   uint32_t context, uint64_t now) {
+static inline NeiInventoryAction NeiInventoryInput(NeiInventoryGesture* gesture, int down, uint32_t context,
+                                                   uint64_t now) {
     if (gesture->waitRelease) {
-        if (!down) gesture->waitRelease = 0;
+        if (!down)
+            gesture->waitRelease = 0;
         return NEI_INVENTORY_NONE;
     }
     if (gesture->down && gesture->context != context) {

@@ -137,8 +137,8 @@ void ClampCollisionIndices(CollisionHeader& col, const std::string& docPath) {
         clamped += bad ? 1 : 0;
     }
     if (clamped) {
-        SPDLOG_WARN("{}: {} polygons pointed past the {} vertices or {} surface types; clamped to 0", docPath,
-                    clamped, vertices, surfaces);
+        SPDLOG_WARN("{}: {} polygons pointed past the {} vertices or {} surface types; clamped to 0", docPath, clamped,
+                    vertices, surfaces);
     }
 }
 } // namespace

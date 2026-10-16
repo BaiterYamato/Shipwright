@@ -212,9 +212,8 @@ static LightNode* Lights_FindBufSlotRange(s32 start, s32 end, s32 occupied, s32*
 
 // SOH [Unbound] Existing callers retain all 32 vanilla slots.
 LightNode* Lights_FindBufSlot() {
-    return Lights_FindBufSlotRange(0, LIGHTS_ACTOR_BUFFER_SIZE,
-                                  sLightsBuffer.numOccupied - sLightsBuffer.numRoomLights,
-                                  &sLightsBuffer.searchIndex);
+    return Lights_FindBufSlotRange(0, LIGHTS_ACTOR_BUFFER_SIZE, sLightsBuffer.numOccupied - sLightsBuffer.numRoomLights,
+                                   &sLightsBuffer.searchIndex);
 }
 
 // return type must not be void to match
@@ -322,9 +321,8 @@ static LightNode* LightContext_LinkLight(PlayState* play, LightContext* lightCtx
         lusprintf(__FILE__, __LINE__, 3,
                   "[Unbound M18] cena=%d sala=%d: limite de luzes atingido; listas=%d/%d "
                   "atores/ambiente=%d/%d; luz descartada\n",
-                  play->sceneNum, play->roomCtx.curRoom.num, sLightsBuffer.numRoomLights,
-                  LIGHTS_ROOM_BUFFER_SIZE, sLightsBuffer.numOccupied - sLightsBuffer.numRoomLights,
-                  LIGHTS_ACTOR_BUFFER_SIZE);
+                  play->sceneNum, play->roomCtx.curRoom.num, sLightsBuffer.numRoomLights, LIGHTS_ROOM_BUFFER_SIZE,
+                  sLightsBuffer.numOccupied - sLightsBuffer.numRoomLights, LIGHTS_ACTOR_BUFFER_SIZE);
         sLightsBuffer.exhaustionWarned = 1;
     }
     return node;
@@ -346,8 +344,8 @@ LightNode* LightContext_InsertListLight(PlayState* play, LightContext* lightCtx,
     if (listIndex >= LIGHTS_LIST_LIMIT) {
         return LightContext_LinkLight(play, lightCtx, info, NULL);
     }
-    LightNode* node = Lights_FindBufSlotRange(LIGHTS_ACTOR_BUFFER_SIZE, LIGHTS_BUFFER_SIZE,
-                                             sLightsBuffer.numRoomLights, &sLightsBuffer.roomSearchIndex);
+    LightNode* node = Lights_FindBufSlotRange(LIGHTS_ACTOR_BUFFER_SIZE, LIGHTS_BUFFER_SIZE, sLightsBuffer.numRoomLights,
+                                              &sLightsBuffer.roomSearchIndex);
     if (node != NULL) {
         sLightsBuffer.numRoomLights++;
     }

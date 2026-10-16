@@ -229,9 +229,9 @@ void RestoreSceneFlags() {
             if (!valid) {
                 continue;
             }
-            flags[scene] = SavedSceneFlags{ value[0].get<u32>(), value[1].get<u32>(), value[2].get<u32>(),
-                                            value[3].get<u32>(), value[4].get<u32>(), value[5].get<u32>(),
-                                            value[6].get<u32>() };
+            flags[scene] =
+                SavedSceneFlags{ value[0].get<u32>(), value[1].get<u32>(), value[2].get<u32>(), value[3].get<u32>(),
+                                 value[4].get<u32>(), value[5].get<u32>(), value[6].get<u32>() };
         }
     }
     ShipLuaHost::ReplaceOotCustomSceneFlags(std::move(flags));

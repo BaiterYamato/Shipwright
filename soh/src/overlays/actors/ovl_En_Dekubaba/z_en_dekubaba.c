@@ -260,7 +260,8 @@ void EnDekubaba_Init(Actor* thisx, PlayState* play) {
         this->size = 1.0f;
 
         for (i = 0; i < sJntSphInit.count; i++) {
-            this->collider.elements[i].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[i].dim.modelSphere.radius);
+            this->collider.elements[i].dim.worldSphere.radius =
+                LinkSpan_S16F(this->collider.elements[i].dim.modelSphere.radius);
         }
 
         if (!LINK_IS_ADULT) {

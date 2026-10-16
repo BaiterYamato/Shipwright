@@ -118,7 +118,8 @@ void EmitDome(Mod& mod, float eyeX, float horizonY, float eyeZ, bool split) {
     }
     Gfx* const start = sDomeList.Begin(16 + ((kDomeVerts / kChunkVerts + 1) * 6));
     Gfx* g = start;
-    if (split) SplitBegin(mod.cfg, g);
+    if (split)
+        SplitBegin(mod.cfg, g);
     gSPMatrix(g++, const_cast<void*>(mtx), G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
     gDPPipeSync(g++);
     // Sem luz, cor por vértice, dos dois lados (vista de dentro), sem névoa.
@@ -130,9 +131,11 @@ void EmitDome(Mod& mod, float eyeX, float horizonY, float eyeZ, bool split) {
     for (int first = 0; first < kDomeVerts; first += kChunkVerts) {
         const int verts = std::min(kChunkVerts, kDomeVerts - first);
         __gSPVertex(g++, reinterpret_cast<uintptr_t>(&sDomeVtx[first]), verts, 0);
-        for (int t = 0; t + 6 <= verts; t += 6) gSP2Triangles(g++, t + 0, t + 1, t + 2, 0, t + 3, t + 4, t + 5, 0);
+        for (int t = 0; t + 6 <= verts; t += 6)
+            gSP2Triangles(g++, t + 0, t + 1, t + 2, 0, t + 3, t + 4, t + 5, 0);
     }
-    if (split) SplitEnd(mod.cfg, g);
+    if (split)
+        SplitEnd(mod.cfg, g);
     gSPEndDisplayList(g++);
     if (mod.render->draw_native_display_list(start, LINKSPAN_OOT_RENDER_OPAQUE) == SHIP_NATIVE_OK)
         ++mod.stats.skyDomes;
@@ -152,14 +155,17 @@ constexpr int kStarsPerChunk = 5; // 5 × 6 = 30 vértices
 
 // Constelação fixa do Wind Waker ("hokuto"), deslocamentos relativos à câmera antes da escala.
 constexpr float kHokutoPos[16][3] = {
-    { 13000, 10500, -16000 }, { 9400, 9800, -12646 }, { 10200, 11800, -13525 }, { 10300, 13450, -13525 },
-    { 15000, 18400, -16162 }, { 12500, 19800, -15000 }, { 9179, 17200, -14404 }, { 9500, 9800, -12646 },
+    { 13000, 10500, -16000 }, { 9400, 9800, -12646 },   { 10200, 11800, -13525 }, { 10300, 13450, -13525 },
+    { 15000, 18400, -16162 }, { 12500, 19800, -15000 }, { 9179, 17200, -14404 },  { 9500, 9800, -12646 },
     { -7421, 31005, 18798 },  { -10937, 28000, 15000 }, { -10000, 24902, 18400 }, { -9400, 22500, 15900 },
     { -9179, 21300, 14300 },  { -10300, 22000, 21000 }, { -16000, 25500, 20000 }, { 0, 30000, 19000 },
 };
 // Tons: quase todas azul-claro; as estrelas 6 e 8 rosa.
 constexpr uint8_t kStarCol[4][4] = {
-    { 0xDC, 0xE8, 0xFF, 0xFF }, { 0xFF, 0xC8, 0xC8, 0xFF }, { 0xFF, 0xFF, 0xC8, 0xFF }, { 0xC8, 0xC8, 0xFF, 0xFF },
+    { 0xDC, 0xE8, 0xFF, 0xFF },
+    { 0xFF, 0xC8, 0xC8, 0xFF },
+    { 0xFF, 0xFF, 0xC8, 0xFF },
+    { 0xC8, 0xC8, 0xFF, 0xFF },
 };
 
 Vtx sStarVtx[kMaxStars * 6];
@@ -192,8 +198,10 @@ V3 Norm(V3 a) {
 float StarAmountForSun(float sunHeight) {
     constexpr float fadeTop = 0.05f;
     constexpr float fadeBottom = -0.15f;
-    if (sunHeight >= fadeTop) return 0.0f;
-    if (sunHeight <= fadeBottom) return 1.0f;
+    if (sunHeight >= fadeTop)
+        return 0.0f;
+    if (sunHeight <= fadeBottom)
+        return 1.0f;
     return (fadeTop - sunHeight) / (fadeTop - fadeBottom);
 }
 
@@ -243,14 +251,16 @@ void BuildStars(int starCount, const View& view, float alphaMul) {
         } else {
             // Espiral e o piscar pelo tamanho (dobra acima de 1, para piscarem em tempos diferentes).
             float scale = animWave + (0.066f * (i & 0x0F));
-            if (scale > 1.0f) scale = 1.0f - (scale - 1.0f);
+            if (scale > 1.0f)
+                scale = 1.0f - (scale - 1.0f);
             half = scale;
             const float radiusXZ = 1.0f - (radius / 202.0f);
             local = { radiusXZ * -300.0f * std::sin(angle), radius + 45.0f, radiusXZ * 300.0f * std::cos(angle) };
             angle += angleIncr;
             angleIncr += 0x09C4 * (kPi * 2.0f / 65536.0f);
             radius += 1.0f + (3.0f * (radius / 8000000.0f));
-            if (radius > 200.0f) radius = (20.0f * i) / 1000.0f;
+            if (radius > 200.0f)
+                radius = (20.0f * i) / 1000.0f;
         }
         int whichColor = 0;
         if (i == 6 || i == 8) {
@@ -274,7 +284,8 @@ void EmitStars(Mod& mod, const View& view, int starCount, bool split) {
     }
     Gfx* const start = sStarList.Begin(16 + ((starCount / kStarsPerChunk + 1) * (1 + kStarsPerChunk)));
     Gfx* g = start;
-    if (split) SplitBegin(mod.cfg, g);
+    if (split)
+        SplitBegin(mod.cfg, g);
     gSPMatrix(g++, const_cast<void*>(mtx), G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
     gDPPipeSync(g++);
     gSPClearGeometryMode(g++, G_LIGHTING | G_CULL_FRONT | G_CULL_BACK | G_FOG);
@@ -290,7 +301,8 @@ void EmitStars(Mod& mod, const View& view, int starCount, bool split) {
             gSP2Triangles(g++, b + 0, b + 1, b + 2, 0, b + 3, b + 4, b + 5, 0);
         }
     }
-    if (split) SplitEnd(mod.cfg, g);
+    if (split)
+        SplitEnd(mod.cfg, g);
     gSPEndDisplayList(g++);
     if (mod.render->draw_native_display_list(start, LINKSPAN_OOT_RENDER_OPAQUE) == SHIP_NATIVE_OK)
         mod.stats.skyStars = static_cast<uint32_t>(starCount);
@@ -309,10 +321,13 @@ void AdvanceStars(Mod& mod) {
 
 void DrawSkyGradient(Mod& mod, PlayState* play) {
     const Settings& cfg = mod.cfg;
-    if (!cfg.skyEnabled || !cfg.gradientEnabled || !SkyAvailable(play) || mod.engine == nullptr) return;
+    if (!cfg.skyEnabled || !cfg.gradientEnabled || !SkyAvailable(play) || mod.engine == nullptr)
+        return;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (save == nullptr) return;
-    if (!sDomeBuilt) BuildDome();
+    if (save == nullptr)
+        return;
+    if (!sDomeBuilt)
+        BuildDome();
     const SkyWeather weather = SampleWeather(play);
     SkyColors colors;
     SampleColors(save, weather, colors);
@@ -322,22 +337,28 @@ void DrawSkyGradient(Mod& mod, PlayState* play) {
 
 void DrawNightSky(Mod& mod, PlayState* play) {
     const Settings& cfg = mod.cfg;
-    if (!cfg.skyEnabled || !cfg.starsEnabled || !SkyAvailable(play) || mod.engine == nullptr) return;
+    if (!cfg.skyEnabled || !cfg.starsEnabled || !SkyAvailable(play) || mod.engine == nullptr)
+        return;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (save == nullptr) return;
+    if (save == nullptr)
+        return;
     AdvanceStars(mod);
     // A quantidade suaviza até o alvo da hora, e o céu nublado esconde as estrelas.
     const SkyWeather weather = SampleWeather(play);
     const float target = StarAmountForSun(SunHeight(save)) * (1.0f - weather.cloudiness);
     // Carga nova parte do alvo, em vez de descer das estrelas da cena ou do arquivo anterior (defeito do fork: a
     // noite deixava centenas de estrelas num arquivo diurno).
-    if (IsNewPlay(sStarStamp, play)) sStarAmount = target;
-    else sStarAmount += (target - sStarAmount) * 0.1f;
+    if (IsNewPlay(sStarStamp, play))
+        sStarAmount = target;
+    else
+        sStarAmount += (target - sStarAmount) * 0.1f;
     mod.stats.skyStars = 0;
-    if (sStarAmount < 0.001f) return;
+    if (sStarAmount < 0.001f)
+        return;
     const int maxStars = std::min(cfg.starCount, kMaxStars);
     const int starCount = std::min(static_cast<int>(sStarAmount * static_cast<float>(maxStars)), kMaxStars);
-    if (starCount <= 0) return;
+    if (starCount <= 0)
+        return;
     // O alfa também acompanha a quantidade, além da contagem, para a aurora e o crepúsculo não saltarem.
     const float alphaMul = std::min(sStarAmount * cfg.starBrightness, 1.0f);
     BuildStars(starCount, play->view, alphaMul);
@@ -347,18 +368,22 @@ void DrawNightSky(Mod& mod, PlayState* play) {
 // Tela de arquivos: sem PlayState; cúpula na paleta da noite e o campo de estrelas cheio.
 void DrawFileSelectSky(Mod& mod, View* view) {
     const Settings& cfg = mod.cfg;
-    if (!cfg.skyEnabled || view == nullptr) return;
+    if (!cfg.skyEnabled || view == nullptr)
+        return;
     if (cfg.gradientEnabled) {
-        if (!sDomeBuilt) BuildDome();
+        if (!sDomeBuilt)
+            BuildDome();
         SkyColors colors;
         NightColors(colors);
         ColorDome(colors, cfg.gradientBrightness);
         EmitDome(mod, view->eye.x, HorizonYForEye(cfg, view->eye.y), view->eye.z, false);
     }
-    if (!cfg.starsEnabled) return;
+    if (!cfg.starsEnabled)
+        return;
     AdvanceStars(mod);
     const int starCount = std::min(cfg.starCount, kMaxStars);
-    if (starCount <= 0) return;
+    if (starCount <= 0)
+        return;
     BuildStars(starCount, *view, std::min(cfg.starBrightness, 1.0f));
     EmitStars(mod, *view, starCount, false);
 }

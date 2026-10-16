@@ -7,4 +7,4 @@ void StopBackends();
 std::string SensorCatalog();
 std::string SensorWishes();
 bool SetSensorWish(unsigned slot, unsigned item);
-}
+} // namespace LinkSpanNei

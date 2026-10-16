@@ -958,8 +958,8 @@ static void Message_DiscardDecoded(PlayState* play, bool wide) {
     msgCtx->choiceNum = 1;
     msgCtx->choiceIndex = msgCtx->choiceTextId = 0;
     msgCtx->textUnskippable = msgCtx->textDelay = msgCtx->textDelayTimer = msgCtx->stateTimer = 0;
-    R_TEXT_INIT_YPOS = R_TEXTBOX_Y +
-                       (msgCtx->textBoxType == TEXTBOX_TYPE_NONE_BOTTOM ? (wide ? 6 : 8) : (wide ? 22 : 26));
+    R_TEXT_INIT_YPOS =
+        R_TEXTBOX_Y + (msgCtx->textBoxType == TEXTBOX_TYPE_NONE_BOTTOM ? (wide ? 6 : 8) : (wide ? 22 : 26));
     sNextTextId = 0;
     sTextFade = sTextboxSkipped = false;
 }
@@ -1117,11 +1117,10 @@ void Message_DrawTextJPN(PlayState* play, Gfx** gfxP) {
                         // OOT-VANILLA-001: busca do upstream
                         while (true) {
                             character = msgCtx->msgBufDecodedWide[j];
-                            if ((character != MESSAGE_QUICKTEXT_DISABLE_JPN) &&
-                                (character != MESSAGE_PERSISTENT_JPN) && (character != MESSAGE_EVENT_JPN) &&
-                                (character != MESSAGE_BOX_BREAK_DELAYED_JPN) &&
-                                (character != MESSAGE_AWAIT_BUTTON_PRESS_JPN) &&
-                                (character != MESSAGE_BOX_BREAK_JPN) && (character != MESSAGE_END_JPN)) {
+                            if ((character != MESSAGE_QUICKTEXT_DISABLE_JPN) && (character != MESSAGE_PERSISTENT_JPN) &&
+                                (character != MESSAGE_EVENT_JPN) && (character != MESSAGE_BOX_BREAK_DELAYED_JPN) &&
+                                (character != MESSAGE_AWAIT_BUTTON_PRESS_JPN) && (character != MESSAGE_BOX_BREAK_JPN) &&
+                                (character != MESSAGE_END_JPN)) {
                                 j++;
                             } else {
                                 break;
@@ -1748,18 +1747,18 @@ void Message_LoadItemIcon(PlayState* play, u16 itemId, s16 y) {
 
 // SOH [Link-Span] R04: conferir antes da escrita e encerrar a caixa no excesso.
 // OOT-VANILLA-001: sem mod, nada é conferido, como no upstream.
-#define MESSAGE_DECODE_REQUIRE_INDEX(index)                                      \
-    do {                                                                        \
+#define MESSAGE_DECODE_REQUIRE_INDEX(index)                                          \
+    do {                                                                             \
         if (LinkSpan_EngineExtended() && ((index) < 0 || (index) >= decodedLimit)) { \
-            goto decodeOverflow;                                                \
-        }                                                                       \
+            goto decodeOverflow;                                                     \
+        }                                                                            \
     } while (0)
-#define MESSAGE_DECODE_REQUIRE_GLYPH(index)                                      \
-    do {                                                                        \
-        if (LinkSpan_EngineExtended() &&                                         \
+#define MESSAGE_DECODE_REQUIRE_GLYPH(index)                                                  \
+    do {                                                                                     \
+        if (LinkSpan_EngineExtended() &&                                                     \
             ((index) < 0 || (index) > ARRAY_COUNT(font->charTexBuf) - FONT_CHAR_TEX_SIZE)) { \
-            goto decodeOverflow;                                                \
-        }                                                                       \
+            goto decodeOverflow;                                                             \
+        }                                                                                    \
     } while (0)
 
 static s32 Message_RawControlUnits(u16 character, bool wide) {
@@ -1817,9 +1816,9 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
 
-    s16 decodedLimit = (gSaveContext.language == LANGUAGE_JPN && !sTextIsCredits &&
-                        !sDisplayNextMessageAsEnglish) ? ARRAY_COUNT(msgCtx->msgBufDecodedWide)
-                                                     : ARRAY_COUNT(msgCtx->msgBufDecoded);
+    s16 decodedLimit = (gSaveContext.language == LANGUAGE_JPN && !sTextIsCredits && !sDisplayNextMessageAsEnglish)
+                           ? ARRAY_COUNT(msgCtx->msgBufDecodedWide)
+                           : ARRAY_COUNT(msgCtx->msgBufDecoded);
     u8 emptyChar = (gSaveContext.ship.filenameLanguage == NAME_LANGUAGE_PAL) ? 0x3E : 0xDF;
 
     for (playerNameLen = ARRAY_COUNT(gSaveContext.playerName); playerNameLen > 0; playerNameLen--) {
@@ -2068,7 +2067,6 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
     (*decodedBufPosPtr)--;
 
     return true;
-
 
 decodeOverflow:
     return false;
@@ -2472,9 +2470,10 @@ static bool Message_DecodeJPN(PlayState* play) {
 
 decodeOverflow:
     // SOH [Link-Span] R04: falha explicita, sem controles do prefixo.
-    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de texto/glifos ou entrada incompleta; encerrando\n",
-                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit,
-                 charTexIdx, (int)ARRAY_COUNT(font->charTexBuf));
+    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de "
+                 "texto/glifos ou entrada incompleta; encerrando\n",
+                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit, charTexIdx,
+                 (int)ARRAY_COUNT(font->charTexBuf));
     msgCtx->msgBufPos = rawTokenStart;
     Message_DiscardDecoded(play, true);
     return false;
@@ -2951,9 +2950,10 @@ static bool Message_DecodeChecked(PlayState* play) {
 
 decodeOverflow:
     // SOH [Link-Span] R04: falha explicita, sem controles do prefixo.
-    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de texto/glifos ou entrada incompleta; encerrando\n",
-                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit,
-                 charTexIdx, (int)ARRAY_COUNT(font->charTexBuf));
+    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de "
+                 "texto/glifos ou entrada incompleta; encerrando\n",
+                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit, charTexIdx,
+                 (int)ARRAY_COUNT(font->charTexBuf));
     msgCtx->msgBufPos = rawTokenStart;
     Message_DiscardDecoded(play, false);
     return false;

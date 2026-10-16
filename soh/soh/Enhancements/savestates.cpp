@@ -413,7 +413,8 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
                 if (this->states.contains(request.slot)) {
                     const bool loaded = this->states[request.slot]->Load();
                     Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                        1.0f, true, loaded ? "loaded state %u" : "state %u refused: collision or native lights changed", request.slot);
+                        1.0f, true, loaded ? "loaded state %u" : "state %u refused: collision or native lights changed",
+                        request.slot);
                 } else {
                     SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);
                 }
@@ -438,17 +439,13 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
         case RequestType::SAVE:
             try {
                 requests.push(request);
-            } catch (const std::bad_alloc&) {
-                return SaveStateReturn::FAIL_NO_MEMORY;
-            }
+            } catch (const std::bad_alloc&) { return SaveStateReturn::FAIL_NO_MEMORY; }
             return SaveStateReturn::SUCCESS;
         case RequestType::LOAD:
             if (states.contains(request.slot)) {
                 try {
                     requests.push(request);
-                } catch (const std::bad_alloc&) {
-                    return SaveStateReturn::FAIL_NO_MEMORY;
-                }
+                } catch (const std::bad_alloc&) { return SaveStateReturn::FAIL_NO_MEMORY; }
                 return SaveStateReturn::SUCCESS;
             } else {
                 SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);
@@ -510,8 +507,9 @@ bool SaveState::Load(void) {
     std::unique_lock<std::mutex> Lock(audio.mutex);
     // Must precede every heap/static restore: those copies would revive freed
     // process-heap pointers and obsolete capacities in the saved PlayState.
-    if (gPlayState == nullptr || (LinkSpan_EngineExtended() &&
-                                  !info->collisionGuard.Matches(gPlayState->colCtx, BgCheck_GetSaveStateGeneration()))) {
+    if (gPlayState == nullptr ||
+        (LinkSpan_EngineExtended() &&
+         !info->collisionGuard.Matches(gPlayState->colCtx, BgCheck_GetSaveStateGeneration()))) {
         SPDLOG_WARN("SaveState slot {} refused: collision buffers, capacities or generation changed", slot);
         return false;
     }

@@ -74,7 +74,9 @@ namespace LinkSpanNei {
 void BindText(const ShipOotTextV1* text) {
     gText = text && text->size >= sizeof(ShipOotTextV1) && text->set_message ? text : nullptr;
 }
-void SetSensorHint(const std::string& hint) { gSensorHint = hint; }
+void SetSensorHint(const std::string& hint) {
+    gSensorHint = hint;
+}
 
 } // namespace LinkSpanNei
 
@@ -84,7 +86,8 @@ extern "C" int NeiText_Prepare(uint16_t id) {
     }
     switch (id) {
         case 0x9300:
-            if (gSensorHint.empty()) return 0;
+            if (gSensorHint.empty())
+                return 0;
             Set(id, kBoxBlue, gSensorHint.c_str());
             return 1;
         case 0x9301:

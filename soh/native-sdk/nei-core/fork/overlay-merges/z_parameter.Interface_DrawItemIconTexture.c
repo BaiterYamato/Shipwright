@@ -231,8 +231,8 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
     // Link-Span (OOT-MOVE-006): posição final dos ícones do D-pad para providers nativos. Sem
     // textura, o provider desenha o ícone e aqui só a posição é capturada.
     if (button >= 4) {
-        LinkSpan_CaptureItemButton(play, button, ItemIconPos[button][0], ItemIconPos[button][1],
-                                   gItemIconWidth[button], ItemsSlotsAlpha[button]);
+        LinkSpan_CaptureItemButton(play, button, ItemIconPos[button][0], ItemIconPos[button][1], gItemIconWidth[button],
+                                   ItemsSlotsAlpha[button]);
     }
     // CLOSE_DISPS fecha a chave aberta por OPEN_DISPS: sem retorno antecipado.
     if (texture != NULL) {
@@ -301,11 +301,12 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
             void* medTex = ExtInv_GetItemIcon(Sw97_ElementIcon(sw97Elem));
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, 128);
-            gDPLoadTextureBlock(OVERLAY_DISP++, medTex, G_IM_FMT_RGBA, G_IM_SIZ_32b, 24, 24, 0, G_TX_NOMIRROR | G_TX_WRAP,
-                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+            gDPLoadTextureBlock(OVERLAY_DISP++, medTex, G_IM_FMT_RGBA, G_IM_SIZ_32b, 24, 24, 0,
+                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                                G_TX_NOLOD, G_TX_NOLOD);
             s32 dd24 = 24 * 1024 / iconW;
-            gSPWideTextureRectangle(OVERLAY_DISP++, x0 << 2, y0 << 2, (x0 + iconW) << 2, (y0 + iconW) << 2, G_TX_RENDERTILE,
-                                    0, 0, dd24, dd24);
+            gSPWideTextureRectangle(OVERLAY_DISP++, x0 << 2, y0 << 2, (x0 + iconW) << 2, (y0 + iconW) << 2,
+                                    G_TX_RENDERTILE, 0, 0, dd24, dd24);
 
             // Layer 2: the weapon itself at full alpha, centered ~75% size. `texture` is whatever the
             // button's item resolved to, so the bow/slingshot split is already decided for us.
@@ -313,8 +314,9 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
             s16 offset = (iconW - smallW) / 2;
             s32 dd32 = 32 * 1024 / smallW;
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, 255);
-            gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
-                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+            gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                                G_TX_NOLOD, G_TX_NOLOD);
             gSPWideTextureRectangle(OVERLAY_DISP++, (x0 + offset) << 2, (y0 + offset) << 2, (x0 + offset + smallW) << 2,
                                     (y0 + offset + smallW) << 2, G_TX_RENDERTILE, 0, 0, dd32, dd32);
 
@@ -322,20 +324,23 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, 255);
         } else if (isSmallIcon) {
-            gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 24, 24, 0, G_TX_NOMIRROR | G_TX_WRAP,
-                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+            gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 24, 24, 0,
+                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                                G_TX_NOLOD, G_TX_NOLOD);
             s32 dd = 24 * 1024 / gItemIconWidth[button];
             gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
                                     (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
-                                    (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0, dd, dd);
+                                    (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0, dd,
+                                    dd);
         } else {
-            gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
-                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
-        gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
-                                (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
-                                (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0,
-                                gItemIconDD[button] << 1, gItemIconDD[button] << 1);
-    }
+            gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                                G_TX_NOLOD, G_TX_NOLOD);
+            gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
+                                    (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
+                                    (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0,
+                                    gItemIconDD[button] << 1, gItemIconDD[button] << 1);
+        }
 
         // Skijer's NEI: restore the caller's expected prim state for whatever draws next (ammo digits,
         // overlays, etc.) after the Switch Hook gray draw above.
@@ -407,8 +412,8 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
                     gDPLoadTextureBlock(OVERLAY_DISP++, medTex, G_IM_FMT_RGBA, G_IM_SIZ_32b, 24, 24, 0,
                                         G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
                                         G_TX_NOLOD, G_TX_NOLOD);
-                    gSPWideTextureRectangle(OVERLAY_DISP++, x0 << 2, y0 << 2, (x0 + overlayW) << 2, (y0 + overlayW) << 2,
-                                            G_TX_RENDERTILE, 0, 0, ddOverlay, ddOverlay);
+                    gSPWideTextureRectangle(OVERLAY_DISP++, x0 << 2, y0 << 2, (x0 + overlayW) << 2,
+                                            (y0 + overlayW) << 2, G_TX_RENDERTILE, 0, 0, ddOverlay, ddOverlay);
                 }
             }
         }

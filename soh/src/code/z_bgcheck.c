@@ -80,8 +80,9 @@ u16 D_80119E10[14] = {
  * original name: T_BGCheck_PosErrorCheck
  */
 s32 BgCheck_PosErrorCheck(Vec3f* pos, char* file, s32 line) {
-    if (pos->x >= LINKSPAN_BGCHECK_XYZ_ABSMAX || pos->x <= -LINKSPAN_BGCHECK_XYZ_ABSMAX || pos->y >= LINKSPAN_BGCHECK_XYZ_ABSMAX ||
-        pos->y <= -LINKSPAN_BGCHECK_XYZ_ABSMAX || pos->z >= LINKSPAN_BGCHECK_XYZ_ABSMAX || pos->z <= -LINKSPAN_BGCHECK_XYZ_ABSMAX) {
+    if (pos->x >= LINKSPAN_BGCHECK_XYZ_ABSMAX || pos->x <= -LINKSPAN_BGCHECK_XYZ_ABSMAX ||
+        pos->y >= LINKSPAN_BGCHECK_XYZ_ABSMAX || pos->y <= -LINKSPAN_BGCHECK_XYZ_ABSMAX ||
+        pos->z >= LINKSPAN_BGCHECK_XYZ_ABSMAX || pos->z <= -LINKSPAN_BGCHECK_XYZ_ABSMAX) {
         osSyncPrintf(VT_FGCOL(RED));
         // "Position is invalid."
         osSyncPrintf("T_BGCheck_PosErrorCheck():位置が妥当ではありません。pos (%f,%f,%f) file:%s line:%d\n", pos->x,
@@ -1799,7 +1800,8 @@ f32 BgCheck_RaycastFloorImpl(PlayState* play, CollisionContext* colCtx, u16 xpFl
             checkPos.y -= colCtx->subdivLength.y;
             continue;
         }
-        yIntersect = BgCheck_RaycastFloorStatic(lookup, colCtx, xpFlags, outPoly, pos, arg7, chkDist, LINKSPAN_BGCHECK_Y_MIN);
+        yIntersect =
+            BgCheck_RaycastFloorStatic(lookup, colCtx, xpFlags, outPoly, pos, arg7, chkDist, LINKSPAN_BGCHECK_Y_MIN);
         if (yIntersect > LINKSPAN_BGCHECK_Y_MIN) {
             break;
         }

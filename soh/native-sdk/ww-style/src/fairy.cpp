@@ -38,7 +38,8 @@ void FairyLights(Mod& mod, ShipOotFairyLightHookV1& payload) {
     // ilumina mais. Desligado, as que este mod acendeu voltam ao raio 0.
     const bool wild = payload.params == LINKSPAN_OOT_FAIRY_KOKIRI || payload.params == LINKSPAN_OOT_FAIRY_HEAL ||
                       payload.params == LINKSPAN_OOT_FAIRY_HEAL_BIG || payload.params == LINKSPAN_OOT_FAIRY_HEAL_TIMED;
-    if (!wild) return;
+    if (!wild)
+        return;
     // A projeção reconhece a luz desta fada entre as tochas (world.cpp).
     mod.lighting.fairyNoGlow[payload.actor] = payload.no_glow.light;
     const auto* actor = static_cast<const Actor*>(payload.actor);

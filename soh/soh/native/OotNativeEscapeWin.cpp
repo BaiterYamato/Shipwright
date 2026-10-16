@@ -219,16 +219,16 @@ ShipNativeStatus Install(std::string_view owner, uintptr_t target, void* detour,
         state.minhookReady = true;
     }
     const auto nativeTarget = reinterpret_cast<LPVOID>(target);
-    if (state.batchDepth > 0 && state.batchOwner != owner) return SHIP_NATIVE_FAILURE;
-    if (DrainPendingTarget(state, nativeTarget) != SHIP_NATIVE_OK) return SHIP_NATIVE_FAILURE;
+    if (state.batchDepth > 0 && state.batchOwner != owner)
+        return SHIP_NATIVE_FAILURE;
+    if (DrainPendingTarget(state, nativeTarget) != SHIP_NATIVE_OK)
+        return SHIP_NATIVE_FAILURE;
     // Id nunca reaproveitado: um rollback que falha deixa a entrada retida no mapa com o id dela.
     const auto id = state.nextPatch++;
     try {
-        state.patches.emplace(id, Patch{ nativeTarget, std::string(owner), false, false, false,
-                                         state.batchDepth > 0, false });
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+        state.patches.emplace(
+            id, Patch{ nativeTarget, std::string(owner), false, false, false, state.batchDepth > 0, false });
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
     const auto created = MH_CreateHook(nativeTarget, detour, reinterpret_cast<LPVOID*>(original));
     if (created == MH_ERROR_ALREADY_CREATED) {
         state.patches.erase(id);
@@ -251,8 +251,7 @@ ShipNativeStatus Install(std::string_view owner, uintptr_t target, void* detour,
             retained.pendingEnable = false;
             retained.pendingRemoval = true;
             NeutralizeQueue(retained);
-            SPDLOG_ERROR("Link-Span escape hatch: rollback de {:#x} falhou ({})", target,
-                         MH_StatusToString(removed));
+            SPDLOG_ERROR("Link-Span escape hatch: rollback de {:#x} falhou ({})", target, MH_StatusToString(removed));
         }
         *original = nullptr;
         SPDLOG_WARN("Link-Span escape hatch: {} em {:#x} falhou ({})", batched ? "MH_QueueEnableHook" : "MH_EnableHook",
@@ -273,7 +272,8 @@ ShipNativeStatus Remove(uint64_t patch) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     if (state.batchDepth > 0) {
-        if (found->second.owner != state.batchOwner) return SHIP_NATIVE_INVALID_ARGUMENT;
+        if (found->second.owner != state.batchOwner)
+            return SHIP_NATIVE_INVALID_ARGUMENT;
         if (!found->second.created) {
             state.patches.erase(found);
             return SHIP_NATIVE_OK;
@@ -319,15 +319,16 @@ ShipNativeStatus Remove(uint64_t patch) {
         state.patches.erase(found);
         return SHIP_NATIVE_OK;
     }
-    SPDLOG_ERROR("Link-Span escape hatch: MH_RemoveHook em {:#x} falhou ({})",
-                 reinterpret_cast<uintptr_t>(target), MH_StatusToString(removed));
+    SPDLOG_ERROR("Link-Span escape hatch: MH_RemoveHook em {:#x} falhou ({})", reinterpret_cast<uintptr_t>(target),
+                 MH_StatusToString(removed));
     return SHIP_NATIVE_FAILURE;
 }
 
 void BeginBatch(std::string_view owner) {
     auto& state = State();
     if (state.batchDepth > 0) {
-        if (state.batchOwner != owner) throw std::runtime_error("nested escape batch has another owner");
+        if (state.batchOwner != owner)
+            throw std::runtime_error("nested escape batch has another owner");
         ++state.batchDepth;
         return;
     }
@@ -347,18 +348,22 @@ ShipNativeStatus CommitBatch() {
     size_t enableCount = 0;
     size_t removalCount = 0;
     for (const auto& [id, entry] : state.patches) {
-        if (entry.owner != owner) continue;
+        if (entry.owner != owner)
+            continue;
         enableCount += entry.pendingEnable && !entry.pendingRemoval;
         removalCount += entry.pendingRemoval;
     }
-    if (enableCount == 0 && removalCount == 0) return SHIP_NATIVE_OK;
+    if (enableCount == 0 && removalCount == 0)
+        return SHIP_NATIVE_OK;
     const auto started = std::chrono::steady_clock::now();
     const auto applied = MH_ApplyQueued();
     for (auto& [id, entry] : state.patches) {
-        if (entry.owner != owner || !entry.pendingEnable || entry.pendingRemoval) continue;
+        if (entry.owner != owner || !entry.pendingEnable || entry.pendingRemoval)
+            continue;
         // Em falha parcial não sabemos até onde ApplyQueued chegou; tratar como ligado torna o rollback seguro.
         entry.active = true;
-        if (applied == MH_OK) entry.pendingEnable = false;
+        if (applied == MH_OK)
+            entry.pendingEnable = false;
     }
     // Desligados pelo ApplyQueued saem sem congelar; se ele falhou, MH_RemoveHook ainda tenta desligar e remover.
     size_t failedRemovals = 0;
@@ -369,7 +374,8 @@ ShipNativeStatus CommitBatch() {
             continue;
         }
         // O ApplyQueued que deu certo desligou o desvio; se a remoção falhar, a fila neutralizada o mantém desligado.
-        if (applied == MH_OK) entry.active = false;
+        if (applied == MH_OK)
+            entry.active = false;
         const auto removed = MH_RemoveHook(entry.target);
         if (removed == MH_OK) {
             found = state.patches.erase(found);
@@ -387,8 +393,9 @@ ShipNativeStatus CommitBatch() {
         SPDLOG_INFO("Link-Span escape hatch: lote com {} desvios ligados e {} removidos em {} ms", enableCount,
                     removalCount - failedRemovals, elapsed);
     } else {
-        SPDLOG_ERROR("Link-Span escape hatch: MH_ApplyQueued falhou ({}) num lote com {} desvios a ligar e {} a remover",
-                     MH_StatusToString(applied), enableCount, removalCount);
+        SPDLOG_ERROR(
+            "Link-Span escape hatch: MH_ApplyQueued falhou ({}) num lote com {} desvios a ligar e {} a remover",
+            MH_StatusToString(applied), enableCount, removalCount);
     }
     const bool enablesClean = enableCount == 0 || applied == MH_OK;
     return enablesClean && failedRemovals == 0 ? SHIP_NATIVE_OK : SHIP_NATIVE_FAILURE;

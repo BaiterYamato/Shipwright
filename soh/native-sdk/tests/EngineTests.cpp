@@ -51,13 +51,15 @@
 // Este teste não liga o driver gráfico do jogo. A integração verifica a tabela;
 // modelos, animação e diálogo são exercitados no runtime.
 namespace ShipLuaHost {
-void InitializeOotNativeActorModels(std::thread::id) {}
+void InitializeOotNativeActorModels(std::thread::id) {
+}
 const ShipOotActorModelsV1& GetOotNativeActorModelsService() {
-    static const ShipOotActorModelsV1 service{sizeof(ShipOotActorModelsV1), nullptr, nullptr, nullptr};
+    static const ShipOotActorModelsV1 service{ sizeof(ShipOotActorModelsV1), nullptr, nullptr, nullptr };
     return service;
 }
-void ReleaseOotActorModelOwner(std::string_view) {}
+void ReleaseOotActorModelOwner(std::string_view) {
 }
+} // namespace ShipLuaHost
 extern "C" {
 #include "functions.h"
 PlayState* gPlayState = nullptr;
@@ -67,12 +69,12 @@ OcarinaNote sOcarinaSongNotes[OCARINA_SONG_MAX][20]{};
 OcarinaSongButtons gOcarinaSongButtons[OCARINA_SONG_MAX]{};
 // Tabelas reais de z_inventory.c:9-24 e z_kaleido_scope_PAL.c:971-997.
 u32 gBitFlags[32]{};
-u16 gEquipMasks[4]{0x000F, 0x00F0, 0x0F00, 0xF000};
-u8 gEquipShifts[4]{0, 4, 8, 12};
-u8 gEquipAgeReqs[4][4]{{LINK_AGE_ADULT, LINK_AGE_CHILD, LINK_AGE_ADULT, LINK_AGE_ADULT},
-                       {9, LINK_AGE_CHILD, 9, LINK_AGE_ADULT},
-                       {LINK_AGE_ADULT, 9, LINK_AGE_ADULT, LINK_AGE_ADULT},
-                       {9, 9, LINK_AGE_ADULT, LINK_AGE_ADULT}};
+u16 gEquipMasks[4]{ 0x000F, 0x00F0, 0x0F00, 0xF000 };
+u8 gEquipShifts[4]{ 0, 4, 8, 12 };
+u8 gEquipAgeReqs[4][4]{ { LINK_AGE_ADULT, LINK_AGE_CHILD, LINK_AGE_ADULT, LINK_AGE_ADULT },
+                        { 9, LINK_AGE_CHILD, 9, LINK_AGE_ADULT },
+                        { LINK_AGE_ADULT, 9, LINK_AGE_ADULT, LINK_AGE_ADULT },
+                        { 9, 9, LINK_AGE_ADULT, LINK_AGE_ADULT } };
 }
 namespace {
 PlayState play{};
@@ -96,8 +98,8 @@ uint8_t pacifistMode = 0;
 bool hostileLockOn = false;
 u16 lastPlayerSfx = 0;
 std::map<std::string, std::vector<uint8_t>> resourceFiles{
-    {"test/core.json", {'{', '"', 'o', 'k', '"', ':', '1', '}' }},
-    {"test/other.bin", {1, 2, 3}},
+    { "test/core.json", { '{', '"', 'o', 'k', '"', ':', '1', '}' } },
+    { "test/other.bin", { 1, 2, 3 } },
 };
 std::vector<std::string> dirtiedResources;
 std::vector<std::string> unloadedResources;
@@ -106,42 +108,60 @@ std::vector<uint64_t> unmountedArchives;
 uint64_t nextArchiveHandle = 10;
 LinkAnimationHeader* jumpAnimation = nullptr;
 uint16_t jumpSound = 0;
-void Check(bool ok, const char* text) { if (!ok) { std::cerr << text << '\n'; ++failures; } }
-uint8_t HasGamepad(uint8_t port) { return port == 0 ? gamepadPresent : 0; }
-uint32_t GetGamepadButtons(uint8_t port) { return port == 0 ? gamepadButtons : 0; }
+void Check(bool ok, const char* text) {
+    if (!ok) {
+        std::cerr << text << '\n';
+        ++failures;
+    }
+}
+uint8_t HasGamepad(uint8_t port) {
+    return port == 0 ? gamepadPresent : 0;
+}
+uint32_t GetGamepadButtons(uint8_t port) {
+    return port == 0 ? gamepadButtons : 0;
+}
 ShipNativeStatus ClearButton(uint8_t port, uint16_t button) {
-    if (port != 0 || !button) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (port != 0 || !button)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     clearedButtons.push_back(button);
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus BindButton(uint8_t port, uint16_t button, uint8_t physical) {
-    if (port != 0 || !button || physical >= 32) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (port != 0 || !button || physical >= 32)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     boundButtons.emplace_back(button, physical);
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus ReloadMappings(uint8_t port) {
-    if (port != 0) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (port != 0)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     ++mappingReloads;
     return SHIP_NATIVE_OK;
 }
 int32_t GetSettingInt(const char* name, int32_t fallback) {
-    if (!name) return fallback;
-    if (std::string(name) == "gSettings.FreeLook.Enabled") return settingValue;
+    if (!name)
+        return fallback;
+    if (std::string(name) == "gSettings.FreeLook.Enabled")
+        return settingValue;
     const auto found = otherSettings.find(name);
     return found == otherSettings.end() ? fallback : found->second;
 }
 ShipNativeStatus SetSettingInt(const char* name, int32_t value) {
-    if (!name || !*name) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!name || !*name)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     ++settingWrites;
-    if (std::string(name) == "gSettings.FreeLook.Enabled") settingValue = value;
-    else otherSettings[name] = value;
+    if (std::string(name) == "gSettings.FreeLook.Enabled")
+        settingValue = value;
+    else
+        otherSettings[name] = value;
     return SHIP_NATIVE_OK;
 }
 int16_t GetGamepadAxis(uint8_t port, uint8_t axis) {
     return port == 0 && axis < gamepadAxes.size() ? gamepadAxes[axis] : 0;
 }
 ShipNativeStatus BindAxis(uint8_t port, uint16_t button, uint8_t axis, int8_t direction) {
-    if (port != 0 || !button || axis >= gamepadAxes.size()) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (port != 0 || !button || axis >= gamepadAxes.size())
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     boundAxes.emplace_back(button, axis, direction);
     return SHIP_NATIVE_OK;
 }
@@ -150,10 +170,15 @@ uint8_t HasResourceFile(const char* path) {
 }
 ShipNativeStatus ReadResourceFile(const char* path, uint8_t* output, uint32_t capacity, uint32_t* outputSize) {
     const auto entry = path ? resourceFiles.find(path) : resourceFiles.end();
-    if (entry == resourceFiles.end()) { *outputSize = 0; return SHIP_NATIVE_UNSUPPORTED; }
+    if (entry == resourceFiles.end()) {
+        *outputSize = 0;
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
     *outputSize = static_cast<uint32_t>(entry->second.size());
-    if (!output && capacity == 0) return SHIP_NATIVE_OK;
-    if (capacity < *outputSize) return SHIP_NATIVE_LIMIT;
+    if (!output && capacity == 0)
+        return SHIP_NATIVE_OK;
+    if (capacity < *outputSize)
+        return SHIP_NATIVE_LIMIT;
     std::memcpy(output, entry->second.data(), *outputSize);
     return SHIP_NATIVE_OK;
 }
@@ -161,9 +186,11 @@ ShipNativeStatus ListResourceFiles(const char* mask, ShipOotResourcePathFn callb
     const std::string prefix = mask && std::string(mask) == "test/*" ? "test/" : "";
     for (const auto& [path, bytes] : resourceFiles) {
         (void)bytes;
-        if (!prefix.empty() && !path.starts_with(prefix)) continue;
+        if (!prefix.empty() && !path.starts_with(prefix))
+            continue;
         const auto status = callback(user, path.c_str(), static_cast<uint32_t>(path.size()));
-        if (status != SHIP_NATIVE_OK) return status;
+        if (status != SHIP_NATIVE_OK)
+            return status;
     }
     return SHIP_NATIVE_OK;
 }
@@ -185,10 +212,12 @@ ShipNativeStatus UnmountArchive(uint64_t handle) {
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus GetGameVersions(uint32_t* output, uint32_t capacity, uint32_t* count) {
-    constexpr uint32_t versions[] = {0xEC7011B7u, 0xF034001Au};
+    constexpr uint32_t versions[] = { 0xEC7011B7u, 0xF034001Au };
     *count = 2;
-    if (!output && capacity == 0) return SHIP_NATIVE_OK;
-    if (capacity < 2) return SHIP_NATIVE_LIMIT;
+    if (!output && capacity == 0)
+        return SHIP_NATIVE_OK;
+    if (capacity < 2)
+        return SHIP_NATIVE_LIMIT;
     std::copy(std::begin(versions), std::end(versions), output);
     return SHIP_NATIVE_OK;
 }
@@ -200,14 +229,16 @@ ShipNativeStatus ReadResourceFileLayers(const char* path, ShipOotResourceLayerFn
     static const char* contents[] = { "{\"base\":1}", "{\"mod\":2}" };
     static const uint64_t hashes[] = { 0x1111111111111111ULL, 0x2222222222222222ULL };
     for (uint32_t i = 0; i < 2; ++i) {
-        const ShipOotResourceLayerV2 layer{
-            sizeof(ShipOotResourceLayerV2), i, 2, i ? 0u : 0xEC7011B7u, hashes[i],
-            static_cast<uint32_t>(std::strlen(contents[i])),
-            static_cast<uint32_t>(std::strlen(archivePaths[i]))
-        };
-        const auto status = callback(user, &layer, archivePaths[i],
-                                     reinterpret_cast<const uint8_t*>(contents[i]));
-        if (status != SHIP_NATIVE_OK) return status;
+        const ShipOotResourceLayerV2 layer{ sizeof(ShipOotResourceLayerV2),
+                                            i,
+                                            2,
+                                            i ? 0u : 0xEC7011B7u,
+                                            hashes[i],
+                                            static_cast<uint32_t>(std::strlen(contents[i])),
+                                            static_cast<uint32_t>(std::strlen(archivePaths[i])) };
+        const auto status = callback(user, &layer, archivePaths[i], reinterpret_cast<const uint8_t*>(contents[i]));
+        if (status != SHIP_NATIVE_OK)
+            return status;
     }
     return SHIP_NATIVE_OK;
 }
@@ -215,24 +246,27 @@ ShipNativeStatus SHIP_NATIVE_CALL CollectPath(void* user, const char* path, uint
     static_cast<std::vector<std::string>*>(user)->emplace_back(path, length);
     return SHIP_NATIVE_OK;
 }
-}
+} // namespace
 // Stubs apenas do motor externo: a implementação da tabela é a mesma do jogo.
-extern "C" Actor* Actor_Spawn(ActorContext*, PlayState*, s16 id, f32 x, f32 y, f32 z,
-                              s16 rx, s16 ry, s16 rz, s16 params) {
+extern "C" Actor* Actor_Spawn(ActorContext*, PlayState*, s16 id, f32 x, f32 y, f32 z, s16 rx, s16 ry, s16 rz,
+                              s16 params) {
     spawned.id = id;
     spawned.params = params;
-    spawned.world.pos = {x, y, z};
-    spawned.world.rot = {rx, ry, rz};
+    spawned.world.pos = { x, y, z };
+    spawned.world.rot = { rx, ry, rz };
     return &spawned;
 }
-extern "C" void Actor_Kill(Actor* actor) { killed = actor; }
+extern "C" void Actor_Kill(Actor* actor) {
+    killed = actor;
+}
 extern "C" s32 LinkSpan_ItemButtonHidden(s32 button);
 extern "C" void LinkSpan_FilterPlayerInput(Input* input);
 extern "C" s32 LinkSpan_DpadHudOwned(void);
 extern "C" uint8_t LinkSpan_PauseEquipSelectorEnabled(void);
 extern "C" void LinkSpan_CaptureDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u16 alpha);
 extern "C" s32 LinkSpan_OwnedDpadBackground(PlayState* play, s16* x, s16* y, u8* r, u8* g, u8* b, u8* alpha);
-extern "C" void Player_Action_Roll(Player*, PlayState*) {}
+extern "C" void Player_Action_Roll(Player*, PlayState*) {
+}
 extern "C" void Player_SetupRoll(Player* target, PlayState*) {
     target->actionFunc = Player_Action_Roll;
 }
@@ -244,30 +278,40 @@ extern "C" void func_80838940(Player* target, LinkAnimationHeader* animation, f3
     target->stateFlags1 |= PLAYER_STATE1_JUMPING;
 }
 extern "C" s8 Player_ItemToItemAction(s32 item) {
-    return item == ITEM_OCARINA_FAIRY ? PLAYER_IA_OCARINA_FAIRY
-         : item == ITEM_OCARINA_TIME  ? PLAYER_IA_OCARINA_OF_TIME
-                                      : PLAYER_IA_NONE;
+    return item == ITEM_OCARINA_FAIRY  ? PLAYER_IA_OCARINA_FAIRY
+           : item == ITEM_OCARINA_TIME ? PLAYER_IA_OCARINA_OF_TIME
+                                       : PLAYER_IA_NONE;
 }
 // Ramo da ocarina de Player_ActionHandler_13 (z_player.c:6009-6012 e 6119-6145).
 extern "C" s32 Player_ActionHandler_13(Player* user, PlayState*) {
-    if (user->unk_6AD == 0 || !(user->actor.bgCheckFlags & BGCHECKFLAG_GROUND)) return 0;
+    if (user->unk_6AD == 0 || !(user->actor.bgCheckFlags & BGCHECKFLAG_GROUND))
+        return 0;
     user->stateFlags2 |= PLAYER_STATE2_OCARINA_PLAYING;
     user->stateFlags1 |= PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_IN_CUTSCENE;
     return 1;
 }
 extern "C" void Inventory_ChangeEquipment(s16 equipment, u16 value) {
-    gSaveContext.equips.equipment =
-        static_cast<u16>((gSaveContext.equips.equipment & ~gEquipMasks[equipment]) | (value << gEquipShifts[equipment]));
+    gSaveContext.equips.equipment = static_cast<u16>((gSaveContext.equips.equipment & ~gEquipMasks[equipment]) |
+                                                     (value << gEquipShifts[equipment]));
 }
 extern "C" void Player_SetEquipmentData(PlayState*, Player* user) {
     user->currentTunic = static_cast<u8>(CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) - 1);
     user->currentBoots = static_cast<u8>(CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) - 1);
 }
-extern "C" void func_808328EC(Player*, u16 sfxId) { lastPlayerSfx = sfxId; }
-extern "C" s32 Player_UpperAction_ChangeHeldItem(Player*, PlayState*) { return 0; }
-extern "C" void Player_Action_WaitForPutAway(Player*, PlayState*) {}
-extern "C" uint8_t GameInteractor_PacifistModeActive() { return pacifistMode; }
-extern "C" s32 Player_GetEnvironmentalHazard(PlayState*) { return environmentalHazard; }
+extern "C" void func_808328EC(Player*, u16 sfxId) {
+    lastPlayerSfx = sfxId;
+}
+extern "C" s32 Player_UpperAction_ChangeHeldItem(Player*, PlayState*) {
+    return 0;
+}
+extern "C" void Player_Action_WaitForPutAway(Player*, PlayState*) {
+}
+extern "C" uint8_t GameInteractor_PacifistModeActive() {
+    return pacifistMode;
+}
+extern "C" s32 Player_GetEnvironmentalHazard(PlayState*) {
+    return environmentalHazard;
+}
 // Só o efeito observável dos ramos de lente e máscara de Player_UseItem (z_player.c:3451-3490).
 extern "C" void Player_UseItem(PlayState* target, Player* user, s32 item) {
     usedItems.push_back(item);
@@ -275,8 +319,8 @@ extern "C" void Player_UseItem(PlayState* target, Player* user, s32 item) {
         target->actorCtx.lensActive = !target->actorCtx.lensActive;
     } else if (item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH) {
         user->currentMask = user->currentMask != PLAYER_MASK_NONE
-            ? PLAYER_MASK_NONE
-            : static_cast<u8>(item - ITEM_MASK_KEATON + PLAYER_MASK_KEATON);
+                                ? PLAYER_MASK_NONE
+                                : static_cast<u8>(item - ITEM_MASK_KEATON + PLAYER_MASK_KEATON);
     } else if ((item == ITEM_OCARINA_FAIRY || item == ITEM_OCARINA_TIME) && !hostileLockOn) {
         // "Cutscene items" (z_player.c:3491-3499): lock-on hostil impede.
         user->itemAction = Player_ItemToItemAction(item);
@@ -289,7 +333,7 @@ extern "C" void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags)
 extern "C" s32 OotNative_TakePendingOcarinaSong(void);
 
 namespace FakeItems {
-std::array<uint8_t, 4> buttons{0xFF, 0xFF, 0xFF, 0xFF};
+std::array<uint8_t, 4> buttons{ 0xFF, 0xFF, 0xFF, 0xFF };
 std::map<uint8_t, std::string> icons;
 std::map<std::string, int32_t> actorIds;
 std::vector<std::pair<int16_t, uint8_t>> killedTypes;
@@ -454,14 +498,16 @@ void* Gameplay() {
     return current;
 }
 void Reenter(const ShipOotPointLightV1& light) {
-    if (!reenter) return;
+    if (!reenter)
+        return;
     uint64_t inner = 0;
     reentered.push_back(reenter->create_point_light("x.mod", &light, &inner));
     reentered.push_back(reenter->update_point_light(reenterHandle, &light));
     reentered.push_back(reenter->destroy_point_light(reenterHandle));
 }
 bool Insert(void*, uint32_t slot, const ShipOotPointLightV1& light) {
-    if (full) return false;
+    if (full)
+        return false;
     ops.push_back("insert:" + std::to_string(slot));
     lastLight = light;
     Reenter(light);
@@ -591,8 +637,8 @@ int32_t Reset(int32_t) {
 }
 int32_t ForEach(int32_t, int32_t (*visitor)(void*, uint16_t, uint8_t, const char*, uint32_t), void* user) {
     for (const auto& [id, message] : table) {
-        if (const int32_t result = visitor(user, id, message.typePos, message.bytes.data(),
-                                           static_cast<uint32_t>(message.bytes.size()))) {
+        if (const int32_t result =
+                visitor(user, id, message.typePos, message.bytes.data(), static_cast<uint32_t>(message.bytes.size()))) {
             return result;
         }
     }
@@ -673,119 +719,127 @@ void Draw(void*, void* instance) {
 } // namespace FakeSkeletons
 
 int main(int argc, char** argv) {
-    for (int bit = 0; bit < 32; ++bit) gBitFlags[bit] = uint32_t{1} << bit;
-    ShipLuaHost::SetOotNativeGamepadBridge(
-        {HasGamepad, GetGamepadButtons, ClearButton, BindButton, ReloadMappings, GetSettingInt, SetSettingInt,
-         GetGamepadAxis, BindAxis});
-    ShipLuaHost::SetOotNativeResourceBridge(
-        {HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources, UnloadResource,
-         MountArchive, UnmountArchive, GetGameVersions, ReadResourceFileLayers});
+    for (int bit = 0; bit < 32; ++bit)
+        gBitFlags[bit] = uint32_t{ 1 } << bit;
+    ShipLuaHost::SetOotNativeGamepadBridge({ HasGamepad, GetGamepadButtons, ClearButton, BindButton, ReloadMappings,
+                                             GetSettingInt, SetSettingInt, GetGamepadAxis, BindAxis });
+    ShipLuaHost::SetOotNativeResourceBridge({ HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources,
+                                              UnloadResource, MountArchive, UnmountArchive, GetGameVersions,
+                                              ReadResourceFileLayers });
     auto policy = ShipLuaHost::CreateOotNativePolicy();
     {
         const auto& query = ShipLuaHost::GetOotNativeRandomizerServiceV2();
-        ShipOotRandomizerItemInfoV2 info{sizeof(info)};
-        ShipOotRandomizerHintV2 hint{sizeof(hint)};
+        ShipOotRandomizerItemInfoV2 info{ sizeof(info) };
+        ShipOotRandomizerHintV2 hint{ sizeof(hint) };
         Check(query.item_count() == 0 && query.item_info(1, &info) == SHIP_NATIVE_UNSUPPORTED &&
-              query.find_uncollected(1, &hint) == SHIP_NATIVE_UNSUPPORTED,
+                  query.find_uncollected(1, &hint) == SHIP_NATIVE_UNSUPPORTED,
               "randomizer queries refuse an absent backend");
-        ShipLuaHost::BindOotRandoQueryBackend({[]() -> uint32_t { return 3; },
-            [](uint32_t item, ShipOotRandomizerItemInfoV2* out) -> ShipNativeStatus {
-                if (item != 1) return SHIP_NATIVE_INVALID_ARGUMENT;
-                out->item = item; std::strcpy(out->name, "Test Item"); return SHIP_NATIVE_OK;
-            }, [](uint32_t item, ShipOotRandomizerHintV2* out) -> ShipNativeStatus {
-                if (item != 1) return SHIP_NATIVE_FAILURE;
-                out->item = item; out->check = 42; return SHIP_NATIVE_OK;
-            }});
-        Check(query.item_count() == 3 && query.item_info(1, &info) == SHIP_NATIVE_OK &&
-              info.item == 1 && std::string(info.name) == "Test Item" &&
-              query.find_uncollected(1, &hint) == SHIP_NATIVE_OK && hint.check == 42 &&
-              query.find_uncollected(2, &hint) == SHIP_NATIVE_FAILURE,
+        ShipLuaHost::BindOotRandoQueryBackend(
+            { []() -> uint32_t { return 3; },
+              [](uint32_t item, ShipOotRandomizerItemInfoV2* out) -> ShipNativeStatus {
+                  if (item != 1)
+                      return SHIP_NATIVE_INVALID_ARGUMENT;
+                  out->item = item;
+                  std::strcpy(out->name, "Test Item");
+                  return SHIP_NATIVE_OK;
+              },
+              [](uint32_t item, ShipOotRandomizerHintV2* out) -> ShipNativeStatus {
+                  if (item != 1)
+                      return SHIP_NATIVE_FAILURE;
+                  out->item = item;
+                  out->check = 42;
+                  return SHIP_NATIVE_OK;
+              } });
+        Check(query.item_count() == 3 && query.item_info(1, &info) == SHIP_NATIVE_OK && info.item == 1 &&
+                  std::string(info.name) == "Test Item" && query.find_uncollected(1, &hint) == SHIP_NATIVE_OK &&
+                  hint.check == 42 && query.find_uncollected(2, &hint) == SHIP_NATIVE_FAILURE,
               "randomizer queries return copied item and location data");
         info.size = 0;
         Check(query.item_info(1, &info) == SHIP_NATIVE_INVALID_ARGUMENT &&
-              query.find_uncollected(1, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  query.find_uncollected(1, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
               "randomizer query sizes and null arguments are checked");
         bool refused = false;
-        std::thread queryThread([&] { refused = query.item_count() == 0 &&
-            query.find_uncollected(1, &hint) == SHIP_NATIVE_INVALID_ARGUMENT; });
+        std::thread queryThread([&] {
+            refused = query.item_count() == 0 && query.find_uncollected(1, &hint) == SHIP_NATIVE_INVALID_ARGUMENT;
+        });
         queryThread.join();
         Check(refused, "randomizer queries run only on the owner thread");
         ShipLuaHost::BindOotRandoQueryBackend({});
     }
     Check(policy.services.size() == 30 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
-          policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
-          policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
-          policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
-          policy.services[4].version == LINKSPAN_OOT_RESOURCES_VERSION_2 &&
-          policy.services[5].version == LINKSPAN_OOT_REGISTRY_VERSION &&
-          std::string(policy.services[6].name) == LINKSPAN_OOT_OCARINA_SERVICE &&
-          policy.services[6].version == LINKSPAN_OOT_OCARINA_VERSION &&
-          std::string(policy.services[7].name) == LINKSPAN_OOT_SCENES_SERVICE &&
-          policy.services[7].version == LINKSPAN_OOT_SCENES_VERSION &&
-          policy.services[7].size == sizeof(ShipOotScenesV1) &&
-          std::string(policy.services[8].name) == LINKSPAN_OOT_SAVE_SERVICE &&
-          policy.services[8].version == LINKSPAN_OOT_SAVE_VERSION &&
-          policy.services[8].size == sizeof(ShipOotSaveV1) &&
-          std::string(policy.services[9].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
-          policy.services[9].version == LINKSPAN_OOT_ITEMS_VERSION &&
-          policy.services[9].size == sizeof(ShipOotItemsV1) &&
-          std::string(policy.services[10].name) == LINKSPAN_OOT_ACTORS_SERVICE &&
-          policy.services[10].version == LINKSPAN_OOT_ACTORS_VERSION &&
-          policy.services[10].size == sizeof(ShipOotActorsV1) &&
-          std::string(policy.services[11].name) == LINKSPAN_OOT_CAMERA_SERVICE &&
-          policy.services[11].version == LINKSPAN_OOT_CAMERA_VERSION &&
-          policy.services[11].size == sizeof(ShipOotCameraV1) &&
-          std::string(policy.services[12].name) == LINKSPAN_OOT_RENDER_SERVICE &&
-          policy.services[12].version == LINKSPAN_OOT_RENDER_VERSION &&
-          policy.services[12].size == sizeof(ShipOotRenderV1) &&
-          std::string(policy.services[13].name) == LINKSPAN_OOT_WORLD_SERVICE &&
-          policy.services[13].version == LINKSPAN_OOT_WORLD_VERSION &&
-          policy.services[13].size == sizeof(ShipOotWorldV1) &&
-          std::string(policy.services[14].name) == LINKSPAN_OOT_COLLIDERS_SERVICE &&
-          policy.services[14].version == LINKSPAN_OOT_COLLIDERS_VERSION &&
-          policy.services[14].size == sizeof(ShipOotCollidersV1) &&
-          std::string(policy.services[15].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
-          policy.services[15].version == LINKSPAN_OOT_ITEMS_VERSION_2 &&
-          policy.services[15].size == sizeof(ShipOotItemsV2) &&
-          std::string(policy.services[16].name) == LINKSPAN_OOT_SKELETONS_SERVICE &&
-          policy.services[16].version == LINKSPAN_OOT_SKELETONS_VERSION &&
-          policy.services[16].size == sizeof(ShipOotSkeletonsV1) &&
-          std::string(policy.services[17].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
-          policy.services[17].version == LINKSPAN_OOT_ITEMS_VERSION_3 &&
-          policy.services[17].size == sizeof(ShipOotItemsV3) &&
-          std::string(policy.services[18].name) == LINKSPAN_OOT_RESOURCES_SERVICE &&
-          policy.services[18].version == LINKSPAN_OOT_RESOURCES_VERSION_3 &&
-          policy.services[18].size == sizeof(ShipOotResourcesV3) &&
-          std::string(policy.services[19].name) == LINKSPAN_OOT_SCENES_SERVICE &&
-          policy.services[19].version == LINKSPAN_OOT_SCENES_VERSION_2 &&
-          policy.services[19].size == sizeof(ShipOotScenesV2) &&
-          std::string(policy.services[20].name) == LINKSPAN_OOT_TEXT_SERVICE &&
-          policy.services[20].version == LINKSPAN_OOT_TEXT_VERSION &&
-          policy.services[20].size == sizeof(ShipOotTextV1) &&
-          std::string(policy.services[21].name) == LINKSPAN_OOT_RENDER_SERVICE &&
-          policy.services[21].version == LINKSPAN_OOT_RENDER_VERSION_2 &&
-          policy.services[21].size == sizeof(ShipOotRenderV2) &&
-          std::string(policy.services[22].name) == LINKSPAN_OOT_SCENES_SERVICE &&
-          policy.services[22].version == LINKSPAN_OOT_SCENES_VERSION_3 &&
-          policy.services[22].size == sizeof(ShipOotScenesV3) &&
-          std::string(policy.services[23].name) == LINKSPAN_OOT_RANDOMIZER_SERVICE &&
-          policy.services[23].version == LINKSPAN_OOT_RANDOMIZER_VERSION &&
-          policy.services[23].size == sizeof(ShipOotRandomizerV1) &&
-          std::string(policy.services[24].name) == LINKSPAN_OOT_ANCHOR_SERVICE &&
-          policy.services[24].version == LINKSPAN_OOT_ANCHOR_VERSION &&
-          policy.services[24].size == sizeof(ShipOotAnchorV1) &&
-          std::string(policy.services[25].name) == LINKSPAN_OOT_RENDER_SERVICE &&
-          policy.services[25].version == LINKSPAN_OOT_RENDER_VERSION_3 &&
-          policy.services[25].size == sizeof(ShipOotRenderV3) &&
-          std::string(policy.services[26].name) == LINKSPAN_OOT_LIGHTS_SERVICE &&
-          policy.services[26].version == LINKSPAN_OOT_LIGHTS_VERSION &&
-          policy.services[26].size == sizeof(ShipOotLightsV1) &&
-          std::string(policy.services[27].name) == LINKSPAN_OOT_REGISTRY_SERVICE &&
-          policy.services[27].version == LINKSPAN_OOT_REGISTRY_VERSION_2 &&
-          policy.services[27].size == sizeof(ShipOotRegistryV2) &&
-          std::string(policy.services[28].name) == LINKSPAN_OOT_ACTOR_MODELS_SERVICE &&
-          policy.services[28].version == LINKSPAN_OOT_ACTOR_MODELS_VERSION &&
-          policy.services[28].size == sizeof(ShipOotActorModelsV1) && policy.onProviderUnload,
+              policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
+              policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
+              policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
+              policy.services[4].version == LINKSPAN_OOT_RESOURCES_VERSION_2 &&
+              policy.services[5].version == LINKSPAN_OOT_REGISTRY_VERSION &&
+              std::string(policy.services[6].name) == LINKSPAN_OOT_OCARINA_SERVICE &&
+              policy.services[6].version == LINKSPAN_OOT_OCARINA_VERSION &&
+              std::string(policy.services[7].name) == LINKSPAN_OOT_SCENES_SERVICE &&
+              policy.services[7].version == LINKSPAN_OOT_SCENES_VERSION &&
+              policy.services[7].size == sizeof(ShipOotScenesV1) &&
+              std::string(policy.services[8].name) == LINKSPAN_OOT_SAVE_SERVICE &&
+              policy.services[8].version == LINKSPAN_OOT_SAVE_VERSION &&
+              policy.services[8].size == sizeof(ShipOotSaveV1) &&
+              std::string(policy.services[9].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
+              policy.services[9].version == LINKSPAN_OOT_ITEMS_VERSION &&
+              policy.services[9].size == sizeof(ShipOotItemsV1) &&
+              std::string(policy.services[10].name) == LINKSPAN_OOT_ACTORS_SERVICE &&
+              policy.services[10].version == LINKSPAN_OOT_ACTORS_VERSION &&
+              policy.services[10].size == sizeof(ShipOotActorsV1) &&
+              std::string(policy.services[11].name) == LINKSPAN_OOT_CAMERA_SERVICE &&
+              policy.services[11].version == LINKSPAN_OOT_CAMERA_VERSION &&
+              policy.services[11].size == sizeof(ShipOotCameraV1) &&
+              std::string(policy.services[12].name) == LINKSPAN_OOT_RENDER_SERVICE &&
+              policy.services[12].version == LINKSPAN_OOT_RENDER_VERSION &&
+              policy.services[12].size == sizeof(ShipOotRenderV1) &&
+              std::string(policy.services[13].name) == LINKSPAN_OOT_WORLD_SERVICE &&
+              policy.services[13].version == LINKSPAN_OOT_WORLD_VERSION &&
+              policy.services[13].size == sizeof(ShipOotWorldV1) &&
+              std::string(policy.services[14].name) == LINKSPAN_OOT_COLLIDERS_SERVICE &&
+              policy.services[14].version == LINKSPAN_OOT_COLLIDERS_VERSION &&
+              policy.services[14].size == sizeof(ShipOotCollidersV1) &&
+              std::string(policy.services[15].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
+              policy.services[15].version == LINKSPAN_OOT_ITEMS_VERSION_2 &&
+              policy.services[15].size == sizeof(ShipOotItemsV2) &&
+              std::string(policy.services[16].name) == LINKSPAN_OOT_SKELETONS_SERVICE &&
+              policy.services[16].version == LINKSPAN_OOT_SKELETONS_VERSION &&
+              policy.services[16].size == sizeof(ShipOotSkeletonsV1) &&
+              std::string(policy.services[17].name) == LINKSPAN_OOT_ITEMS_SERVICE &&
+              policy.services[17].version == LINKSPAN_OOT_ITEMS_VERSION_3 &&
+              policy.services[17].size == sizeof(ShipOotItemsV3) &&
+              std::string(policy.services[18].name) == LINKSPAN_OOT_RESOURCES_SERVICE &&
+              policy.services[18].version == LINKSPAN_OOT_RESOURCES_VERSION_3 &&
+              policy.services[18].size == sizeof(ShipOotResourcesV3) &&
+              std::string(policy.services[19].name) == LINKSPAN_OOT_SCENES_SERVICE &&
+              policy.services[19].version == LINKSPAN_OOT_SCENES_VERSION_2 &&
+              policy.services[19].size == sizeof(ShipOotScenesV2) &&
+              std::string(policy.services[20].name) == LINKSPAN_OOT_TEXT_SERVICE &&
+              policy.services[20].version == LINKSPAN_OOT_TEXT_VERSION &&
+              policy.services[20].size == sizeof(ShipOotTextV1) &&
+              std::string(policy.services[21].name) == LINKSPAN_OOT_RENDER_SERVICE &&
+              policy.services[21].version == LINKSPAN_OOT_RENDER_VERSION_2 &&
+              policy.services[21].size == sizeof(ShipOotRenderV2) &&
+              std::string(policy.services[22].name) == LINKSPAN_OOT_SCENES_SERVICE &&
+              policy.services[22].version == LINKSPAN_OOT_SCENES_VERSION_3 &&
+              policy.services[22].size == sizeof(ShipOotScenesV3) &&
+              std::string(policy.services[23].name) == LINKSPAN_OOT_RANDOMIZER_SERVICE &&
+              policy.services[23].version == LINKSPAN_OOT_RANDOMIZER_VERSION &&
+              policy.services[23].size == sizeof(ShipOotRandomizerV1) &&
+              std::string(policy.services[24].name) == LINKSPAN_OOT_ANCHOR_SERVICE &&
+              policy.services[24].version == LINKSPAN_OOT_ANCHOR_VERSION &&
+              policy.services[24].size == sizeof(ShipOotAnchorV1) &&
+              std::string(policy.services[25].name) == LINKSPAN_OOT_RENDER_SERVICE &&
+              policy.services[25].version == LINKSPAN_OOT_RENDER_VERSION_3 &&
+              policy.services[25].size == sizeof(ShipOotRenderV3) &&
+              std::string(policy.services[26].name) == LINKSPAN_OOT_LIGHTS_SERVICE &&
+              policy.services[26].version == LINKSPAN_OOT_LIGHTS_VERSION &&
+              policy.services[26].size == sizeof(ShipOotLightsV1) &&
+              std::string(policy.services[27].name) == LINKSPAN_OOT_REGISTRY_SERVICE &&
+              policy.services[27].version == LINKSPAN_OOT_REGISTRY_VERSION_2 &&
+              policy.services[27].size == sizeof(ShipOotRegistryV2) &&
+              std::string(policy.services[28].name) == LINKSPAN_OOT_ACTOR_MODELS_SERVICE &&
+              policy.services[28].version == LINKSPAN_OOT_ACTOR_MODELS_VERSION &&
+              policy.services[28].size == sizeof(ShipOotActorModelsV1) && policy.onProviderUnload,
           "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1/V2, ocarina V1, scenes V1/V2/V3, "
           "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1, "
           "text V1, randomizer V1 e anchor V1, com as versões novas no fim");
@@ -794,7 +848,8 @@ int main(int argc, char** argv) {
         const auto* skeletons = static_cast<const ShipOotSkeletonsV1*>(policy.services[16].table);
         uint64_t skel = 0;
         Check(skeletons->create("objects/object_firefly/gKeeseSkeleton", "objects/object_firefly/gKeeseFlyAnim",
-                                &skel) == SHIP_NATIVE_UNSUPPORTED && skel == 0,
+                                &skel) == SHIP_NATIVE_UNSUPPORTED &&
+                  skel == 0,
               "sem ponte não há esqueleto");
         ShipLuaHost::OotSkeletonsBridge bridge;
         bridge.create = Create;
@@ -814,16 +869,15 @@ int main(int argc, char** argv) {
         Check(skeletons->create("objects/curva", "objects/anim", &skel) == SHIP_NATIVE_FAILURE && skel == 0,
               "falha da ponte");
         Check(skeletons->create("objects/object_firefly/gKeeseSkeleton", "objects/object_firefly/gKeeseFlyAnim",
-                                &skel) == SHIP_NATIVE_OK && skel != 0 && ShipLuaHost::OotSkeletonCount() == 1,
+                                &skel) == SHIP_NATIVE_OK &&
+                  skel != 0 && ShipLuaHost::OotSkeletonCount() == 1,
               "create");
         Check(skeletons->play_animation(skel, "objects/outra", 2.0f, 7, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT &&
                   skeletons->play_animation(skel, "objects/outra", NAN, 0, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT &&
                   skeletons->play_animation(skel, "objects/outra", 1.0f, 0, -1.0f) == SHIP_NATIVE_INVALID_ARGUMENT &&
-                  skeletons->play_animation(skel + 99, "objects/outra", 1.0f, 0, 0.0f) ==
-                      SHIP_NATIVE_INVALID_ARGUMENT,
+                  skeletons->play_animation(skel + 99, "objects/outra", 1.0f, 0, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT,
               "play_animation inválido");
-        Check(skeletons->play_animation(skel, "objects/outra", 2.0f, LINKSPAN_OOT_ANIM_ONCE, 3.0f) ==
-                  SHIP_NATIVE_OK,
+        Check(skeletons->play_animation(skel, "objects/outra", 2.0f, LINKSPAN_OOT_ANIM_ONCE, 3.0f) == SHIP_NATIVE_OK,
               "play_animation");
         uint8_t finished = 9;
         Check(skeletons->update(skel, &finished) == SHIP_NATIVE_OK && finished == 0 &&
@@ -863,13 +917,19 @@ int main(int argc, char** argv) {
         bridge.giveItem = Give;
         ShipLuaHost::SetOotItemsBridge(bridge);
         uint8_t item = 0;
-        const ShipOotItemSpecV1 spec{sizeof(spec), "autor.gancho", "textures/icon_item_static/gItemIconHookshotTex",
-                                     LINKSPAN_OOT_ITEM_AGE_ANY, nullptr, nullptr};
+        const ShipOotItemSpecV1 spec{
+            sizeof(spec), "autor.gancho", "textures/icon_item_static/gItemIconHookshotTex", LINKSPAN_OOT_ITEM_AGE_ANY,
+            nullptr,      nullptr
+        };
         Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK, "registro para get-item");
         Check(items->give_item(item) == SHIP_NATIVE_INVALID_ARGUMENT, "give sem set_get_item");
-        ShipOotGetItemSpecV1 get{sizeof(get), "objects/gameplay_keep/gHeartPieceInteriorDL",
-                                 LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT, 2.5f, "Voce ganhou o %rGancho%w!",
-                                 Receive, &received};
+        ShipOotGetItemSpecV1 get{ sizeof(get),
+                                  "objects/gameplay_keep/gHeartPieceInteriorDL",
+                                  LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT,
+                                  2.5f,
+                                  "Voce ganhou o %rGancho%w!",
+                                  Receive,
+                                  &received };
         ShipOotGetItemSpecV1 bad = get;
         bad.model_scale = 0.0f;
         Check(items->set_get_item(item, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "escala inválida");
@@ -911,20 +971,28 @@ int main(int argc, char** argv) {
         uint8_t plain = 0;
         uint8_t zeta = 0;
         uint8_t alfa = 0;
-        const ShipOotItemSpecV1 plainSpec{sizeof(plainSpec), "autor.pedra", "textures/icon_item_static/gItemIconBowTex",
-                                          LINKSPAN_OOT_ITEM_AGE_ANY, nullptr, nullptr};
+        const ShipOotItemSpecV1 plainSpec{
+            sizeof(plainSpec),         "autor.pedra", "textures/icon_item_static/gItemIconBowTex",
+            LINKSPAN_OOT_ITEM_AGE_ANY, nullptr,       nullptr
+        };
         ShipOotItemSpecV1 zetaSpec = plainSpec;
         zetaSpec.name = "autor.zeta";
         ShipOotItemSpecV1 alfaSpec = plainSpec;
         alfaSpec.name = "autor.alfa";
-        const ShipOotGetItemSpecV1 get{sizeof(get), "objects/gameplay_keep/gHeartPieceInteriorDL",
-                                       LINKSPAN_OOT_ITEMS_LAYER_OPAQUE, 1.0f, "Voce ganhou!", Receive, &received};
+        const ShipOotGetItemSpecV1 get{ sizeof(get),
+                                        "objects/gameplay_keep/gHeartPieceInteriorDL",
+                                        LINKSPAN_OOT_ITEMS_LAYER_OPAQUE,
+                                        1.0f,
+                                        "Voce ganhou!",
+                                        Receive,
+                                        &received };
         Check(items->register_item(&plainSpec, &plain) == SHIP_NATIVE_OK &&
                   items->register_item(&zetaSpec, &zeta) == SHIP_NATIVE_OK &&
                   items->register_item(&alfaSpec, &alfa) == SHIP_NATIVE_OK &&
-                  items->set_get_item(zeta, &get) == SHIP_NATIVE_OK && items->set_get_item(alfa, &get) == SHIP_NATIVE_OK,
+                  items->set_get_item(zeta, &get) == SHIP_NATIVE_OK &&
+                  items->set_get_item(alfa, &get) == SHIP_NATIVE_OK,
               "itens para o randomizer");
-        ShipOotRandomizerItemSpecV1 offer{sizeof(offer), plain, 1, {}};
+        ShipOotRandomizerItemSpecV1 offer{ sizeof(offer), plain, 1, {} };
         Check(rando->add_item(&offer) == SHIP_NATIVE_INVALID_ARGUMENT, "oferta sem get-item");
         offer.item = zeta;
         offer.copies = 0;
@@ -957,7 +1025,7 @@ int main(int argc, char** argv) {
                   rando->seed_item_name(3, name, sizeof(name)) == SHIP_NATIVE_INVALID_ARGUMENT,
               "itens da seed");
         std::thread worker([&] {
-            ShipOotRandomizerItemSpecV1 other{sizeof(other), zeta, 1, {}};
+            ShipOotRandomizerItemSpecV1 other{ sizeof(other), zeta, 1, {} };
             Check(rando->add_item(&other) == SHIP_NATIVE_INVALID_ARGUMENT && rando->seed_item_count() == 0,
                   "outra thread");
         });
@@ -981,8 +1049,10 @@ int main(int argc, char** argv) {
         ShipLuaHost::SetOotItemsBridge(bridge);
         Check(items->get_language() == LINKSPAN_OOT_LANGUAGE_FRENCH, "idioma da ponte");
         uint8_t item = 0;
-        const ShipOotItemSpecV1 spec{sizeof(spec), "autor.aljava", "textures/icon_item_static/gItemIconBowTex",
-                                     LINKSPAN_OOT_ITEM_AGE_ANY, nullptr, nullptr};
+        const ShipOotItemSpecV1 spec{
+            sizeof(spec), "autor.aljava", "textures/icon_item_static/gItemIconBowTex", LINKSPAN_OOT_ITEM_AGE_ANY,
+            nullptr,      nullptr
+        };
         Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK, "registro v3");
         const auto* record = ShipLuaHost::FindOotItem(item);
         Check(record && record->ammo == LINKSPAN_OOT_ITEMS_NO_AMMO, "sem número por padrão");
@@ -1031,8 +1101,8 @@ int main(int argc, char** argv) {
         text->set_message(0, 0x20, 0, 1, hello, 1);
         text->set_message(0, 0x30, 0, 0, hello, 2);
         std::vector<std::string> seen;
-        Check(text->list_messages(0, Collect, &seen) == SHIP_NATIVE_LIMIT && seen.size() == 2 &&
-                  seen[0] == "1:0/0:a" && seen[1] == "32:0/1:o",
+        Check(text->list_messages(0, Collect, &seen) == SHIP_NATIVE_LIMIT && seen.size() == 2 && seen[0] == "1:0/0:a" &&
+                  seen[1] == "32:0/1:o",
               "list_messages em ordem de id, parando no status do callback");
         Check(text->clear_language(0) == SHIP_NATIVE_OK && table.empty(), "clear_language");
         std::thread([&] {
@@ -1076,8 +1146,7 @@ int main(int argc, char** argv) {
         Check(ShipLuaHost::TranscodeOotJson("linkspan.test/doc", "docs/a.json", 2, xml) == SHIP_NATIVE_OK &&
                   xml == "<Path Version=\"0\"/>" && lastPath == "docs/a.json" && lastVersion == 2,
               "o transcodificador escreve o XML em pedaços");
-        Check(ShipLuaHost::TranscodeOotJson("linkspan.test/doc", "docs/a.json", 3, xml) ==
-                  SHIP_NATIVE_INVALID_ARGUMENT,
+        Check(ShipLuaHost::TranscodeOotJson("linkspan.test/doc", "docs/a.json", 3, xml) == SHIP_NATIVE_INVALID_ARGUMENT,
               "versão fora da faixa");
         Check(ShipLuaHost::TranscodeOotJson("outro/tipo", "docs/a.json", 1, xml) == SHIP_NATIVE_UNSUPPORTED,
               "tipo sem dono");
@@ -1097,7 +1166,7 @@ int main(int argc, char** argv) {
         using namespace FakeWorld;
         const auto* world = static_cast<const ShipOotWorldV1*>(policy.services[13].table);
         const auto* colliders = static_cast<const ShipOotCollidersV1*>(policy.services[14].table);
-        ShipOotWorldHitV1 hit{sizeof(hit)};
+        ShipOotWorldHitV1 hit{ sizeof(hit) };
         Check(world->raycast_floor(0.0f, 10.0f, 0.0f, &hit) == SHIP_NATIVE_UNSUPPORTED && hit.hit == 0,
               "sem ponte não há consulta");
 
@@ -1118,10 +1187,10 @@ int main(int argc, char** argv) {
                   hit.size == sizeof(hit),
               "raycast_floor");
         Check(world->raycast_floor(std::nan(""), 0.0f, 0.0f, &hit) == SHIP_NATIVE_INVALID_ARGUMENT, "NaN recusado");
-        ShipOotWorldHitV1 small{sizeof(uint32_t)};
+        ShipOotWorldHitV1 small{ sizeof(uint32_t) };
         Check(world->raycast_floor(0.0f, 0.0f, 0.0f, &small) == SHIP_NATIVE_INVALID_ARGUMENT, "hit sem tamanho");
-        const float from[3]{0.0f, 0.0f, 0.0f};
-        const float to[3]{100.0f, 0.0f, 0.0f};
+        const float from[3]{ 0.0f, 0.0f, 0.0f };
+        const float to[3]{ 100.0f, 0.0f, 0.0f };
         Check(world->line_test(from, to, 0, &hit) == SHIP_NATIVE_INVALID_ARGUMENT &&
                   world->line_test(from, to, 8, &hit) == SHIP_NATIVE_INVALID_ARGUMENT,
               "superfícies inválidas");
@@ -1159,7 +1228,7 @@ int main(int argc, char** argv) {
         uint64_t second = 0;
         Check(colliders->create_cylinder(&spec, &second) == SHIP_NATIVE_OK && second != handle, "segundo collider");
         Check(colliders->submit(handle) == SHIP_NATIVE_OK && submitted == 1, "submit");
-        ShipOotColliderHitsV1 hits{sizeof(hits)};
+        ShipOotColliderHitsV1 hits{ sizeof(hits) };
         Check(colliders->read_hits(handle, &hits) == SHIP_NATIVE_OK && hits.ac_hit == 1 && hits.ac_dmg_flags == 0x100,
               "read_hits");
         Check(colliders->submit(999) == SHIP_NATIVE_UNSUPPORTED, "handle desconhecido");
@@ -1226,7 +1295,7 @@ int main(int argc, char** argv) {
               "acquire");
         uint64_t second = 0;
         Check(camera->acquire("outro.mod", &second) == SHIP_NATIVE_LIMIT && second == 0, "câmera exclusiva");
-        ShipOotCameraViewV1 view{sizeof(view), {0.0f, 100.0f, -200.0f}, {0.0f, 40.0f, 0.0f}, 60.0f};
+        ShipOotCameraViewV1 view{ sizeof(view), { 0.0f, 100.0f, -200.0f }, { 0.0f, 40.0f, 0.0f }, 60.0f };
         Check(camera->set_view(second, &view) == SHIP_NATIVE_UNSUPPORTED, "set_view sem posse");
         ShipOotCameraViewV1 bad = view;
         bad.fov = 0.0f;
@@ -1240,7 +1309,7 @@ int main(int argc, char** argv) {
               "set_view aplica na hora");
         ShipLuaHost::UpdateOotCamera();
         Check(applied == 2, "vista reaplicada a cada frame");
-        ShipOotCameraViewV1 read{sizeof(read)};
+        ShipOotCameraViewV1 read{ sizeof(read) };
         Check(camera->get_view(&read) == SHIP_NATIVE_OK && read.fov == 60.0f, "get_view");
 
         // Cutscene ou troca de cena: a câmera deixa de ser a ativa e a posse cai.
@@ -1255,7 +1324,7 @@ int main(int argc, char** argv) {
 
         int play = 0;
         Check(render->draw_display_list(&play, "objects/gameplay_keep/gHeartPieceInteriorDL", 0) ==
-                  SHIP_NATIVE_UNSUPPORTED &&
+                      SHIP_NATIVE_UNSUPPORTED &&
                   render->matrix_push() == SHIP_NATIVE_UNSUPPORTED &&
                   render->matrix_translate(1.0f, 0.0f, 0.0f) == SHIP_NATIVE_UNSUPPORTED,
               "render fora de escopo de draw");
@@ -1326,11 +1395,11 @@ int main(int argc, char** argv) {
                   render->draw_native_display_list(&dl, 0) == SHIP_NATIVE_UNSUPPORTED &&
                   render->interpolation_begin(&dl, 0) == SHIP_NATIVE_UNSUPPORTED && ops.empty(),
               "V3 fora de escopo");
-        ShipOotRenderFrameInfoV1 info{sizeof(info)};
+        ShipOotRenderFrameInfoV1 info{ sizeof(info) };
         Check(render->get_frame_info(&info) == SHIP_NATIVE_OK && info.frame == 42 && info.camera_epoch == 3 &&
                   info.delta_seconds == 0.05f && info.aspect_ratio == 2.0f && info.size == sizeof(info),
               "get_frame_info fora de escopo");
-        ShipOotRenderFrameInfoV1 small{sizeof(small) - 1};
+        ShipOotRenderFrameInfoV1 small{ sizeof(small) - 1 };
         Check(render->get_frame_info(&small) == SHIP_NATIVE_INVALID_ARGUMENT &&
                   render->get_frame_info(nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
               "frame info inválido");
@@ -1338,9 +1407,9 @@ int main(int argc, char** argv) {
         ShipLuaHost::EnterOotRenderScope(&gfxTag);
         Check(render->matrix_translate_new(1.0f, 0.0f, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT && ops.empty(),
               "translate_new exige push do mod");
-        Check(render->matrix_push() == SHIP_NATIVE_OK && render->matrix_translate_new(7.0f, 0.0f, 0.0f) == SHIP_NATIVE_OK &&
-                  ops.back() == "new:7" && render->matrix_translate_new(std::nan(""), 0.0f, 0.0f) ==
-                                               SHIP_NATIVE_INVALID_ARGUMENT,
+        Check(render->matrix_push() == SHIP_NATIVE_OK &&
+                  render->matrix_translate_new(7.0f, 0.0f, 0.0f) == SHIP_NATIVE_OK && ops.back() == "new:7" &&
+                  render->matrix_translate_new(std::nan(""), 0.0f, 0.0f) == SHIP_NATIVE_INVALID_ARGUMENT,
               "translate_new depois do push");
         Check(render->matrix_rotate_axis(1.0f, 0.0f, 2.0f, 0.0f) == SHIP_NATIVE_OK && lastAxis[0] == 0.0f &&
                   lastAxis[1] == 1.0f && lastAxis[2] == 0.0f,
@@ -1369,7 +1438,8 @@ int main(int argc, char** argv) {
                   render->draw_native_display_list(&dl, 0) == SHIP_NATIVE_UNSUPPORTED,
               "sem GraphicsContext não há desenho próprio");
         uint32_t opened = 0;
-        while (render->interpolation_begin(&dl, static_cast<int32_t>(opened)) == SHIP_NATIVE_OK) ++opened;
+        while (render->interpolation_begin(&dl, static_cast<int32_t>(opened)) == SHIP_NATIVE_OK)
+            ++opened;
         Check(opened == LINKSPAN_OOT_RENDER_MAX_INTERPOLATION, "limite de filhos por escopo");
         ShipLuaHost::LeaveOotRenderScope();
         Check(children == 0, "limite também fecha no fim do escopo");
@@ -1384,16 +1454,16 @@ int main(int argc, char** argv) {
         Check(ops.empty(), "sem colchete não religa");
         ShipLuaHost::BeginOotActorDrawFrame(true);
         ShipLuaHost::EnterOotRenderScope(&gfxTag, ShipLuaHost::OotRenderScopeKind::ActorDraw);
-        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK && render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK &&
-                  ops.size() == 1 && ops.back() == "toon:0",
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK &&
+                  render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK && ops.size() == 1 && ops.back() == "toon:0",
               "desliga o colchete uma vez");
         ShipLuaHost::LeaveOotRenderScope();
         ShipLuaHost::RestoreOotActorToon(&gfxTag);
         ShipLuaHost::RestoreOotActorToon(&gfxTag);
         Check(ops.size() == 2 && ops.back() == "toon:1", "religa antes do próximo ator, uma vez");
         ShipLuaHost::EnterOotRenderScope(&gfxTag, ShipLuaHost::OotRenderScopeKind::ActorDraw);
-        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK && render->set_actor_toon_enabled(1) == SHIP_NATIVE_OK &&
-                  ops.size() == 4 && ops.back() == "toon:1",
+        Check(render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK &&
+                  render->set_actor_toon_enabled(1) == SHIP_NATIVE_OK && ops.size() == 4 && ops.back() == "toon:1",
               "o próprio hook pode desfazer");
         ShipLuaHost::LeaveOotRenderScope();
         ShipLuaHost::RestoreOotActorToon(&gfxTag);
@@ -1412,7 +1482,7 @@ int main(int argc, char** argv) {
         // CEL-004: linkspan.oot.lights.
         using namespace FakeLights;
         const auto* lights = static_cast<const ShipOotLightsV1*>(policy.services[26].table);
-        ShipOotPointLightV1 light{sizeof(light), {10.0f, 20.0f, 30.0f}, 200, {255, 200, 0}, 0};
+        ShipOotPointLightV1 light{ sizeof(light), { 10.0f, 20.0f, 30.0f }, 200, { 255, 200, 0 }, 0 };
         uint64_t handle = 99;
         Check(lights->create_point_light("autor.mod", &light, &handle) == SHIP_NATIVE_UNSUPPORTED && handle == 0,
               "sem ponte não há luz");
@@ -1455,14 +1525,14 @@ int main(int argc, char** argv) {
                   lights->get_point_light_info(handle, &identity) == SHIP_NATIVE_UNSUPPORTED && identity == nullptr &&
                   lights->destroy_point_light(handle) == SHIP_NATIVE_OK,
               "handle apagado");
-        Check(lights->update_point_light(uint64_t{1} << 40, &light) == SHIP_NATIVE_INVALID_ARGUMENT &&
-                  lights->destroy_point_light(uint64_t{1} << 40) == SHIP_NATIVE_INVALID_ARGUMENT,
+        Check(lights->update_point_light(uint64_t{ 1 } << 40, &light) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                  lights->destroy_point_light(uint64_t{ 1 } << 40) == SHIP_NATIVE_INVALID_ARGUMENT,
               "handle que nunca existiu");
         uint64_t handles[LINKSPAN_OOT_LIGHTS_MAX]{};
         bool created = true;
         for (uint32_t i = 0; i < LINKSPAN_OOT_LIGHTS_MAX; ++i) {
-            created = created && lights->create_point_light(i % 2 ? "b.mod" : "a.mod", &light, &handles[i]) ==
-                                     SHIP_NATIVE_OK;
+            created =
+                created && lights->create_point_light(i % 2 ? "b.mod" : "a.mod", &light, &handles[i]) == SHIP_NATIVE_OK;
         }
         uint64_t extra = 0;
         Check(created && ShipLuaHost::OotLightCount() == LINKSPAN_OOT_LIGHTS_MAX &&
@@ -1501,8 +1571,7 @@ int main(int argc, char** argv) {
         reenterHandle = 0;
         reentered.clear();
         Check(lights->create_point_light("a.mod", &light, &outer) == SHIP_NATIVE_OK && outer &&
-                  ShipLuaHost::OotLightCount() == 1 && ops.size() == 1 && ops[0] == "insert:0" &&
-                  reentered.size() == 3,
+                  ShipLuaHost::OotLightCount() == 1 && ops.size() == 1 && ops[0] == "insert:0" && reentered.size() == 3,
               "create reentrante cria só a luz externa");
         reenterHandle = outer;
         reentered.clear();
@@ -1524,8 +1593,12 @@ int main(int argc, char** argv) {
         const auto* items = static_cast<const ShipOotItemsV1*>(policy.services[9].table);
         const auto* actors = static_cast<const ShipOotActorsV1*>(policy.services[10].table);
         uint8_t item = 0;
-        ShipOotItemSpecV1 spec{sizeof(spec), "autor.lanterna", "textures/icon_item_static/gItemIconLensOfTruthTex",
-                               LINKSPAN_OOT_ITEM_AGE_ANY, Use, &uses};
+        ShipOotItemSpecV1 spec{ sizeof(spec),
+                                "autor.lanterna",
+                                "textures/icon_item_static/gItemIconLensOfTruthTex",
+                                LINKSPAN_OOT_ITEM_AGE_ANY,
+                                Use,
+                                &uses };
         Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK && item == LINKSPAN_OOT_ITEMS_FIRST_ID,
               "sem ponte o registro ainda aloca o id");
         Check(items->set_button_item(1, item) == SHIP_NATIVE_UNSUPPORTED, "sem ponte não há botão");
@@ -1544,8 +1617,7 @@ int main(int argc, char** argv) {
                   icons[item] == "__OTR__textures/icon_item_static/gItemIconLensOfTruthTex",
               "registro entrega o ícone com __OTR__ ao jogo");
         uint8_t other = 0;
-        Check(items->register_item(&spec, &other) == SHIP_NATIVE_INVALID_ARGUMENT && other == 0xFF,
-              "nome repetido");
+        Check(items->register_item(&spec, &other) == SHIP_NATIVE_INVALID_ARGUMENT && other == 0xFF, "nome repetido");
         ShipOotItemSpecV1 bad = spec;
         bad.name = "semponto";
         Check(items->register_item(&bad, &other) == SHIP_NATIVE_INVALID_ARGUMENT, "nome sem namespace");
@@ -1599,17 +1671,17 @@ int main(int argc, char** argv) {
         spec.name = "autor.lanterna";
         Check(items->register_item(&spec, &item) == SHIP_NATIVE_OK && item == LINKSPAN_OOT_ITEMS_FIRST_ID + 1,
               "lanterna volta com outro id");
-        buttons = {0xFF, LINKSPAN_OOT_ITEMS_FIRST_ID, 0x05, 0xEE};
+        buttons = { 0xFF, LINKSPAN_OOT_ITEMS_FIRST_ID, 0x05, 0xEE };
         ShipLuaHost::RestoreOotItemButtons(saved);
         Check(buttons[1] == item && buttons[2] == 0x05 && buttons[3] == 0xFF,
               "restore mapeia nomes, mantém vanilla e esvazia nome desconhecido");
-        buttons = {0xFF, 0xFF, 0xEE, 0xFF};
+        buttons = { 0xFF, 0xFF, 0xEE, 0xFF };
         ShipLuaHost::RestoreOotItemButtons({});
         Check(buttons[2] == 0xFF, "id sintético sem nome salvo sai do botão");
 
         int16_t actorId = -1;
-        ShipOotActorTypeSpecV1 actorSpec{sizeof(actorSpec), "autor.orbe", 7, 0, 1, 0x150, nullptr, nullptr,
-                                         nullptr, nullptr, nullptr};
+        ShipOotActorTypeSpecV1 actorSpec{ sizeof(actorSpec), "autor.orbe", 7,       0,       1,      0x150,
+                                          nullptr,           nullptr,      nullptr, nullptr, nullptr };
         Check(actors->register_actor_type(&actorSpec, &actorId) == SHIP_NATIVE_OK && actorId == 0x1D7,
               "register_actor_type");
         Check(actors->register_actor_type(&actorSpec, &actorId) == SHIP_NATIVE_INVALID_ARGUMENT && actorId == -1,
@@ -1655,10 +1727,8 @@ int main(int argc, char** argv) {
         Check(!policy.escapeHatch, "sem binding do jogo não há escape hatch");
         const std::string sha(64, 'c');
         const std::string text = "linkspan-symbols 1\nsha256 " + sha + "\n" +
-                                 "10a0\t-\tz_player.c\tPlayer_Action_Roll\n" +
-                                 "20b0\t-\tz_en_a.c\tInit\n" +
-                                 "30c0\t-\tz_en_b.c\tInit\n" +
-                                 "40d0\tfolded\tz_lib.c\tMath_Nop\n" +
+                                 "10a0\t-\tz_player.c\tPlayer_Action_Roll\n" + "20b0\t-\tz_en_a.c\tInit\n" +
+                                 "30c0\t-\tz_en_b.c\tInit\n" + "40d0\tfolded\tz_lib.c\tMath_Nop\n" +
                                  "40d0\tfolded\tz_lib.c\tMath_Nop2\r\n";
         ShipLuaHost::OotSymbolTable table;
         std::string error;
@@ -1674,13 +1744,12 @@ int main(int argc, char** argv) {
         Check(table.Resolve("!Init", rva) == SHIP_NATIVE_INVALID_ARGUMENT, "arquivo vazio");
         Check(!table.Parse("linkspan-symbols 2\n", error), "versão desconhecida");
         Check(!table.Parse("linkspan-symbols 1\nsha256 " + sha + "\nzz\t-\ta.c\tX\n", error), "RVA inválido");
-        Check(!table.Parse("linkspan-symbols 1\nsha256 " + sha + "\n10\tquente\ta.c\tX\n", error),
-              "flag inválida");
+        Check(!table.Parse("linkspan-symbols 1\nsha256 " + sha + "\n10\tquente\ta.c\tX\n", error), "flag inválida");
     }
     {
-        for (const char* point : {LINKSPAN_OOT_HOOK_SAVE_LOADED, LINKSPAN_OOT_HOOK_SAVE_SAVING,
-                                  LINKSPAN_OOT_HOOK_SAVE_DELETED, LINKSPAN_OOT_HOOK_SAVE_COPIED,
-                                  LINKSPAN_OOT_HOOK_ANCHOR_STATE}) {
+        for (const char* point :
+             { LINKSPAN_OOT_HOOK_SAVE_LOADED, LINKSPAN_OOT_HOOK_SAVE_SAVING, LINKSPAN_OOT_HOOK_SAVE_DELETED,
+               LINKSPAN_OOT_HOOK_SAVE_COPIED, LINKSPAN_OOT_HOOK_ANCHOR_STATE }) {
             Check(policy.hooks->FindPoint(point, LINKSPAN_OOT_HOOKS_VERSION) != 0, point);
         }
         const auto* save = static_cast<const ShipOotSaveV1*>(policy.services[8].table);
@@ -1690,9 +1759,8 @@ int main(int argc, char** argv) {
         Check(save->open_namespace("autor.mod", 2, &again) == SHIP_NATIVE_OK && again == mod,
               "mesmo namespace e versão devolvem o mesmo handle");
         Check(save->open_namespace("autor.mod", 3, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "versão divergente");
-        for (const char* name : {"semponto", "linkspan.host", ".a.b", "a.b.", "a b.c", ""}) {
-            Check(save->open_namespace(name, 1, &bad) == SHIP_NATIVE_INVALID_ARGUMENT,
-                  name);
+        for (const char* name : { "semponto", "linkspan.host", ".a.b", "a.b.", "a b.c", "" }) {
+            Check(save->open_namespace(name, 1, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, name);
         }
         uint32_t size = 7;
         Check(save->read(mod, nullptr, 0, &size) == SHIP_NATIVE_UNSUPPORTED && size == 0, "sem bloco");
@@ -1721,10 +1789,10 @@ int main(int argc, char** argv) {
                   save->commit(mod) == SHIP_NATIVE_OK && save->commit(mod) == SHIP_NATIVE_INVALID_ARGUMENT,
               "commit mantém");
         Check(save->set_required(mod, 1) == SHIP_NATIVE_OK, "required");
-        ShipLuaHost::SetOotHostSaveBlock("linkspan.scenes", 1, nlohmann::json{{"x.y", {1, 2, 3, 4, 5, 6, 7}}});
+        ShipLuaHost::SetOotHostSaveBlock("linkspan.scenes", 1, nlohmann::json{ { "x.y", { 1, 2, 3, 4, 5, 6, 7 } } });
 
         auto exported = ShipLuaHost::ExportOotSaveSection();
-        exported["namespaces"]["outro.mod"] = {{"version", 4}, {"required", true}, {"data", {{"k", "v"}}}};
+        exported["namespaces"]["outro.mod"] = { { "version", 4 }, { "required", true }, { "data", { { "k", "v" } } } };
         exported["namespaces"]["lixo"] = 12;
         ShipLuaHost::ClearOotSaveData();
         Check(save->read(mod, nullptr, 0, &size) == SHIP_NATIVE_UNSUPPORTED, "arquivo novo começa vazio");
@@ -1753,7 +1821,7 @@ int main(int argc, char** argv) {
         const auto* anchor = static_cast<const ShipOotAnchorV1*>(policy.services[24].table);
         ShipLuaHost::ClearOotSaveData();
         Check(anchor->connected() == 0, "sem ponte o Anchor não está conectado");
-        ShipLuaHost::SetOotAnchorBridge({[] { return true; }});
+        ShipLuaHost::SetOotAnchorBridge({ [] { return true; } });
         Check(anchor->connected() == 1, "conectado pela ponte");
         Check(anchor->share_namespace(0) == SHIP_NATIVE_INVALID_ARGUMENT &&
                   anchor->share_namespace(mod + 999) == SHIP_NATIVE_INVALID_ARGUMENT,
@@ -1767,7 +1835,7 @@ int main(int argc, char** argv) {
                   team["namespaces"]["autor.mod"]["data"]["n"] == 1,
               "estado do time leva o namespace compartilhado");
         team["namespaces"]["autor.mod"]["data"]["n"] = 5;
-        team["namespaces"]["outro.mod"] = {{"version", 1}, {"data", 3}};
+        team["namespaces"]["outro.mod"] = { { "version", 1 }, { "data", 3 } };
         auto imported = ShipLuaHost::ImportOotAnchorTeamState(team);
         Check(imported.replaced.size() == 1 && imported.refused.empty() &&
                   save->read(mod, text.data(), static_cast<uint32_t>(text.size()), &size) == SHIP_NATIVE_OK &&
@@ -1785,8 +1853,8 @@ int main(int argc, char** argv) {
               "versão de schema diferente é recusada sem mexer no local");
         team["version"] = 2;
         Check(ShipLuaHost::ImportOotAnchorTeamState(team).replaced.empty(), "estado de outra versão ignorado");
-        Check(anchor->unshare_namespace(other) == SHIP_NATIVE_FAILURE && anchor->unshare_namespace(mod) == SHIP_NATIVE_OK &&
-                  ShipLuaHost::ExportOotAnchorTeamState().is_null(),
+        Check(anchor->unshare_namespace(other) == SHIP_NATIVE_FAILURE &&
+                  anchor->unshare_namespace(mod) == SHIP_NATIVE_OK && ShipLuaHost::ExportOotAnchorTeamState().is_null(),
               "unshare");
         for (uint32_t i = 0; i < LINKSPAN_OOT_ANCHOR_MAX_SHARED; ++i) {
             uint64_t handle = 0;
@@ -1823,9 +1891,13 @@ int main(int argc, char** argv) {
             std::string path;
             int32_t scene = 0;
         } seen;
-        ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ROOM_ACTORS,
-                                 LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION, sizeof(ShipOotRoomActorsHookV2),
-                                 SHIP_NATIVE_HOOK_TRANSFORM, 0, 0,
+        ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec),
+                                 LINKSPAN_OOT_HOOK_ROOM_ACTORS,
+                                 LINKSPAN_OOT_HOOK_ROOM_ACTORS_VERSION,
+                                 sizeof(ShipOotRoomActorsHookV2),
+                                 SHIP_NATIVE_HOOK_TRANSFORM,
+                                 0,
+                                 0,
                                  [](void* user, const ShipNativeHookCall* call) -> ShipNativeStatus {
                                      auto* data = static_cast<Seen*>(user);
                                      auto* payload = static_cast<ShipOotRoomActorsHookV2*>(call->payload);
@@ -1858,17 +1930,24 @@ int main(int argc, char** argv) {
               "oot.room.actors recusa replace");
     }
     {
-        struct Seen { int calls = 0; int16_t id = 0; } seen;
-        const ShipNativeHookSpec spec{sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_ACTOR_UPDATE,
-                                      LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotActorHookV1),
-                                      SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE, 0,
-                                      [](void* user, const ShipNativeHookCall* call) -> ShipNativeStatus {
-                                          auto* data = static_cast<Seen*>(user);
-                                          ++data->calls;
-                                          data->id = static_cast<const ShipOotActorHookV1*>(call->payload)->actor_id;
-                                          return SHIP_NATIVE_OK;
-                                      },
-                                      &seen};
+        struct Seen {
+            int calls = 0;
+            int16_t id = 0;
+        } seen;
+        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec),
+                                       LINKSPAN_OOT_HOOK_ACTOR_UPDATE,
+                                       LINKSPAN_OOT_HOOKS_VERSION,
+                                       sizeof(ShipOotActorHookV1),
+                                       SHIP_NATIVE_HOOK_OBSERVE,
+                                       SHIP_NATIVE_HOOK_BEFORE,
+                                       0,
+                                       [](void* user, const ShipNativeHookCall* call) -> ShipNativeStatus {
+                                           auto* data = static_cast<Seen*>(user);
+                                           ++data->calls;
+                                           data->id = static_cast<const ShipOotActorHookV1*>(call->payload)->actor_id;
+                                           return SHIP_NATIVE_OK;
+                                       },
+                                       &seen };
         uint64_t handle = 0;
         const auto transform = [&] {
             auto copy = spec;
@@ -1879,7 +1958,7 @@ int main(int argc, char** argv) {
         Check(policy.hooks->Register("test", transform, &handle) == SHIP_NATIVE_UNSUPPORTED,
               "pontos de ator do OoT recusam transform");
         Check(policy.hooks->Register("test", spec, &handle) == SHIP_NATIVE_OK, "observe em oot.actor.update");
-        ShipOotActorHookV1 payload{sizeof(ShipOotActorHookV1), nullptr, nullptr, 7, 0};
+        ShipOotActorHookV1 payload{ sizeof(ShipOotActorHookV1), nullptr, nullptr, 7, 0 };
         Check(policy.hooks->Dispatch(policy.hooks->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_UPDATE, 1), &payload,
                                      sizeof(payload), nullptr, nullptr) == SHIP_NATIVE_OK &&
                   seen.calls == 1 && seen.id == 7,
@@ -1904,9 +1983,9 @@ int main(int argc, char** argv) {
           "resources V1 deve consultar o tamanho antes da cópia");
     std::array<uint8_t, 8> resourceBytes{};
     Check(resources->read_file("test/core.json", resourceBytes.data(), 4, &resourceSize) == SHIP_NATIVE_LIMIT &&
-          resources->read_file("test/core.json", resourceBytes.data(), resourceBytes.size(), &resourceSize) ==
-              SHIP_NATIVE_OK &&
-          std::string(reinterpret_cast<const char*>(resourceBytes.data()), resourceSize) == "{\"ok\":1}",
+              resources->read_file("test/core.json", resourceBytes.data(), resourceBytes.size(), &resourceSize) ==
+                  SHIP_NATIVE_OK &&
+              std::string(reinterpret_cast<const char*>(resourceBytes.data()), resourceSize) == "{\"ok\":1}",
           "resources V1 deve limitar e copiar bytes sem transferir ownership");
     std::vector<std::string> listed;
     Check(resources->list_files("test/*", CollectPath, &listed) == SHIP_NATIVE_OK && listed.size() == 2,
@@ -1919,8 +1998,8 @@ int main(int argc, char** argv) {
     const auto collectLayer = [](void* user, const ShipOotResourceLayerV2* layer, const char* archive,
                                  const uint8_t* data) -> ShipNativeStatus {
         auto& capture = *static_cast<LayerCapture*>(user);
-        if (!layer || layer->size < sizeof(ShipOotResourceLayerV2) ||
-            layer->layer_index != capture.archives.size() || layer->layer_count != 2) {
+        if (!layer || layer->size < sizeof(ShipOotResourceLayerV2) || layer->layer_index != capture.archives.size() ||
+            layer->layer_count != 2) {
             return SHIP_NATIVE_FAILURE;
         }
         capture.archives.emplace_back(archive, layer->archive_path_length);
@@ -1929,9 +2008,9 @@ int main(int argc, char** argv) {
         return SHIP_NATIVE_OK;
     };
     Check(resourcesV2->read_file_layers("test/layers.json", collectLayer, &layers) == SHIP_NATIVE_OK &&
-          layers.archives == std::vector<std::string>{"base.o2r", "override.shipmod"} &&
-          layers.contents == std::vector<std::string>{"{\"base\":1}", "{\"mod\":2}"} &&
-          layers.hashes[0] != layers.hashes[1],
+              layers.archives == std::vector<std::string>{ "base.o2r", "override.shipmod" } &&
+              layers.contents == std::vector<std::string>{ "{\"base\":1}", "{\"mod\":2}" } &&
+              layers.hashes[0] != layers.hashes[1],
           "resources V2 deve enumerar bytes, origem e hash da menor para a maior prioridade");
     const auto stopLayer = [](void*, const ShipOotResourceLayerV2*, const char*, const uint8_t*) {
         return SHIP_NATIVE_LIMIT;
@@ -1941,15 +2020,16 @@ int main(int argc, char** argv) {
     uint32_t versionCount = 0;
     std::array<uint32_t, 2> versions{};
     Check(resources->get_game_versions(nullptr, 0, &versionCount) == SHIP_NATIVE_OK && versionCount == 2 &&
-          resources->get_game_versions(versions.data(), versions.size(), &versionCount) == SHIP_NATIVE_OK &&
-          versions[0] == 0xEC7011B7u,
+              resources->get_game_versions(versions.data(), versions.size(), &versionCount) == SHIP_NATIVE_OK &&
+              versions[0] == 0xEC7011B7u,
           "resources V1 deve copiar versões montadas");
     uint64_t archiveHandle = 0;
     Check(resources->mount_archive("core-assets.o2r", &archiveHandle) == SHIP_NATIVE_OK && archiveHandle == 10 &&
-          resources->dirty_resources("test/*") == SHIP_NATIVE_OK &&
-          resources->unload_resource("test/core.json") == SHIP_NATIVE_OK &&
-          resources->unmount_archive(archiveHandle) == SHIP_NATIVE_OK && mountedArchives.size() == 1 &&
-          dirtiedResources.size() == 1 && unloadedResources.size() == 1 && unmountedArchives == std::vector<uint64_t>{10},
+              resources->dirty_resources("test/*") == SHIP_NATIVE_OK &&
+              resources->unload_resource("test/core.json") == SHIP_NATIVE_OK &&
+              resources->unmount_archive(archiveHandle) == SHIP_NATIVE_OK && mountedArchives.size() == 1 &&
+              dirtiedResources.size() == 1 && unloadedResources.size() == 1 &&
+              unmountedArchives == std::vector<uint64_t>{ 10 },
           "resources V1 deve montar, invalidar e desmontar por handle opaco");
     Check(policy.enabled && !engine->get_player() && !engine->get_play_state(), "sem gameplay deve retornar nulo");
     Check(engine->get_save_context() == &gSaveContext, "SaveContext do host");
@@ -1965,16 +2045,16 @@ int main(int argc, char** argv) {
     play.state.input[0].rel.right_stick_y = -43;
     player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
     Check(movement->get_input_current(0) == BTN_A && movement->get_input_pressed(0) == BTN_A &&
-          movement->get_stick_x(0) == -12 && movement->get_stick_y(0) == 34 &&
-          movement->get_right_stick_x(0) == 21 && movement->get_right_stick_y(0) == -43 &&
-          movement->is_player_grounded(),
+              movement->get_stick_x(0) == -12 && movement->get_stick_y(0) == 34 &&
+              movement->get_right_stick_x(0) == 21 && movement->get_right_stick_y(0) == -43 &&
+              movement->is_player_grounded(),
           "movement V1 deve expor input virtual e estado de chão");
-    gamepadButtons = uint32_t{1} << 3;
+    gamepadButtons = uint32_t{ 1 } << 3;
     Check(movement->has_gamepad(0) && movement->get_gamepad_buttons(0) == gamepadButtons,
           "movement V1 deve expor botões físicos SDL");
     Check(movement->player_jump(0.0f) == SHIP_NATIVE_INVALID_ARGUMENT, "impulso inválido deve ser recusado");
     Check(movement->player_jump(7.0f) == SHIP_NATIVE_OK && player.actor.velocity.y == 7.0f && jumpAnimation &&
-          jumpSound == NA_SE_VO_LI_AUTO_JUMP && !movement->is_player_grounded(),
+              jumpSound == NA_SE_VO_LI_AUTO_JUMP && !movement->is_player_grounded(),
           "pulo deve iniciar animação e som nativos do Player");
     player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
     Check(movement->player_roll() == SHIP_NATIVE_OK && movement->is_player_rolling(),
@@ -1983,15 +2063,14 @@ int main(int argc, char** argv) {
     Check(movementV2 && movementV2->size == sizeof(ShipOotMovementV2) &&
               movementV2->get_input_current == movement->get_input_current &&
               movementV2->player_roll == movement->player_roll && movementV2->get_gamepad_axis &&
-              movementV2->bind_gamepad_axis && movementV2->player_use_item_shortcut &&
-              movementV2->get_item_button_rect,
+              movementV2->bind_gamepad_axis && movementV2->player_use_item_shortcut && movementV2->get_item_button_rect,
           "movement V2 deve preservar o prefixo da V1 e publicar as funções novas");
     gamepadAxes[5] = 32000;
     Check(movementV2->get_gamepad_axis(0, 5) == 32000 && movementV2->get_gamepad_axis(4, 5) == 0,
           "movement V2 deve expor eixos físicos SDL por porta");
     Check(movementV2->bind_gamepad_axis(0, BTN_CLEFT, 5, 0) == SHIP_NATIVE_INVALID_ARGUMENT &&
               movementV2->bind_gamepad_axis(0, BTN_CLEFT, 5, 1) == SHIP_NATIVE_OK && boundAxes.size() == 1 &&
-              boundAxes[0] == std::tuple<uint16_t, uint8_t, int8_t>{BTN_CLEFT, 5, 1},
+              boundAxes[0] == std::tuple<uint16_t, uint8_t, int8_t>{ BTN_CLEFT, 5, 1 },
           "movement V2 deve ligar metade de eixo a botão virtual e recusar direção inválida");
 
     int16_t rectX = 0, rectY = 0, rectSize = 0;
@@ -2036,8 +2115,7 @@ int main(int argc, char** argv) {
           "religar pelo atalho deve restaurar a exceção");
     const auto refused = [&](const char* text) {
         const auto before = usedItems.size();
-        Check(movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED &&
-                  usedItems.size() == before,
+        Check(movementV2->player_use_item_shortcut(ITEM_LENS) == SHIP_NATIVE_UNSUPPORTED && usedItems.size() == before,
               text);
     };
     play.interfaceCtx.restrictions.all = 1;
@@ -2152,8 +2230,7 @@ int main(int argc, char** argv) {
           "usar o traje vestido deve voltar ao Kokiri, como no SoH");
     player.stateFlags1 = 0;
     environmentalHazard = 3;
-    Check(shortcut(ITEM_BOOTS_IRON) == SHIP_NATIVE_OK &&
-              CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == EQUIP_VALUE_BOOTS_IRON &&
+    Check(shortcut(ITEM_BOOTS_IRON) == SHIP_NATIVE_OK && CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == EQUIP_VALUE_BOOTS_IRON &&
               lastPlayerSfx == NA_SE_PL_WALK_HEAVYBOOTS && player.currentBoots == EQUIP_VALUE_BOOTS_IRON - 1,
           "botas de ferro devem calçar submerso com o som pesado");
     environmentalHazard = 0;
@@ -2175,16 +2252,15 @@ int main(int argc, char** argv) {
     play.pauseCtx.state = 0;
     gamepadAxes[5] = 1234;
 
-    gOcarinaSongButtons[OCARINA_SONG_SARIAS] = {6, {1, 2, 3, 1, 2, 3}};
+    gOcarinaSongButtons[OCARINA_SONG_SARIAS] = { 6, { 1, 2, 3, 1, 2, 3 } };
     // Estado inicial de code_800EC960.c: o Espantalho já declara 8 botões, mas sem gravação a nota [1]
     // mantém volume 0xFF, e isso sozinho não pode anunciar a música.
-    gOcarinaSongButtons[OCARINA_SONG_SCARECROW_SPAWN] = {8, {0}};
+    gOcarinaSongButtons[OCARINA_SONG_SCARECROW_SPAWN] = { 8, { 0 } };
     sOcarinaSongNotes[OCARINA_SONG_SCARECROW_SPAWN][1].volume = 0xFF;
     std::array<uint8_t, LINKSPAN_OOT_OCARINA_MAX_NOTES> songNotes{};
     uint32_t songNoteCount = 0;
     Check(ocarina && ocarina->size == sizeof(ShipOotOcarinaV1) && !ocarina->is_active() &&
-              ocarina->get_available_song_flags() == 0 &&
-              ocarina->get_song_count() == OCARINA_SONG_SCARECROW_SPAWN,
+              ocarina->get_available_song_flags() == 0 && ocarina->get_song_count() == OCARINA_SONG_SCARECROW_SPAWN,
           "ocarina V1 deve começar inativa com as doze músicas fixas");
     Check(ocarina->get_song_pattern(OCARINA_SONG_SCARECROW_SPAWN, songNotes.data(), uint32_t(songNotes.size()),
                                     &songNoteCount) == SHIP_NATIVE_UNSUPPORTED,
@@ -2202,7 +2278,7 @@ int main(int argc, char** argv) {
               ocarina->get_song_pattern(OCARINA_SONG_MEMORY_GAME, songNotes.data(), uint32_t(songNotes.size()),
                                         &songNoteCount) == SHIP_NATIVE_INVALID_ARGUMENT,
           "ocarina V1 deve recusar padrão vazio e música fora do catálogo");
-    gOcarinaSongButtons[OCARINA_SONG_SCARECROW_SPAWN] = {8, {0, 1, 2, 3, 4, 3, 2, 1}};
+    gOcarinaSongButtons[OCARINA_SONG_SCARECROW_SPAWN] = { 8, { 0, 1, 2, 3, 4, 3, 2, 1 } };
     sOcarinaSongNotes[OCARINA_SONG_SCARECROW_SPAWN][1].volume = 80;
     Check(ocarina->get_song_count() == OCARINA_SONG_SCARECROW_SPAWN + 1 &&
               ocarina->get_song_pattern(OCARINA_SONG_SCARECROW_SPAWN, songNotes.data(), uint32_t(songNotes.size()),
@@ -2222,8 +2298,7 @@ int main(int argc, char** argv) {
           "música entregue deve ser consumida uma única vez pelo update da ocarina");
     Check(ocarina->submit_song(OCARINA_SONG_SARIAS) == SHIP_NATIVE_OK, "segunda entrega deve ser aceita");
     OotNative_PublishOcarinaState(0, uint16_t(1u << OCARINA_SONG_SARIAS));
-    Check(!ocarina->is_active() && ocarina->get_available_song_flags() == 0 &&
-              OotNative_TakePendingOcarinaSong() == -1,
+    Check(!ocarina->is_active() && ocarina->get_available_song_flags() == 0 && OotNative_TakePendingOcarinaSong() == -1,
           "fechar a ocarina deve descartar a música pendente");
     OotNative_PublishOcarinaState(1, uint16_t(1u << OCARINA_SONG_SARIAS));
     {
@@ -2281,8 +2356,8 @@ int main(int argc, char** argv) {
                   otherSettings.find("linkspan.input.sword_over_shield") == otherSettings.end(),
               "espada acima do escudo deve ficar só em memória no host");
         Check(filter(BTN_R, BTN_R) == Buttons{ BTN_R, BTN_R } && filter(shieldAndSword, BTN_B) == Buttons{ BTN_B, 0 } &&
-                  filter(shieldAndSword, 0) == Buttons{ BTN_B, BTN_B } && filter(shieldAndSword, 0) == Buttons{ BTN_B, 0 } &&
-                  filter(BTN_R, 0) == Buttons{ BTN_R, 0 },
+                  filter(shieldAndSword, 0) == Buttons{ BTN_B, BTN_B } &&
+                  filter(shieldAndSword, 0) == Buttons{ BTN_B, 0 } && filter(BTN_R, 0) == Buttons{ BTN_R, 0 },
               "B com o escudo erguido deve baixar o escudo, atacar no frame seguinte e devolver o escudo ao soltar");
         Check(filter(BTN_R, 0) == Buttons{ BTN_R, 0 } && filter(shieldAndSword, BTN_B) == Buttons{ BTN_B, 0 } &&
                   filter(BTN_R, 0) == Buttons{ 0, BTN_B } && filter(BTN_R, 0) == Buttons{ BTN_R, 0 },
@@ -2314,10 +2389,9 @@ int main(int argc, char** argv) {
               "thread externa deve ser recusada");
         uint32_t size = 0;
         Check(!resources->has_file("test/core.json") &&
-              resources->read_file("test/core.json", nullptr, 0, &size) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  resources->read_file("test/core.json", nullptr, 0, &size) == SHIP_NATIVE_INVALID_ARGUMENT,
               "resources V1 deve recusar thread externa");
-        Check(resourcesV2->read_file_layers("test/layers.json", collectLayer, &layers) ==
-                  SHIP_NATIVE_INVALID_ARGUMENT,
+        Check(resourcesV2->read_file_layers("test/layers.json", collectLayer, &layers) == SHIP_NATIVE_INVALID_ARGUMENT,
               "resources V2 deve recusar thread externa");
         int16_t x = 0, y = 0, side = 0;
         uint8_t alpha = 0;
@@ -2346,8 +2420,8 @@ int main(int argc, char** argv) {
     worker.join();
     gamepadAxes[5] = 0;
     boundAxes.clear();
-    Check(engine->spawn_actor(42, 1, 2, 3, 4, 5, 6, 123) == &spawned &&
-          spawned.id == 42 && spawned.params == 123 && spawned.world.pos.y == 2 && spawned.world.rot.z == 6,
+    Check(engine->spawn_actor(42, 1, 2, 3, 4, 5, 6, 123) == &spawned && spawned.id == 42 && spawned.params == 123 &&
+              spawned.world.pos.y == 2 && spawned.world.rot.z == 6,
           "spawn deve encaminhar argumentos sem catálogo por mod");
     Check(engine->kill_actor(&spawned) == SHIP_NATIVE_INVALID_ARGUMENT, "ator fora da lista");
     play.actorCtx.actorLists[ACTORCAT_PROP].head = &spawned;
@@ -2355,25 +2429,31 @@ int main(int argc, char** argv) {
 
     if (argc == 3) {
         const auto manifest = ShipLua::ParseManifestFile((std::filesystem::path(argv[1]) / "manifest.toml").string());
-        if (!manifest.isOk()) { std::cerr << manifest.message; return 1; }
+        if (!manifest.isOk()) {
+            std::cerr << manifest.message;
+            return 1;
+        }
         auto loaded = ShipLua::NativeProvider::Load(*manifest.value, argv[1], policy);
-        if (!loaded.isOk()) { std::cerr << loaded.message; return 1; }
+        if (!loaded.isOk()) {
+            std::cerr << loaded.message;
+            return 1;
+        }
         std::array<char, 1024> response{};
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         auto called = (*loaded.value)->Call("jump", "", 0, response.data(), uint32_t(response.size()));
         const float expected = std::strtof(argv[2], nullptr);
         Check(called.code == ShipLua::ErrorCode::Ok && std::isfinite(expected) &&
-              std::abs(player.actor.velocity.y - expected) < 0.001f, "DLL independente deve modificar Player real");
+                  std::abs(player.actor.velocity.y - expected) < 0.001f,
+              "DLL independente deve modificar Player real");
         std::cout << std::string(response.data(), called.size) << '\n';
         response.fill(0);
-        const auto resourceProbe = (*loaded.value)->Call("resource_probe", "", 0, response.data(),
-                                                         uint32_t(response.size()));
+        const auto resourceProbe =
+            (*loaded.value)->Call("resource_probe", "", 0, response.data(), uint32_t(response.size()));
         Check(resourceProbe.code == ShipLua::ErrorCode::Ok &&
-              std::string(response.data(), resourceProbe.size) == "{\"ok\":1}",
+                  std::string(response.data(), resourceProbe.size) == "{\"ok\":1}",
               "DLL independente deve ler o VFS pelo serviço resources V1");
         response.fill(0);
-        const auto layerProbe = (*loaded.value)->Call("layer_probe", "", 0, response.data(),
-                                                      uint32_t(response.size()));
+        const auto layerProbe = (*loaded.value)->Call("layer_probe", "", 0, response.data(), uint32_t(response.size()));
         Check(layerProbe.code == ShipLua::ErrorCode::Ok &&
                   std::string(response.data(), layerProbe.size)
                       .starts_with("layers=2; order=base.o2r>override.shipmod; merged="),
@@ -2417,13 +2497,13 @@ int main(int argc, char** argv) {
         player.stateFlags1 = 0;
         play.state.input[0].cur.button = 0;
         play.state.input[0].rel.stick_y = 80;
-        gamepadButtons = uint32_t{1} << 3;
+        gamepadButtons = uint32_t{ 1 } << 3;
         Check(callUpdate() == "jump" && !movement->is_player_grounded(), "X Nintendo deve iniciar pulo");
         gamepadButtons = 0;
         Check(callUpdate() == "airborne", "pulo deve permanecer aéreo após soltar X");
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         Check(callUpdate() == "landed", "pulo deve reconhecer a aterrissagem");
-        gamepadButtons = uint32_t{1} << 1;
+        gamepadButtons = uint32_t{ 1 } << 1;
         player.actionFunc = Player_Action_Roll;
         Check(callUpdate() == "roll", "A em movimento deve preservar o rolamento nativo");
         Check(callUpdate() == "rolling", "mod deve observar o rolamento ativo");
@@ -2465,11 +2545,11 @@ int main(int argc, char** argv) {
         using Binding = std::pair<uint16_t, uint8_t>;
         using AxisBinding = std::tuple<uint16_t, uint8_t, int8_t>;
         const bool shieldOnZl =
-            std::find(boundAxes.begin(), boundAxes.end(), AxisBinding{BTN_R, 4, 1}) != boundAxes.end();
+            std::find(boundAxes.begin(), boundAxes.end(), AxisBinding{ BTN_R, 4, 1 }) != boundAxes.end();
         Check(clearedButtons.size() >= 9 && boundButtons.size() >= 5 &&
                   std::vector<Binding>(boundButtons.end() - 5, boundButtons.end()) ==
-                      std::vector<Binding>{{BTN_A, 1}, {BTN_B, 2}, {BTN_B, 0}, {BTN_CUP, 14}, {BTN_L, 4}} &&
-                  shieldOnZl && boundAxes.back() == AxisBinding{BTN_CLEFT, 5, 1},
+                      std::vector<Binding>{ { BTN_A, 1 }, { BTN_B, 2 }, { BTN_B, 0 }, { BTN_CUP, 14 }, { BTN_L, 4 } } &&
+                  shieldOnZl && boundAxes.back() == AxisBinding{ BTN_CLEFT, 5, 1 },
               "perfil deve mapear A, Y/B, D-pad direita=C-Up, ZL=escudo, -=L do N64 e ZR=C-Left");
         Check(LinkSpan_ItemButtonHidden(1) == 0 && LinkSpan_ItemButtonHidden(2) == 1 &&
                   LinkSpan_ItemButtonHidden(3) == 1 &&
@@ -2483,14 +2563,16 @@ int main(int argc, char** argv) {
         Check(LinkSpan_PauseEquipSelectorEnabled() == 1, "perfil Nintendo deve ligar o seletor do pause (RFC 0028)");
         const auto itemMenuState = [&] {
             response.fill(0);
-            const auto result = (*loaded.value)->Call("hud_item_menu", "", 0, response.data(), uint32_t(response.size()));
-            return result.code == ShipLua::ErrorCode::Ok ? std::string(response.data(), result.size) : std::string("erro");
+            const auto result =
+                (*loaded.value)->Call("hud_item_menu", "", 0, response.data(), uint32_t(response.size()));
+            return result.code == ShipLua::ErrorCode::Ok ? std::string(response.data(), result.size)
+                                                         : std::string("erro");
         };
         gSaveContext.equips.buttonItems[1] = ITEM_BOW;
         gSaveContext.equips.buttonItems[2] = ITEM_NONE;
         gSaveContext.equips.buttonItems[3] = ITEM_HOOKSHOT;
         Check(itemMenuState() == "none", "menu de itens deve ficar fechado sem segurar o R");
-        gamepadButtons = uint32_t{1} << 10;
+        gamepadButtons = uint32_t{ 1 } << 10;
         // Formato do seletor (DMR 0.2.14+): os três C ficam no lugar, com o caminho do ícone; sem a tabela
         // de ícones do host o caminho fica vazio.
         Check(callUpdate() == "item-menu" && itemMenuState() == "1;1:3:\t2:255:\t3:10:" && settingValue == 0,
@@ -2502,11 +2584,11 @@ int main(int argc, char** argv) {
         Check(itemMenuState() == "3;1:3:\t2:255:\t3:10:", "analógico mantido inclinado não deve andar de novo");
         play.state.input[0].rel.right_stick_x = 0;
         gamepadButtons = 0;
-        Check(callUpdate() == "item-c-right" && boundAxes.back() == AxisBinding{BTN_CRIGHT, 5, 1} &&
+        Check(callUpdate() == "item-c-right" && boundAxes.back() == AxisBinding{ BTN_CRIGHT, 5, 1 } &&
                   itemMenuState() == "none" && LinkSpan_ItemButtonHidden(1) == 1 && LinkSpan_ItemButtonHidden(3) == 0,
               "soltar o R deve equipar o destacado no ZR e deixar só ele no HUD");
         gamepadAxes[5] = 32000;
-        gamepadButtons = uint32_t{1} << 10;
+        gamepadButtons = uint32_t{ 1 } << 10;
         callUpdate();
         play.state.input[0].rel.right_stick_x = -60;
         callUpdate();
@@ -2560,7 +2642,7 @@ int main(int argc, char** argv) {
         Check(hud.code == ShipLua::ErrorCode::Ok && std::string(response.data(), hud.size) == "none",
               "hud_selection sem desenho recente deve responder none");
         play.actorCtx.lensActive = false;
-        gamepadButtons = uint32_t{1} << 8;
+        gamepadButtons = uint32_t{ 1 } << 8;
         callUpdate();
         gamepadButtons = 0;
         Check(callUpdate() == "lens-on" && play.actorCtx.lensActive && usedItems.back() == ITEM_LENS,
@@ -2568,7 +2650,7 @@ int main(int argc, char** argv) {
         gSaveContext.linkAge = LINK_AGE_CHILD;
         gSaveContext.inventory.items[SLOT_TRADE_CHILD] = ITEM_MASK_BUNNY;
         player.currentMask = PLAYER_MASK_NONE;
-        gamepadButtons = uint32_t{1} << 8;
+        gamepadButtons = uint32_t{ 1 } << 8;
         callUpdate();
         std::this_thread::sleep_for(std::chrono::milliseconds(420));
         Check(callUpdate() == "mask-on" && player.currentMask == PLAYER_MASK_BUNNY,
@@ -2577,21 +2659,23 @@ int main(int argc, char** argv) {
         Check(callUpdate() != "lens-on", "soltar o R3 depois de segurar não deve alternar a lente");
 
         const auto pressAndRelease = [&](uint8_t sdlButton) {
-            gamepadButtons = uint32_t{1} << sdlButton;
+            gamepadButtons = uint32_t{ 1 } << sdlButton;
             callUpdate();
             gamepadButtons = 0;
             return callUpdate();
         };
         const auto quickSwapState = [&] {
             response.fill(0);
-            const auto result = (*loaded.value)->Call("hud_quick_swap", "", 0, response.data(), uint32_t(response.size()));
-            return result.code == ShipLua::ErrorCode::Ok ? std::string(response.data(), result.size) : std::string("erro");
+            const auto result =
+                (*loaded.value)->Call("hud_quick_swap", "", 0, response.data(), uint32_t(response.size()));
+            return result.code == ShipLua::ErrorCode::Ok ? std::string(response.data(), result.size)
+                                                         : std::string("erro");
         };
         gSaveContext.linkAge = LINK_AGE_ADULT;
         player.currentMask = PLAYER_MASK_NONE;
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         resetPlayerAction();
-        gamepadButtons = uint32_t{1} << 13;
+        gamepadButtons = uint32_t{ 1 } << 13;
         Check(callUpdate() == "ocarina" && (player.stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING),
               "D-pad esquerda deve tirar a ocarina do inventário");
         gamepadButtons = 0;
@@ -2603,7 +2687,7 @@ int main(int argc, char** argv) {
               "novo toque no D-pad cima deve voltar ao último traje");
         gSaveContext.inventory.equipment |= static_cast<u16>(OWNED_EQUIP_FLAG(EQUIP_TYPE_TUNIC, EQUIP_INV_TUNIC_ZORA));
         Check(quickSwapState() == "none", "HUD da troca rápida deve ficar fechado sem segurar");
-        gamepadButtons = uint32_t{1} << 11;
+        gamepadButtons = uint32_t{ 1 } << 11;
         callUpdate();
         std::this_thread::sleep_for(std::chrono::milliseconds(430));
         Check(callUpdate() == "tunic-quick-swap" && quickSwapState() == "tunic;1;1,2,3",
@@ -2657,7 +2741,8 @@ int main(int argc, char** argv) {
         ShipOotEngineV1 incompatible = *engine;
         incompatible.layout_id = "incompatible";
         policy.services[0].table = &incompatible;
-        Check(!ShipLua::NativeProvider::Load(*manifest.value, argv[1], policy).isOk(), "layout divergente deve ser recusado");
+        Check(!ShipLua::NativeProvider::Load(*manifest.value, argv[1], policy).isOk(),
+              "layout divergente deve ser recusado");
     }
     gPlayState = nullptr;
     Check(!engine->get_player(), "troca de cena invalida acesso ao Player");

@@ -13,8 +13,8 @@ namespace {
     bridge.remove = [](int32_t language, uint16_t id) -> int32_t { return OTRMessage_Remove(language, id); };
     bridge.clear = [](int32_t language) -> int32_t { return OTRMessage_Clear(language); };
     bridge.reset = [](int32_t language) -> int32_t { return OTRMessage_Reset(language); };
-    bridge.forEach = [](int32_t language,
-                        int32_t (*visitor)(void*, uint16_t, uint8_t, const char*, uint32_t), void* user) -> int32_t {
+    bridge.forEach = [](int32_t language, int32_t (*visitor)(void*, uint16_t, uint8_t, const char*, uint32_t),
+                        void* user) -> int32_t {
         return OTRMessage_ForEach(language, reinterpret_cast<OTRMessageVisitor>(visitor), user);
     };
     ShipLuaHost::SetOotTextBridge(bridge);

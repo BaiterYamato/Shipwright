@@ -646,9 +646,9 @@ void EnOkuta_Update(Actor* thisx, PlayState* play2) {
         this->actionFunc(this, play);
         if (this->actor.params == 0) {
             EnOkuta_UpdateHeadScale(this);
-            this->collider.dim.height = LinkSpan_S16F(
-                (((sOctorockColliderInit.dim.height * this->headScale.y) - this->collider.dim.yShift) *
-                 this->actor.scale.y * 100.0f));
+            this->collider.dim.height =
+                LinkSpan_S16F((((sOctorockColliderInit.dim.height * this->headScale.y) - this->collider.dim.yShift) *
+                               this->actor.scale.y * 100.0f));
         } else {
             sp34 = false;
             Actor_MoveXZGravity(&this->actor);
@@ -670,7 +670,8 @@ void EnOkuta_Update(Actor* thisx, PlayState* play2) {
         }
         Collider_UpdateCylinder(&this->actor, &this->collider);
         if ((this->actionFunc == EnOkuta_Appear) || (this->actionFunc == EnOkuta_Hide)) {
-            this->collider.dim.pos.y = LinkSpan_S16F(this->actor.world.pos.y + (this->skelAnime.jointTable->y * this->actor.scale.y));
+            this->collider.dim.pos.y =
+                LinkSpan_S16F(this->actor.world.pos.y + (this->skelAnime.jointTable->y * this->actor.scale.y));
             this->collider.dim.radius = LinkSpan_S16F(sOctorockColliderInit.dim.radius * this->actor.scale.x * 100.0f);
         }
         if (this->actor.params == 0x10) {

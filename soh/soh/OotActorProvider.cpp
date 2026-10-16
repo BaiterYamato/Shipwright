@@ -119,8 +119,8 @@ ShipLua::Result<ShipLua::Handle> OotActorProvider::Spawn(const std::string& owne
         constexpr const char* kGenericPrefix = "oot.id.";
         if (request.actor.rfind(kGenericPrefix, 0) != 0) {
             return ShipLua::Result<ShipLua::Handle>::err(
-                ShipLua::ErrorCode::Unsupported, "OoT actor '" + request.actor +
-                                                     "' desconhecido — use um nome do catálogo ou oot.id.<actorId>");
+                ShipLua::ErrorCode::Unsupported,
+                "OoT actor '" + request.actor + "' desconhecido — use um nome do catálogo ou oot.id.<actorId>");
         }
         const std::string payload = request.actor.substr(std::char_traits<char>::length(kGenericPrefix));
         const std::size_t dot = payload.find('.');
@@ -157,8 +157,9 @@ ShipLua::Result<ShipLua::Handle> OotActorProvider::Spawn(const std::string& owne
                                                          "OoT object dependency check failed");
         }
         if (!objectReady) {
-            return ShipLua::Result<ShipLua::Handle>::err(
-                ShipLua::ErrorCode::InvalidState, "required OoT object is not loaded for actor '" + request.actor + "'");
+            return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::InvalidState,
+                                                         "required OoT object is not loaded for actor '" +
+                                                             request.actor + "'");
         }
     }
 

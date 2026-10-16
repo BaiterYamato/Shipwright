@@ -42,7 +42,8 @@ u16 ExtButton_GetItem(s32 btn) {
         return ITEM_NONE;
     }
     const u16 mapped = NeiFork_ExtendedItem(gSaveContext.equips.buttonItems[btn]);
-    if (mapped != ITEM_NONE) return mapped;
+    if (mapped != ITEM_NONE)
+        return mapped;
     if (gSaveContext.equips.buttonItems[btn] == ITEM_EXT_BUTTON) {
         return sExtButtonItems[btn];
     }

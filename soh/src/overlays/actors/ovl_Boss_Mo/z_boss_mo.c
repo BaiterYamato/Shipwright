@@ -2449,8 +2449,8 @@ void BossMo_UpdateTentColliders(BossMo* this, s32 item, ColliderJntSph* tentColl
     tentCollider->elements[item].dim.worldSphere.center.y = LinkSpan_S16F(center->y);
     tentCollider->elements[item].dim.worldSphere.center.z = LinkSpan_S16F(center->z);
     if (this->work[MO_TENT_ACTION_STATE] <= MO_TENT_SHAKE) {
-        tentCollider->elements[item].dim.worldSphere.radius = LinkSpan_S16F(
-            tentCollider->elements[item].dim.modelSphere.radius * tentCollider->elements[item].dim.scale);
+        tentCollider->elements[item].dim.worldSphere.radius =
+            LinkSpan_S16F(tentCollider->elements[item].dim.modelSphere.radius * tentCollider->elements[item].dim.scale);
     } else {
         tentCollider->elements[item].dim.worldSphere.radius = LinkSpan_S16F(0);
     }

@@ -261,8 +261,9 @@ ShipNativeStatus SHIP_NATIVE_CALL DrawDisplayList(void* play, const char* path, 
 
 ShipNativeStatus SHIP_NATIVE_CALL SetGetItem(uint8_t item, const ShipOotGetItemSpecV1* spec) {
     if (!OnOwnerThread() || !spec || spec->size < sizeof(ShipOotGetItemSpecV1) || !FindOotItem(item) ||
-        !ValidPath(spec->model_path, LINKSPAN_OOT_ITEMS_MAX_PATH) || spec->model_layer > LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT ||
-        !std::isfinite(spec->model_scale) || spec->model_scale <= 0.0f || spec->model_scale > 100.0f || !spec->message) {
+        !ValidPath(spec->model_path, LINKSPAN_OOT_ITEMS_MAX_PATH) ||
+        spec->model_layer > LINKSPAN_OOT_ITEMS_LAYER_TRANSLUCENT || !std::isfinite(spec->model_scale) ||
+        spec->model_scale <= 0.0f || spec->model_scale > 100.0f || !spec->message) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     const std::string_view message(spec->message, strnlen(spec->message, LINKSPAN_OOT_ITEMS_MAX_MESSAGE + 1));
@@ -330,12 +331,21 @@ uint8_t SHIP_NATIVE_CALL GetLanguage() {
     return OnOwnerThread() && bridge.getLanguage ? bridge.getLanguage() : LINKSPAN_OOT_LANGUAGE_ENGLISH;
 }
 
-const ShipOotItemsV1 itemsV1{ sizeof(ShipOotItemsV1), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
-                              SetButtonItem };
-const ShipOotItemsV2 itemsV2{ sizeof(ShipOotItemsV2), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
-                              SetButtonItem, SetGetItem, GiveItem };
-const ShipOotItemsV3 itemsV3{ sizeof(ShipOotItemsV3), RegisterItem, UnregisterItem, FindItem, GetButtonItem,
-                              SetButtonItem, SetGetItem, GiveItem, SetItemIcon, SetItemAmmo, GetLanguage };
+const ShipOotItemsV1 itemsV1{ sizeof(ShipOotItemsV1), RegisterItem, UnregisterItem, FindItem,
+                              GetButtonItem,          SetButtonItem };
+const ShipOotItemsV2 itemsV2{ sizeof(ShipOotItemsV2), RegisterItem,  UnregisterItem, FindItem,
+                              GetButtonItem,          SetButtonItem, SetGetItem,     GiveItem };
+const ShipOotItemsV3 itemsV3{ sizeof(ShipOotItemsV3),
+                              RegisterItem,
+                              UnregisterItem,
+                              FindItem,
+                              GetButtonItem,
+                              SetButtonItem,
+                              SetGetItem,
+                              GiveItem,
+                              SetItemIcon,
+                              SetItemAmmo,
+                              GetLanguage };
 const ShipOotActorsV1 actorsV1{ sizeof(ShipOotActorsV1), RegisterActorType, UnregisterActorType, FindActorType,
                                 DrawDisplayList };
 

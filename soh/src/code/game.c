@@ -397,9 +397,8 @@ void GameState_Realloc(GameState* gameState, size_t size) {
     SystemArena_GetSizes(&systemMaxFree, &systemFree, &systemAlloc);
     // GetSizes informa bytes de payload: o ArenaNode ja esta excluido.
     // GameAlloc acrescenta sua entrada; __osMalloc alinha o pedido para cima em 16 B.
-    maxSize = systemMaxFree >= sizeof(GameAllocEntry)
-                  ? ((size_t)systemMaxFree - sizeof(GameAllocEntry)) & ~(size_t)0xF
-                  : 0;
+    maxSize =
+        systemMaxFree >= sizeof(GameAllocEntry) ? ((size_t)systemMaxFree - sizeof(GameAllocEntry)) & ~(size_t)0xF : 0;
     if (maxSize < size) {
         osSyncPrintf("%c", BEL);
         osSyncPrintf(VT_FGCOL(RED));

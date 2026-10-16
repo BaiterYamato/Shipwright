@@ -1663,9 +1663,9 @@ void EnGo2_CurledUp(EnGo2* this, PlayState* play) {
         this->collider.dim.height = LinkSpan_S16F((D_80A4816C[index].height * 0.6f));
     } else {
         height = D_80A4816C[index].height;
-        this->collider.dim.height = LinkSpan_S16F(
-            ((D_80A4816C[index].height * 0.4f * (this->skelAnime.curFrame / this->skelAnime.startFrame)) +
-             (height * 0.6f)));
+        this->collider.dim.height =
+            LinkSpan_S16F(((D_80A4816C[index].height * 0.4f * (this->skelAnime.curFrame / this->skelAnime.startFrame)) +
+                           (height * 0.6f)));
     }
     if (EnGo2_IsFreeingGoronInFire(this, play)) {
         this->isAwake = false;

@@ -94,8 +94,8 @@ void InitializeOotNativeJsonTypes(std::thread::id ownerThread) {
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL RegisterOotJsonType(const ShipOotJsonTypeSpecV1* spec, uint64_t* handle) {
-    if (!OnOwnerThread() || !spec || spec->size < sizeof(ShipOotJsonTypeSpecV1) || !handle ||
-        !ValidType(spec->type) || !spec->transcode || spec->min_version > spec->max_version ||
+    if (!OnOwnerThread() || !spec || spec->size < sizeof(ShipOotJsonTypeSpecV1) || !handle || !ValidType(spec->type) ||
+        !spec->transcode || spec->min_version > spec->max_version ||
         spec->max_version - spec->min_version >= kMaxVersionSpan ||
         spec->max_version > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -115,8 +115,8 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterOotJsonType(const ShipOotJsonTypeSpecV
             return SHIP_NATIVE_INVALID_ARGUMENT;
         }
         const uint64_t id = state.nextHandle++;
-        state.registrations.emplace(id, Registration{ type, spec->min_version, spec->max_version, spec->transcode,
-                                                      spec->user });
+        state.registrations.emplace(
+            id, Registration{ type, spec->min_version, spec->max_version, spec->transcode, spec->user });
         state.byType.emplace(std::move(type), id);
         *handle = id;
         return SHIP_NATIVE_OK;
@@ -158,8 +158,12 @@ ShipNativeStatus TranscodeOotJson(const std::string& type, const std::string& pa
     void* user = registration.user;
     xml.clear();
     struct Scope {
-        Scope() { tInTranscode = true; }
-        ~Scope() { tInTranscode = false; }
+        Scope() {
+            tInTranscode = true;
+        }
+        ~Scope() {
+            tInTranscode = false;
+        }
     } scope;
     return transcode(user, path.c_str(), version, AppendXml, &xml);
 }

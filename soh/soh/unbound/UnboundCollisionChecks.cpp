@@ -26,7 +26,8 @@ using DynaVtxStart = decltype(((BgActor*)nullptr)->vtxStartIndex);
 static_assert(std::is_same_v<PolyVertexWords, u32[3]>, "CollisionPoly vertex words are narrower than 32 bits");
 static_assert(std::is_same_v<ResourceVertexWords, PolyVertexWords>,
               "SOH::CollisionPoly does not mirror the runtime vertex words");
-static_assert(COLPOLY_VTX_INDEX_MASK == UNBOUND_COLPOLY_INDEX_MASK && COLPOLY_VIA_FLAGS_MASK == UNBOUND_COLPOLY_FLAGS_MASK &&
+static_assert(COLPOLY_VTX_INDEX_MASK == UNBOUND_COLPOLY_INDEX_MASK &&
+                  COLPOLY_VIA_FLAGS_MASK == UNBOUND_COLPOLY_FLAGS_MASK &&
                   COLPOLY_VIA_FLAGS_SHIFT == UNBOUND_COLPOLY_INDEX_BITS,
               "COLPOLY_* bit layout diverges from CollisionVertexWords.h");
 static_assert((COLPOLY_VTX_INDEX_MASK & COLPOLY_VIA_FLAGS_MASK) == 0 &&
@@ -37,7 +38,9 @@ static_assert(COLPOLY_VIB_CONVEYOR == UNBOUND_COLPOLY_CONVEYOR &&
               "Conveyor flag left the flag bits");
 
 constexpr bool MacrosMatchVertexWordHelpers() {
-    constexpr u32 words[] = { 0u, 0x1FFFu, 0x1FFFFFFFu, 0x20000000u, 0x40001234u, 0x80000000u, 0xE0000000u, 0xFFFFFFFFu };
+    constexpr u32 words[] = {
+        0u, 0x1FFFu, 0x1FFFFFFFu, 0x20000000u, 0x40001234u, 0x80000000u, 0xE0000000u, 0xFFFFFFFFu
+    };
 
     for (u32 word : words) {
         if (COLPOLY_VTX_INDEX(word) != UNBOUND_COLPOLY_VTX_INDEX(word) ||
@@ -58,7 +61,7 @@ static_assert(MacrosMatchVertexWordHelpers(), "COLPOLY_* macros diverge from the
 #define UNBOUND_SAME_OFFSET(Runtime, Resource, field) (offsetof(Runtime, field) == offsetof(Resource, field))
 
 static_assert(sizeof(CollisionPoly) == 0x1C && // dist s32 (OOT-CORE-007)
-                   sizeof(SOH::CollisionPoly) == sizeof(CollisionPoly),
+                  sizeof(SOH::CollisionPoly) == sizeof(CollisionPoly),
               "CollisionPoly layout changed or the resource mirror diverged");
 static_assert(UNBOUND_SAME_OFFSET(CollisionPoly, SOH::CollisionPoly, type) &&
                   UNBOUND_SAME_OFFSET(CollisionPoly, SOH::CollisionPoly, flags_vIA) &&

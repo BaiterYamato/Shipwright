@@ -345,7 +345,8 @@ void BossSst_Init(Actor* thisx, PlayState* play2) {
             SkelAnime_InitFlex(play, &this->skelAnime, &gBongoLeftHandSkel, &gBongoLeftHandIdleAnim, this->jointTable,
                                this->morphTable, 27);
             this->vParity = -1;
-            this->colliderJntSph.elements[0].dim.modelSphere.center.z = LinkSpan_S16F(this->colliderJntSph.elements[0].dim.modelSphere.center.z * (-1));
+            this->colliderJntSph.elements[0].dim.modelSphere.center.z =
+                LinkSpan_S16F(this->colliderJntSph.elements[0].dim.modelSphere.center.z * (-1));
         } else {
             SkelAnime_InitFlex(play, &this->skelAnime, &gBongoRightHandSkel, &gBongoRightHandIdleAnim, this->jointTable,
                                this->morphTable, 27);
@@ -2616,7 +2617,8 @@ void BossSst_UpdateHand(Actor* thisx, PlayState* play) {
             (this->colliderCyl.base.atFlags & AT_HIT)) {
             this->colliderCyl.base.atFlags &= ~(AT_ON | AT_HIT);
         } else {
-            this->colliderCyl.dim.radius = LinkSpan_S16F((this->effects[0].scale * 0.01f) * sCylinderInitHand.dim.radius);
+            this->colliderCyl.dim.radius =
+                LinkSpan_S16F((this->effects[0].scale * 0.01f) * sCylinderInitHand.dim.radius);
         }
     }
 

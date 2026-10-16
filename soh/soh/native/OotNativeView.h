@@ -27,8 +27,8 @@ struct OotViewBridge {
     void (*matrixTranslate)(float x, float y, float z) = nullptr;
     void (*matrixScale)(float x, float y, float z) = nullptr;
     void (*matrixRotateZYX)(int16_t x, int16_t y, int16_t z) = nullptr;
-    ShipNativeStatus (*emitToonKey)(uint8_t layer, int8_t dx, int8_t dy, int8_t dz,
-                                    uint8_t r, uint8_t g, uint8_t b) = nullptr;
+    ShipNativeStatus (*emitToonKey)(uint8_t layer, int8_t dx, int8_t dy, int8_t dz, uint8_t r, uint8_t g,
+                                    uint8_t b) = nullptr;
     ShipNativeStatus (*emitStencil)(uint8_t layer, uint8_t mode) = nullptr;
     ShipNativeStatus (*emitToonShadow)(uint8_t layer, int16_t feetClampY, float size) = nullptr;
     ShipNativeStatus (*flushToonShadows)(uint8_t layer) = nullptr;

@@ -497,7 +497,8 @@ Vec3s* Camera_GetCamBgDataUnderPlayer(Camera* camera, u16* dataCnt) {
 
     Actor_GetWorldPosShapeRot(&playerPosShape, &camera->player->actor);
     playerPosShape.pos.y += Player_GetHeight(camera->player);
-    if (BgCheck_EntityRaycastFloor3(&camera->play->colCtx, &floorPoly, &bgId, &playerPosShape.pos) == LINKSPAN_BGCHECK_Y_MIN) {
+    if (BgCheck_EntityRaycastFloor3(&camera->play->colCtx, &floorPoly, &bgId, &playerPosShape.pos) ==
+        LINKSPAN_BGCHECK_Y_MIN) {
         // no floor
         return NULL;
     }

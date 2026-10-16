@@ -39,8 +39,7 @@ SetSoundSettingsFactoryXML::ReadResource(std::shared_ptr<Ship::ResourceInitData>
         setSoundSettings->unboundSongPath = song;
         setSoundSettings->unboundSongSeqId = SOH::Unbound::SequenceIdForPath(song);
         if (setSoundSettings->unboundSongSeqId == 0) {
-            SPDLOG_ERROR("{}: song {} is not a loaded sequence (no mounted archive provides it)", initData->Path,
-                         song);
+            SPDLOG_ERROR("{}: song {} is not a loaded sequence (no mounted archive provides it)", initData->Path, song);
         }
     }
 

@@ -1,8 +1,8 @@
 // Adaptado de roborich/Shipwright tag 9.2.3-unbound0.9, commit cf7db7f7f9b65247347d54abea386669ce9c909f.
 // Driver genérico: nenhum parser ou caminho de documento Unbound fica no host.
-// SOH [LinkSpan actor-models] The declared-actor driver (unbound-docs/actors.md, "The driver"). Each behavior is its own function
-// taking the actor and its type, so the four ActorDB functions read as a list of steps, and so a script can later
-// call the same functions.
+// SOH [LinkSpan actor-models] The declared-actor driver (unbound-docs/actors.md, "The driver"). Each behavior is its
+// own function taking the actor and its type, so the four ActorDB functions read as a list of steps, and so a script
+// can later call the same functions.
 #include "OotNativeActorModels.h"
 #include "OotActorModelType.h"
 #include "soh/ActorDB.h"
@@ -198,7 +198,8 @@ bool LookLimbValid(const OotActorModelType& type, s32 limbCount) {
         return false;
     }
     if (type.limb < 1 || type.limb > limbCount) {
-        SPDLOG_ERROR("[LinkSpan actor-models] actor type '{}': look limb {} is not a limb of its skeleton (1-{}); the head will not "
+        SPDLOG_ERROR("[LinkSpan actor-models] actor type '{}': look limb {} is not a limb of its skeleton (1-{}); the "
+                     "head will not "
                      "turn",
                      type.name, type.limb, limbCount);
         return false;
@@ -211,7 +212,8 @@ bool LookLimbValid(const OotActorModelType& type, s32 limbCount) {
 void CheckHiddenLimbs(const OotActorModelType& type, s32 limbCount) {
     for (s32 limb : type.hideLimbs) {
         if (limb > limbCount) {
-            SPDLOG_ERROR("[LinkSpan actor-models] actor type '{}': hideLimbs entry {} is not a limb of its skeleton (1-{}); ignored",
+            SPDLOG_ERROR("[LinkSpan actor-models] actor type '{}': hideLimbs entry {} is not a limb of its skeleton "
+                         "(1-{}); ignored",
                          type.name, limb, limbCount);
         }
     }
@@ -612,7 +614,10 @@ static void DeclaredActor_Destroy(Actor* thisx, PlayState* play) {
 
 static void DeclaredActor_Update(Actor* thisx, PlayState* play) {
     DeclaredActor* self = (DeclaredActor*)thisx;
-    if (!GetModelType(self->actor.id)) { Actor_Kill(thisx); return; }
+    if (!GetModelType(self->actor.id)) {
+        Actor_Kill(thisx);
+        return;
+    }
     UpdateTalk(self, play);
     UpdateLook(self, play);
     UpdateCollision(self, play);
@@ -621,7 +626,8 @@ static void DeclaredActor_Update(Actor* thisx, PlayState* play) {
 
 static void DeclaredActor_Draw(Actor* thisx, PlayState* play) {
     DeclaredActor* self = (DeclaredActor*)thisx;
-    if (!GetModelType(self->actor.id)) return;
+    if (!GetModelType(self->actor.id))
+        return;
     DrawSegments(self, play);
     if (self->hasSkeleton) {
         DrawSkeleton(self, play);
@@ -647,51 +653,59 @@ static ActorDBInit ModelActorDBInit(const OotActorModelType& type) {
 
 namespace {
 bool TextValid(const char* text, size_t limit, bool allowEmpty = false) {
-    if (!text) return allowEmpty;
+    if (!text)
+        return allowEmpty;
     const size_t length = strnlen(text, limit + 1);
-    if ((!length && !allowEmpty) || length > limit) return false;
+    if ((!length && !allowEmpty) || length > limit)
+        return false;
     for (size_t i = 0; i < length; ++i) {
-        if (static_cast<unsigned char>(text[i]) < 32) return false;
+        if (static_cast<unsigned char>(text[i]) < 32)
+            return false;
     }
     return true;
 }
 
 std::string AssetPath(const char* path) {
-    if (!path || !*path) return {};
+    if (!path || !*path)
+        return {};
     std::string value(path);
     return value.starts_with(OotActorModelType::kOtrPrefix) ? value : OotActorModelType::kOtrPrefix + value;
 }
 
 bool ValidSpec(const ShipOotActorModelSpecV1* spec) {
-    if (!spec || spec->size < sizeof(*spec) || !TextValid(spec->owner, 128) ||
-        !TextValid(spec->name, 512) || !TextValid(spec->display_name, 512, true) ||
-        !TextValid(spec->skeleton, 1024, true) || !TextValid(spec->animation, 1024, true) ||
-        !TextValid(spec->display_list, 1024, true) || spec->segment_count > 5 ||
-        (spec->segment_count && !spec->segments) || spec->hide_limb_count > 4096 ||
+    if (!spec || spec->size < sizeof(*spec) || !TextValid(spec->owner, 128) || !TextValid(spec->name, 512) ||
+        !TextValid(spec->display_name, 512, true) || !TextValid(spec->skeleton, 1024, true) ||
+        !TextValid(spec->animation, 1024, true) || !TextValid(spec->display_list, 1024, true) ||
+        spec->segment_count > 5 || (spec->segment_count && !spec->segments) || spec->hide_limb_count > 4096 ||
         (spec->hide_limb_count && !spec->hide_limbs) || spec->hold_frame > 1 || spec->translucent > 1 ||
-        spec->talks > 1 || spec->looks > 1) return false;
+        spec->talks > 1 || spec->looks > 1)
+        return false;
     const bool skeleton = spec->skeleton && *spec->skeleton;
     const bool display = spec->display_list && *spec->display_list;
-    if (skeleton == display || (skeleton && (!spec->animation || !*spec->animation)) ||
-        (spec->looks && !skeleton) || spec->scale <= 0 || spec->talk_range < 0 || spec->look_range < 0 ||
-        spec->cull_radius < 0 || spec->draw_distance < 0 || spec->message == 0xFFFF) return false;
-    for (float value : {spec->frame, spec->speed, spec->scale, spec->y_offset, spec->shadow,
-                        spec->cull_radius, spec->draw_distance, spec->talk_range, spec->look_range,
-                        spec->look_pivot}) {
-        if (!std::isfinite(value)) return false;
+    if (skeleton == display || (skeleton && (!spec->animation || !*spec->animation)) || (spec->looks && !skeleton) ||
+        spec->scale <= 0 || spec->talk_range < 0 || spec->look_range < 0 || spec->cull_radius < 0 ||
+        spec->draw_distance < 0 || spec->message == 0xFFFF)
+        return false;
+    for (float value : { spec->frame, spec->speed, spec->scale, spec->y_offset, spec->shadow, spec->cull_radius,
+                         spec->draw_distance, spec->talk_range, spec->look_range, spec->look_pivot }) {
+        if (!std::isfinite(value))
+            return false;
     }
     for (uint32_t i = 0; i < spec->segment_count; ++i) {
         if (spec->segments[i].segment < 8 || spec->segments[i].segment > 12 ||
-            !TextValid(spec->segments[i].texture, 1024)) return false;
+            !TextValid(spec->segments[i].texture, 1024))
+            return false;
     }
     if (spec->looks) {
         float turnLength = 0, nodLength = 0;
         for (size_t i = 0; i < 3; ++i) {
-            if (!std::isfinite(spec->turn_axis[i]) || !std::isfinite(spec->nod_axis[i])) return false;
+            if (!std::isfinite(spec->turn_axis[i]) || !std::isfinite(spec->nod_axis[i]))
+                return false;
             turnLength += spec->turn_axis[i] * spec->turn_axis[i];
             nodLength += spec->nod_axis[i] * spec->nod_axis[i];
         }
-        if (std::abs(turnLength - 1.0f) > 0.001f || std::abs(nodLength - 1.0f) > 0.001f) return false;
+        if (std::abs(turnLength - 1.0f) > 0.001f || std::abs(nodLength - 1.0f) > 0.001f)
+            return false;
     }
     return true;
 }
@@ -700,7 +714,8 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterModel(const ShipOotActorModelSpecV1* s
     if (sOwnerThread != std::this_thread::get_id() || !output || !ValidSpec(spec))
         return SHIP_NATIVE_INVALID_ARGUMENT;
     *output = -1;
-    if (!ActorDB::Instance || gPlayState || sRegistryBusy) return SHIP_NATIVE_UNSUPPORTED;
+    if (!ActorDB::Instance || gPlayState || sRegistryBusy)
+        return SHIP_NATIVE_UNSUPPORTED;
     try {
         auto type = std::make_unique<OotActorModelType>();
         type->owner = spec->owner;
@@ -732,8 +747,8 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterModel(const ShipOotActorModelSpecV1* s
         type->limb = spec->look_limb;
         type->pivot = spec->look_pivot;
         type->lookRange = spec->look_range;
-        type->turnAxis = {spec->turn_axis[0], spec->turn_axis[1], spec->turn_axis[2]};
-        type->nodAxis = {spec->nod_axis[0], spec->nod_axis[1], spec->nod_axis[2]};
+        type->turnAxis = { spec->turn_axis[0], spec->turn_axis[1], spec->turn_axis[2] };
+        type->nodAxis = { spec->nod_axis[0], spec->nod_axis[1], spec->nod_axis[2] };
 
         int id = ActorDB::Instance->RetrieveId(type->name);
         if (id >= 0) {
@@ -745,8 +760,10 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterModel(const ShipOotActorModelSpecV1* s
             sChecked.erase(existing->second.get());
         } else {
             id = LINKSPAN_OOT_ACTOR_MODELS_ID_BASE;
-            while (id <= INT16_MAX && ActorDB::Instance->RetrieveEntry(id).entry.valid) ++id;
-            if (id > INT16_MAX) return SHIP_NATIVE_LIMIT;
+            while (id <= INT16_MAX && ActorDB::Instance->RetrieveEntry(id).entry.valid)
+                ++id;
+            if (id > INT16_MAX)
+                return SHIP_NATIVE_LIMIT;
         }
         ActorDBInit init = ModelActorDBInit(*type);
         init.id = id;
@@ -767,9 +784,11 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterModel(const ShipOotActorModelSpecV1* s
 ShipNativeStatus SHIP_NATIVE_CALL RemoveOwner(const char* owner) {
     if (sOwnerThread != std::this_thread::get_id() || !TextValid(owner, 128))
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    if (sRegistryBusy) return SHIP_NATIVE_UNSUPPORTED;
+    if (sRegistryBusy)
+        return SHIP_NATIVE_UNSUPPORTED;
     for (auto& [id, type] : sTypes) {
-        if (!type->active || type->owner != owner) continue;
+        if (!type->active || type->owner != owner)
+            continue;
         if (gPlayState) {
             const int category = type->talks ? ACTORCAT_NPC : ACTORCAT_PROP;
             for (Actor* actor = gPlayState->actorCtx.actorLists[category].head; actor; actor = actor->next) {
@@ -786,9 +805,18 @@ ShipNativeStatus SHIP_NATIVE_CALL RemoveOwner(const char* owner) {
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL ListTypes(ShipOotActorModelNameFn callback, void* user) {
-    if (sOwnerThread != std::this_thread::get_id() || !callback) return SHIP_NATIVE_INVALID_ARGUMENT;
-    if (!ActorDB::Instance || sRegistryBusy) return SHIP_NATIVE_UNSUPPORTED;
-    struct Scope { Scope() { sRegistryBusy = true; } ~Scope() { sRegistryBusy = false; } } scope;
+    if (sOwnerThread != std::this_thread::get_id() || !callback)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!ActorDB::Instance || sRegistryBusy)
+        return SHIP_NATIVE_UNSUPPORTED;
+    struct Scope {
+        Scope() {
+            sRegistryBusy = true;
+        }
+        ~Scope() {
+            sRegistryBusy = false;
+        }
+    } scope;
     for (int id = 0; id < ActorDB::Instance->GetEntryCount() && id <= INT16_MAX; ++id) {
         const auto& entry = ActorDB::Instance->RetrieveEntry(id).entry;
         const auto own = sTypes.find(id);
@@ -797,11 +825,18 @@ ShipNativeStatus SHIP_NATIVE_CALL ListTypes(ShipOotActorModelNameFn callback, vo
     }
     return SHIP_NATIVE_OK;
 }
-const ShipOotActorModelsV1 sService{sizeof(ShipOotActorModelsV1), RegisterModel, RemoveOwner, ListTypes};
-}
+const ShipOotActorModelsV1 sService{ sizeof(ShipOotActorModelsV1), RegisterModel, RemoveOwner, ListTypes };
+} // namespace
 
 namespace ShipLuaHost {
-void InitializeOotNativeActorModels(std::thread::id ownerThread) { sOwnerThread = ownerThread; }
-const ShipOotActorModelsV1& GetOotNativeActorModelsService() { return sService; }
-void ReleaseOotActorModelOwner(std::string_view owner) { const std::string copy(owner); RemoveOwner(copy.c_str()); }
+void InitializeOotNativeActorModels(std::thread::id ownerThread) {
+    sOwnerThread = ownerThread;
 }
+const ShipOotActorModelsV1& GetOotNativeActorModelsService() {
+    return sService;
+}
+void ReleaseOotActorModelOwner(std::string_view owner) {
+    const std::string copy(owner);
+    RemoveOwner(copy.c_str());
+}
+} // namespace ShipLuaHost

@@ -26,7 +26,7 @@ typedef struct ShipOotOcarinaV1 {
     uint16_t(SHIP_NATIVE_CALL* get_available_song_flags)(void);
     uint8_t(SHIP_NATIVE_CALL* get_song_count)(void);
     ShipNativeStatus(SHIP_NATIVE_CALL* get_song_pattern)(uint8_t song, uint8_t* notes, uint32_t capacity,
-                                                        uint32_t* output_count);
+                                                         uint32_t* output_count);
     ShipNativeStatus(SHIP_NATIVE_CALL* submit_song)(uint8_t song);
 } ShipOotOcarinaV1;
 

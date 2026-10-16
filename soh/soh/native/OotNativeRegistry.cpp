@@ -397,43 +397,48 @@ ShipNativeStatus SHIP_NATIVE_CALL ListEntries(uint64_t spaceHandle, ShipOotRegis
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL CreateSpaceOwned(const char* owner, const char* name,
-                                                   int32_t firstId, int32_t lastId, uint32_t stride,
-                                                   uint64_t* spaceHandle) {
-    if (!ValidOwner(owner)) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL CreateSpaceOwned(const char* owner, const char* name, int32_t firstId, int32_t lastId,
+                                                   uint32_t stride, uint64_t* spaceHandle) {
+    if (!ValidOwner(owner))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     try {
         std::string copiedOwner(owner);
         const auto status = CreateSpace(name, firstId, lastId, stride, spaceHandle);
-        if (status == SHIP_NATIVE_OK) FindSpace(*spaceHandle)->owner = std::move(copiedOwner);
+        if (status == SHIP_NATIVE_OK)
+            FindSpace(*spaceHandle)->owner = std::move(copiedOwner);
         return status;
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL RegisterEntryOwned(const char* owner, uint64_t spaceHandle,
-                                                     const char* name, int32_t requestedId,
-                                                     const uint8_t* payload, uint32_t payloadSize,
+ShipNativeStatus SHIP_NATIVE_CALL RegisterEntryOwned(const char* owner, uint64_t spaceHandle, const char* name,
+                                                     int32_t requestedId, const uint8_t* payload, uint32_t payloadSize,
                                                      uint64_t* entryHandle, int32_t* assignedId) {
-    if (!ValidOwner(owner)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!ValidOwner(owner))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     try {
         std::string copiedOwner(owner);
-        const auto status = RegisterEntry(spaceHandle, name, requestedId, payload, payloadSize,
-                                          entryHandle, assignedId);
-        if (status == SHIP_NATIVE_OK) FindEntry(*entryHandle)->owner = std::move(copiedOwner);
+        const auto status =
+            RegisterEntry(spaceHandle, name, requestedId, payload, payloadSize, entryHandle, assignedId);
+        if (status == SHIP_NATIVE_OK)
+            FindEntry(*entryHandle)->owner = std::move(copiedOwner);
         return status;
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL ReadEntryOwner(uint64_t entryHandle, char* output,
-                                                 uint32_t capacity, uint32_t* size) {
+ShipNativeStatus SHIP_NATIVE_CALL ReadEntryOwner(uint64_t entryHandle, char* output, uint32_t capacity,
+                                                 uint32_t* size) {
     if (!OnOwnerThread() || !entryHandle || !size || (!output && capacity))
         return SHIP_NATIVE_INVALID_ARGUMENT;
     *size = 0;
     try {
         const auto* entry = FindEntry(entryHandle);
-        if (!entry) return SHIP_NATIVE_UNSUPPORTED;
+        if (!entry)
+            return SHIP_NATIVE_UNSUPPORTED;
         *size = static_cast<uint32_t>(entry->owner.size());
-        if (capacity < *size && output) return SHIP_NATIVE_LIMIT;
-        if (output && *size) std::memcpy(output, entry->owner.data(), *size);
+        if (capacity < *size && output)
+            return SHIP_NATIVE_LIMIT;
+        if (output && *size)
+            std::memcpy(output, entry->owner.data(), *size);
         return SHIP_NATIVE_OK;
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
@@ -444,9 +449,9 @@ const ShipOotRegistryV1 registryV1{
 };
 
 const ShipOotRegistryV2 registryV2{
-    sizeof(ShipOotRegistryV2), CreateSpace, FindSpaceByName, DestroySpace, RegisterEntry,
-    UnregisterEntry, FindEntryByName, FindEntryById, ReadEntry, ListEntries,
-    CreateSpaceOwned, RegisterEntryOwned, ReadEntryOwner
+    sizeof(ShipOotRegistryV2), CreateSpace,        FindSpaceByName, DestroySpace, RegisterEntry,
+    UnregisterEntry,           FindEntryByName,    FindEntryById,   ReadEntry,    ListEntries,
+    CreateSpaceOwned,          RegisterEntryOwned, ReadEntryOwner
 };
 
 } // namespace
@@ -470,7 +475,8 @@ const ShipOotRegistryV2& GetOotNativeRegistryServiceV2() {
 }
 
 void ReleaseOotRegistryOwner(std::string_view owner) {
-    if (!OnOwnerThread() || owner.empty()) return;
+    if (!OnOwnerThread() || owner.empty())
+        return;
     auto& state = State();
     for (auto space = state.spaces.begin(); space != state.spaces.end();) {
         if (space->second.owner == owner) {

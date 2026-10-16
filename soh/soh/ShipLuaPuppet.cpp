@@ -124,9 +124,8 @@ bool ShipLuaPuppet_Attach(void* actorPtr, void* playPtr) {
     DmaMgr_SendRequest1(state->buffer.get() + kLinkObjectOffset, gObjectTable[childObjectId].vromStart, linkSize,
                         __FILE__, __LINE__);
 
-    Vec3s* jointTable =
-        reinterpret_cast<Vec3s*>(ALIGN16(reinterpret_cast<uintptr_t>(state->buffer.get()) + kLinkObjectOffset +
-                                         linkSize));
+    Vec3s* jointTable = reinterpret_cast<Vec3s*>(
+        ALIGN16(reinterpret_cast<uintptr_t>(state->buffer.get()) + kLinkObjectOffset + linkSize));
 
     // SkelAnime_InitLink resolve ponteiros via segmentos 4/6, como no pause.
     const uintptr_t previousKeep = gSegments[4];
@@ -134,8 +133,7 @@ bool ShipLuaPuppet_Attach(void* actorPtr, void* playPtr) {
     gSegments[4] = VIRTUAL_TO_PHYSICAL(state->buffer.get() + kKeepOffset);
     gSegments[6] = VIRTUAL_TO_PHYSICAL(state->buffer.get() + kLinkObjectOffset);
     SkelAnime_InitLink(play, &state->skelAnime, gPlayerSkelHeaders[1],
-                       (LinkAnimationHeader*)gPlayerAnim_link_normal_wait, 9, jointTable, jointTable,
-                       PLAYER_LIMB_MAX);
+                       (LinkAnimationHeader*)gPlayerAnim_link_normal_wait, 9, jointTable, jointTable, PLAYER_LIMB_MAX);
     gSegments[4] = previousKeep;
     gSegments[6] = previousObject;
 

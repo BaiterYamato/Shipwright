@@ -33,12 +33,10 @@ struct NativeAsset {
 };
 
 constexpr std::array<NativeAsset, 3> kNativeAssets = {
-    NativeAsset{ "oot.player.sword.kokiri",
-                 "__OTR__objects/object_link_child/gLinkChildLeftFistAndKokiriSwordNearDL" },
+    NativeAsset{ "oot.player.sword.kokiri", "__OTR__objects/object_link_child/gLinkChildLeftFistAndKokiriSwordNearDL" },
     NativeAsset{ "oot.player.sword.master",
                  "__OTR__objects/object_link_boy/gLinkAdultLeftHandHoldingMasterSwordNearDL" },
-    NativeAsset{ "oot.player.sword.biggoron",
-                 "__OTR__objects/object_gi_longsword/gGiBiggoronSwordDL" },
+    NativeAsset{ "oot.player.sword.biggoron", "__OTR__objects/object_gi_longsword/gGiBiggoronSwordDL" },
 };
 
 ShipLua::WorldAssetCatalog ProbeNativeAssets() {
@@ -52,9 +50,9 @@ ShipLua::WorldAssetCatalog ProbeNativeAssets() {
         bool bundleLoaded = false;
         if (archiveManager != nullptr && archiveManager->HasFile(native.resourcePath)) {
             const auto archive = archiveManager->GetArchiveFromFile(native.resourcePath);
-            archiveValidated = archive != nullptr && archive->IsLoaded() &&
-                               (!archive->HasGameVersion() ||
-                                archiveManager->IsGameVersionValid(archive->GetGameVersion()));
+            archiveValidated =
+                archive != nullptr && archive->IsLoaded() &&
+                (!archive->HasGameVersion() || archiveManager->IsGameVersionValid(archive->GetGameVersion()));
             if (archiveValidated) {
                 bundleLoaded = resourceManager->LoadResource(native.resourcePath) != nullptr;
             }
@@ -71,8 +69,7 @@ ShipLua::WorldAssetCatalog ProbeNativeAssets() {
         };
         const auto recorded = assets.RecordProbe(probe);
         if (!recorded.isOk()) {
-            SPDLOG_WARN("ShipLua não validou o asset OoT {}: {}", native.logicalId,
-                        recorded.message);
+            SPDLOG_WARN("ShipLua não validou o asset OoT {}: {}", native.logicalId, recorded.message);
         }
     }
     return assets;
@@ -88,28 +85,24 @@ PortableItem MakeItem(std::string id, std::uint32_t quantity = 1) {
     return item;
 }
 
-void AddSlotItem(PortablePlayerState& state, std::uint8_t slot, std::uint8_t expected,
-                 const char* canonicalId, bool hasAmmo) {
+void AddSlotItem(PortablePlayerState& state, std::uint8_t slot, std::uint8_t expected, const char* canonicalId,
+                 bool hasAmmo) {
     if (gSaveContext.inventory.items[slot] != expected) {
         return;
     }
-    const std::uint32_t quantity = hasAmmo
-                                       ? static_cast<std::uint32_t>(
-                                             std::max<std::int32_t>(0, gSaveContext.inventory.ammo[slot]))
-                                       : 1;
+    const std::uint32_t quantity =
+        hasAmmo ? static_cast<std::uint32_t>(std::max<std::int32_t>(0, gSaveContext.inventory.ammo[slot])) : 1;
     state.items.push_back(MakeItem(canonicalId, quantity));
 }
 
-void AddSword(PortablePlayerState& state, std::uint8_t equipValue, const char* canonicalId,
-              const char* assetId) {
+void AddSword(PortablePlayerState& state, std::uint8_t equipValue, const char* canonicalId, const char* assetId) {
     const std::uint16_t ownedFlag = static_cast<std::uint16_t>(1U << (equipValue - 1));
     if ((gSaveContext.inventory.equipment & ownedFlag) == 0) {
         return;
     }
     PortableItem item = MakeItem(canonicalId);
-    item.equipped =
-        ((gSaveContext.equips.equipment & gEquipMasks[EQUIP_TYPE_SWORD]) >>
-         gEquipShifts[EQUIP_TYPE_SWORD]) == equipValue;
+    item.equipped = ((gSaveContext.equips.equipment & gEquipMasks[EQUIP_TYPE_SWORD]) >>
+                     gEquipShifts[EQUIP_TYPE_SWORD]) == equipValue;
     item.visualAsset = AssetReference{ WorldId::Oot, assetId };
     state.items.push_back(std::move(item));
 }
@@ -138,15 +131,13 @@ void ApplyItem(const OotWorldAdapter::PendingItem& pending) {
     const PortableItem& item = pending.source;
     const std::uint8_t quantity = static_cast<std::uint8_t>(std::min<std::uint32_t>(item.quantity, 99));
     if (pending.targetId == "shared.bow") {
-        if (((gSaveContext.inventory.upgrades & gUpgradeMasks[UPG_QUIVER]) >>
-             gUpgradeShifts[UPG_QUIVER]) == 0) {
+        if (((gSaveContext.inventory.upgrades & gUpgradeMasks[UPG_QUIVER]) >> gUpgradeShifts[UPG_QUIVER]) == 0) {
             Inventory_ChangeUpgrade(UPG_QUIVER, 1);
         }
         gSaveContext.inventory.items[SLOT_BOW] = ITEM_BOW;
         gSaveContext.inventory.ammo[SLOT_BOW] = quantity;
     } else if (pending.targetId == "shared.bombs") {
-        if (((gSaveContext.inventory.upgrades & gUpgradeMasks[UPG_BOMB_BAG]) >>
-             gUpgradeShifts[UPG_BOMB_BAG]) == 0) {
+        if (((gSaveContext.inventory.upgrades & gUpgradeMasks[UPG_BOMB_BAG]) >> gUpgradeShifts[UPG_BOMB_BAG]) == 0) {
             Inventory_ChangeUpgrade(UPG_BOMB_BAG, 1);
         }
         gSaveContext.inventory.items[SLOT_BOMB] = ITEM_BOMB;
@@ -170,7 +161,8 @@ void ApplyItem(const OotWorldAdapter::PendingItem& pending) {
 } // namespace
 
 OotWorldAdapter::OotWorldAdapter(ShipLua::PortableItemCatalog catalog)
-    : mCatalog(std::move(catalog)), mAssets(ProbeNativeAssets()) {}
+    : mCatalog(std::move(catalog)), mAssets(ProbeNativeAssets()) {
+}
 
 WorldId OotWorldAdapter::Id() const noexcept {
     return WorldId::Oot;
@@ -178,13 +170,11 @@ WorldId OotWorldAdapter::Id() const noexcept {
 
 Result<PortablePlayerState> OotWorldAdapter::CapturePlayerState() {
     if (gSaveContext.fileNum == 0xFF) {
-        return Result<PortablePlayerState>::err(ErrorCode::InvalidState,
-                                                "nenhum save OoT está carregado");
+        return Result<PortablePlayerState>::err(ErrorCode::InvalidState, "nenhum save OoT está carregado");
     }
     PortablePlayerState state;
     state.health = static_cast<std::uint16_t>(std::max<std::int32_t>(0, gSaveContext.health));
-    state.healthCapacity =
-        static_cast<std::uint16_t>(std::max<std::int32_t>(0, gSaveContext.healthCapacity));
+    state.healthCapacity = static_cast<std::uint16_t>(std::max<std::int32_t>(0, gSaveContext.healthCapacity));
     state.rupees = static_cast<std::uint32_t>(std::max<std::int32_t>(0, gSaveContext.rupees));
 
     AddSlotItem(state, SLOT_BOW, ITEM_BOW, "shared.bow", true);
@@ -213,12 +203,11 @@ bool OotWorldAdapter::CanResolveAsset(const AssetReference& asset) const noexcep
     return mAssets.CanResolve(asset, WorldId::Oot);
 }
 
-Result<ShipLua::WorldImportPreview> OotWorldAdapter::PrepareImport(
-    const PortablePlayerState& state, const ShipLua::WorldDestination& destination) {
+Result<ShipLua::WorldImportPreview> OotWorldAdapter::PrepareImport(const PortablePlayerState& state,
+                                                                   const ShipLua::WorldDestination& destination) {
     AbortImport();
     if (destination.world != WorldId::Oot || !ResolveEntrance(destination.id).has_value()) {
-        return Result<ShipLua::WorldImportPreview>::err(ErrorCode::Unsupported,
-                                                        "destino OoT desconhecido");
+        return Result<ShipLua::WorldImportPreview>::err(ErrorCode::Unsupported, "destino OoT desconhecido");
     }
     const Result<void> stateValid = ShipLua::ValidatePortablePlayerState(state);
     if (!stateValid.isOk()) {
@@ -245,10 +234,9 @@ Result<ShipLua::WorldImportPreview> OotWorldAdapter::PrepareImport(
         if (resolution.value->translated) {
             preview.translatedItemIds.push_back(item.id);
         }
-        if (item.equipped && resolution.value->targetId.rfind("oot.sword.", 0) == 0 &&
-            ++equippedSwordCount > 1) {
-            return Result<ShipLua::WorldImportPreview>::err(
-                ErrorCode::InvalidArgument, "estado portátil possui mais de uma espada equipada");
+        if (item.equipped && resolution.value->targetId.rfind("oot.sword.", 0) == 0 && ++equippedSwordCount > 1) {
+            return Result<ShipLua::WorldImportPreview>::err(ErrorCode::InvalidArgument,
+                                                            "estado portátil possui mais de uma espada equipada");
         }
         pending.items.push_back({ item, resolution.value->targetId });
     }
@@ -266,8 +254,7 @@ Result<void> OotWorldAdapter::CommitImport() {
     }
 
     gSaveContext.healthCapacity = static_cast<std::int16_t>(mPending->state.healthCapacity);
-    gSaveContext.health = static_cast<std::int16_t>(
-        std::min(mPending->state.health, mPending->state.healthCapacity));
+    gSaveContext.health = static_cast<std::int16_t>(std::min(mPending->state.health, mPending->state.healthCapacity));
     gSaveContext.rupees = static_cast<std::int16_t>(std::min<std::uint32_t>(mPending->state.rupees, 9999));
 
     for (const std::uint8_t slot : { SLOT_BOW, SLOT_BOMB, SLOT_BOMBCHU, SLOT_HOOKSHOT, SLOT_OCARINA }) {

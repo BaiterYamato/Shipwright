@@ -15,12 +15,12 @@ using namespace LinkSpanUnbound;
 
 int gFailures = 0;
 
-#define CHECK(expr)                                                                  \
-    do {                                                                             \
-        if (!(expr)) {                                                               \
-            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr);  \
-            ++gFailures;                                                             \
-        }                                                                            \
+#define CHECK(expr)                                                                 \
+    do {                                                                            \
+        if (!(expr)) {                                                              \
+            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr); \
+            ++gFailures;                                                            \
+        }                                                                           \
     } while (0)
 
 bool Contains(const std::string& text, const std::string& part) {
@@ -65,8 +65,7 @@ void TestValues() {
 void TestMerge() {
     // Objetos mesclam por chave; arrays trocam inteiros; null apaga; comentário é aceito.
     auto m = Merge({ R"({"$schema":"unbound/room/1","a":{"x":1,"y":2},"list":[1,2,3]})",
-                     R"({/* comentario */ "a":{"y":5,"z":6},"list":[9], "gone":null})",
-                     R"({"a":{"x":null}} // fim)" });
+                     R"({/* comentario */ "a":{"y":5,"z":6},"list":[9], "gone":null})", R"({"a":{"x":null}} // fim)" });
     CHECK(m.layersUsed == 3 && m.schema == "unbound/room/1" && m.type == "unbound/room" && m.version == 1);
     CHECK(m.doc["a"] == Json::parse(R"({"y":5,"z":6})"));
     CHECK(m.doc["list"] == Json::parse("[9]"));
@@ -91,8 +90,7 @@ void TestMerge() {
     CHECK(m.layersUsed == 1);
 
     // O $schema de topo em string da camada mais alta vence; não string não conta.
-    m = Merge({ R"({"$schema":"unbound/collision/2"})", R"({"$schema":"unbound/collision/3"})",
-                R"({"$schema":5})" });
+    m = Merge({ R"({"$schema":"unbound/collision/2"})", R"({"$schema":"unbound/collision/3"})", R"({"$schema":5})" });
     CHECK(m.schema == "unbound/collision/3" && m.version == 3);
     m = Merge({ R"({"k":1})" });
     CHECK(m.schema.empty());
@@ -217,11 +215,11 @@ void TestScene() {
     }
     {
         TranscodeContext returns = Context();
-        const std::string text = TranscodeScene(
-            Json::parse(R"({"setups":{"0":{"exits":{"0":1555,"1":32767,"2":"ENTR_RETURN_GROTTO",
+        const std::string text =
+            TranscodeScene(Json::parse(R"({"setups":{"0":{"exits":{"0":1555,"1":32767,"2":"ENTR_RETURN_GROTTO",
                                                    "3":"ENTR_RETURN_YOUSEI_IZUMI_YOKO","4":32761,
                                                    "5":"0x7FF9"}}}})"),
-            false, returns);
+                           false, returns);
         CHECK(Contains(text, "<ExitEntry Id=\"1555\"/><ExitEntry Id=\"32767\"/><ExitEntry Id=\"32767\"/>"
                              "<ExitEntry Id=\"32761\"/><ExitEntry Id=\"32761\"/><ExitEntry Id=\"32761\"/>"));
         CHECK(returns.notes.empty());
@@ -238,11 +236,10 @@ void TestScene() {
     }
     {
         TranscodeContext sound = Context();
-        const std::string text = TranscodeScene(
-            Json::parse(R"({"setups":{"0":{"sound":{"seq":109,"natureAmbience":19}},
+        const std::string text = TranscodeScene(Json::parse(R"({"setups":{"0":{"sound":{"seq":109,"natureAmbience":19}},
                                          "1":{"sound":{"seq":127,"natureAmbience":0,"song":"custom/music/X"}},
                                          "2":{"sound":{"seq":-1,"natureAmbience":20}}}})"),
-            false, sound);
+                                                false, sound);
         CHECK(Contains(text, "NatureAmbienceId=\"19\" SeqId=\"109\""));
         CHECK(Contains(text, "NatureAmbienceId=\"0\" SeqId=\"127\" Song=\"custom/music/X\""));
         CHECK(sound.notes.size() == 3 && Contains(sound.notes[0], "song custom/music/X") &&
@@ -252,8 +249,8 @@ void TestScene() {
     {
         TranscodeContext sound = Context();
         const std::string text = TranscodeScene(
-            Json::parse(R"({"setups":{"0":{"sound":{"seq":"255","natureAmbience":"20"}},"1":{"sound":{}}}})"),
-            false, sound);
+            Json::parse(R"({"setups":{"0":{"sound":{"seq":"255","natureAmbience":"20"}},"1":{"sound":{}}}})"), false,
+            sound);
         CHECK(Contains(text, "<SetSoundSettings Reverb=\"0\" NatureAmbienceId=\"19\" SeqId=\"127\"/>"));
         CHECK(Contains(text, "<SetSoundSettings Reverb=\"0\" NatureAmbienceId=\"0\" SeqId=\"0\"/>"));
         CHECK(sound.notes.size() == 2 && Contains(sound.notes[0], "seq 255") &&
@@ -294,8 +291,9 @@ void TestRoom() {
     const Json background = Json::parse(R"({"setups":{"0":{"mesh":{"type":1,"format":2,"opa":"dl/bg",
         "images":{"0":{"source":"tex/bg0","width":320,"height":240,"id":1},"1":{"source":"tex/bg1"}}}}}})");
     const std::string bg = TranscodeScene(background, true, context);
-    CHECK(Contains(bg, "<Polygon PolyType=\"1\" Format=\"2\" BgImageCount=\"2\" MeshOpa=\"dl/bg\" MeshXlu=\"\"><BgImage "
-                       "Unknown_00=\"0\" Id=\"1\" ImagePath=\"tex/bg0\""));
+    CHECK(Contains(bg,
+                   "<Polygon PolyType=\"1\" Format=\"2\" BgImageCount=\"2\" MeshOpa=\"dl/bg\" MeshXlu=\"\"><BgImage "
+                   "Unknown_00=\"0\" Id=\"1\" ImagePath=\"tex/bg0\""));
 }
 
 void TestCollision() {
@@ -318,8 +316,9 @@ void TestCollision() {
     CHECK(Contains(xml, "CanHookshot=\"1\""));
     CHECK(Contains(xml, "<CameraData SType=\"1\" NumData=\"3\" CameraPosDataSeg=\"1\"/><CameraData SType=\"2\" "
                         "NumData=\"0\" CameraPosDataSeg=\"-1\"/>"));
-    CHECK(Contains(xml, "<CameraPositionData PosX=\"1\" PosY=\"2\" PosZ=\"3\" RotX=\"4\" RotY=\"5\" RotZ=\"6\" FOV=\"7\" "
-                        "JfifID=\"8\" Unknown=\"9\"/><CameraPositionData PosX=\"10\" PosY=\"11\" PosZ=\"12\" RotX=\"0\""));
+    CHECK(Contains(xml,
+                   "<CameraPositionData PosX=\"1\" PosY=\"2\" PosZ=\"3\" RotX=\"4\" RotY=\"5\" RotZ=\"6\" FOV=\"7\" "
+                   "JfifID=\"8\" Unknown=\"9\"/><CameraPositionData PosX=\"10\" PosY=\"11\" PosZ=\"12\" RotX=\"0\""));
     CHECK(Contains(xml, "<WaterBox XMin=\"-70000\" Ysurface=\"10\" ZMin=\"0\" XLength=\"140000\" ZLength=\"50\" "
                         "Camera=\"0\" LightSetting=\"200\" Room=\"-1\" NotSwimmable=\"1\"/>"));
     CHECK(Rejects([&] { TranscodeCollision(Json::parse(R"({"bulk":{}})"), context); }));
@@ -355,8 +354,8 @@ void TestManifest() {
     CHECK(!CheckManifest(R"({"baseVersion":0,"features":["scenes"]})").valid);
     CHECK(!CheckManifest(R"({"baseVersion":"1","features":["scenes"]})").valid);
     CHECK(!CheckManifest(R"({"baseVersion":null,"features":["scenes"]})").valid);
-    for (const char* json : { R"({"baseVersion":2,"features":["text"]})",
-                             R"({"baseVersion":"futuro","features":["text"]})" }) {
+    for (const char* json :
+         { R"({"baseVersion":2,"features":["text"]})", R"({"baseVersion":"futuro","features":["text"]})" }) {
         const auto mod = CheckManifest(json);
         CHECK(mod.valid && !mod.base && mod.note.empty());
     }
@@ -395,8 +394,8 @@ void TestText() {
     CHECK(table.notes.size() == 3); // 65535, texto solto e sem "text"
 
     // $replace esvazia a tabela do jogo; remoções de baixo deixam de valer.
-    const TextTable replaced2 = Text({ R"({"messages":{"0x0071":null}})",
-                                       R"({"messages":{"$replace":true,"1":{"text":"um"}}})" });
+    const TextTable replaced2 =
+        Text({ R"({"messages":{"0x0071":null}})", R"({"messages":{"$replace":true,"1":{"text":"um"}}})" });
     CHECK(replaced2.replaceTable && replaced2.removed.empty() && replaced2.messages.size() == 1);
 
     // Mensagem longa é truncada em 8191 bytes (+ 0x02 do jogo).

@@ -75,9 +75,8 @@ std::string Sha256(const std::filesystem::path& path) {
 }
 
 std::string Lower(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-        return static_cast<char>(c == '/' ? '\\' : std::tolower(c));
-    });
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(c == '/' ? '\\' : std::tolower(c)); });
     return text;
 }
 
@@ -102,11 +101,10 @@ std::string Compiland(HANDLE process, DWORD64 base, ULONG index) {
     }
     const std::wstring wide(name);
     LocalFree(name);
-    const int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0,
-                                         nullptr, nullptr);
+    const int size =
+        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
     std::string text(static_cast<size_t>(size), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), text.data(), size, nullptr,
-                        nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), text.data(), size, nullptr, nullptr);
     return text;
 }
 
@@ -121,8 +119,8 @@ BOOL CALLBACK Collect(PSYMBOL_INFO symbol, ULONG, PVOID user) {
     }
     if (symbol->Tag == 7) {
         // Só variáveis com endereço fixo no módulo; locais e parâmetros têm registrador ou frame.
-        if (symbol->Flags & (SYMFLAG_REGREL | SYMFLAG_REGISTER | SYMFLAG_FRAMEREL | SYMFLAG_PARAMETER |
-                             SYMFLAG_LOCAL | SYMFLAG_CONSTANT | SYMFLAG_TLSREL)) {
+        if (symbol->Flags & (SYMFLAG_REGREL | SYMFLAG_REGISTER | SYMFLAG_FRAMEREL | SYMFLAG_PARAMETER | SYMFLAG_LOCAL |
+                             SYMFLAG_CONSTANT | SYMFLAG_TLSREL)) {
             return TRUE;
         }
         // Com /GL (LTCG) a compiland de uma variável do jogo e do libultraship é "* CIL *" (estática) ou
@@ -133,9 +131,9 @@ BOOL CALLBACK Collect(PSYMBOL_INFO symbol, ULONG, PVOID user) {
         const std::string compiland = Compiland(context.process, context.base, symbol->Index);
         const auto source = context.dataSources.find(Lower(compiland));
         if (compiland == "* CIL *" || compiland == "* Linker *") {
-            context.entries.push_back({symbol->Address - context.base, "[data]", name});
+            context.entries.push_back({ symbol->Address - context.base, "[data]", name });
         } else if (source != context.dataSources.end()) {
-            context.entries.push_back({symbol->Address - context.base, "[data]" + source->second, name});
+            context.entries.push_back({ symbol->Address - context.base, "[data]" + source->second, name });
         }
         return TRUE;
     }
@@ -147,7 +145,7 @@ BOOL CALLBACK Collect(PSYMBOL_INFO symbol, ULONG, PVOID user) {
         return TRUE;
     }
     const std::string file = std::filesystem::path(line.FileName).filename().string();
-    context.entries.push_back({symbol->Address - context.base, file, name});
+    context.entries.push_back({ symbol->Address - context.base, file, name });
     // A compiland de uma função do jogo vale para as variáveis dela, que não têm linha de fonte. Funções
     // inline de header também apontam para a compiland; o nome certo é o do .c/.cpp.
     const std::string extension = Lower(std::filesystem::path(file).extension().string());
@@ -171,7 +169,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "não foi possível ler %s\n", exe.string().c_str());
         return 1;
     }
-    Context context{GetCurrentProcess(), 0, {}, {}};
+    Context context{ GetCurrentProcess(), 0, {}, {} };
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_LOAD_LINES | SYMOPT_EXACT_SYMBOLS | SYMOPT_FAIL_CRITICAL_ERRORS);
     if (!SymInitialize(context.process, exe.parent_path().string().c_str(), FALSE)) {
         std::fprintf(stderr, "SymInitialize falhou: %lu\n", GetLastError());
@@ -208,12 +206,13 @@ int main(int argc, char** argv) {
     const auto temporary = output.string() + ".tmp";
     {
         std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-        out << "linkspan-symbols 1\n" << "sha256 " << fingerprint << "\n";
+        out << "linkspan-symbols 1\n"
+            << "sha256 " << fingerprint << "\n";
         char rva[32];
         for (const auto& entry : context.entries) {
             std::snprintf(rva, sizeof(rva), "%llx", static_cast<unsigned long long>(entry.rva));
-            out << rva << '\t' << (perRva[entry.rva] > 1 ? "folded" : "-") << '\t' << entry.file << '\t'
-                << entry.name << '\n';
+            out << rva << '\t' << (perRva[entry.rva] > 1 ? "folded" : "-") << '\t' << entry.file << '\t' << entry.name
+                << '\n';
         }
         if (!out) {
             std::fprintf(stderr, "falha ao gravar %s\n", temporary.c_str());

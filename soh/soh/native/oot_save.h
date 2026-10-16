@@ -32,17 +32,16 @@
  * get_slot: arquivo carregado (0 a 2) ou -1. */
 typedef struct ShipOotSaveV1 {
     uint32_t size;
-    ShipNativeStatus (SHIP_NATIVE_CALL *open_namespace)(const char* name, uint32_t version, uint64_t* handle);
-    ShipNativeStatus (SHIP_NATIVE_CALL *read)(uint64_t handle, char* output, uint32_t capacity,
-                                              uint32_t* output_size);
-    ShipNativeStatus (SHIP_NATIVE_CALL *write)(uint64_t handle, const char* json, uint32_t length);
-    ShipNativeStatus (SHIP_NATIVE_CALL *erase)(uint64_t handle);
-    ShipNativeStatus (SHIP_NATIVE_CALL *get_stored_version)(uint64_t handle, uint32_t* version);
-    ShipNativeStatus (SHIP_NATIVE_CALL *set_required)(uint64_t handle, uint8_t required);
-    ShipNativeStatus (SHIP_NATIVE_CALL *begin)(uint64_t handle);
-    ShipNativeStatus (SHIP_NATIVE_CALL *commit)(uint64_t handle);
-    ShipNativeStatus (SHIP_NATIVE_CALL *rollback)(uint64_t handle);
-    int32_t (SHIP_NATIVE_CALL *get_slot)(void);
+    ShipNativeStatus(SHIP_NATIVE_CALL* open_namespace)(const char* name, uint32_t version, uint64_t* handle);
+    ShipNativeStatus(SHIP_NATIVE_CALL* read)(uint64_t handle, char* output, uint32_t capacity, uint32_t* output_size);
+    ShipNativeStatus(SHIP_NATIVE_CALL* write)(uint64_t handle, const char* json, uint32_t length);
+    ShipNativeStatus(SHIP_NATIVE_CALL* erase)(uint64_t handle);
+    ShipNativeStatus(SHIP_NATIVE_CALL* get_stored_version)(uint64_t handle, uint32_t* version);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_required)(uint64_t handle, uint8_t required);
+    ShipNativeStatus(SHIP_NATIVE_CALL* begin)(uint64_t handle);
+    ShipNativeStatus(SHIP_NATIVE_CALL* commit)(uint64_t handle);
+    ShipNativeStatus(SHIP_NATIVE_CALL* rollback)(uint64_t handle);
+    int32_t(SHIP_NATIVE_CALL* get_slot)(void);
 } ShipOotSaveV1;
 
 #endif

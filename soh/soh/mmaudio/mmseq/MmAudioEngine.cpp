@@ -20,8 +20,8 @@ using namespace mmsfx;
 // A sequência 0 do MM é a de efeitos sonoros — é por ela que todo SFX do jogo
 // passa. O player 0 é quem a executa.
 constexpr s32 kSfxSeqPlayer = 0;
-constexpr s32 kNumNotes = 32;         // simultaneidade; o MM usa mais, mas SFX cabe nisto
-constexpr s32 kUpdatesPerFrame = 4;   // divisões do tick de áudio por frame de vídeo
+constexpr s32 kNumNotes = 32;       // simultaneidade; o MM usa mais, mas SFX cabe nisto
+constexpr s32 kUpdatesPerFrame = 4; // divisões do tick de áudio por frame de vídeo
 constexpr s32 kOutputRate = 32000;
 constexpr s32 kNumFonts = 41; // audio/fonts/ do mm.o2r
 
@@ -194,10 +194,8 @@ bool AllocateContext() {
     gAudioCtx.audioBufferParameters.updatesPerFrame = kUpdatesPerFrame;
     // 32000 / 60 fps / 4 updates = ~133 amostras por update.
     gAudioCtx.audioBufferParameters.numSamplesPerUpdate = kOutputRate / 60 / kUpdatesPerFrame;
-    gAudioCtx.audioBufferParameters.numSamplesPerUpdateMax =
-        gAudioCtx.audioBufferParameters.numSamplesPerUpdate + 8;
-    gAudioCtx.audioBufferParameters.numSamplesPerUpdateMin =
-        gAudioCtx.audioBufferParameters.numSamplesPerUpdate - 8;
+    gAudioCtx.audioBufferParameters.numSamplesPerUpdateMax = gAudioCtx.audioBufferParameters.numSamplesPerUpdate + 8;
+    gAudioCtx.audioBufferParameters.numSamplesPerUpdateMin = gAudioCtx.audioBufferParameters.numSamplesPerUpdate - 8;
     gAudioCtx.audioBufferParameters.updatesPerFrameInv = 1.0f / kUpdatesPerFrame;
     gAudioCtx.audioBufferParameters.updatesPerFrameInvScaled = (1.0f / kUpdatesPerFrame) / 256.0f;
     gAudioCtx.audioBufferParameters.updatesPerFrameScaled = kUpdatesPerFrame / 4.0f;
@@ -264,8 +262,12 @@ void MmSeq_NoteBadWave(int waveId) {
 }
 
 void MmSeq_GetBadWave(int* count, int* last) {
-    if (count != nullptr) { *count = (int)gBadWaveCount; }
-    if (last != nullptr) { *last = (int)gBadWaveLast; }
+    if (count != nullptr) {
+        *count = (int)gBadWaveCount;
+    }
+    if (last != nullptr) {
+        *last = (int)gBadWaveLast;
+    }
 }
 
 bool MmSeq_IsReady() {
@@ -277,16 +279,30 @@ bool MmSeq_PcEscaped() {
 }
 
 void MmSeq_GetChannel0(int* pc, int* delay, int* io0, int* io1) {
-    if (pc != nullptr) { *pc = (int)gCh0Pc; }
-    if (delay != nullptr) { *delay = (int)gCh0Delay; }
-    if (io0 != nullptr) { *io0 = (int)gCh0Io0; }
-    if (io1 != nullptr) { *io1 = (int)gCh0Io1; }
+    if (pc != nullptr) {
+        *pc = (int)gCh0Pc;
+    }
+    if (delay != nullptr) {
+        *delay = (int)gCh0Delay;
+    }
+    if (io0 != nullptr) {
+        *io0 = (int)gCh0Io0;
+    }
+    if (io1 != nullptr) {
+        *io1 = (int)gCh0Io1;
+    }
 }
 
 void MmSeq_GetScriptStats(int* channelsOn, int* playerAlive, int* pcOffset) {
-    if (channelsOn != nullptr) { *channelsOn = (int)gChannelsOn; }
-    if (playerAlive != nullptr) { *playerAlive = (int)gPlayerAlive; }
-    if (pcOffset != nullptr) { *pcOffset = (int)gPcOffset; }
+    if (channelsOn != nullptr) {
+        *channelsOn = (int)gChannelsOn;
+    }
+    if (playerAlive != nullptr) {
+        *playerAlive = (int)gPlayerAlive;
+    }
+    if (pcOffset != nullptr) {
+        *pcOffset = (int)gPcOffset;
+    }
 }
 
 void MmSeq_GetRenderStats(int* peakNotes, int* renderedSamples) {

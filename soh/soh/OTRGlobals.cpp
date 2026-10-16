@@ -1752,8 +1752,8 @@ extern "C" void Graph_StartFrame() {
                 case SaveStateReturn::FAIL_NO_MEMORY:
                     try {
                         SPDLOG_ERROR("[SOH] Save request for slot {} refused: out of memory", slot);
-                        gui->GetGameOverlay()->TextDrawNotification(
-                            1.0f, true, "savestate request refused: out of memory");
+                        gui->GetGameOverlay()->TextDrawNotification(1.0f, true,
+                                                                    "savestate request refused: out of memory");
                     } catch (const std::bad_alloc&) {
                         // Reporting is best effort while memory is exhausted.
                     }
@@ -1801,8 +1801,8 @@ extern "C" void Graph_StartFrame() {
                 case SaveStateReturn::FAIL_NO_MEMORY:
                     try {
                         SPDLOG_ERROR("[SOH] Load request for slot {} refused: out of memory", slot);
-                        gui->GetGameOverlay()->TextDrawNotification(
-                            1.0f, true, "savestate request refused: out of memory");
+                        gui->GetGameOverlay()->TextDrawNotification(1.0f, true,
+                                                                    "savestate request refused: out of memory");
                     } catch (const std::bad_alloc&) {
                         // Reporting is best effort while memory is exhausted.
                     }

@@ -88,13 +88,11 @@ ShipNativeStatus SHIP_NATIVE_CALL OpenNamespace(const char* name, uint32_t versi
             return SHIP_NATIVE_OK;
         }
         const auto id = state.nextHandle++;
-        state.handles.emplace(id, Opened{name, version});
+        state.handles.emplace(id, Opened{ name, version });
         state.handlesByName.emplace(name, id);
         *handle = id;
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Read(uint64_t handle, char* output, uint32_t capacity, uint32_t* outputSize) {
@@ -126,9 +124,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Read(uint64_t handle, char* output, uint32_t c
         }
         std::memcpy(output, text.data(), text.size());
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Write(uint64_t handle, const char* json, uint32_t length) {
@@ -154,9 +150,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Write(uint64_t handle, const char* json, uint3
         block.storedVersion = opened->version;
         block.hasData = true;
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Erase(uint64_t handle) {
@@ -206,9 +200,7 @@ ShipNativeStatus SHIP_NATIVE_CALL SetRequired(uint64_t handle, uint8_t required)
     try {
         state.blocks[opened->name].required = required != 0;
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Begin(uint64_t handle) {
@@ -228,9 +220,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Begin(uint64_t handle) {
         const auto block = state.blocks.find(opened->name);
         state.transactions.emplace(opened->name, block == state.blocks.end() ? Block{} : block->second);
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus EndTransaction(uint64_t handle, bool keep) {
@@ -253,9 +243,7 @@ ShipNativeStatus EndTransaction(uint64_t handle, bool keep) {
         }
         state.transactions.erase(transaction);
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Commit(uint64_t handle) {
@@ -272,8 +260,8 @@ int32_t SHIP_NATIVE_CALL GetSlot() {
     return state.slot;
 }
 
-const ShipOotSaveV1 kService{sizeof(ShipOotSaveV1), OpenNamespace, Read,   Write,    Erase, GetStoredVersion,
-                             SetRequired,           Begin,         Commit, Rollback, GetSlot};
+const ShipOotSaveV1 kService{ sizeof(ShipOotSaveV1), OpenNamespace, Read,   Write,    Erase,  GetStoredVersion,
+                              SetRequired,           Begin,         Commit, Rollback, GetSlot };
 
 } // namespace
 

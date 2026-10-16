@@ -114,13 +114,12 @@ typedef struct ShipOotScenesV2 {
     ShipNativeStatus(SHIP_NATIVE_CALL* find_scene)(const char* name, int32_t* scene_id);
     ShipNativeStatus(SHIP_NATIVE_CALL* find_entrance)(const char* name, int32_t* entrance_index);
     ShipNativeStatus(SHIP_NATIVE_CALL* travel_to_entrance)(int32_t entrance_index);
-    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v2)(const ShipOotSceneDefinitionV2* scene,
-                                                          uint64_t* scene_handle, int32_t* scene_id);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v2)(const ShipOotSceneDefinitionV2* scene, uint64_t* scene_handle,
+                                                          int32_t* scene_id);
     int32_t(SHIP_NATIVE_CALL* get_scene_count)(void);
     ShipNativeStatus(SHIP_NATIVE_CALL* get_scene_info)(int32_t scene_id, uint8_t master_quest,
                                                        ShipOotSceneInfoV1* info);
-    ShipNativeStatus(SHIP_NATIVE_CALL* override_scene)(int32_t scene_id, uint8_t master_quest,
-                                                       const char* scene_path);
+    ShipNativeStatus(SHIP_NATIVE_CALL* override_scene)(int32_t scene_id, uint8_t master_quest, const char* scene_path);
 } ShipOotScenesV2;
 
 #define LINKSPAN_OOT_SCENES_VERSION_3 3u
@@ -157,15 +156,14 @@ typedef struct ShipOotScenesV3 {
     ShipNativeStatus(SHIP_NATIVE_CALL* find_scene)(const char* name, int32_t* scene_id);
     ShipNativeStatus(SHIP_NATIVE_CALL* find_entrance)(const char* name, int32_t* entrance_index);
     ShipNativeStatus(SHIP_NATIVE_CALL* travel_to_entrance)(int32_t entrance_index);
-    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v2)(const ShipOotSceneDefinitionV2* scene,
-                                                          uint64_t* scene_handle, int32_t* scene_id);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v2)(const ShipOotSceneDefinitionV2* scene, uint64_t* scene_handle,
+                                                          int32_t* scene_id);
     int32_t(SHIP_NATIVE_CALL* get_scene_count)(void);
     ShipNativeStatus(SHIP_NATIVE_CALL* get_scene_info)(int32_t scene_id, uint8_t master_quest,
                                                        ShipOotSceneInfoV1* info);
-    ShipNativeStatus(SHIP_NATIVE_CALL* override_scene)(int32_t scene_id, uint8_t master_quest,
-                                                       const char* scene_path);
-    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v3)(const ShipOotSceneDefinitionV3* scene,
-                                                          uint64_t* scene_handle, int32_t* scene_id);
+    ShipNativeStatus(SHIP_NATIVE_CALL* override_scene)(int32_t scene_id, uint8_t master_quest, const char* scene_path);
+    ShipNativeStatus(SHIP_NATIVE_CALL* register_scene_v3)(const ShipOotSceneDefinitionV3* scene, uint64_t* scene_handle,
+                                                          int32_t* scene_id);
 } ShipOotScenesV3;
 
 #endif

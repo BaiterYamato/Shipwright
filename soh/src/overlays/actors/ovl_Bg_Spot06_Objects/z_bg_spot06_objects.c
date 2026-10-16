@@ -138,12 +138,13 @@ void BgSpot06Objects_Init(Actor* thisx, PlayState* play) {
                 this->actionFunc = BgSpot06Objects_LockFloat;
                 thisx->world.pos.z -= 100.0f;
                 thisx->home.pos.z = thisx->world.pos.z + 16.0f;
-                this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
-                    this->collider.elements[0].dim.modelSphere.radius * 2);
+                this->collider.elements[0].dim.worldSphere.radius =
+                    LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius * 2);
                 this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(thisx->world.pos.z + 16.0f);
             } else {
                 this->actionFunc = BgSpot06Objects_LockWait;
-                this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius);
+                this->collider.elements[0].dim.worldSphere.radius =
+                    LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius);
                 this->collider.elements[0].dim.worldSphere.center.z = LinkSpan_S16F(thisx->world.pos.z);
             }
 
@@ -381,7 +382,8 @@ void BgSpot06Objects_LockSwimToSurface(BgSpot06Objects* this, PlayState* play) {
             this->dyna.actor.world.pos.y = -1993.0f;
             this->timer = 32;
             this->dyna.actor.flags &= ~ACTOR_FLAG_UPDATE_CULLING_DISABLED;
-            this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius * 2);
+            this->collider.elements[0].dim.worldSphere.radius =
+                LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius * 2);
             this->actionFunc = BgSpot06Objects_LockFloat;
         }
     } else {

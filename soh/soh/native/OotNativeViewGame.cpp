@@ -131,21 +131,24 @@ Gfx** RenderLayerHead(uint8_t layer) {
 }
 
 ShipNativeStatus EmitToonKey(uint8_t layer, int8_t dx, int8_t dy, int8_t dz, uint8_t r, uint8_t g, uint8_t b) {
-    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    if (!gPlayState)
+        return SHIP_NATIVE_UNSUPPORTED;
     Gfx** head = RenderLayerHead(layer);
     gSPToonKey((*head)++, dx, dy, dz, r, g, b);
     return SHIP_NATIVE_OK;
 }
 
 ShipNativeStatus EmitStencil(uint8_t layer, uint8_t mode) {
-    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    if (!gPlayState)
+        return SHIP_NATIVE_UNSUPPORTED;
     Gfx** head = RenderLayerHead(layer);
     gSPStencil((*head)++, mode);
     return SHIP_NATIVE_OK;
 }
 
 ShipNativeStatus EmitToonShadow(uint8_t layer, int16_t feetClampY, float size) {
-    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    if (!gPlayState)
+        return SHIP_NATIVE_UNSUPPORTED;
     Gfx** head = RenderLayerHead(layer);
     // Tamanho <= 0 desarma a captura (normal nula), como o gSPToonShadow(0, 0, 0, 0) do fork: marca a fronteira
     // do objeto sem deixar o ator anterior acumular esta geometria. O braço (nz = 0x7F) armaria com tamanho 0.
@@ -158,7 +161,8 @@ ShipNativeStatus EmitToonShadow(uint8_t layer, int16_t feetClampY, float size) {
 }
 
 ShipNativeStatus FlushToonShadows(uint8_t layer) {
-    if (!gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    if (!gPlayState)
+        return SHIP_NATIVE_UNSUPPORTED;
     Gfx** head = RenderLayerHead(layer);
     gSPToonShadowFlush((*head)++);
     return SHIP_NATIVE_OK;
@@ -221,7 +225,8 @@ void SetToon(void* gfx, bool enabled) {
 }
 
 ShipNativeStatus FrameInfo(ShipOotRenderFrameInfoV1* info) {
-    if (!gGameState) return SHIP_NATIVE_UNSUPPORTED;
+    if (!gGameState)
+        return SHIP_NATIVE_UNSUPPORTED;
     info->frame = gGameState->frames;
     info->camera_epoch = static_cast<uint32_t>(FrameInterpolation_GetCameraEpoch());
     info->delta_seconds = (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 3) / 60.0f;

@@ -62,8 +62,8 @@ typedef struct ShipOotCollidersV1 {
     ShipNativeStatus(SHIP_NATIVE_CALL* destroy)(uint64_t handle);
     ShipNativeStatus(SHIP_NATIVE_CALL* submit)(uint64_t handle);
     ShipNativeStatus(SHIP_NATIVE_CALL* read_hits)(uint64_t handle, ShipOotColliderHitsV1* hits);
-    ShipNativeStatus(SHIP_NATIVE_CALL* knockback_player)(void* source, float speed, int16_t yaw,
-                                                         float y_velocity, uint32_t damage, uint8_t large);
+    ShipNativeStatus(SHIP_NATIVE_CALL* knockback_player)(void* source, float speed, int16_t yaw, float y_velocity,
+                                                         uint32_t damage, uint8_t large);
 } ShipOotCollidersV1;
 
 #endif

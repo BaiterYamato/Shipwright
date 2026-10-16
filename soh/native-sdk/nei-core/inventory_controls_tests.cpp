@@ -3,7 +3,10 @@
 #include <cstdlib>
 
 static void Check(bool condition, const char* label) {
-    if (!condition) { std::fprintf(stderr, "FAIL: %s\n", label); std::exit(1); }
+    if (!condition) {
+        std::fprintf(stderr, "FAIL: %s\n", label);
+        std::exit(1);
+    }
 }
 int main() {
     NeiInventoryGesture a{};
