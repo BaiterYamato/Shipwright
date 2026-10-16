@@ -805,7 +805,7 @@ typedef struct SequencePlayer {
     /* 0x0DC */ s32 skipTicks;
     /* 0x0E0 */ u32 scriptCounter;
     /* 0x0E4 */ UNK_TYPE1
-        unk_E4[0x74]; // unused struct members for sequence/sound font dma management, according to sm64 decomp
+    unk_E4[0x74]; // unused struct members for sequence/sound font dma management, according to sm64 decomp
     /* 0x158 */ s8 seqScriptIO[8];
     // #region 2S2H [Port][Audio]
     /*       */ f32 portVolumeScale; // volume from the sliders in the menubar
