@@ -25,7 +25,7 @@ Disabling an equipped item also removes it from the C button. Press **L** on the
 game's item page to reach the NEI page. The grid includes items from
 add-ons registered in this session. The result appears in **Status** and in the log.
 
-## Items and abilities in version 0.3.24
+## Items and abilities in version 0.3.25
 
 ### Animations and effects
 
