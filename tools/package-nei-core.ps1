@@ -44,7 +44,7 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
     New-LinkSpanZip -Source $Source -Destination $Destination
 }
 
-$version = '0.3.24'
+$version = '0.3.25'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_nei_core.dll') 'NEI core DLL'
 
 # Assets: o manifesto tem de ser da versão atual do gerador, conferido contra o oot.o2r e o mm.o2r (textura igual à
