@@ -6,9 +6,13 @@
 
 #include "mods/nei_save.h"
 
-#define NEI_SAVE_SCALAR(name, field) { name, offsetof(NeiSaveData, field), sizeof(((NeiSaveData*)0)->field), 1, 0 }
-#define NEI_SAVE_ARRAY(name, field) \
-    { name, offsetof(NeiSaveData, field), sizeof(((NeiSaveData*)0)->field[0]), sizeof(((NeiSaveData*)0)->field) / sizeof(((NeiSaveData*)0)->field[0]), 0 }
+#define NEI_SAVE_SCALAR(name, field) \
+    { name, offsetof(NeiSaveData, field), sizeof(((NeiSaveData*)0)->field), 1, 0 }
+#define NEI_SAVE_ARRAY(name, field)                                                   \
+    {                                                                                 \
+        name, offsetof(NeiSaveData, field), sizeof(((NeiSaveData*)0)->field[0]),      \
+            sizeof(((NeiSaveData*)0)->field) / sizeof(((NeiSaveData*)0)->field[0]), 0 \
+    }
 
 static const NeiSaveField kFields[] = {
     NEI_SAVE_ARRAY("ownedItems", ownedItems),

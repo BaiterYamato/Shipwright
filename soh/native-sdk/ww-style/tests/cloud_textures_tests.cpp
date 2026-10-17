@@ -31,9 +31,9 @@ void Check(const char* name, const std::vector<uint8_t>& pixels, uint64_t expect
 int main() {
     using namespace WWStyle;
     const auto start = std::chrono::steady_clock::now();
-    constexpr uint32_t kSpriteSeeds[3] = {0x1A2B3C4Du, 0x2B3C4D5Eu, 0x3C4D5E6Fu};
-    constexpr uint64_t kSpriteHashes[3] = {0x3D5E27D02320A7A6ull, 0xCA2155F6F875A1CCull, 0x3179271D45B62D4Aull};
-    const char* names[3] = {"cloudtx_01", "cloudtx_02", "cloudtx_03"};
+    constexpr uint32_t kSpriteSeeds[3] = { 0x1A2B3C4Du, 0x2B3C4D5Eu, 0x3C4D5E6Fu };
+    constexpr uint64_t kSpriteHashes[3] = { 0x3D5E27D02320A7A6ull, 0xCA2155F6F875A1CCull, 0x3179271D45B62D4Aull };
+    const char* names[3] = { "cloudtx_01", "cloudtx_02", "cloudtx_03" };
     for (int i = 0; i < 3; ++i) {
         std::vector<uint8_t> sprite(kCloudSpriteSize * kCloudSpriteSize * 4);
         GenerateCloudSprite(kSpriteSeeds[i], sprite.data());

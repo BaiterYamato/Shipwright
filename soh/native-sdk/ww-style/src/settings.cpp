@@ -21,13 +21,13 @@ struct Field {
 };
 
 constexpr Field B(const char* key, bool Settings::*member) {
-    return {key, Kind::Bool, member, nullptr, nullptr, 0.0, 1.0};
+    return { key, Kind::Bool, member, nullptr, nullptr, 0.0, 1.0 };
 }
 constexpr Field F(const char* key, float Settings::*member, double min, double max) {
-    return {key, Kind::Float, nullptr, member, nullptr, min, max};
+    return { key, Kind::Float, nullptr, member, nullptr, min, max };
 }
 constexpr Field I(const char* key, int32_t Settings::*member, double min, double max) {
-    return {key, Kind::Int, nullptr, nullptr, member, min, max};
+    return { key, Kind::Int, nullptr, nullptr, member, min, max };
 }
 
 const Field kFields[] = {
@@ -93,8 +93,10 @@ const Field kFields[] = {
 
 std::string_view Trim(std::string_view text) {
     const auto blank = [](char c) { return c == ' ' || c == '\t' || c == '\r'; };
-    while (!text.empty() && blank(text.front())) text.remove_prefix(1);
-    while (!text.empty() && blank(text.back())) text.remove_suffix(1);
+    while (!text.empty() && blank(text.front()))
+        text.remove_prefix(1);
+    while (!text.empty() && blank(text.back()))
+        text.remove_suffix(1);
     return text;
 }
 
@@ -106,16 +108,22 @@ bool ParseNumber(std::string_view text, double& value) {
 
 bool Apply(const Field& field, std::string_view text, Settings& out) {
     if (field.kind == Kind::Bool) {
-        if (text == "1" || text == "true") out.*field.b = true;
-        else if (text == "0" || text == "false") out.*field.b = false;
-        else return false;
+        if (text == "1" || text == "true")
+            out.*field.b = true;
+        else if (text == "0" || text == "false")
+            out.*field.b = false;
+        else
+            return false;
         return true;
     }
     double value = 0.0;
-    if (!ParseNumber(text, value)) return false;
+    if (!ParseNumber(text, value))
+        return false;
     value = std::clamp(value, field.min, field.max);
-    if (field.kind == Kind::Float) out.*field.f = static_cast<float>(value);
-    else out.*field.i = static_cast<int32_t>(std::lround(value));
+    if (field.kind == Kind::Float)
+        out.*field.f = static_cast<float>(value);
+    else
+        out.*field.i = static_cast<int32_t>(std::lround(value));
     return true;
 }
 
@@ -127,7 +135,8 @@ ParseResult ParseSettings(std::string_view text, Settings& out) {
         const size_t newline = text.find('\n');
         std::string_view line = Trim(text.substr(0, newline));
         text = newline == std::string_view::npos ? std::string_view{} : text.substr(newline + 1);
-        if (line.empty() || line.front() == '#') continue;
+        if (line.empty() || line.front() == '#')
+            continue;
         const size_t equals = line.find('=');
         if (equals == std::string_view::npos) {
             ++result.invalid;
@@ -137,9 +146,12 @@ ParseResult ParseSettings(std::string_view text, Settings& out) {
         const std::string_view value = Trim(line.substr(equals + 1));
         const auto field = std::find_if(std::begin(kFields), std::end(kFields),
                                         [&](const Field& candidate) { return key == candidate.key; });
-        if (field == std::end(kFields)) ++result.unknown;
-        else if (Apply(*field, value, out)) ++result.applied;
-        else ++result.invalid;
+        if (field == std::end(kFields))
+            ++result.unknown;
+        else if (Apply(*field, value, out))
+            ++result.applied;
+        else
+            ++result.invalid;
     }
     return result;
 }

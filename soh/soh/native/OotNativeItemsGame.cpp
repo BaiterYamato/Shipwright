@@ -40,8 +40,9 @@ constexpr uint16_t kGetItemTextId = 0x7F00;
 void ClearEquips(ItemEquips& equips, uint8_t item, bool registeredOnly) {
     for (size_t button = 1; button < ARRAY_COUNT(equips.buttonItems); ++button) {
         const uint8_t current = equips.buttonItems[button];
-        const bool drop = registeredOnly ? (ShipLuaHost::IsOotSyntheticItemId(current) && !ShipLuaHost::FindOotItem(current))
-                                         : current == item;
+        const bool drop = registeredOnly
+                              ? (ShipLuaHost::IsOotSyntheticItemId(current) && !ShipLuaHost::FindOotItem(current))
+                              : current == item;
         if (drop) {
             equips.buttonItems[button] = ITEM_NONE;
             if (button <= ARRAY_COUNT(equips.cButtonSlots)) {
@@ -210,9 +211,8 @@ ShipNativeStatus ItemsGiveItem(uint8_t item) {
         gPlayState->csCtx.state != CS_STATE_IDLE) {
         return SHIP_NATIVE_LIMIT;
     }
-    return GiveItemEntryWithoutActor(gPlayState, ShipLuaHost::BuildOotSyntheticGetItemEntry(item))
-               ? SHIP_NATIVE_OK
-               : SHIP_NATIVE_LIMIT;
+    return GiveItemEntryWithoutActor(gPlayState, ShipLuaHost::BuildOotSyntheticGetItemEntry(item)) ? SHIP_NATIVE_OK
+                                                                                                   : SHIP_NATIVE_LIMIT;
 }
 
 void BuildGetItemMessage(uint16_t*, bool* loadFromMessageTable) {
@@ -244,8 +244,8 @@ namespace ShipLuaHost {
 
 // Get-item de um item sintético: give_item e as checks do randomizer (OotNativeRandoGame.cpp).
 GetItemEntry BuildOotSyntheticGetItemEntry(uint8_t item) {
-    GetItemEntry entry = GET_ITEM(item, OBJECT_GI_HEART, 0, kGetItemTextId, 0x80, CHEST_ANIM_LONG,
-                                  ITEM_CATEGORY_MAJOR, kGetItemModIndex, GI_HEART_PIECE);
+    GetItemEntry entry = GET_ITEM(item, OBJECT_GI_HEART, 0, kGetItemTextId, 0x80, CHEST_ANIM_LONG, ITEM_CATEGORY_MAJOR,
+                                  kGetItemModIndex, GI_HEART_PIECE);
     entry.drawFunc = DrawGetItemModel;
     return entry;
 }
@@ -268,8 +268,7 @@ void RegisterOotItemGameHooks() {
     bridge.getLanguage = [] { return static_cast<uint8_t>(gSaveContext.language); };
     SetOotItemsBridge(bridge);
 
-    GameInteractor::Instance->RegisterGameHookForID<GameInteractor::OnOpenText>(kGetItemTextId,
-                                                                                BuildGetItemMessage);
+    GameInteractor::Instance->RegisterGameHookForID<GameInteractor::OnOpenText>(kGetItemTextId, BuildGetItemMessage);
     GameInteractor::Instance->RegisterGameHookForID<GameInteractor::OnVanillaBehavior>(
         VB_ITEM_ACTION_BE_NONE, [](GIVanillaBehavior, bool* should, va_list original) {
             if (IsOotSyntheticItemId(VaItem(original))) {

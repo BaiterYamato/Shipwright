@@ -60,10 +60,10 @@ typedef struct ShipOotRenderV2 {
     ShipNativeStatus(SHIP_NATIVE_CALL* matrix_rotate_zyx)(int16_t x, int16_t y, int16_t z);
     ShipNativeStatus(SHIP_NATIVE_CALL* acquire_state)(const char* owner, uint64_t* state);
     ShipNativeStatus(SHIP_NATIVE_CALL* release_state)(uint64_t state);
-    ShipNativeStatus(SHIP_NATIVE_CALL* set_state)(uint64_t state, uint32_t features,
-                                                   const int16_t* receiver_actor_ids, uint32_t receiver_count);
-    ShipNativeStatus(SHIP_NATIVE_CALL* emit_toon_key)(uint8_t layer, int8_t dx, int8_t dy, int8_t dz,
-                                                       uint8_t r, uint8_t g, uint8_t b);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_state)(uint64_t state, uint32_t features, const int16_t* receiver_actor_ids,
+                                                  uint32_t receiver_count);
+    ShipNativeStatus(SHIP_NATIVE_CALL* emit_toon_key)(uint8_t layer, int8_t dx, int8_t dy, int8_t dz, uint8_t r,
+                                                      uint8_t g, uint8_t b);
     ShipNativeStatus(SHIP_NATIVE_CALL* emit_stencil)(uint8_t layer, uint8_t mode);
     ShipNativeStatus(SHIP_NATIVE_CALL* emit_toon_shadow)(uint8_t layer, int16_t feet_clamp_y, float size);
     ShipNativeStatus(SHIP_NATIVE_CALL* flush_toon_shadows)(uint8_t layer);
@@ -73,10 +73,10 @@ typedef struct ShipOotRenderV2 {
      * volume visível). Último escritor vale; o host volta ao padrão do renderer quando o último estado de
      * render é liberado. Fora do escopo de draw, na thread do jogo. */
     ShipNativeStatus(SHIP_NATIVE_CALL* set_toon_ramp)(float center, float softness, float highlight, float shadow,
-                                                       uint8_t debug_bands);
+                                                      uint8_t debug_bands);
     ShipNativeStatus(SHIP_NATIVE_CALL* set_toon_shadow_params)(float opacity, float min_elevation, float slab_depth,
-                                                                float slab_rise, int32_t edge_softness,
-                                                                uint8_t show_volume);
+                                                               float slab_rise, int32_t edge_softness,
+                                                               uint8_t show_volume);
 } ShipOotRenderV2;
 
 /* Dados do frame para animação e geometria própria. `frame` conta os frames do game state atual (recomeça na
@@ -125,18 +125,18 @@ typedef struct ShipOotRenderV3 {
     ShipNativeStatus(SHIP_NATIVE_CALL* matrix_rotate_zyx)(int16_t x, int16_t y, int16_t z);
     ShipNativeStatus(SHIP_NATIVE_CALL* acquire_state)(const char* owner, uint64_t* state);
     ShipNativeStatus(SHIP_NATIVE_CALL* release_state)(uint64_t state);
-    ShipNativeStatus(SHIP_NATIVE_CALL* set_state)(uint64_t state, uint32_t features,
-                                                   const int16_t* receiver_actor_ids, uint32_t receiver_count);
-    ShipNativeStatus(SHIP_NATIVE_CALL* emit_toon_key)(uint8_t layer, int8_t dx, int8_t dy, int8_t dz,
-                                                       uint8_t r, uint8_t g, uint8_t b);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_state)(uint64_t state, uint32_t features, const int16_t* receiver_actor_ids,
+                                                  uint32_t receiver_count);
+    ShipNativeStatus(SHIP_NATIVE_CALL* emit_toon_key)(uint8_t layer, int8_t dx, int8_t dy, int8_t dz, uint8_t r,
+                                                      uint8_t g, uint8_t b);
     ShipNativeStatus(SHIP_NATIVE_CALL* emit_stencil)(uint8_t layer, uint8_t mode);
     ShipNativeStatus(SHIP_NATIVE_CALL* emit_toon_shadow)(uint8_t layer, int16_t feet_clamp_y, float size);
     ShipNativeStatus(SHIP_NATIVE_CALL* flush_toon_shadows)(uint8_t layer);
     ShipNativeStatus(SHIP_NATIVE_CALL* set_toon_ramp)(float center, float softness, float highlight, float shadow,
-                                                       uint8_t debug_bands);
+                                                      uint8_t debug_bands);
     ShipNativeStatus(SHIP_NATIVE_CALL* set_toon_shadow_params)(float opacity, float min_elevation, float slab_depth,
-                                                                float slab_rise, int32_t edge_softness,
-                                                                uint8_t show_volume);
+                                                               float slab_rise, int32_t edge_softness,
+                                                               uint8_t show_volume);
     ShipNativeStatus(SHIP_NATIVE_CALL* set_actor_toon_enabled)(uint8_t enabled);
     ShipNativeStatus(SHIP_NATIVE_CALL* matrix_translate_new)(float x, float y, float z);
     ShipNativeStatus(SHIP_NATIVE_CALL* matrix_rotate_axis)(float radians, float x, float y, float z);

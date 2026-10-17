@@ -398,8 +398,8 @@ void EnBb_Init(Actor* thisx, PlayState* play) {
     } else {
         EnBb_SetupFlameTrail(this);
     }
-    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
-        this->collider.elements[0].dim.modelSphere.radius * this->collider.elements[0].dim.scale);
+    this->collider.elements[0].dim.worldSphere.radius =
+        LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius * this->collider.elements[0].dim.scale);
 }
 
 void EnBb_Destroy(Actor* thisx, PlayState* play) {
@@ -1250,8 +1250,8 @@ void EnBb_Update(Actor* thisx, PlayState* play2) {
         }
         this->actor.focus.pos = this->actor.world.pos;
         this->collider.elements->dim.worldSphere.center.x = LinkSpan_S16F(this->actor.world.pos.x);
-        this->collider.elements->dim.worldSphere.center.y = LinkSpan_S16F(
-            this->actor.world.pos.y + (this->actor.shape.yOffset * this->actor.scale.y));
+        this->collider.elements->dim.worldSphere.center.y =
+            LinkSpan_S16F(this->actor.world.pos.y + (this->actor.shape.yOffset * this->actor.scale.y));
         this->collider.elements->dim.worldSphere.center.z = LinkSpan_S16F(this->actor.world.pos.z);
 
         if ((this->action > BB_KILL) && ((this->actor.speedXZ != 0.0f) || (this->action == BB_GREEN))) {

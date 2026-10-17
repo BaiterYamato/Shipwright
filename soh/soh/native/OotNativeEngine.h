@@ -16,8 +16,7 @@ struct OotNativeGamepadBridge {
 };
 struct OotNativeResourceBridge {
     uint8_t (*hasFile)(const char* path) = nullptr;
-    ShipNativeStatus (*readFile)(const char* path, uint8_t* output, uint32_t capacity,
-                                 uint32_t* outputSize) = nullptr;
+    ShipNativeStatus (*readFile)(const char* path, uint8_t* output, uint32_t capacity, uint32_t* outputSize) = nullptr;
     ShipNativeStatus (*listFiles)(const char* searchMask, ShipOotResourcePathFn callback, void* user) = nullptr;
     ShipNativeStatus (*dirtyResources)(const char* searchMask) = nullptr;
     ShipNativeStatus (*unloadResource)(const char* path) = nullptr;
@@ -29,4 +28,4 @@ struct OotNativeResourceBridge {
 void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge);
 void SetOotNativeResourceBridge(OotNativeResourceBridge bridge);
 ShipLua::NativeProviderPolicy CreateOotNativePolicy();
-}
+} // namespace ShipLuaHost

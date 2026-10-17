@@ -100,9 +100,9 @@ std::string ComponentOf(const fs::path& file) {
 void MountAssets(const ShipNativeRuntime* runtime) {
     UnmountAssets();
     gAssets.exists.clear();
-    gAssets.resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
-        sizeof(ShipOotResourcesV2)));
+    gAssets.resources = static_cast<const ShipOotResourcesV2*>(
+        runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
+                             sizeof(ShipOotResourcesV2)));
     if (!gAssets.resources || !gAssets.resources->mount_archive || !gAssets.resources->unmount_archive) {
         gAssets.status = "desligados: host sem linkspan.oot.resources v2";
         return;

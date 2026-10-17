@@ -157,8 +157,7 @@ uint8_t NativeHasResourceFile(const char* path) {
     return archives && archives->HasFile(path) ? 1 : 0;
 }
 
-ShipNativeStatus NativeReadResourceFile(const char* path, uint8_t* output, uint32_t capacity,
-                                        uint32_t* outputSize) {
+ShipNativeStatus NativeReadResourceFile(const char* path, uint8_t* output, uint32_t capacity, uint32_t* outputSize) {
     const auto manager = NativeResourceManager();
     const auto archives = manager ? manager->GetArchiveManager() : nullptr;
     const auto file = archives ? archives->LoadFile(path) : nullptr;
@@ -167,9 +166,12 @@ ShipNativeStatus NativeReadResourceFile(const char* path, uint8_t* output, uint3
         return SHIP_NATIVE_UNSUPPORTED;
     }
     *outputSize = static_cast<uint32_t>(file->Buffer->size());
-    if (!output && capacity == 0) return SHIP_NATIVE_OK;
-    if (capacity < *outputSize) return SHIP_NATIVE_LIMIT;
-    if (*outputSize) std::memcpy(output, file->Buffer->data(), *outputSize);
+    if (!output && capacity == 0)
+        return SHIP_NATIVE_OK;
+    if (capacity < *outputSize)
+        return SHIP_NATIVE_LIMIT;
+    if (*outputSize)
+        std::memcpy(output, file->Buffer->data(), *outputSize);
     return SHIP_NATIVE_OK;
 }
 
@@ -177,27 +179,32 @@ ShipNativeStatus NativeListResourceFiles(const char* mask, ShipOotResourcePathFn
     const auto manager = NativeResourceManager();
     const auto archives = manager ? manager->GetArchiveManager() : nullptr;
     const auto files = archives ? archives->ListFiles(mask) : nullptr;
-    if (!files) return SHIP_NATIVE_UNSUPPORTED;
+    if (!files)
+        return SHIP_NATIVE_UNSUPPORTED;
     auto ordered = *files;
     std::sort(ordered.begin(), ordered.end());
     for (const auto& path : ordered) {
-        if (path.size() > UINT32_MAX) return SHIP_NATIVE_LIMIT;
+        if (path.size() > UINT32_MAX)
+            return SHIP_NATIVE_LIMIT;
         const auto status = callback(user, path.c_str(), static_cast<uint32_t>(path.size()));
-        if (status != SHIP_NATIVE_OK) return status;
+        if (status != SHIP_NATIVE_OK)
+            return status;
     }
     return SHIP_NATIVE_OK;
 }
 
 ShipNativeStatus NativeDirtyResources(const char* mask) {
     const auto manager = NativeResourceManager();
-    if (!manager) return SHIP_NATIVE_UNSUPPORTED;
+    if (!manager)
+        return SHIP_NATIVE_UNSUPPORTED;
     manager->DirtyResources(mask);
     return SHIP_NATIVE_OK;
 }
 
 ShipNativeStatus NativeUnloadResource(const char* path) {
     const auto manager = NativeResourceManager();
-    if (!manager) return SHIP_NATIVE_UNSUPPORTED;
+    if (!manager)
+        return SHIP_NATIVE_UNSUPPORTED;
     manager->UnloadResource(path);
     return SHIP_NATIVE_OK;
 }
@@ -205,23 +212,26 @@ ShipNativeStatus NativeUnloadResource(const char* path) {
 ShipNativeStatus NativeMountResourceArchive(const char* archivePath, uint64_t* handle) {
     const auto manager = NativeResourceManager();
     const auto archives = manager ? manager->GetArchiveManager() : nullptr;
-    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+    if (!archives)
+        return SHIP_NATIVE_UNSUPPORTED;
     std::error_code error;
     const auto absolute = std::filesystem::absolute(archivePath, error).lexically_normal();
-    if (error || (!std::filesystem::is_regular_file(absolute, error) &&
-                  !std::filesystem::is_directory(absolute, error))) {
+    if (error ||
+        (!std::filesystem::is_regular_file(absolute, error) && !std::filesystem::is_directory(absolute, error))) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     // Barras normais: o FolderArchive casa o caminho base com a listagem em generic_string, e com barra
     // invertida a pasta montava sem nenhum arquivo.
     const auto mounted = archives->AddArchive(absolute.generic_string());
-    if (!mounted) return SHIP_NATIVE_FAILURE;
+    if (!mounted)
+        return SHIP_NATIVE_FAILURE;
     for (const auto& [hash, path] : *mounted->ListFiles()) {
         (void)hash;
         manager->UnloadResource(path);
     }
     const uint64_t next = gNextNativeResourceArchive++;
-    if (!next) return SHIP_NATIVE_LIMIT;
+    if (!next)
+        return SHIP_NATIVE_LIMIT;
     gNativeResourceArchives.emplace(next, mounted);
     *handle = next;
     return SHIP_NATIVE_OK;
@@ -231,13 +241,16 @@ ShipNativeStatus NativeUnmountResourceArchive(uint64_t handle) {
     const auto entry = gNativeResourceArchives.find(handle);
     const auto manager = NativeResourceManager();
     const auto archives = manager ? manager->GetArchiveManager() : nullptr;
-    if (entry == gNativeResourceArchives.end()) return SHIP_NATIVE_INVALID_ARGUMENT;
-    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+    if (entry == gNativeResourceArchives.end())
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!archives)
+        return SHIP_NATIVE_UNSUPPORTED;
     for (const auto& [hash, path] : *entry->second->ListFiles()) {
         (void)hash;
         manager->UnloadResource(path);
     }
-    if (archives->RemoveArchive(entry->second) != 1) return SHIP_NATIVE_FAILURE;
+    if (archives->RemoveArchive(entry->second) != 1)
+        return SHIP_NATIVE_FAILURE;
     gNativeResourceArchives.erase(entry);
     return SHIP_NATIVE_OK;
 }
@@ -245,14 +258,18 @@ ShipNativeStatus NativeUnmountResourceArchive(uint64_t handle) {
 ShipNativeStatus NativeGetResourceGameVersions(uint32_t* output, uint32_t capacity, uint32_t* outputCount) {
     const auto manager = NativeResourceManager();
     const auto archives = manager ? manager->GetArchiveManager() : nullptr;
-    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+    if (!archives)
+        return SHIP_NATIVE_UNSUPPORTED;
     auto versions = archives->GetGameVersions();
     std::sort(versions.begin(), versions.end());
     versions.erase(std::unique(versions.begin(), versions.end()), versions.end());
-    if (versions.size() > UINT32_MAX) return SHIP_NATIVE_LIMIT;
+    if (versions.size() > UINT32_MAX)
+        return SHIP_NATIVE_LIMIT;
     *outputCount = static_cast<uint32_t>(versions.size());
-    if (!output && capacity == 0) return SHIP_NATIVE_OK;
-    if (capacity < *outputCount) return SHIP_NATIVE_LIMIT;
+    if (!output && capacity == 0)
+        return SHIP_NATIVE_OK;
+    if (capacity < *outputCount)
+        return SHIP_NATIVE_LIMIT;
     std::copy(versions.begin(), versions.end(), output);
     return SHIP_NATIVE_OK;
 }
@@ -270,7 +287,8 @@ ShipNativeStatus NativeReadResourceFileLayers(const char* path, ShipOotResourceL
     const auto manager = NativeResourceManager();
     const auto archiveManager = manager ? manager->GetArchiveManager() : nullptr;
     const auto archives = archiveManager ? archiveManager->GetArchives() : nullptr;
-    if (!archives) return SHIP_NATIVE_UNSUPPORTED;
+    if (!archives)
+        return SHIP_NATIVE_UNSUPPORTED;
 
     struct Layer {
         std::shared_ptr<Ship::Archive> archive;
@@ -278,13 +296,15 @@ ShipNativeStatus NativeReadResourceFileLayers(const char* path, ShipOotResourceL
     };
     std::vector<Layer> layers;
     for (const auto& archive : *archives) {
-        if (!archive || !archive->HasFile(path)) continue;
+        if (!archive || !archive->HasFile(path))
+            continue;
         auto file = archive->LoadFile(path);
         if (file && file->IsLoaded && file->Buffer && file->Buffer->size() <= UINT32_MAX) {
             layers.push_back({ archive, std::move(file) });
         }
     }
-    if (layers.empty() || layers.size() > UINT32_MAX) return SHIP_NATIVE_UNSUPPORTED;
+    if (layers.empty() || layers.size() > UINT32_MAX)
+        return SHIP_NATIVE_UNSUPPORTED;
 
     const uint32_t layerCount = static_cast<uint32_t>(layers.size());
     for (uint32_t i = 0; i < layerCount; ++i) {
@@ -292,15 +312,18 @@ ShipNativeStatus NativeReadResourceFileLayers(const char* path, ShipOotResourceL
         const auto& buffer = *layers[i].file->Buffer;
         const auto* data = reinterpret_cast<const uint8_t*>(buffer.data());
         const auto& archivePath = archive->GetPath();
-        if (archivePath.size() > UINT32_MAX) return SHIP_NATIVE_LIMIT;
-        const ShipOotResourceLayerV2 info{
-            sizeof(ShipOotResourceLayerV2), i, layerCount,
-            archive->HasGameVersion() ? archive->GetGameVersion() : 0,
-            NativeResourceContentHash(data, buffer.size()), static_cast<uint32_t>(buffer.size()),
-            static_cast<uint32_t>(archivePath.size())
-        };
+        if (archivePath.size() > UINT32_MAX)
+            return SHIP_NATIVE_LIMIT;
+        const ShipOotResourceLayerV2 info{ sizeof(ShipOotResourceLayerV2),
+                                           i,
+                                           layerCount,
+                                           archive->HasGameVersion() ? archive->GetGameVersion() : 0,
+                                           NativeResourceContentHash(data, buffer.size()),
+                                           static_cast<uint32_t>(buffer.size()),
+                                           static_cast<uint32_t>(archivePath.size()) };
         const auto status = callback(user, &info, archivePath.c_str(), data);
-        if (status != SHIP_NATIVE_OK) return status;
+        if (status != SHIP_NATIVE_OK)
+            return status;
     }
     return SHIP_NATIVE_OK;
 }
@@ -311,7 +334,8 @@ void ClearNativeResourceArchives() {
         (void)archive;
         handles.push_back(handle);
     }
-    for (const auto handle : handles) NativeUnmountResourceArchive(handle);
+    for (const auto handle : handles)
+        NativeUnmountResourceArchive(handle);
     gNativeResourceArchives.clear();
 }
 
@@ -712,8 +736,8 @@ std::shared_ptr<OotActorProvider> CreateActorProvider() {
             }
         }
         Actor* spawned = Actor_Spawn(&gPlayState->actorCtx, gPlayState, definition.actorId, x, y, z,
-                                     DegreesToBinang(request.rotationX), rotationY,
-                                     DegreesToBinang(request.rotationZ), definition.params);
+                                     DegreesToBinang(request.rotationX), rotationY, DegreesToBinang(request.rotationZ),
+                                     definition.params);
         if (spawned != nullptr && definition.key == "oot.link_child_puppet") {
             if (!ShipLuaPuppet_Attach(spawned, gPlayState)) {
                 Actor_Kill(spawned);
@@ -771,13 +795,26 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     context.gameId = "oot";
     context.resourceExists = [](const std::string& path) { return NativeHasResourceFile(path.c_str()) != 0; };
     context.hostVersion = GetHostVersion();
-    context.capabilities = { "oot.player.jump",         "oot.spawn_dog",      "oot.player.bunny_hood",
-                             "oot.player.mask",         "player.speed",       "player.fields",
-                             "oot.player.attach_model", "mod.assets",         "oot.player.immunity",
-                             "oot.player.weight",       "oot.player.roll",    "hooks.bridge",
-                             "oot.player.custom_body",  "oot.player.held_item_model",
-                             "hud.draw",                "hud.icons",          "game.state",
-                             "input.actions",           "oot.env",             "save.events",
+    context.capabilities = { "oot.player.jump",
+                             "oot.spawn_dog",
+                             "oot.player.bunny_hood",
+                             "oot.player.mask",
+                             "player.speed",
+                             "player.fields",
+                             "oot.player.attach_model",
+                             "mod.assets",
+                             "oot.player.immunity",
+                             "oot.player.weight",
+                             "oot.player.roll",
+                             "hooks.bridge",
+                             "oot.player.custom_body",
+                             "oot.player.held_item_model",
+                             "hud.draw",
+                             "hud.icons",
+                             "game.state",
+                             "input.actions",
+                             "oot.env",
+                             "save.events",
                              "oot.audio",
                              "oot.cutscene" };
     context.hotkeys = gHotkeys;
@@ -799,13 +836,12 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
-    registered = RegisterHostCapability(
-        "hud.draw", "Draw arbitrary rectangles and text over the HUD from hook.<game>.hud.draw.");
+    registered = RegisterHostCapability("hud.draw",
+                                        "Draw arbitrary rectangles and text over the HUD from hook.<game>.hud.draw.");
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
-    registered = RegisterHostCapability(
-        "hud.icons", "Draw validated resource textures as bounded HUD icons.");
+    registered = RegisterHostCapability("hud.icons", "Draw validated resource textures as bounded HUD icons.");
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
@@ -820,8 +856,7 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
     registered = RegisterHostCapability("oot.env", "Read ambient world state: time of day, night flag and scene id.");
-    registered = RegisterHostCapability("oot.audio",
-                                        "Redirect the player voice sfx block to another form's voices.");
+    registered = RegisterHostCapability("oot.audio", "Redirect the player voice sfx block to another form's voices.");
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
@@ -869,8 +904,7 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
-    registered =
-        RegisterHostCapability("mod.assets", "Mount mod-provided archives under the mod/<name>/ namespace.");
+    registered = RegisterHostCapability("mod.assets", "Mount mod-provided archives under the mod/<name>/ namespace.");
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
@@ -921,14 +955,14 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
             "shiplua-storage.bin", Ship::Context::GetRawInstance()->GetShortName());
         const auto loaded = storage->EnablePersistence(storagePath);
         if (!loaded.isOk()) {
-            SPDLOG_WARN("ShipLua: storage persistente corrompido ({}), recomeçando vazio: {}",
-                        storagePath.string(), loaded.message);
+            SPDLOG_WARN("ShipLua: storage persistente corrompido ({}), recomeçando vazio: {}", storagePath.string(),
+                        loaded.message);
         }
         gStorage = storage;
         context.storage = storage;
         context.capabilities.push_back("core.storage");
-        registered = RegisterHostCapability(
-            "core.storage", "Per-mod key-value storage persisted to disk across sessions.");
+        registered =
+            RegisterHostCapability("core.storage", "Per-mod key-value storage persisted to disk across sessions.");
         if (!registered.isOk()) {
             return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
         }
@@ -937,8 +971,8 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     if (gMenuRegistry != nullptr && context.storage != nullptr) {
         context.menu = gMenuRegistry;
         context.capabilities.push_back("core.menu");
-        registered = RegisterHostCapability(
-            "core.menu", "Declarative per-mod menu pages backed exclusively by ship.storage.");
+        registered =
+            RegisterHostCapability("core.menu", "Declarative per-mod menu pages backed exclusively by ship.storage.");
         if (!registered.isOk()) {
             return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
         }
@@ -952,8 +986,8 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
         const std::filesystem::path sharedPath = bridge->sessionDirectory / "shared-storage.bin";
         const auto loaded = shared->EnablePersistence(sharedPath);
         if (!loaded.isOk()) {
-            SPDLOG_WARN("ShipLua: storage compartilhado corrompido ({}), recomeçando vazio: {}",
-                        sharedPath.string(), loaded.message);
+            SPDLOG_WARN("ShipLua: storage compartilhado corrompido ({}), recomeçando vazio: {}", sharedPath.string(),
+                        loaded.message);
         }
         gSharedStorage = shared;
         context.sharedStorage = shared;
@@ -1044,8 +1078,8 @@ int8_t gPreviousBoots = 0;
 // indefinidamente e permite dirigir durante o rolamento — a aproximação do
 // rolamento contínuo do Goron usando a instrumentação que o engine já tem.
 bool gChainRoll = false;
-constexpr s16 kRollSteerStep = 0x400;   // giro por frame durante o rolamento
-constexpr s32 kRollStickDeadzone = 10;  // abaixo disso, o rolamento acaba
+constexpr s16 kRollSteerStep = 0x400;  // giro por frame durante o rolamento
+constexpr s32 kRollStickDeadzone = 10; // abaixo disso, o rolamento acaba
 
 int LuaSetDamageImmunity(lua_State* state) {
     const char* kind = luaL_checkstring(state, 1);
@@ -1344,10 +1378,9 @@ void CutsceneStop(PlayState* play) {
                 main->at = gMaskCutsceneOriginalAt;
                 main->eye = gMaskCutsceneOriginalEye;
                 main->eyeNext = gMaskCutsceneOriginalEye;
-                main->dist = std::sqrt(
-                    std::pow(gMaskCutsceneOriginalEye.x - gMaskCutsceneOriginalAt.x, 2.0f) +
-                    std::pow(gMaskCutsceneOriginalEye.y - gMaskCutsceneOriginalAt.y, 2.0f) +
-                    std::pow(gMaskCutsceneOriginalEye.z - gMaskCutsceneOriginalAt.z, 2.0f));
+                main->dist = std::sqrt(std::pow(gMaskCutsceneOriginalEye.x - gMaskCutsceneOriginalAt.x, 2.0f) +
+                                       std::pow(gMaskCutsceneOriginalEye.y - gMaskCutsceneOriginalAt.y, 2.0f) +
+                                       std::pow(gMaskCutsceneOriginalEye.z - gMaskCutsceneOriginalAt.z, 2.0f));
                 main->fov = gMaskCutsceneOriginalFov;
                 main->roll = gMaskCutsceneOriginalRoll;
                 Camera_RequestMode(main, gCutsceneSavedCamMode);
@@ -1484,7 +1517,6 @@ int LuaCutsceneActive(lua_State* state) {
     return 1;
 }
 
-
 // ---------------------------------------------------------------------------
 // Iluminação de cena e luz pontual no jogador.
 //
@@ -1535,7 +1567,8 @@ int LuaEnvSetLightOverride(lua_State* state) {
         lua_getfield(state, 1, "fog_near");
         if (!lua_isnil(state, -1)) {
             const int nearValue = static_cast<int>(luaL_checkinteger(state, -1));
-            play->envCtx.lightSettings.fogNear = static_cast<s16>(nearValue < 0 ? 0 : (nearValue > 1000 ? 1000 : nearValue));
+            play->envCtx.lightSettings.fogNear =
+                static_cast<s16>(nearValue < 0 ? 0 : (nearValue > 1000 ? 1000 : nearValue));
         }
         lua_pop(state, 1);
     }
@@ -1629,7 +1662,6 @@ void PointLightUpdate(PlayState* play) {
                               static_cast<s16>(player->actor.world.pos.z), gPointLightColor[0], gPointLightColor[1],
                               gPointLightColor[2], gPointLightRadius);
 }
-
 
 // ---------------------------------------------------------------------------
 // Redirecionamento de voz do jogador.
@@ -1777,8 +1809,7 @@ void CutsceneUpdate(PlayState* play) {
                 wave = std::sin(waveDegrees * static_cast<f32>(kPi / 180.0)) * gMaskCutsceneRollSign;
             }
             const f32 sway = static_cast<f32>(frame) * (6.0f / 19.0f) * wave;
-            const f32 playerYaw =
-                static_cast<f32>(player->actor.shape.rot.y) * static_cast<f32>(kPi / 32768.0);
+            const f32 playerYaw = static_cast<f32>(player->actor.shape.rot.y) * static_cast<f32>(kPi / 32768.0);
             focus.x += std::sin(playerYaw + static_cast<f32>(kPi * 0.5)) * sway;
             focus.z += std::cos(playerYaw + static_cast<f32>(kPi * 0.5)) * sway;
             cam->at.x += (focus.x - cam->at.x) * 0.2f;
@@ -1790,8 +1821,7 @@ void CutsceneUpdate(PlayState* play) {
             cam->roll = static_cast<s16>(std::lround(rollDegrees * (32768.0f / 180.0f)));
         } else if (frame < 62) {
             const int settleFrame = frame - 38;
-            const f32 playerYaw =
-                static_cast<f32>(player->actor.shape.rot.y) * static_cast<f32>(kPi / 32768.0);
+            const f32 playerYaw = static_cast<f32>(player->actor.shape.rot.y) * static_cast<f32>(kPi / 32768.0);
             focus.x = player->actor.world.pos.x - std::sin(playerYaw) * 7.0f;
             focus.z = player->actor.world.pos.z - std::cos(playerYaw) * 7.0f;
             if (settleFrame == 0) {
@@ -1801,8 +1831,7 @@ void CutsceneUpdate(PlayState* play) {
                 cam->at.y += (focus.y - cam->at.y) * 0.25f;
                 cam->at.z += (focus.z - cam->at.z) * 0.1f;
             }
-            gMaskCutsceneFov +=
-                (32.0f - gMaskCutsceneFov) / static_cast<f32>(std::max(1, 24 - settleFrame));
+            gMaskCutsceneFov += (32.0f - gMaskCutsceneFov) / static_cast<f32>(std::max(1, 24 - settleFrame));
             gMaskCutsceneDistance = 35.0f;
             pitch = static_cast<f32>(kPi * 0.25);
             cam->roll = static_cast<s16>(std::lround(static_cast<f32>(cam->roll) * 0.9f));
@@ -1817,10 +1846,9 @@ void CutsceneUpdate(PlayState* play) {
             pitch = static_cast<f32>(kPi * 0.25);
             cam->roll = static_cast<s16>(std::lround(static_cast<f32>(cam->roll) * 0.9f));
         } else {
-            const f32 reveal =
-                std::clamp(static_cast<f32>(frame - kMaskTransitionPeakFrame + 1) /
-                               static_cast<f32>(kMaskTransitionRevealFrames),
-                           0.0f, 1.0f);
+            const f32 reveal = std::clamp(static_cast<f32>(frame - kMaskTransitionPeakFrame + 1) /
+                                              static_cast<f32>(kMaskTransitionRevealFrames),
+                                          0.0f, 1.0f);
             cam->at.x += (gMaskCutsceneOriginalAt.x - cam->at.x) * reveal;
             cam->at.y += (gMaskCutsceneOriginalAt.y - cam->at.y) * reveal;
             cam->at.z += (gMaskCutsceneOriginalAt.z - cam->at.z) * reveal;
@@ -1963,12 +1991,11 @@ extern "C" void ShipLua_TransformGivenItem(GetItemEntry* entry) {
     if (entry == nullptr || gModHost == nullptr) {
         return;
     }
-    const auto result = DispatchHookTransform(
-        "hook.oot.item.give",
-        ShipLua::EventPayload{
-            {"item_id", static_cast<std::int64_t>(entry->itemId)},
-            {"get_item_id", static_cast<std::int64_t>(entry->getItemId)},
-        });
+    const auto result =
+        DispatchHookTransform("hook.oot.item.give", ShipLua::EventPayload{
+                                                        { "item_id", static_cast<std::int64_t>(entry->itemId) },
+                                                        { "get_item_id", static_cast<std::int64_t>(entry->getItemId) },
+                                                    });
     if (!result.has_value() || !std::holds_alternative<std::int64_t>(result->value)) {
         return;
     }
@@ -1976,8 +2003,7 @@ extern "C" void ShipLua_TransformGivenItem(GetItemEntry* entry) {
     if (replacement == entry->getItemId || replacement <= 0 || replacement > 0xFFFF) {
         return;
     }
-    GetItemEntry replaced =
-        ItemTableManager::Instance->RetrieveItemEntry(MOD_NONE, static_cast<uint16_t>(replacement));
+    GetItemEntry replaced = ItemTableManager::Instance->RetrieveItemEntry(MOD_NONE, static_cast<uint16_t>(replacement));
     if (replaced.itemId != ITEM_NONE) {
         *entry = replaced;
     }
@@ -2117,8 +2143,7 @@ constexpr char kMmGoronMaskDListPath[] = "__OTR__mm/objects/gameplay_keep/gGoron
 // Era esta a troca que faltava: a cena desenhava `gGoronMaskDL` do inicio ao
 // fim, entao a mascara nunca abria a boca por mais bem cronometrado que o resto
 // estivesse.
-constexpr char kMmGoronMaskScreamDListPath[] =
-    "__OTR__mm/objects/object_mask_goron/object_mask_goron_DL_0014A0";
+constexpr char kMmGoronMaskScreamDListPath[] = "__OTR__mm/objects/object_mask_goron/object_mask_goron_DL_0014A0";
 // Frame de `cl_setmask` em que a troca acontece (z_player_lib.c:4050).
 constexpr int kMaskScreamStartFrame = 51;
 
@@ -2128,11 +2153,11 @@ struct MaskTransitionLightStage {
     u8 ambient[3];
 };
 
-constexpr std::array<MaskTransitionLightStage, 3> kMaskTransitionLightStages = {{
+constexpr std::array<MaskTransitionLightStage, 3> kMaskTransitionLightStages = { {
     { 650, { 0, 0, 0 }, { 10, 0, 30 } },
     { 300, { 200, 200, 255 }, { 0, 0, 0 } },
     { 600, { 0, 0, 0 }, { 0, 0, 200 } },
-}};
+} };
 
 struct MaskTransitionPointStage {
     u8 color[3];
@@ -2141,11 +2166,11 @@ struct MaskTransitionPointStage {
 
 // Perfil humano de D_8085D848. A entrada Goron comeca em Link humano; o
 // perfil nao-humano de raio 100 tornava a coloracao azul quase invisivel.
-constexpr std::array<MaskTransitionPointStage, 3> kMaskTransitionPointStages = {{
+constexpr std::array<MaskTransitionPointStage, 3> kMaskTransitionPointStages = { {
     { { 120, 200, 255 }, 1000 },
     { { 255, 255, 255 }, 5000 },
     { { 200, 200, 255 }, 5000 },
-}};
+} };
 
 void MaskTransitionClearForcedMask(Player* player);
 // true entre OnPlayDestroy e o próximo OnSceneInit quando o corpo estava
@@ -2215,8 +2240,7 @@ void MaskTransitionApplyEnvironment(PlayState* play, float phase, bool revealing
 
     EnvLightSettings& base = play->envCtx.lightSettings;
     if (revealing) {
-        const s16 targetFogNear = static_cast<s16>(
-            std::lround(base.fogNear + (from->fogNear - base.fogNear) * t));
+        const s16 targetFogNear = static_cast<s16>(std::lround(base.fogNear + (from->fogNear - base.fogNear) * t));
         play->envCtx.adjFogNear = targetFogNear - base.fogNear;
         for (int i = 0; i < 3; ++i) {
             const u8 targetFog = MaskTransitionLerpColor(base.fogColor[i], from->fog[i], t);
@@ -2272,8 +2296,7 @@ void MaskTransitionApplyPointLight(PlayState* play, Player* player, float phase,
     gPointLightColor[1] = stage.color[1];
     gPointLightColor[2] = stage.color[2];
     gPointLightOffY = 28.0f;
-    gPointLightRadius =
-        static_cast<s16>(std::lround(stage.radius * std::clamp(radiusScale, 0.0f, 1.0f)));
+    gPointLightRadius = static_cast<s16>(std::lround(stage.radius * std::clamp(radiusScale, 0.0f, 1.0f)));
     Lights_PointNoGlowSetInfo(&gPointLightInfo, static_cast<s16>(player->actor.world.pos.x),
                               static_cast<s16>(player->actor.world.pos.y + gPointLightOffY),
                               static_cast<s16>(player->actor.world.pos.z), gPointLightColor[0], gPointLightColor[1],
@@ -2285,8 +2308,8 @@ void MaskTransitionApplyPointLight(PlayState* play, Player* player, float phase,
 }
 
 bool MaskTransitionShouldDraw(Player* player) {
-    return player != nullptr && gMaskTransitionPhase == MaskTransitionPhase::Conceal &&
-           !gMaskTransitionRemoving && player->currentMask == PLAYER_MASK_GORON;
+    return player != nullptr && gMaskTransitionPhase == MaskTransitionPhase::Conceal && !gMaskTransitionRemoving &&
+           player->currentMask == PLAYER_MASK_GORON;
 }
 
 // A cutscene da mascara roda em DOIS relogios: `gMaskTransitionElapsed`, que o
@@ -2407,8 +2430,7 @@ bool MaskTransitionStartCloseup(PlayState* play) {
     const f32 deltaX = active->eye.x - active->at.x;
     const f32 deltaY = active->eye.y - active->at.y;
     const f32 deltaZ = active->eye.z - active->at.z;
-    gMaskCutsceneDistance =
-        std::min(40.0f, std::sqrt((deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ)));
+    gMaskCutsceneDistance = std::min(40.0f, std::sqrt((deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ)));
     gMaskCutsceneDistance = std::max(gMaskCutsceneDistance, 1.0f);
     gMaskCutsceneYaw = std::atan2(deltaX, deltaZ);
     gMaskCutsceneFov = 80.0f;
@@ -2593,10 +2615,9 @@ void MaskTransitionUpdate(Player* player) {
                 ShipLua::MmAudio_PlayVoiceSfx(0x1856); // NA_SE_IT_SET_TRANSFORM_MASK
             }
             if (gMaskTransitionFramesRemaining <= kMaskTransitionFlashBuildFrames) {
-                const int builtFrames =
-                    kMaskTransitionFlashBuildFrames - gMaskTransitionFramesRemaining + 1;
-                gMaskTransitionFlashAlpha = static_cast<s16>(
-                    std::clamp(builtFrames * 255 / kMaskTransitionFlashBuildFrames, 0, 255));
+                const int builtFrames = kMaskTransitionFlashBuildFrames - gMaskTransitionFramesRemaining + 1;
+                gMaskTransitionFlashAlpha =
+                    static_cast<s16>(std::clamp(builtFrames * 255 / kMaskTransitionFlashBuildFrames, 0, 255));
             }
             if (gMaskTransitionFramesRemaining == 0 && ++gMaskTransitionRevealTimeout >= 15) {
                 MaskTransitionReset(player);
@@ -2640,9 +2661,10 @@ void MaskTransitionUpdate(Player* player) {
         if (gMaskTransitionElapsed == kMaskHensinStartFrame) {
             if (auto* hensin = ResourceMgr_LoadAnimByName(kMaskHensinAnimationPath); hensin != nullptr) {
                 const f32 lastFrame = Animation_GetLastFrame(reinterpret_cast<LinkAnimationHeader*>(hensin));
-                LinkAnimation_Change(play, &player->skelAnime,
-                                     reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(kMaskHensinAnimationPath)),
-                                     1.0f, 0.0f, lastFrame, ANIMMODE_ONCE, 0.0f);
+                LinkAnimation_Change(
+                    play, &player->skelAnime,
+                    reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(kMaskHensinAnimationPath)), 1.0f, 0.0f,
+                    lastFrame, ANIMMODE_ONCE, 0.0f);
                 SPDLOG_INFO("ShipLua mascara: contorcao al_hensin iniciada no frame {} ({} frames)",
                             gMaskTransitionElapsed, kMaskHensinFrames);
             } else {
@@ -2952,8 +2974,8 @@ bool CustomBodyStartAnimation(PlayState* play, const std::string& name, f32 spee
     const f32 startFrame = reverse ? lastFrame : 0.0f;
     const f32 endFrame = reverse ? 0.0f : lastFrame;
     LinkAnimation_Change(play, &gCustomBodySkelAnime,
-                          reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(path->second.c_str())),
-                          reverse ? -speed : speed, startFrame, endFrame, once ? ANIMMODE_ONCE : ANIMMODE_LOOP, 0.0f);
+                         reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(path->second.c_str())),
+                         reverse ? -speed : speed, startFrame, endFrame, once ? ANIMMODE_ONCE : ANIMMODE_LOOP, 0.0f);
     // TODA troca de animacao: o primeiro frame apenas captura a origem, nunca
     // herda o `prevTransl` da animacao anterior. Sem isto a diferenca entre a
     // raiz da animacao velha e a da nova vira um deslocamento de um frame.
@@ -3017,9 +3039,10 @@ void CustomBodyUpdateWaterVoid(Player* player, PlayState* play) {
         player->actor.velocity.y = -2.0f;
         player->actor.gravity = -0.5f;
         const auto curl = gCustomBodySpec.animsPrefixed.find("roll_enter");
-        auto* loaded = curl == gCustomBodySpec.animsPrefixed.end() ? nullptr : ResourceMgr_LoadAnimByName(curl->second.c_str());
+        auto* loaded =
+            curl == gCustomBodySpec.animsPrefixed.end() ? nullptr : ResourceMgr_LoadAnimByName(curl->second.c_str());
         if (loaded == nullptr || gCustomBodySkelAnime.curFrame >=
-                                  Animation_GetLastFrame(reinterpret_cast<LinkAnimationHeader*>(loaded)) - 0.5f) {
+                                     Animation_GetLastFrame(reinterpret_cast<LinkAnimationHeader*>(loaded)) - 0.5f) {
             gCustomBodyWaterVoidPhase = CustomBodyWaterVoidPhase::Ball;
             gCustomBodyOverrideAnim.reset();
             gCustomBodyOverrideOnce = false;
@@ -3055,12 +3078,12 @@ struct CustomBodyPunchInfo {
     f32 yTop;
 };
 
-constexpr std::array<CustomBodyPunchInfo, 3> kCustomBodyGoronPunches = {{
+constexpr std::array<CustomBodyPunchInfo, 3> kCustomBodyGoronPunches = { {
     // MM sMeleeAttackAnimInfo: punch A {6, 8}, punch B {12, 18}, punch C {8, 14}.
     { "punch_a", 6.0f, 8.0f, 20.0f, 55.0f, -15.0f, 15.0f, 20.0f, 55.0f },
     { "punch_b", 12.0f, 18.0f, 20.0f, 55.0f, 15.0f, 15.0f, 20.0f, 55.0f },
     { "punch_c", 8.0f, 14.0f, -10.0f, 30.0f, 0.0f, 30.0f, 5.0f, 30.0f },
-}};
+} };
 
 const CustomBodyPunchInfo* CustomBodyGetPunchInfo() {
     for (const auto& punch : kCustomBodyGoronPunches) {
@@ -3346,8 +3369,7 @@ void CustomBodyUpdateRollSpikes(PlayState* play, bool rolling) {
 // projectile reflection behavior without creating a second broad collider.
 void CustomBodyUpdateShieldCollider(Player* player, PlayState* play) {
     const s16 yaw = player->actor.shape.rot.y;
-    SkinMatrix_SetTranslateRotateYXZScale(&player->shieldMf, 1.0f, 1.0f, 1.0f, 0, yaw + 0x8000, 0, 0.0f, 0.0f,
-                                          0.0f);
+    SkinMatrix_SetTranslateRotateYXZScale(&player->shieldMf, 1.0f, 1.0f, 1.0f, 0, yaw + 0x8000, 0, 0.0f, 0.0f, 0.0f);
 
     const f32 sinYaw = Math_SinS(yaw);
     const f32 cosYaw = Math_CosS(yaw);
@@ -3659,19 +3681,18 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
     // `rolling` cobre so a esfera; o curl e o desenrolar tambem ocupam o corpo e
     // precisam bloquear as outras acoes do mesmo jeito. Dai `IsRolling()` (as
     // cinco fases) e nao `IsBallBody()` (as tres do meio) aqui.
-    const bool bodyBusy = rolling || waterVoidActive ||
-                           (ownsRoll && ShipLua::MmForm::IsRolling()) ||
-                           (ownsPunch && ShipLua::MmForm::IsPunching()) ||
-                           (ownsShield && ShipLua::MmForm::IsShielding()) ||
-                           gCustomBodyGroundPoundPhase != CustomBodyGroundPoundPhase::None ||
-                           gMaskTransitionPhase != MaskTransitionPhase::None;
+    const bool bodyBusy = rolling || waterVoidActive || (ownsRoll && ShipLua::MmForm::IsRolling()) ||
+                          (ownsPunch && ShipLua::MmForm::IsPunching()) ||
+                          (ownsShield && ShipLua::MmForm::IsShielding()) ||
+                          gCustomBodyGroundPoundPhase != CustomBodyGroundPoundPhase::None ||
+                          gMaskTransitionPhase != MaskTransitionPhase::None;
     const bool ocarinaHeld = (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) != 0;
     // Estados do OoT em que a forma nao pode tomar o corpo. A ocarina e tratada
     // a parte: ela roda DENTRO de PLAYER_STATE1_IN_ITEM_CS e o instrumento
     // precisa conviver com ela, nunca pausa-la.
-    const bool playerLocked =
-        (player->stateFlags1 & (PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_GETTING_ITEM |
-                                PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_DEAD | PLAYER_STATE1_INPUT_DISABLED)) != 0;
+    const bool playerLocked = (player->stateFlags1 & (PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_IN_ITEM_CS |
+                                                      PLAYER_STATE1_GETTING_ITEM | PLAYER_STATE1_CLIMBING_LADDER |
+                                                      PLAYER_STATE1_DEAD | PLAYER_STATE1_INPUT_DISABLED)) != 0;
     const bool onGround = (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) != 0;
 
     // Saidas: qualquer condicao que invalide a acao a encerra antes da entrada.
@@ -3734,9 +3755,8 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
     // na borda de saida: enquanto a bola estava ativa a action func ficou
     // pausada, e deixa-la como Roll faria a esquiva antiga reaparecer depois do
     // desenrolar.
-    if (ownsRoll &&
-        ((machineIsRolling && ootRollActive) ||
-         (machineWasRolling && !machineIsRolling && (player->stateFlags1 & PLAYER_STATE1_DAMAGED) == 0))) {
+    if (ownsRoll && ((machineIsRolling && ootRollActive) ||
+                     (machineWasRolling && !machineIsRolling && (player->stateFlags1 & PLAYER_STATE1_DAMAGED) == 0))) {
         player->actionFunc = Player_Action_Idle;
     }
 
@@ -3800,8 +3820,7 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
     // Actor_Draw já aplica shape.rot antes de chamar este draw. Durante o
     // rolamento usamos esse transform para fazer a display list enrolada girar,
     // sem depender das macros de matriz que só existem no caminho C do engine.
-    if (ownsRoll && ShipLua::MmForm::IsRolling() &&
-        gCustomBodyWaterVoidPhase != CustomBodyWaterVoidPhase::Ball) {
+    if (ownsRoll && ShipLua::MmForm::IsRolling() && gCustomBodyWaterVoidPhase != CustomBodyWaterVoidPhase::Ball) {
         // A maquina ja escreveu pitch, tombamento e yaw em `player->actor.shape.rot`
         // com o giro real da esfera (`rollSpinRate`) — nao ha acumulador a manter
         // aqui. A copia do inicio deste update e anterior ao `Update()` dela, por
@@ -3872,75 +3891,76 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
     } else if (gCustomBodyOverrideAnim.has_value()) {
         wanted = *gCustomBodyOverrideAnim;
     } else {
-        const auto result = DispatchHookTransform(
-            "hook.oot.player.body_anim_select",
-            ShipLua::EventPayload{
-                {"speed", static_cast<double>(speed)},
-                {"on_ground", (player->actor.bgCheckFlags & 1) != 0},
-                {"rolling", rolling},
-                {"roll_charge", static_cast<std::int64_t>(CustomBodyRollChargeForDisplay())},
-                {"roll_phase", std::string(CustomBodyCurrentRollPhaseName())},
-                {"falling", (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) == 0 && player->actor.velocity.y < 0.0f},
-                {"landing", (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND_TOUCH) != 0},
-                {"climbing", climbing},
-                {"climb_direction", std::string(climbDirection)},
-                // O Player alterna av2.actionVar2 ao trocar o pé da escada.
-                // O bit baixo se mantém estável inclusive nos valores negativos
-                // de entrada (-2/-4), sem expor ponteiros ou ação interna ao Lua.
-                {"climb_step", static_cast<std::int64_t>(player->av2.actionVar2 & 1)},
-                {"climb_starting", climbing && player->av2.actionVar2 < 0},
-                {"door_opening", handleDoorOpening},
-                {"door_direction", std::string(!handleDoorOpening ? "none"
-                                                                     : player->doorDirection < 0 ? "left" : "right")},
-                {"chest_opening", chestOpening},
-                // O discriminador e PLAYER_STATE2_OCARINA_PLAYING, ligada em
-                // z_player.c:6122 no instante em que a ocarina sai (junto com
-                // Player_Action_8084E3C4) e limpa em z_player.c:3345 quando ela
-                // e guardada. Cobre a posse inteira do instrumento, nao so o
-                // frame da nota.
-                //
-                // As duas tentativas anteriores falharam por motivos distintos:
-                // PLAYER_STATE1_IN_ITEM_CS marca cutscene de ITEM em geral, e
-                // msgCtx.ocarinaMode so deixa OCARINA_MODE_00 em estados
-                // especificos de cancao — nunca enquanto o Link apenas segura a
-                // ocarina, que e justamente quando o tambor deve aparecer.
-                {"instrument", ocarinaHeld},
-                // A nota vem do staff de execucao, a mesma fonte que o Player
-                // de MM usa via ocarinaButtonIndex. A leitura anterior era o
-                // botao cru, que durante a ocarina o OoT ja consumiu — por isso
-                // quase nunca via nota alguma. Somente informativo: quem toca a
-                // animacao do instrumento agora e a acao Gakki da maquina.
-                {"instrument_note",
-                 std::string([]() -> const char* {
-                     OcarinaStaff* staff = AudioOcarina_GetPlayingStaff();
-                     if (staff == nullptr || staff->state == 0) {
-                         return "none";
-                     }
-                     switch (staff->buttonIndex) {
-                         case OCARINA_BTN_A:
-                             return "a";
-                         case OCARINA_BTN_C_DOWN:
-                             return "d";
-                         case OCARINA_BTN_C_RIGHT:
-                             return "r";
-                         case OCARINA_BTN_C_LEFT:
-                             return "l";
-                         case OCARINA_BTN_C_UP:
-                             return "u";
-                         default:
-                             return "none";
-                     }
-                 }())},
-                // `attacking` reflete a acao de soco do corpo, nao mais
-                // meleeWeaponState: a forma nao empunha espada, entao aquele
-                // campo nunca subia e o soco nunca era anunciado ao mod.
-                {"attacking", ownsPunch ? ShipLua::MmForm::IsPunching()
-                                        : gCustomBodyAction == CustomBodyAction::Punch},
-                {"punch_step", static_cast<std::int64_t>(ownsPunch ? ShipLua::MmForm::ComboStep()
-                                                                   : gCustomBodyComboStep)},
-                {"shielding", ownsShield && ShipLua::MmForm::IsShielding()},
-                {"attack_animation", static_cast<std::int64_t>(player->meleeWeaponAnimation)},
-            });
+        const auto result =
+            DispatchHookTransform("hook.oot.player.body_anim_select",
+                                  ShipLua::EventPayload{
+                                      { "speed", static_cast<double>(speed) },
+                                      { "on_ground", (player->actor.bgCheckFlags & 1) != 0 },
+                                      { "rolling", rolling },
+                                      { "roll_charge", static_cast<std::int64_t>(CustomBodyRollChargeForDisplay()) },
+                                      { "roll_phase", std::string(CustomBodyCurrentRollPhaseName()) },
+                                      { "falling", (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) == 0 &&
+                                                       player->actor.velocity.y < 0.0f },
+                                      { "landing", (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND_TOUCH) != 0 },
+                                      { "climbing", climbing },
+                                      { "climb_direction", std::string(climbDirection) },
+                                      // O Player alterna av2.actionVar2 ao trocar o pé da escada.
+                                      // O bit baixo se mantém estável inclusive nos valores negativos
+                                      // de entrada (-2/-4), sem expor ponteiros ou ação interna ao Lua.
+                                      { "climb_step", static_cast<std::int64_t>(player->av2.actionVar2 & 1) },
+                                      { "climb_starting", climbing && player->av2.actionVar2 < 0 },
+                                      { "door_opening", handleDoorOpening },
+                                      { "door_direction", std::string(!handleDoorOpening          ? "none"
+                                                                      : player->doorDirection < 0 ? "left"
+                                                                                                  : "right") },
+                                      { "chest_opening", chestOpening },
+                                      // O discriminador e PLAYER_STATE2_OCARINA_PLAYING, ligada em
+                                      // z_player.c:6122 no instante em que a ocarina sai (junto com
+                                      // Player_Action_8084E3C4) e limpa em z_player.c:3345 quando ela
+                                      // e guardada. Cobre a posse inteira do instrumento, nao so o
+                                      // frame da nota.
+                                      //
+                                      // As duas tentativas anteriores falharam por motivos distintos:
+                                      // PLAYER_STATE1_IN_ITEM_CS marca cutscene de ITEM em geral, e
+                                      // msgCtx.ocarinaMode so deixa OCARINA_MODE_00 em estados
+                                      // especificos de cancao — nunca enquanto o Link apenas segura a
+                                      // ocarina, que e justamente quando o tambor deve aparecer.
+                                      { "instrument", ocarinaHeld },
+                                      // A nota vem do staff de execucao, a mesma fonte que o Player
+                                      // de MM usa via ocarinaButtonIndex. A leitura anterior era o
+                                      // botao cru, que durante a ocarina o OoT ja consumiu — por isso
+                                      // quase nunca via nota alguma. Somente informativo: quem toca a
+                                      // animacao do instrumento agora e a acao Gakki da maquina.
+                                      { "instrument_note", std::string([]() -> const char* {
+                                            OcarinaStaff* staff = AudioOcarina_GetPlayingStaff();
+                                            if (staff == nullptr || staff->state == 0) {
+                                                return "none";
+                                            }
+                                            switch (staff->buttonIndex) {
+                                                case OCARINA_BTN_A:
+                                                    return "a";
+                                                case OCARINA_BTN_C_DOWN:
+                                                    return "d";
+                                                case OCARINA_BTN_C_RIGHT:
+                                                    return "r";
+                                                case OCARINA_BTN_C_LEFT:
+                                                    return "l";
+                                                case OCARINA_BTN_C_UP:
+                                                    return "u";
+                                                default:
+                                                    return "none";
+                                            }
+                                        }()) },
+                                      // `attacking` reflete a acao de soco do corpo, nao mais
+                                      // meleeWeaponState: a forma nao empunha espada, entao aquele
+                                      // campo nunca subia e o soco nunca era anunciado ao mod.
+                                      { "attacking", ownsPunch ? ShipLua::MmForm::IsPunching()
+                                                               : gCustomBodyAction == CustomBodyAction::Punch },
+                                      { "punch_step", static_cast<std::int64_t>(ownsPunch ? ShipLua::MmForm::ComboStep()
+                                                                                          : gCustomBodyComboStep) },
+                                      { "shielding", ownsShield && ShipLua::MmForm::IsShielding() },
+                                      { "attack_animation", static_cast<std::int64_t>(player->meleeWeaponAnimation) },
+                                  });
         if (result.has_value() && std::holds_alternative<std::string>(result->value)) {
             const std::string& requested = std::get<std::string>(result->value);
             if (gCustomBodySpec.anims.find(requested) != gCustomBodySpec.anims.end()) {
@@ -3973,7 +3993,8 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
                 return;
             }
             gCustomBodyCurrentAnim = wanted;
-            const f32 lastFrame = reverse ? Animation_GetLastFrame(reinterpret_cast<LinkAnimationHeader*>(loaded)) : 0.0f;
+            const f32 lastFrame =
+                reverse ? Animation_GetLastFrame(reinterpret_cast<LinkAnimationHeader*>(loaded)) : 0.0f;
             LinkAnimation_Change(play, &gCustomBodySkelAnime, (LinkAnimationHeader*)animPath->second.c_str(),
                                  reverse ? -1.0f : 1.0f, reverse ? lastFrame : 0.0f, 0.0f, ANIMMODE_LOOP, 0.0f);
             // Mesmo motivo do caminho one-shot: nenhuma troca pode herdar o
@@ -4053,9 +4074,8 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
 // distintas no MM. As energias usam o segmento 0x08 para TwoTexScroll, por
 // isso precisam de um passe Xlu separado e nunca podem ser tratadas como uma
 // textura comum do skeleton.
-extern "C" void CustomBodyDrawRoll(PlayState* play, const char* path, const char* spikesPath,
-                                   const char* energy1Path, const char* energy2Path, int charge,
-                                   bool machineVisuals) {
+extern "C" void CustomBodyDrawRoll(PlayState* play, const char* path, const char* spikesPath, const char* energy1Path,
+                                   const char* energy2Path, int charge, bool machineVisuals) {
     Gfx* dList = reinterpret_cast<Gfx*>(const_cast<char*>(path));
     // NAO ha "kick visual" de parede no MM. Conferido na fonte primaria: em
     // `Player_Action_96` (2S2H z_player.c:19932-19944) o quique muda o yaw,
@@ -4088,11 +4108,10 @@ extern "C" void CustomBodyDrawRoll(PlayState* play, const char* path, const char
 
     OPEN_DISPS(play->state.gfxCtx);
     Gfx_SetupDL_25Xlu(play->state.gfxCtx);
-    Gfx* twoTexScroll = Gfx_TwoTexScroll(play->state.gfxCtx, 0, 0, 0, 0x40, 0x40, 1,
-                                          play->gameplayFrames * 2, play->gameplayFrames * 2, 0x40, 0x40);
+    Gfx* twoTexScroll = Gfx_TwoTexScroll(play->state.gfxCtx, 0, 0, 0, 0x40, 0x40, 1, play->gameplayFrames * 2,
+                                         play->gameplayFrames * 2, 0x40, 0x40);
     gSPSegment(POLY_OPA_DISP++, 0x08, reinterpret_cast<uintptr_t>(twoTexScroll));
-    const f32 colorLerp =
-        machineVisuals ? std::clamp(ShipLua::MmForm::RollColorLerp(), 0.0f, 1.0f) : 0.0f;
+    const f32 colorLerp = machineVisuals ? std::clamp(ShipLua::MmForm::RollColorLerp(), 0.0f, 1.0f) : 0.0f;
     const u8 envR = static_cast<u8>(255.0f - (175.0f * colorLerp));
     const u8 envG = static_cast<u8>(255.0f - (175.0f * colorLerp));
     const u8 envB = static_cast<u8>(255.0f - (55.0f * colorLerp));
@@ -4180,8 +4199,8 @@ static const std::array<CustomBodyGakkiKey, 16> kGakkiGoronPlay = {
 };
 // D_801C0510 — repouso entre notas.
 static const std::array<CustomBodyGakkiKey, 5> kGakkiGoronWait = {
-    CustomBodyGakkiKey{ 0.0f, { 1.0f, 1.0f, 1.0f } },  CustomBodyGakkiKey{ 4.0f, { 1.0f, 1.0f, 1.0f } },
-    CustomBodyGakkiKey{ 5.0f, { 0.9f, 1.1f, 1.0f } },  CustomBodyGakkiKey{ 6.0f, { 1.1f, 1.05f, 1.0f } },
+    CustomBodyGakkiKey{ 0.0f, { 1.0f, 1.0f, 1.0f } }, CustomBodyGakkiKey{ 4.0f, { 1.0f, 1.0f, 1.0f } },
+    CustomBodyGakkiKey{ 5.0f, { 0.9f, 1.1f, 1.0f } }, CustomBodyGakkiKey{ 6.0f, { 1.1f, 1.05f, 1.0f } },
     CustomBodyGakkiKey{ 8.0f, { 1.0f, 1.0f, 1.0f } },
 };
 
@@ -4343,10 +4362,8 @@ extern "C" void CustomBodyActorDraw(Actor* actor, PlayState* play) {
                  (player != nullptr && (player->stateFlags1 & PLAYER_STATE1_CLIMBING_LADDER)) ? 1 : 0,
                  gCustomBodyOverrideAnim.has_value() ? 1 : 0,
                  (player != nullptr && (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING)) ? 1 : 0,
-                 gSaveContext.health,
-                 (player != nullptr && (player->stateFlags1 & PLAYER_STATE1_DAMAGED)) ? 1 : 0,
-                 player != nullptr ? player->actor.velocity.y : 0.0f,
-                 player != nullptr ? player->linearVelocity : 0.0f,
+                 gSaveContext.health, (player != nullptr && (player->stateFlags1 & PLAYER_STATE1_DAMAGED)) ? 1 : 0,
+                 player != nullptr ? player->actor.velocity.y : 0.0f, player != nullptr ? player->linearVelocity : 0.0f,
                  gCustomBodyCurrentAnim.c_str());
         if (lastSnapshot != buf) {
             lastSnapshot = buf;
@@ -4365,13 +4382,11 @@ extern "C" void CustomBodyActorDraw(Actor* actor, PlayState* play) {
     // do meio. Nas duas pontas (curl e desenrolar) o esqueleto ainda toca a
     // animacao, e desenhar a bola ali cortaria a transicao.
     const bool ballIsBody =
-        MmFormOwnsRoll()
-            ? ShipLua::MmForm::IsBallBody()
-            : (gCustomBodyRollPhase == CustomBodyRollPhase::Rolling &&
-               (player != nullptr && (player->actionFunc == Player_Action_Roll ||
-                                      gCustomBodyGroundPoundPhase != CustomBodyGroundPoundPhase::None)));
-    if (player != nullptr && (ballIsBody || waterBall) &&
-        rollModel != gCustomBodySpec.modelsPrefixed.end()) {
+        MmFormOwnsRoll() ? ShipLua::MmForm::IsBallBody()
+                         : (gCustomBodyRollPhase == CustomBodyRollPhase::Rolling &&
+                            (player != nullptr && (player->actionFunc == Player_Action_Roll ||
+                                                   gCustomBodyGroundPoundPhase != CustomBodyGroundPoundPhase::None)));
+    if (player != nullptr && (ballIsBody || waterBall) && rollModel != gCustomBodySpec.modelsPrefixed.end()) {
         const auto spikes = gCustomBodySpec.modelsPrefixed.find("roll_spikes");
         const auto energy1 = gCustomBodySpec.modelsPrefixed.find("roll_energy_1");
         const auto energy2 = gCustomBodySpec.modelsPrefixed.find("roll_energy_2");
@@ -4379,12 +4394,10 @@ extern "C" void CustomBodyActorDraw(Actor* actor, PlayState* play) {
             (!waterBall && CustomBodyRollSpikesForDisplay() && spikes != gCustomBodySpec.modelsPrefixed.end())
                 ? spikes->second.c_str()
                 : nullptr;
-        const char* energy1Path = !waterBall && energy1 != gCustomBodySpec.modelsPrefixed.end()
-                                      ? energy1->second.c_str()
-                                      : nullptr;
-        const char* energy2Path = !waterBall && energy2 != gCustomBodySpec.modelsPrefixed.end()
-                                      ? energy2->second.c_str()
-                                      : nullptr;
+        const char* energy1Path =
+            !waterBall && energy1 != gCustomBodySpec.modelsPrefixed.end() ? energy1->second.c_str() : nullptr;
+        const char* energy2Path =
+            !waterBall && energy2 != gCustomBodySpec.modelsPrefixed.end() ? energy2->second.c_str() : nullptr;
         CustomBodyDrawRoll(play, rollModel->second.c_str(), spikesPath, energy1Path, energy2Path,
                            waterBall ? 0 : CustomBodyRollChargeForDisplay(), MmFormOwnsRoll() && !waterBall);
         return;
@@ -4452,9 +4465,8 @@ bool CustomBodyActivateFromSpec(PlayState* play) {
         SPDLOG_WARN("ShipLua set_body: 'shield' precisa declarar skeleton e animation juntos");
         return false;
     }
-    if (hasShieldSkeleton &&
-        (!ResourceMgr_FileExists(gCustomBodySpec.shieldSkeletonPathPrefixed.c_str()) ||
-         !ResourceMgr_FileExists(gCustomBodySpec.shieldAnimationPathPrefixed.c_str()))) {
+    if (hasShieldSkeleton && (!ResourceMgr_FileExists(gCustomBodySpec.shieldSkeletonPathPrefixed.c_str()) ||
+                              !ResourceMgr_FileExists(gCustomBodySpec.shieldAnimationPathPrefixed.c_str()))) {
         SPDLOG_WARN("ShipLua set_body: assets de 'shield' indispon\xC3\xADveis");
         return false;
     }
@@ -4476,8 +4488,7 @@ bool CustomBodyActivateFromSpec(PlayState* play) {
     // buffers do chamador quando não-NULL, mas aqui passamos NULL para os
     // dois: aloca do tamanho real do header do skeleton fornecido pelo mod,
     // não de PLAYER_LIMB_MAX.
-    SkelAnime_InitLink(play, &gCustomBodySkelAnime,
-                       (FlexSkeletonHeader*)gCustomBodySpec.skeletonPathPrefixed.c_str(),
+    SkelAnime_InitLink(play, &gCustomBodySkelAnime, (FlexSkeletonHeader*)gCustomBodySpec.skeletonPathPrefixed.c_str(),
                        (LinkAnimationHeader*)defaultAnimPath->second.c_str(), 9, nullptr, nullptr, 0);
     // SkelAnime_InitLink nao inicializa baseTransl. O skeleton de MM pertence a
     // mesma familia do Player e usa a base canonica definida em z_player.c.
@@ -4884,13 +4895,11 @@ int LuaGetPlayerBody(lua_State* state) {
     // o campo fica false em vez de mentir um valor do caminho antigo.
     lua_pushboolean(state, !ownsPunchForState && gCustomBodyPunchQueued);
     lua_setfield(state, -2, "punch_combo_queued");
-    lua_pushboolean(state,
-                    ownsRollForState ? ShipLua::MmForm::RollAttackActive() : gCustomBodyRollColliderArmed);
+    lua_pushboolean(state, ownsRollForState ? ShipLua::MmForm::RollAttackActive() : gCustomBodyRollColliderArmed);
     lua_setfield(state, -2, "roll_attack_active");
     lua_pushboolean(state, ownsRollForState
                                ? (ShipLua::MmForm::IsBallBody() && ShipLua::MmForm::RollChargeLevel() >= 5)
-                               : (gCustomBodyRollPhase == CustomBodyRollPhase::Rolling &&
-                                  gCustomBodyRollCharge >= 5));
+                               : (gCustomBodyRollPhase == CustomBodyRollPhase::Rolling && gCustomBodyRollCharge >= 5));
     lua_setfield(state, -2, "roll_energy_active");
     lua_pushboolean(state, CustomBodyRollSpikesForDisplay());
     lua_setfield(state, -2, "roll_spikes_active");
@@ -4960,11 +4969,10 @@ int LuaPlayPlayerBodyAnimation(lua_State* state) {
         return 1;
     }
     const f32 lastFrame = Animation_GetLastFrame(reinterpret_cast<LinkAnimationHeader*>(loaded));
-    LinkAnimation_Change(play, &gCustomBodySkelAnime,
-                          reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(path->second.c_str())),
-                          reverseOnce ? -static_cast<f32>(requestedSpeed) : static_cast<f32>(requestedSpeed),
-                          reverseOnce ? lastFrame : 0.0f, reverseOnce ? 0.0f : lastFrame,
-                          loop ? ANIMMODE_LOOP : ANIMMODE_ONCE, 0.0f);
+    LinkAnimation_Change(
+        play, &gCustomBodySkelAnime, reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(path->second.c_str())),
+        reverseOnce ? -static_cast<f32>(requestedSpeed) : static_cast<f32>(requestedSpeed),
+        reverseOnce ? lastFrame : 0.0f, reverseOnce ? 0.0f : lastFrame, loop ? ANIMMODE_LOOP : ANIMMODE_ONCE, 0.0f);
     if (once && std::strcmp(name, "mask_off") == 0) {
         Player* player = GET_PLAYER(play);
         if (player != nullptr) {
@@ -5100,14 +5108,13 @@ int LuaSetMask(lua_State* state) {
 int LuaPlayMaskOnAnimation(lua_State* state) {
     PlayState* play = gPlayState;
     Player* player = play != nullptr ? GET_PLAYER(play) : nullptr;
-    const u32 blockedFlags =
-        PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_GETTING_ITEM |
-        PLAYER_STATE1_TALKING | PLAYER_STATE1_INPUT_DISABLED | PLAYER_STATE1_IN_WATER;
+    const u32 blockedFlags = PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_IN_ITEM_CS |
+                             PLAYER_STATE1_GETTING_ITEM | PLAYER_STATE1_TALKING | PLAYER_STATE1_INPUT_DISABLED |
+                             PLAYER_STATE1_IN_WATER;
     const bool ocarinaActive = player != nullptr && (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) != 0;
-    const bool ownedAction = gCustomBodyAction != CustomBodyAction::None ||
-                             gCustomBodyWaterVoidPhase != CustomBodyWaterVoidPhase::None ||
-                             gCustomBodyGroundPoundPhase != CustomBodyGroundPoundPhase::None ||
-                             ShipLua::MmForm::WantsPlayerActionPaused();
+    const bool ownedAction =
+        gCustomBodyAction != CustomBodyAction::None || gCustomBodyWaterVoidPhase != CustomBodyWaterVoidPhase::None ||
+        gCustomBodyGroundPoundPhase != CustomBodyGroundPoundPhase::None || ShipLua::MmForm::WantsPlayerActionPaused();
     if (player == nullptr || gCustomBodyActive || gCutsceneActive || ownedAction || ocarinaActive ||
         (player->stateFlags1 & blockedFlags) != 0 || player->csAction != 0 || play->msgCtx.msgMode != MSGMODE_NONE ||
         player->actionFunc != Player_Action_Idle || (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) == 0 ||
@@ -5122,8 +5129,7 @@ int LuaPlayMaskOnAnimation(lua_State* state) {
     // aqui evita descobrir a falta dela no meio da cutscene, quando ja nao ha o
     // que fazer alem de degradar em silencio.
     auto* hensinLoaded = ResourceMgr_LoadAnimByName(kMaskHensinAnimationPath);
-    if (loaded == nullptr || endLoaded == nullptr ||
-        !ResourceMgr_FileExists("mm/objects/gameplay_keep/gGoronMaskDL")) {
+    if (loaded == nullptr || endLoaded == nullptr || !ResourceMgr_FileExists("mm/objects/gameplay_keep/gGoronMaskDL")) {
         SPDLOG_WARN("ShipLua play_mask_on_animation: animacoes ou mascara expressiva do MM indisponiveis");
         lua_pushinteger(state, 0);
         return 1;
@@ -5136,8 +5142,8 @@ int LuaPlayMaskOnAnimation(lua_State* state) {
     }
     const f32 lastFrame = Animation_GetLastFrame(reinterpret_cast<LinkAnimationHeader*>(loaded));
     LinkAnimation_Change(play, &player->skelAnime,
-                          reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(kMaskOnAnimationPath)), 1.0f, 0.0f,
-                          lastFrame, ANIMMODE_ONCE, 0.0f);
+                         reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(kMaskOnAnimationPath)), 1.0f, 0.0f,
+                         lastFrame, ANIMMODE_ONCE, 0.0f);
     const int transitionFrames = MaskTransitionStart(player, play);
     lua_pushinteger(state, static_cast<lua_Integer>(transitionFrames));
     return 1;
@@ -5201,7 +5207,7 @@ void DispatchDirectionalInput(PlayState* play) {
         u16 mask;
         const char* action;
     };
-    constexpr std::array<Direction, 8> kDirections = {{
+    constexpr std::array<Direction, 8> kDirections = { {
         { BTN_DUP, "dpad_up" },
         { BTN_DDOWN, "dpad_down" },
         { BTN_DLEFT, "dpad_left" },
@@ -5210,22 +5216,19 @@ void DispatchDirectionalInput(PlayState* play) {
         { BTN_CDOWN, "c_down" },
         { BTN_CLEFT, "c_left" },
         { BTN_CRIGHT, "c_right" },
-    }};
+    } };
 
     Input& input = play->state.input[0];
     for (const auto& direction : kDirections) {
         if (!CHECK_BTN_ALL(input.press.button, direction.mask)) {
             continue;
         }
-        const auto accepted = DispatchHookTransform(
-            "input.action",
-            ShipLua::EventPayload{
-                { "action", direction.action },
-                { "pressed", true },
-                { "source", "controller" },
-            });
-        if (accepted.has_value() && std::holds_alternative<bool>(accepted->value) &&
-            std::get<bool>(accepted->value)) {
+        const auto accepted = DispatchHookTransform("input.action", ShipLua::EventPayload{
+                                                                        { "action", direction.action },
+                                                                        { "pressed", true },
+                                                                        { "source", "controller" },
+                                                                    });
+        if (accepted.has_value() && std::holds_alternative<bool>(accepted->value) && std::get<bool>(accepted->value)) {
             input.press.button &= static_cast<u16>(~direction.mask);
         }
     }
@@ -5510,8 +5513,7 @@ int LuaHudDrawIcon(lua_State* state) {
         }
         lua_pop(state, 1);
     }
-    if (path == nullptr || *path == '\0' || w < 1 || w > 64 || h < 1 || h > 64 ||
-        !ResourceMgr_FileExists(path)) {
+    if (path == nullptr || *path == '\0' || w < 1 || w > 64 || h < 1 || h > 64 || !ResourceMgr_FileExists(path)) {
         lua_pushboolean(state, 0);
         return 1;
     }
@@ -5536,13 +5538,12 @@ int LuaHudDrawIcon(lua_State* state) {
     gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, static_cast<u8>(std::clamp(alpha, 0, 255)));
     gDPSetTextureFilter(OVERLAY_DISP++, G_TF_BILERP);
-    gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, texW, texH, 0,
-                        G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP,
-                        G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+    gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, texW, texH, 0, G_TX_NOMIRROR | G_TX_CLAMP,
+                        G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
     const int dsdx = std::max(1, (static_cast<int>(texW) << 10) / w);
     const int dtdy = std::max(1, (static_cast<int>(texH) << 10) / h);
-    gSPWideTextureRectangle(OVERLAY_DISP++, x << 2, y << 2, (x + w) << 2, (y + h) << 2,
-                            G_TX_RENDERTILE, 0, 0, dsdx, dtdy);
+    gSPWideTextureRectangle(OVERLAY_DISP++, x << 2, y << 2, (x + w) << 2, (y + h) << 2, G_TX_RENDERTILE, 0, 0, dsdx,
+                            dtdy);
     CLOSE_DISPS(play->state.gfxCtx);
     gHudTileDirty = true;
     lua_pushboolean(state, 1);
@@ -5607,9 +5608,9 @@ int LuaHudDrawText(lua_State* state) {
             void* texture = Ship_GetCharFontTexture(ch);
             if (texture != nullptr) {
                 gDPPipeSync(OVERLAY_DISP++);
-                gDPLoadTextureBlock_4b(OVERLAY_DISP++, texture, G_IM_FMT_I, FONT_CHAR_TEX_WIDTH,
-                                       FONT_CHAR_TEX_HEIGHT, 0, G_TX_NOMIRROR | G_TX_CLAMP,
-                                       G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+                gDPLoadTextureBlock_4b(OVERLAY_DISP++, texture, G_IM_FMT_I, FONT_CHAR_TEX_WIDTH, FONT_CHAR_TEX_HEIGHT,
+                                       0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK,
+                                       G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, clamp8(a));
                 gSPTextureRectangle(OVERLAY_DISP++, (x + kerning + 1) << 2, (y + lineOffset + 1) << 2,
                                     (x + kerning + 1 + charSize) << 2, (y + lineOffset + 1 + charSize) << 2,
@@ -5617,8 +5618,8 @@ int LuaHudDrawText(lua_State* state) {
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, clamp8(r), clamp8(g), clamp8(b), clamp8(a));
                 gSPTextureRectangle(OVERLAY_DISP++, (x + kerning) << 2, (y + lineOffset) << 2,
-                                    (x + kerning + charSize) << 2, (y + lineOffset + charSize) << 2,
-                                    G_TX_RENDERTILE, 0, 0, texScale, texScale);
+                                    (x + kerning + charSize) << 2, (y + lineOffset + charSize) << 2, G_TX_RENDERTILE, 0,
+                                    0, texScale, texScale);
             }
         }
         kerning += static_cast<int>(Ship_GetCharFontWidth(ch) * textScale);
@@ -5676,19 +5677,17 @@ extern "C" void DrawHeldItemModels(PlayState* play) {
     }
     OPEN_DISPS(play->state.gfxCtx);
     if (!gHeldItemModelLeft.empty()) {
-        Matrix_Translate(player->bodyPartsPos[PLAYER_BODYPART_L_HAND].x,
-                         player->bodyPartsPos[PLAYER_BODYPART_L_HAND].y,
+        Matrix_Translate(player->bodyPartsPos[PLAYER_BODYPART_L_HAND].x, player->bodyPartsPos[PLAYER_BODYPART_L_HAND].y,
                          player->bodyPartsPos[PLAYER_BODYPART_L_HAND].z, MTXMODE_NEW);
         gSPMatrix(POLY_OPA_DISP++, Matrix_NewMtx(play->state.gfxCtx, (char*)__FILE__, __LINE__),
-                 G_MTX_MODELVIEW | G_MTX_LOAD);
+                  G_MTX_MODELVIEW | G_MTX_LOAD);
         gSPDisplayList(POLY_OPA_DISP++, (Gfx*)gHeldItemModelLeft.c_str());
     }
     if (!gHeldItemModelRight.empty()) {
-        Matrix_Translate(player->bodyPartsPos[PLAYER_BODYPART_R_HAND].x,
-                         player->bodyPartsPos[PLAYER_BODYPART_R_HAND].y,
+        Matrix_Translate(player->bodyPartsPos[PLAYER_BODYPART_R_HAND].x, player->bodyPartsPos[PLAYER_BODYPART_R_HAND].y,
                          player->bodyPartsPos[PLAYER_BODYPART_R_HAND].z, MTXMODE_NEW);
         gSPMatrix(POLY_OPA_DISP++, Matrix_NewMtx(play->state.gfxCtx, (char*)__FILE__, __LINE__),
-                 G_MTX_MODELVIEW | G_MTX_LOAD);
+                  G_MTX_MODELVIEW | G_MTX_LOAD);
         gSPDisplayList(POLY_OPA_DISP++, (Gfx*)gHeldItemModelRight.c_str());
     }
     CLOSE_DISPS(play->state.gfxCtx);
@@ -5703,8 +5702,7 @@ extern "C" void DrawMaskTransitionFlash(PlayState* play) {
     OPEN_DISPS(play->state.gfxCtx);
     Gfx_SetupDL_44Xlu(play->state.gfxCtx);
     gDPPipeSync(POLY_XLU_DISP++);
-    gDPSetCombineLERP(POLY_XLU_DISP++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0,
-                      PRIMITIVE);
+    gDPSetCombineLERP(POLY_XLU_DISP++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE);
     const u8 alpha = static_cast<u8>(gMaskTransitionFlashAlpha);
     const u8 red = static_cast<u8>(180 + (75 * alpha / 255));
     const u8 green = static_cast<u8>(215 + (40 * alpha / 255));
@@ -5723,8 +5721,7 @@ int LuaSetHeldItemModel(lua_State* state) {
     } else if (std::strcmp(slot, "right_hand") == 0) {
         target = &gHeldItemModelRight;
     } else {
-        SPDLOG_WARN("ShipLua set_held_item_model: slot '{}' n\xC3\xA3o suportado (use 'left_hand'/'right_hand')",
-                    slot);
+        SPDLOG_WARN("ShipLua set_held_item_model: slot '{}' n\xC3\xA3o suportado (use 'left_hand'/'right_hand')", slot);
         lua_pushboolean(state, 0);
         return 1;
     }
@@ -5748,13 +5745,28 @@ int LuaSetHeldItemModel(lua_State* state) {
 // PASSO 3 — ship.player.get/set: acesso a campos do player por nome, com
 // validação, em vez de uma função nativa dedicada por ideia.
 enum class FieldKind {
-    Health, HealthCapacity, Magic, Rupees, PosX, PosY, PosZ, RotY, Speed, VelX, VelY, VelZ, OnGround,
+    Health,
+    HealthCapacity,
+    Magic,
+    Rupees,
+    PosX,
+    PosY,
+    PosZ,
+    RotY,
+    Speed,
+    VelX,
+    VelY,
+    VelZ,
+    OnGround,
     // Estados de ação, somente leitura. Semânticos de propósito: expor
     // stateFlags cru amarraria os mods a bits internos do engine.
-    Rolling, Climbing, Swimming,
+    Rolling,
+    Climbing,
+    Swimming,
     // Posição do jogador projetada na tela — permite ancorar um medidor ao
     // personagem (roda de stamina ao estilo BotW) em vez de fixá-lo num canto.
-    ScreenX, ScreenY
+    ScreenX,
+    ScreenY
 };
 
 struct PlayerField {
@@ -6034,9 +6046,8 @@ int LuaSpawnDog(lua_State* state) {
         lua_pushboolean(state, 0);
         return 1;
     }
-    Actor* dog =
-        Actor_Spawn(&play->actorCtx, play, ACTOR_EN_DOG, player->actor.world.pos.x, player->actor.world.pos.y,
-                    player->actor.world.pos.z, 0, player->actor.shape.rot.y, 0, static_cast<s16>(0x8000));
+    Actor* dog = Actor_Spawn(&play->actorCtx, play, ACTOR_EN_DOG, player->actor.world.pos.x, player->actor.world.pos.y,
+                             player->actor.world.pos.z, 0, player->actor.shape.rot.y, 0, static_cast<s16>(0x8000));
     lua_pushboolean(state, dog != nullptr);
     return 1;
 }
@@ -6332,23 +6343,23 @@ void MountCrossWorldArchives() {
     if (const char* configured = std::getenv("SHIPLUA_MM_ROOT"); configured != nullptr && *configured != '\0') {
         candidates.emplace_back(configured);
     } else {
-    // O layout do launcher mantém os dois archives na raiz do pacote (é onde
-    // o próprio oot.o2r é encontrado), então a pasta do app vem primeiro.
-    const std::filesystem::path cwd = std::filesystem::absolute(Ship::Context::GetAppDirectoryPath(""), ec);
-    candidates.push_back(cwd);
-    candidates.push_back(cwd / "hosts" / "mm");
-    candidates.push_back(cwd.parent_path());
-    candidates.push_back(cwd.parent_path() / "mm");
-    candidates.push_back(cwd.parent_path() / "MM");
-    candidates.push_back(cwd.parent_path().parent_path() / "hosts" / "mm");
+        // O layout do launcher mantém os dois archives na raiz do pacote (é onde
+        // o próprio oot.o2r é encontrado), então a pasta do app vem primeiro.
+        const std::filesystem::path cwd = std::filesystem::absolute(Ship::Context::GetAppDirectoryPath(""), ec);
+        candidates.push_back(cwd);
+        candidates.push_back(cwd / "hosts" / "mm");
+        candidates.push_back(cwd.parent_path());
+        candidates.push_back(cwd.parent_path() / "mm");
+        candidates.push_back(cwd.parent_path() / "MM");
+        candidates.push_back(cwd.parent_path().parent_path() / "hosts" / "mm");
 #ifdef _WIN32
-    const std::filesystem::path runtimeRoot = RuntimeRoot();
-    candidates.push_back(runtimeRoot);
-    candidates.push_back(runtimeRoot / "hosts" / "mm");
-    candidates.push_back(runtimeRoot.parent_path());
-    candidates.push_back(runtimeRoot.parent_path() / "mm");
-    candidates.push_back(runtimeRoot.parent_path().parent_path());
-    candidates.push_back(runtimeRoot.parent_path().parent_path() / "hosts" / "mm");
+        const std::filesystem::path runtimeRoot = RuntimeRoot();
+        candidates.push_back(runtimeRoot);
+        candidates.push_back(runtimeRoot / "hosts" / "mm");
+        candidates.push_back(runtimeRoot.parent_path());
+        candidates.push_back(runtimeRoot.parent_path() / "mm");
+        candidates.push_back(runtimeRoot.parent_path().parent_path());
+        candidates.push_back(runtimeRoot.parent_path().parent_path() / "hosts" / "mm");
 #endif
     }
 
@@ -6486,11 +6497,14 @@ bool HasModArchive() {
     const auto manager = NativeResourceManager();
     const auto archiveManager = manager ? manager->GetArchiveManager() : nullptr;
     const auto archives = archiveManager ? archiveManager->GetArchives() : nullptr;
-    if (!archives) return false;
+    if (!archives)
+        return false;
     for (const auto& archive : *archives) {
-        if (!archive) continue;
+        if (!archive)
+            continue;
         for (const auto& part : std::filesystem::path(archive->GetPath())) {
-            if (part == "mods") return true;
+            if (part == "mods")
+                return true;
         }
     }
     return false;
@@ -6527,7 +6541,8 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
                      loaded.message);
         return;
     }
-    if (!loaded.value->loadedIds.empty()) SetEngineExtended(true);
+    if (!loaded.value->loadedIds.empty())
+        SetEngineExtended(true);
     for (const auto& [modId, reason] : loaded.value->rejected) {
         SPDLOG_WARN("ShipLua rejeitou o mod '{}': {}", modId, reason);
     }
@@ -6563,7 +6578,8 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     }
     gPendingUnboundArchives.clear();
     SPDLOG_INFO("ShipLua carregou {} mod(s) de '{}'", loaded.value->loadedIds.size(), modsRoot.string());
-    if (gMenuRegistry != nullptr) gMenuRegistry->SetLoadedMods(loaded.value->loadedIds);
+    if (gMenuRegistry != nullptr)
+        gMenuRegistry->SetLoadedMods(loaded.value->loadedIds);
 
     for (const std::string& modId : loaded.value->loadedIds) {
         ShipLua::LuaRuntime* runtime = gModHost->GetRuntime(modId);
@@ -6632,24 +6648,24 @@ void Initialize() {
     // mesmo callback registrado pela hotkey, sem criar um segundo caminho de
     // transformação.
     auto console = Ship::Context::GetRawInstance()->GetConsole();
-    console->AddCommand(
-        "shiplua_goto_file_select",
-        { [](std::shared_ptr<Ship::Console>, std::vector<std::string>, std::string* output) -> int32_t {
-             if (gGameState == nullptr || gSaveContext.gameMode != GAMEMODE_TITLE_SCREEN) {
-                 if (output != nullptr) {
-                     *output = "use este comando somente na tela de titulo";
-                 }
-                 return 1;
-             }
-             gSaveContext.gameMode = GAMEMODE_FILE_SELECT;
-             gGameState->running = false;
-             SET_NEXT_GAMESTATE(gGameState, FileChoose_Init, FileChooseContext);
-             if (output != nullptr) {
-                 *output = "selecao de arquivo solicitada";
-             }
-             return 0;
-         },
-          "Vai para a tela de selecao usando a transicao nativa de GameState.", {} });
+    console->AddCommand("shiplua_goto_file_select",
+                        { [](std::shared_ptr<Ship::Console>, std::vector<std::string>, std::string* output) -> int32_t {
+                             if (gGameState == nullptr || gSaveContext.gameMode != GAMEMODE_TITLE_SCREEN) {
+                                 if (output != nullptr) {
+                                     *output = "use este comando somente na tela de titulo";
+                                 }
+                                 return 1;
+                             }
+                             gSaveContext.gameMode = GAMEMODE_FILE_SELECT;
+                             gGameState->running = false;
+                             SET_NEXT_GAMESTATE(gGameState, FileChoose_Init, FileChooseContext);
+                             if (output != nullptr) {
+                                 *output = "selecao de arquivo solicitada";
+                             }
+                             return 0;
+                         },
+                          "Vai para a tela de selecao usando a transicao nativa de GameState.",
+                          {} });
     console->AddCommand(
         "shiplua_open_file",
         { [](std::shared_ptr<Ship::Console>, std::vector<std::string> args, std::string* output) -> int32_t {
@@ -6732,8 +6748,7 @@ void Initialize() {
                      if (used == args[1].size()) {
                          index = value;
                      }
-                 } catch (const std::exception&) {
-                 }
+                 } catch (const std::exception&) {}
              }
              if (index < 0 || index >= ShipLuaHost::OotEntranceCount()) {
                  reply("entrada desconhecida: " + args[1]);
@@ -6775,80 +6790,76 @@ void Initialize() {
         // pode reagir ao save sem encontrar a API de gameplay indisponível.
         gPendingSaveLoadedSlot = fileNum;
     });
-    gImportTickHook =
-        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
-            // Boot confirmado depois de BOOT_CONFIRM_FRAMES frames de jogo: crashes posteriores
-            // aparecem no log, mas não desativam mods.
-            static constexpr uint32_t BOOT_CONFIRM_FRAMES = 300;
-            static uint32_t bootFrames = 0;
-            if (gModHost && bootFrames < BOOT_CONFIRM_FRAMES && ++bootFrames == BOOT_CONFIRM_FRAMES) {
-                gModHost->ConfirmBoot();
-                SPDLOG_INFO("Link-Span: boot confirmado; proteção de boot encerrada");
+    gImportTickHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+        // Boot confirmado depois de BOOT_CONFIRM_FRAMES frames de jogo: crashes posteriores
+        // aparecem no log, mas não desativam mods.
+        static constexpr uint32_t BOOT_CONFIRM_FRAMES = 300;
+        static uint32_t bootFrames = 0;
+        if (gModHost && bootFrames < BOOT_CONFIRM_FRAMES && ++bootFrames == BOOT_CONFIRM_FRAMES) {
+            gModHost->ConfirmBoot();
+            SPDLOG_INFO("Link-Span: boot confirmado; proteção de boot encerrada");
+        }
+        TickWorldImport();
+        if (gPendingSaveLoadedSlot.has_value() && gPlayState != nullptr && GET_PLAYER(gPlayState) != nullptr) {
+            const int32_t fileNum = *gPendingSaveLoadedSlot;
+            gPendingSaveLoadedSlot.reset();
+            DispatchHookEvent("save.loaded", ShipLua::EventPayload{ { "slot", static_cast<std::int64_t>(fileNum) } });
+        }
+        DispatchDirectionalInput(gPlayState);
+        // Avança a cutscene AQUI, não no update do Player: com atores
+        // congelados (freeze_player) o hook do Player não dispara, e a
+        // câmera ficaria parada e sem nunca ser devolvida.
+        if (gPlayState != nullptr) {
+            CutsceneUpdate(gPlayState);
+            // A luz pontual precisa seguir o jogador; sem isto ficaria
+            // parada onde foi criada.
+            PointLightUpdate(gPlayState);
+        }
+        // Avança os timers de mod uma vez por frame. Sem isto, ship.timer
+        // nunca dispara e qualquer mod que sequencie ações (animação e
+        // depois efeito) trava no primeiro passo.
+        // ImGui apenas enfileira input; persistencia e callbacks Lua rodam
+        // aqui, na thread proprietaria do ModHost.
+        if (gModHost != nullptr) {
+            gModHost->PumpMenu();
+        }
+        if (gTimers != nullptr) {
+            const auto ticked = gTimers->Tick();
+            if (ticked.isOk()) {
+                for (const auto& failure : ticked.value->failures) {
+                    SPDLOG_WARN("ShipLua [{}] timer falhou: {}", failure.modId, failure.message);
+                }
+                // O contrato comum publica game.frame com o mesmo contador
+                // que acabou de avançar no scheduler (mesma ordem do
+                // MockRuntime). Sem este dispatch, callbacks Lua por frame
+                // nunca rodam apesar de ship.timer continuar funcionando.
+                DispatchHookEvent("game.frame",
+                                  ShipLua::EventPayload{ { "frame", static_cast<std::int64_t>(ticked.value->frame) } });
             }
-            TickWorldImport();
-            if (gPendingSaveLoadedSlot.has_value() && gPlayState != nullptr && GET_PLAYER(gPlayState) != nullptr) {
-                const int32_t fileNum = *gPendingSaveLoadedSlot;
-                gPendingSaveLoadedSlot.reset();
-                DispatchHookEvent(
-                    "save.loaded",
-                    ShipLua::EventPayload{{ "slot", static_cast<std::int64_t>(fileNum) }});
-            }
-            DispatchDirectionalInput(gPlayState);
-            // Avança a cutscene AQUI, não no update do Player: com atores
-            // congelados (freeze_player) o hook do Player não dispara, e a
-            // câmera ficaria parada e sem nunca ser devolvida.
-            if (gPlayState != nullptr) {
-                CutsceneUpdate(gPlayState);
-                // A luz pontual precisa seguir o jogador; sem isto ficaria
-                // parada onde foi criada.
-                PointLightUpdate(gPlayState);
-            }
-            // Avança os timers de mod uma vez por frame. Sem isto, ship.timer
-            // nunca dispara e qualquer mod que sequencie ações (animação e
-            // depois efeito) trava no primeiro passo.
-            // ImGui apenas enfileira input; persistencia e callbacks Lua rodam
-            // aqui, na thread proprietaria do ModHost.
-            if (gModHost != nullptr) {
-                gModHost->PumpMenu();
-            }
-            if (gTimers != nullptr) {
-                const auto ticked = gTimers->Tick();
-                if (ticked.isOk()) {
-                    for (const auto& failure : ticked.value->failures) {
-                        SPDLOG_WARN("ShipLua [{}] timer falhou: {}", failure.modId, failure.message);
-                    }
-                    // O contrato comum publica game.frame com o mesmo contador
-                    // que acabou de avançar no scheduler (mesma ordem do
-                    // MockRuntime). Sem este dispatch, callbacks Lua por frame
-                    // nunca rodam apesar de ship.timer continuar funcionando.
-                    DispatchHookEvent(
-                        "game.frame",
-                        ShipLua::EventPayload{{"frame", static_cast<std::int64_t>(ticked.value->frame)}});
+        }
+        // Grava o storage no máximo a cada ~5s, e só se algo mudou. Gravar
+        // a cada ship.storage.set serializava o store inteiro e fazia um
+        // write+rename síncronos na thread do jogo — um mod que atualize
+        // contadores por segundo travava visivelmente, ainda mais com um
+        // antivírus segurando o arquivo (o rename tenta de novo por dezenas
+        // de ms). Flush() é no-op barato quando nada mudou.
+        static int sFlushCountdown = 0;
+        if (--sFlushCountdown <= 0) {
+            sFlushCountdown = 300; // ~5s a 60fps
+            if (gStorage != nullptr && gStorage->IsDirty()) {
+                const auto flushed = gStorage->Flush();
+                if (!flushed.isOk()) {
+                    SPDLOG_WARN("ShipLua: falha ao gravar o storage: {}", flushed.message);
                 }
             }
-            // Grava o storage no máximo a cada ~5s, e só se algo mudou. Gravar
-            // a cada ship.storage.set serializava o store inteiro e fazia um
-            // write+rename síncronos na thread do jogo — um mod que atualize
-            // contadores por segundo travava visivelmente, ainda mais com um
-            // antivírus segurando o arquivo (o rename tenta de novo por dezenas
-            // de ms). Flush() é no-op barato quando nada mudou.
-            static int sFlushCountdown = 0;
-            if (--sFlushCountdown <= 0) {
-                sFlushCountdown = 300; // ~5s a 60fps
-                if (gStorage != nullptr && gStorage->IsDirty()) {
-                    const auto flushed = gStorage->Flush();
-                    if (!flushed.isOk()) {
-                        SPDLOG_WARN("ShipLua: falha ao gravar o storage: {}", flushed.message);
-                    }
-                }
-                if (gSharedStorage != nullptr && gSharedStorage->IsDirty()) {
-                    const auto flushed = gSharedStorage->Flush();
-                    if (!flushed.isOk()) {
-                        SPDLOG_WARN("ShipLua: falha ao gravar o storage compartilhado: {}", flushed.message);
-                    }
+            if (gSharedStorage != nullptr && gSharedStorage->IsDirty()) {
+                const auto flushed = gSharedStorage->Flush();
+                if (!flushed.isOk()) {
+                    SPDLOG_WARN("ShipLua: falha ao gravar o storage compartilhado: {}", flushed.message);
                 }
             }
-        });
+        }
+    });
     // attach_model: substitui a DL da máscara-veículo pela do mod. O hook roda
     // já dentro do contexto de matriz da cabeça, então basta emitir a DL.
     // Imunidade a fogo: apaga o corpo em chamas antes que o dano contínuo seja
@@ -6891,7 +6902,8 @@ void Initialize() {
         // está se deslocando no chão. Assim interações paradas continuam sendo
         // tratadas pelo jogo em vez de serem sequestradas pelo mod.
         if (!(input->press.button & BTN_A) || !(player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
-            fabsf(player->linearVelocity) < 0.5f || (player->stateFlags1 & (PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE))) {
+            fabsf(player->linearVelocity) < 0.5f ||
+            (player->stateFlags1 & (PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE))) {
             return;
         }
         Player_SetupRoll(player, gPlayState);
@@ -6965,8 +6977,8 @@ void Initialize() {
         }
         const auto result =
             DispatchHookTransform("hook.oot.player.speed.run", ShipLua::EventPayload{
-                                                                    {"speed", static_cast<double>(*speedTarget)},
-                                                                });
+                                                                   { "speed", static_cast<double>(*speedTarget) },
+                                                               });
         if (result.has_value() && std::holds_alternative<double>(result->value)) {
             *speedTarget = static_cast<f32>(std::get<double>(result->value));
         }
@@ -6984,14 +6996,14 @@ void Initialize() {
         GameInteractor::Instance->RegisterGameHook<GameInteractor::OnItemReceive>([](GetItemEntry itemEntry) {
             DispatchHookEvent("hook.oot.item.receive",
                               ShipLua::EventPayload{
-                                  {"item_id", static_cast<std::int64_t>(itemEntry.itemId)},
-                                  {"get_item_id", static_cast<std::int64_t>(itemEntry.getItemId)},
+                                  { "item_id", static_cast<std::int64_t>(itemEntry.itemId) },
+                                  { "get_item_id", static_cast<std::int64_t>(itemEntry.getItemId) },
                               });
         });
     gHookHealthChangeHook =
         GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayerHealthChange>([](int16_t amount) {
             DispatchHookEvent("hook.oot.player.health_change",
-                              ShipLua::EventPayload{{"amount", static_cast<std::int64_t>(amount)}});
+                              ShipLua::EventPayload{ { "amount", static_cast<std::int64_t>(amount) } });
         });
     gHookBonkHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayerBonk>([]() {
         if (gPlayState != nullptr) {
@@ -7011,7 +7023,7 @@ void Initialize() {
             }
             DispatchHookEvent("hook.oot.player.first_person_control",
                               ShipLua::EventPayload{
-                                  {"held_item_action", static_cast<std::int64_t>(player->heldItemAction)},
+                                  { "held_item_action", static_cast<std::int64_t>(player->heldItemAction) },
                               });
         });
     // hook.oot.player.arrow_type_select — VB_PLAYER_ARROW_MAGIC_CONSUMPTION
@@ -7026,12 +7038,11 @@ void Initialize() {
         if (arrowType == nullptr) {
             return;
         }
-        const auto result = DispatchHookTransform(
-            "hook.oot.player.arrow_type_select",
-            ShipLua::EventPayload{
-                {"magic_arrow_type", static_cast<std::int64_t>(magicArrowType)},
-                {"arrow_type", static_cast<std::int64_t>(*arrowType)},
-            });
+        const auto result = DispatchHookTransform("hook.oot.player.arrow_type_select",
+                                                  ShipLua::EventPayload{
+                                                      { "magic_arrow_type", static_cast<std::int64_t>(magicArrowType) },
+                                                      { "arrow_type", static_cast<std::int64_t>(*arrowType) },
+                                                  });
         if (result.has_value() && std::holds_alternative<std::int64_t>(result->value)) {
             *arrowType = static_cast<int32_t>(std::get<std::int64_t>(result->value));
         }
@@ -7046,26 +7057,24 @@ void Initialize() {
             if (actor == nullptr) {
                 return;
             }
-            DispatchHookEvent("hook.oot.enemy.defeat",
-                              ShipLua::EventPayload{
-                                  {"actor_id", static_cast<std::int64_t>(actor->id)},
-                                  {"category", static_cast<std::int64_t>(actor->category)},
-                                  {"pos_x", static_cast<double>(actor->world.pos.x)},
-                                  {"pos_y", static_cast<double>(actor->world.pos.y)},
-                                  {"pos_z", static_cast<double>(actor->world.pos.z)},
-                              });
+            DispatchHookEvent("hook.oot.enemy.defeat", ShipLua::EventPayload{
+                                                           { "actor_id", static_cast<std::int64_t>(actor->id) },
+                                                           { "category", static_cast<std::int64_t>(actor->category) },
+                                                           { "pos_x", static_cast<double>(actor->world.pos.x) },
+                                                           { "pos_y", static_cast<double>(actor->world.pos.y) },
+                                                           { "pos_z", static_cast<double>(actor->world.pos.z) },
+                                                       });
         });
     // OnPlayDrawEnd roda após o desenho do mundo (Player incluído) e antes do
     // HUD — bodyPartsPos já está resolvido para o frame atual nesse ponto.
-    gHeldItemDrawHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayDrawEnd>(
-        []() {
-            if (gPlayState != nullptr) {
-                DrawHeldItemModels(gPlayState);
-                DrawMaskTransitionFlash(gPlayState);
-                // Por último: o overlay do mod fica por cima de tudo.
-                DrawHudOverlay(gPlayState);
-            }
-        });
+    gHeldItemDrawHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayDrawEnd>([]() {
+        if (gPlayState != nullptr) {
+            DrawHeldItemModels(gPlayState);
+            DrawMaskTransitionFlash(gPlayState);
+            // Por último: o overlay do mod fica por cima de tudo.
+            DrawHudOverlay(gPlayState);
+        }
+    });
 
     gActorDestroyHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnActorDestroy>([](void* actor) {
         ShipLuaPuppet_HandleActorDestroy(actor);
@@ -7135,7 +7144,8 @@ void Initialize() {
                                  NativeReadResourceFileLayers });
     gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
     SPDLOG_INFO("Link-Span: providers nativos (ABI {}.{}) e core extensions ativos; serviços linkspan.oot.*; "
-                "pacotes ZIP/SHIPMOD", SHIP_NATIVE_ABI_MAJOR, SHIP_NATIVE_ABI_MINOR);
+                "pacotes ZIP/SHIPMOD",
+                SHIP_NATIVE_ABI_MAJOR, SHIP_NATIVE_ABI_MINOR);
     MountCrossWorldArchives();
     MountModAssetArchives();
     // Diagnóstico da Fase 1 do port de áudio do MM (handoff OOT-AUDIO-001).

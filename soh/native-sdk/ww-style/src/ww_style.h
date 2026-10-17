@@ -66,7 +66,7 @@ struct FlameFlickerState {
     float phase;
     float maxSeen; // brilho cheio visto, esquecido devagar
     int lastInMax;
-    int hold;      // frames que a luz ainda conta como chama depois do último salto
+    int hold; // frames que a luz ainda conta como chama depois do último salto
 };
 
 // Projeção de uma luz pontual: giro nos dois eixos, pulso de tamanho e de alfa, e o raio suavizado da Navi.

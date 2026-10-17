@@ -32,20 +32,19 @@ static void LinkSpan_DrawEquipChoice(PlayState* play, u8 choice) {
         const s16 y = 176;
         const u8 selected = button == choice;
         const u8 item = gSaveContext.equips.buttonItems[button];
-        gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, selected ? 255 : 180, selected ? 230 : 180,
-                        selected ? 70 : 180, 255);
+        gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, selected ? 255 : 180, selected ? 230 : 180, selected ? 70 : 180, 255);
         gDPLoadTextureBlock(POLY_OPA_DISP++, gEquippedItemOutlineTex, G_IM_FMT_IA, G_IM_SIZ_8b, 32, 32, 0,
-                               G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP,
-                               G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
-        gSPTextureRectangle(POLY_OPA_DISP++, (x - 4) << 2, (y - 4) << 2, (x + 28) << 2, (y + 28) << 2,
-                            G_TX_RENDERTILE, 0, 0, 1024, 1024);
+                            G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK,
+                            G_TX_NOLOD, G_TX_NOLOD);
+        gSPTextureRectangle(POLY_OPA_DISP++, (x - 4) << 2, (y - 4) << 2, (x + 28) << 2, (y + 28) << 2, G_TX_RENDERTILE,
+                            0, 0, 1024, 1024);
         if (item != ITEM_NONE && gItemIcons[item] != NULL) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, 255);
             gDPLoadTextureBlock(POLY_OPA_DISP++, gItemIcons[item], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
-                                G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP,
-                                G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
-            gSPTextureRectangle(POLY_OPA_DISP++, x << 2, y << 2, (x + 24) << 2, (y + 24) << 2,
-                                G_TX_RENDERTILE, 0, 0, 1365, 1365);
+                                G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK,
+                                G_TX_NOLOD, G_TX_NOLOD);
+            gSPTextureRectangle(POLY_OPA_DISP++, x << 2, y << 2, (x + 24) << 2, (y + 24) << 2, G_TX_RENDERTILE, 0, 0,
+                                1365, 1365);
         }
     }
     CLOSE_DISPS(play->state.gfxCtx);
@@ -454,29 +453,31 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
 
-    if (!LinkSpan_PauseEquipSelectorEnabled() || pauseCtx->state != 6 ||
-        pauseCtx->pageIndex != PAUSE_ITEM || pauseCtx->unk_1E4 != 0 || pauseCtx->cursorSpecialPos != 0 ||
+    if (!LinkSpan_PauseEquipSelectorEnabled() || pauseCtx->state != 6 || pauseCtx->pageIndex != PAUSE_ITEM ||
+        pauseCtx->unk_1E4 != 0 || pauseCtx->cursorSpecialPos != 0 ||
         (sLinkSpanEquipMenuOpen && pauseCtx->cursorSlot[PAUSE_ITEM] != sLinkSpanEquipVisualSlot)) {
         sLinkSpanEquipMenuOpen = 0;
     }
     if (sLinkSpanEquipMenuOpen) {
         const s8 stick = input->rel.right_stick_x;
-        if (stick > -20 && stick < 20) sLinkSpanEquipStickLatch = 0;
+        if (stick > -20 && stick < 20)
+            sLinkSpanEquipStickLatch = 0;
         if ((stick >= 45 && sLinkSpanEquipStickLatch == 0) || CHECK_BTN_ALL(input->press.button, BTN_DRIGHT)) {
-            if (sLinkSpanEquipChoice < 3) ++sLinkSpanEquipChoice;
+            if (sLinkSpanEquipChoice < 3)
+                ++sLinkSpanEquipChoice;
             sLinkSpanEquipStickLatch = 1;
-        } else if ((stick <= -45 && sLinkSpanEquipStickLatch == 0) ||
-                   CHECK_BTN_ALL(input->press.button, BTN_DLEFT)) {
-            if (sLinkSpanEquipChoice > 1) --sLinkSpanEquipChoice;
+        } else if ((stick <= -45 && sLinkSpanEquipStickLatch == 0) || CHECK_BTN_ALL(input->press.button, BTN_DLEFT)) {
+            if (sLinkSpanEquipChoice > 1)
+                --sLinkSpanEquipChoice;
             sLinkSpanEquipStickLatch = -1;
         }
         if (CHECK_BTN_ALL(input->press.button, BTN_B)) {
             sLinkSpanEquipMenuOpen = 0;
         } else if (CHECK_BTN_ALL(input->press.button, BTN_A)) {
-            const u16 selectedButton = sLinkSpanEquipChoice == 1 ? BTN_CLEFT :
-                                       sLinkSpanEquipChoice == 2 ? BTN_CDOWN : BTN_CRIGHT;
-            if (GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, sLinkSpanEquipSlot,
-                                      sLinkSpanEquipItem)) {
+            const u16 selectedButton = sLinkSpanEquipChoice == 1   ? BTN_CLEFT
+                                       : sLinkSpanEquipChoice == 2 ? BTN_CDOWN
+                                                                   : BTN_CRIGHT;
+            if (GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, sLinkSpanEquipSlot, sLinkSpanEquipItem)) {
                 input->press.button |= selectedButton;
                 KaleidoScope_SetupItemEquip(play, sLinkSpanEquipItem, sLinkSpanEquipSlot,
                                             pauseCtx->itemVtx[sLinkSpanEquipVisualSlot * 4].v.ob[0] * 10,

@@ -74,7 +74,8 @@ void EnBomChu_Init(Actor* thisx, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->actor, &sJntSphInit, this->colliderElements);
 
-    this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius);
+    this->collider.elements[0].dim.worldSphere.radius =
+        LinkSpan_S16F(this->collider.elements[0].dim.modelSphere.radius);
 
     for (i = 0; i < 4; i++) {
         blureInit.p1StartColor[i] = p1StartColor[i];

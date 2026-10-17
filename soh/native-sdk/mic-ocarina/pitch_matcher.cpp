@@ -126,8 +126,7 @@ int BuildMergedPhrase(const float* cents, int count, float* merged) {
 MatchResult RankSuffixes(const float* cents, int count, const SongPattern* patterns, int patternCount,
                          std::uint16_t availableFlags) {
     MatchResult ranked;
-    if (!cents || !patterns || count < 0 || count > kMaxPhraseNotes || patternCount < 0 ||
-        patternCount > kMaxSongs) {
+    if (!cents || !patterns || count < 0 || count > kMaxPhraseNotes || patternCount < 0 || patternCount > kMaxSongs) {
         return ranked;
     }
     for (int i = 0; i < patternCount; ++i) {

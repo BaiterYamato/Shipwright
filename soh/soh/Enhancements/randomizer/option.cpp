@@ -279,33 +279,33 @@ Option::Option(size_t key_, std::vector<std::string> options_, OptionCategory ca
 }
 
 void Option::AddWidget(WidgetPath& path) {
-    auto widget = SohGui::mSohMenu->AddWidget(path, this->GetName() + "##Randomizer", widgetType)
-                      .Callback(callback)
-                      .PreFunc([this](WidgetInfo& info) {
-                          // OOT-VANILLA-001: sem mod, a opção do Link-Span não aparece no menu.
-                          info.isHidden = this->IsHidden() ||
-                                          (this->GetKey() == RSK_LINKSPAN_MOD_ITEMS && !LinkSpan_EngineExtended());
-                          info.options->disabled = this->disabled;
-                          info.options->disabledTooltip = this->disabledText.c_str();
-                          info.options->tooltip = this->GetDescription();
-                          if (info.type == WIDGET_CVAR_SLIDER_INT) {
-                              UIWidgets::IntSliderOptions* sliderOpts =
-                                  (UIWidgets::IntSliderOptions*)info.options.get();
-                              size_t maxIndex = this->options.size() - 1;
-                              if (this->GetKey() == RSK_SHOPSANITY_COUNT && maxIndex > 7 &&
-                                  CVarGetInteger(CVAR_RANDOMIZER_SETTING("NoLogic"), RO_GENERIC_OFF) != RO_GENERIC_ON) {
-                                  maxIndex = 7;
-                              }
-                              sliderOpts->Max(static_cast<int32_t>(maxIndex));
-                              if (this->GetOptionIndex() > maxIndex) {
-                                  CVarSetInteger(cvarName.c_str(), static_cast<int32_t>(maxIndex));
-                              }
-                              sliderOpts->Format(this->GetOptionText(this->GetOptionIndex()).c_str());
-                          }
-                      })
-                      .CVar(cvarName.c_str())
-                      .Options(widgetOptions)
-                      .SameLine(imFlags & IMFLAG_SAME_LINE);
+    auto widget =
+        SohGui::mSohMenu->AddWidget(path, this->GetName() + "##Randomizer", widgetType)
+            .Callback(callback)
+            .PreFunc([this](WidgetInfo& info) {
+                // OOT-VANILLA-001: sem mod, a opção do Link-Span não aparece no menu.
+                info.isHidden =
+                    this->IsHidden() || (this->GetKey() == RSK_LINKSPAN_MOD_ITEMS && !LinkSpan_EngineExtended());
+                info.options->disabled = this->disabled;
+                info.options->disabledTooltip = this->disabledText.c_str();
+                info.options->tooltip = this->GetDescription();
+                if (info.type == WIDGET_CVAR_SLIDER_INT) {
+                    UIWidgets::IntSliderOptions* sliderOpts = (UIWidgets::IntSliderOptions*)info.options.get();
+                    size_t maxIndex = this->options.size() - 1;
+                    if (this->GetKey() == RSK_SHOPSANITY_COUNT && maxIndex > 7 &&
+                        CVarGetInteger(CVAR_RANDOMIZER_SETTING("NoLogic"), RO_GENERIC_OFF) != RO_GENERIC_ON) {
+                        maxIndex = 7;
+                    }
+                    sliderOpts->Max(static_cast<int32_t>(maxIndex));
+                    if (this->GetOptionIndex() > maxIndex) {
+                        CVarSetInteger(cvarName.c_str(), static_cast<int32_t>(maxIndex));
+                    }
+                    sliderOpts->Format(this->GetOptionText(this->GetOptionIndex()).c_str());
+                }
+            })
+            .CVar(cvarName.c_str())
+            .Options(widgetOptions)
+            .SameLine(imFlags & IMFLAG_SAME_LINE);
     widgetInfo = widget;
     if (callback != nullptr) {
         callback(widgetInfo);

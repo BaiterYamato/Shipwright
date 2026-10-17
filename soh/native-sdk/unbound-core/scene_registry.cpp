@@ -112,9 +112,8 @@ bool ReadHorse(const std::string& name, const Json& definition, RegistryScene& s
     }
     const auto pos = horse->is_object() ? horse->find("pos") : horse->end();
     const auto angle = horse->is_object() ? horse->find("angle") : horse->end();
-    if (!horse->is_object() || pos == horse->end() || !pos->is_array() || pos->size() != 3 ||
-        angle == horse->end() || !angle->is_number_integer() || !(*pos)[0].is_number() ||
-        !(*pos)[1].is_number() || !(*pos)[2].is_number() ||
+    if (!horse->is_object() || pos == horse->end() || !pos->is_array() || pos->size() != 3 || angle == horse->end() ||
+        !angle->is_number_integer() || !(*pos)[0].is_number() || !(*pos)[1].is_number() || !(*pos)[2].is_number() ||
         angle->get<int64_t>() < std::numeric_limits<int16_t>::min() ||
         angle->get<int64_t>() > std::numeric_limits<int16_t>::max()) {
         notes.push_back(name + ": horse recusado; use true ou {pos:[x,y,z],angle:s16}");

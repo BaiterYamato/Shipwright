@@ -19,8 +19,8 @@
 
 /* Callback síncrono de list_messages; `bytes` pertence ao host e só vale durante a
  * chamada. Outro status que não OK interrompe a enumeração e o propaga. */
-typedef ShipNativeStatus(SHIP_NATIVE_CALL* ShipOotMessageFn)(void* user, uint32_t id, uint8_t box_type,
-                                                             uint8_t box_pos, const uint8_t* bytes, uint32_t length);
+typedef ShipNativeStatus(SHIP_NATIVE_CALL* ShipOotMessageFn)(void* user, uint32_t id, uint8_t box_type, uint8_t box_pos,
+                                                             const uint8_t* bytes, uint32_t length);
 
 /* Mensagens do jogo, disponível apenas na thread do jogo e fora da exibição de uma
  * caixa de texto (entre frames).

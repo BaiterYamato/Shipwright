@@ -1,4 +1,4 @@
-/* overlay-extra 89254b60afcb da39a3ee5e6b da39a3ee5e6b */
+/* overlay-extra d4f2c0f3faee da39a3ee5e6b da39a3ee5e6b */
 static bool Message_DecodeChecked(PlayState* play) {
     u8 temp_s2;
     u8 phi_s1;
@@ -468,9 +468,10 @@ static bool Message_DecodeChecked(PlayState* play) {
 
 decodeOverflow:
     // SOH [Link-Span] R04: falha explicita, sem controles do prefixo.
-    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de texto/glifos ou entrada incompleta; encerrando\n",
-                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit,
-                 charTexIdx, (int)ARRAY_COUNT(font->charTexBuf));
+    osSyncPrintf("[R04] message %04x lang=%d raw=%u decoded=%d capacity=%d glyph=%d glyphCapacity=%d: limite de "
+                 "texto/glifos ou entrada incompleta; encerrando\n",
+                 msgCtx->textId, gSaveContext.language, rawTokenStart, decodedBufPos, decodedLimit, charTexIdx,
+                 (int)ARRAY_COUNT(font->charTexBuf));
     msgCtx->msgBufPos = rawTokenStart;
     Message_DiscardDecoded(play, false);
     return false;

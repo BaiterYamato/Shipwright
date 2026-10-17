@@ -15,8 +15,8 @@
 #define UNBOUND_COLPOLY_LEGACY_FLAGS_SHIFT 13
 
 // Same spelling as COLPOLY_VTX_INDEX, COLPOLY_VIA_FLAG_TEST and COLPOLY_VIB_CONVEYOR
-#define UNBOUND_COLPOLY_VTX_INDEX(word) ((word) & UNBOUND_COLPOLY_INDEX_MASK)
-#define UNBOUND_COLPOLY_FLAG_TEST(word, flags) ((word) & (((uint32_t)(flags) & 7u) << UNBOUND_COLPOLY_INDEX_BITS))
+#define UNBOUND_COLPOLY_VTX_INDEX(word) ((word)&UNBOUND_COLPOLY_INDEX_MASK)
+#define UNBOUND_COLPOLY_FLAG_TEST(word, flags) ((word) & (((uint32_t)(flags)&7u) << UNBOUND_COLPOLY_INDEX_BITS))
 #define UNBOUND_COLPOLY_CONVEYOR (1u << UNBOUND_COLPOLY_INDEX_BITS)
 
 // N64 / OTR v0 word: 13-bit vertex index with the 3 flag bits on top of the u16

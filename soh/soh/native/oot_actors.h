@@ -16,9 +16,9 @@ typedef struct ShipOotActorTypeSpecV1 {
     uint32_t size;
     /* Nome namespaced ("meu.mod.ator"), único. */
     const char* name;
-    uint8_t category;     /* ACTORCAT_* */
-    uint32_t flags;       /* ACTOR_FLAG_* */
-    int16_t object_id;    /* objeto exigido; OBJECT_GAMEPLAY_KEEP está sempre carregado */
+    uint8_t category;       /* ACTORCAT_* */
+    uint32_t flags;         /* ACTOR_FLAG_* */
+    int16_t object_id;      /* objeto exigido; OBJECT_GAMEPLAY_KEEP está sempre carregado */
     uint32_t instance_size; /* >= sizeof(Actor) */
     ShipOotActorFn init;
     ShipOotActorFn destroy;

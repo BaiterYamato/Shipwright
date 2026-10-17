@@ -112,9 +112,7 @@ ReferenceReport CollectReferences(const std::vector<LayerDocument>& layers, Tran
                 break;
         }
         report.accepted = true;
-    } catch (const DocumentError& error) {
-        report.error = error.what();
-    } catch (const std::exception& error) {
+    } catch (const DocumentError& error) { report.error = error.what(); } catch (const std::exception& error) {
         report.error = std::string("falha: ") + error.what();
     }
     report.notes.insert(report.notes.end(), context.notes.begin(), context.notes.end());
@@ -175,8 +173,8 @@ std::vector<std::string> RenderGraphNotes(const std::vector<GraphFindings>& find
     std::vector<std::string> notes;
     for (const auto& group : findings) {
         if (!group.items.empty()) {
-            notes.push_back(group.where + ": " + std::to_string(group.items.size()) + " " + group.what + " (ex.: " +
-                            group.items.front() + ")");
+            notes.push_back(group.where + ": " + std::to_string(group.items.size()) + " " + group.what +
+                            " (ex.: " + group.items.front() + ")");
         }
     }
     return notes;
@@ -294,8 +292,9 @@ Json CompactForGraph(const Json& document, DocumentKind kind) {
                 Json kept = Json::object();
                 const auto doors = setup.find("transitionActors");
                 if (doors != setup.end()) {
-                    kept["transitionActors"] =
-                        MapItems(*doors, [](const Json& door) { return KeepFields(door, { "id", "front", "back" }); });
+                    kept["transitionActors"] = MapItems(*doors, [](const Json& door) {
+                        return KeepFields(door, { "id", "front", "back" });
+                    });
                 }
                 if (setup.contains("exits")) {
                     kept["exits"] = Json::object(); // só a presença conta

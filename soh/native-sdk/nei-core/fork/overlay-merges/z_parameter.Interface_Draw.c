@@ -770,9 +770,8 @@ void Interface_Draw(PlayState* play) {
                                     pauseCtx->equipTargetSlot >= 24 && pauseCtx->equipTargetSlot < 48
                                         ? ExtInv_GetInventoryItemIcon(pauseCtx->equipTargetItem)
                                         : ExtInv_GetItemIcon(pauseCtx->equipTargetItem),
-                                    G_IM_FMT_RGBA,
-                                    G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP,
-                                    G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+                                    G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                                    G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
             } else {
                 // Magic Arrow Equip Effect
                 svar1 = pauseCtx->equipTargetItem - 0xBF;

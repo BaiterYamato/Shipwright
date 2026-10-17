@@ -41,7 +41,6 @@ namespace mmsfx {
  *     Otherwise, each set of instructions has its own command interpreter
  */
 
-
 #define PROCESS_SCRIPT_END -1
 
 u8 AudioScript_ScriptReadU8(SeqScriptState* state);

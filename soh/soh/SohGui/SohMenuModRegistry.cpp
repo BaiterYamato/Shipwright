@@ -20,7 +20,8 @@ namespace {
 constexpr int kEditingHoldFrames = 30;
 
 std::string DisplayNameFromId(std::string id) {
-    if (id.starts_with("linkspan.")) id.erase(0, sizeof("linkspan.") - 1);
+    if (id.starts_with("linkspan."))
+        id.erase(0, sizeof("linkspan.") - 1);
     bool startWord = true;
     for (char& letter : id) {
         if (letter == '.' || letter == '-' || letter == '_') {
@@ -35,17 +36,23 @@ std::string DisplayNameFromId(std::string id) {
 }
 
 std::string ValueText(const ShipLua::MenuValue& value) {
-    return std::visit([](const auto& item) -> std::string {
-        using T = std::decay_t<decltype(item)>;
-        if constexpr (std::is_same_v<T, bool>) return item ? "On" : "Off";
-        else if constexpr (std::is_same_v<T, std::string>) return item;
-        else return std::to_string(item);
-    }, value);
+    return std::visit(
+        [](const auto& item) -> std::string {
+            using T = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<T, bool>)
+                return item ? "On" : "Off";
+            else if constexpr (std::is_same_v<T, std::string>)
+                return item;
+            else
+                return std::to_string(item);
+        },
+        value);
 }
 
 // O core já normaliza o valor para o tipo do slider; a leitura aceita os dois tipos numéricos por garantia.
 std::int64_t IntegerOf(const ShipLua::MenuValue& value) {
-    if (const auto* integer = std::get_if<std::int64_t>(&value)) return *integer;
+    if (const auto* integer = std::get_if<std::int64_t>(&value))
+        return *integer;
     if (const auto* real = std::get_if<double>(&value); real != nullptr && std::isfinite(*real)) {
         return static_cast<std::int64_t>(std::llround(*real));
     }
@@ -53,48 +60,56 @@ std::int64_t IntegerOf(const ShipLua::MenuValue& value) {
 }
 
 std::int64_t AddIntegerOffset(std::int64_t minimum, std::uint64_t offset) {
-    if (minimum >= 0) return minimum + static_cast<std::int64_t>(offset);
+    if (minimum >= 0)
+        return minimum + static_cast<std::int64_t>(offset);
     const auto magnitude = static_cast<std::uint64_t>(-(minimum + 1)) + 1;
-    if (offset >= magnitude) return static_cast<std::int64_t>(offset - magnitude);
+    if (offset >= magnitude)
+        return static_cast<std::int64_t>(offset - magnitude);
     const auto remaining = magnitude - offset;
     return -static_cast<std::int64_t>(remaining - 1) - 1;
 }
 
-std::int64_t QuantizeInteger(std::int64_t current, std::int64_t minimum,
-                             std::int64_t maximum, std::uint64_t step) {
+std::int64_t QuantizeInteger(std::int64_t current, std::int64_t minimum, std::int64_t maximum, std::uint64_t step) {
     current = std::clamp(current, minimum, maximum);
     // A subtração sem sinal preserva a distância mesmo quando a faixa cruza todo o domínio de int64_t.
     const auto offset = static_cast<std::uint64_t>(current) - static_cast<std::uint64_t>(minimum);
     const auto maximumOffset = static_cast<std::uint64_t>(maximum) - static_cast<std::uint64_t>(minimum);
     auto steps = offset / step;
     const auto remainder = offset % step;
-    if (remainder >= step - step / 2) ++steps;
-    if (steps > maximumOffset / step) return maximum;
+    if (remainder >= step - step / 2)
+        ++steps;
+    if (steps > maximumOffset / step)
+        return maximum;
     return AddIntegerOffset(minimum, steps * step);
 }
 
 double NumberOf(const ShipLua::MenuValue& value) {
-    if (const auto* real = std::get_if<double>(&value)) return *real;
-    if (const auto* integer = std::get_if<std::int64_t>(&value)) return static_cast<double>(*integer);
+    if (const auto* real = std::get_if<double>(&value))
+        return *real;
+    if (const auto* integer = std::get_if<std::int64_t>(&value))
+        return static_cast<double>(*integer);
     return 0.0;
 }
 
 // O formato vai para o printf do ImGui junto com o valor; só formatos do tipo certo passam.
 const char* IntegerFormat(const ShipLua::MenuWidget& widget) {
-    if (widget.format == "%d%%" || widget.format == "%lld%%") return "%lld%%";
+    if (widget.format == "%d%%" || widget.format == "%lld%%")
+        return "%lld%%";
     return "%lld";
 }
 
 const char* NumberFormat(const ShipLua::MenuWidget& widget) {
-    static constexpr const char* allowed[] = {"%.0f", "%.1f", "%.2f", "%.3f", "%.0f%%", "%.1f%%", "%.2f%%"};
+    static constexpr const char* allowed[] = { "%.0f", "%.1f", "%.2f", "%.3f", "%.0f%%", "%.1f%%", "%.2f%%" };
     for (const char* format : allowed) {
-        if (widget.format == format) return format;
+        if (widget.format == format)
+            return format;
     }
     return "%.3f";
 }
 
 void Tooltip(const ShipLua::MenuWidget& widget) {
-    if (!widget.tooltip.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", widget.tooltip.c_str());
+    if (!widget.tooltip.empty() && ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", widget.tooltip.c_str());
 }
 
 bool IconAction(const ShipLua::MenuWidget& widget) {
@@ -114,13 +129,14 @@ bool IconAction(const ShipLua::MenuWidget& widget) {
         }
         texture = gui->GetTextureByName(name);
     }
-    if (!texture) return ImGui::Button(widget.label.c_str(), ImVec2(56.0f, 56.0f));
+    if (!texture)
+        return ImGui::Button(widget.label.c_str(), ImVec2(56.0f, 56.0f));
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, widget.selected ? 2.0f : 1.0f);
     ImGui::PushStyleColor(ImGuiCol_Border, widget.selected ? ImVec4(1, 1, 1, 1) : ImVec4(0.25f, 0.25f, 0.25f, 1));
-    const bool clicked = ImGui::ImageButton(widget.id.c_str(), texture, ImVec2(48.0f, 48.0f), ImVec2(0, 0),
-                                            ImVec2(1, 1), ImVec4(0.05f, 0.05f, 0.05f, 1),
-                                            ImVec4(1, 1, 1, widget.selected ? 1.0f : 0.3f));
+    const bool clicked =
+        ImGui::ImageButton(widget.id.c_str(), texture, ImVec2(48.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1),
+                           ImVec4(0.05f, 0.05f, 0.05f, 1), ImVec4(1, 1, 1, widget.selected ? 1.0f : 0.3f));
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
     return clicked;
@@ -136,11 +152,12 @@ void SohMenuModRegistry::SetLoadedMods(std::vector<std::string> modIds) {
 std::vector<std::pair<std::string, std::string>> SohMenuModRegistry::SidebarMods() const {
     std::scoped_lock lock(mMutex);
     std::map<std::string, std::string> names;
-    for (const auto& id : mLoadedMods) names.emplace(id, DisplayNameFromId(id));
+    for (const auto& id : mLoadedMods)
+        names.emplace(id, DisplayNameFromId(id));
     for (const auto& [key, page] : mPages) {
         names[key.first] = page.title.empty() ? key.first : page.title;
     }
-    return {names.begin(), names.end()};
+    return { names.begin(), names.end() };
 }
 
 ShipLua::Result<void> SohMenuModRegistry::Upsert(ShipLua::MenuPage page) {
@@ -148,7 +165,7 @@ ShipLua::Result<void> SohMenuModRegistry::Upsert(ShipLua::MenuPage page) {
         return ShipLua::Result<void>::err(ShipLua::ErrorCode::InvalidArgument, "invalid mod menu page");
     }
     std::scoped_lock lock(mMutex);
-    mPages[{page.owner, page.id}] = std::move(page);
+    mPages[{ page.owner, page.id }] = std::move(page);
     return ShipLua::Result<void>::ok();
 }
 
@@ -158,15 +175,17 @@ void SohMenuModRegistry::RemoveMod(const std::string& modId) noexcept {
         std::erase_if(mPages, [&](const auto& entry) { return entry.first.first == modId; });
         std::erase_if(mInputs, [&](const auto& input) { return input.owner == modId; });
         std::erase(mLoadedMods, modId);
-    } catch (...) {
-    }
+    } catch (...) {}
 }
 
 std::vector<ShipLua::MenuPage> SohMenuModRegistry::Snapshot() const {
     std::scoped_lock lock(mMutex);
     std::vector<ShipLua::MenuPage> pages;
     pages.reserve(mPages.size());
-    for (const auto& [key, page] : mPages) { (void)key; pages.push_back(page); }
+    for (const auto& [key, page] : mPages) {
+        (void)key;
+        pages.push_back(page);
+    }
     return pages;
 }
 
@@ -182,15 +201,19 @@ void SohMenuModRegistry::Enqueue(ShipLua::MenuInput input) {
             mInputs.erase(pending);
         }
     }
-    if (mInputs.size() < 1024) mInputs.push_back(std::move(input));
+    if (mInputs.size() < 1024)
+        mInputs.push_back(std::move(input));
 }
 
 std::vector<ShipLua::MenuInput> SohMenuModRegistry::DrainInputs(const std::string& modId) {
     std::scoped_lock lock(mMutex);
     std::vector<ShipLua::MenuInput> inputs;
     for (auto it = mInputs.begin(); it != mInputs.end();) {
-        if (it->owner == modId) { inputs.push_back(std::move(*it)); it = mInputs.erase(it); }
-        else ++it;
+        if (it->owner == modId) {
+            inputs.push_back(std::move(*it));
+            it = mInputs.erase(it);
+        } else
+            ++it;
     }
     return inputs;
 }
@@ -210,27 +233,31 @@ void SohMenuModRegistry::DrawOwner(const std::string& modId) {
     for (auto editing = mEditing.begin(); editing != mEditing.end();) {
         const auto& [owner, pageId, widgetId, generation] = editing->first;
         const bool present = std::any_of(pages.begin(), pages.end(), [&](const ShipLua::MenuPage& page) {
-            if (page.owner != owner || page.id != pageId || page.generation != generation) return false;
+            if (page.owner != owner || page.id != pageId || page.generation != generation)
+                return false;
             return std::any_of(page.widgets.begin(), page.widgets.end(), [&](const ShipLua::MenuWidget& widget) {
-                return widget.id == widgetId &&
-                       (widget.type == ShipLua::MenuWidgetType::SliderInteger ||
-                        widget.type == ShipLua::MenuWidgetType::SliderNumber);
+                return widget.id == widgetId && (widget.type == ShipLua::MenuWidgetType::SliderInteger ||
+                                                 widget.type == ShipLua::MenuWidgetType::SliderNumber);
             });
         });
-        if (!present || --editing->second.framesLeft <= 0) editing = mEditing.erase(editing);
-        else ++editing;
+        if (!present || --editing->second.framesLeft <= 0)
+            editing = mEditing.erase(editing);
+        else
+            ++editing;
     }
     if (std::none_of(pages.begin(), pages.end(), [&](const ShipLua::MenuPage& page) { return page.owner == modId; })) {
         ImGui::TextDisabled("This mod has no options in this tab.");
         return;
     }
     for (const ShipLua::MenuPage& page : pages) {
-        if (page.owner != modId) continue;
+        if (page.owner != modId)
+            continue;
         ImGui::PushID(page.owner.c_str());
         ImGui::PushID(page.id.c_str());
         const std::string heading = page.sidebar;
-        const bool iconGrid = !page.widgets.empty() && std::all_of(page.widgets.begin(), page.widgets.end(),
-            [](const ShipLua::MenuWidget& widget) {
+        const bool iconGrid =
+            !page.widgets.empty() &&
+            std::all_of(page.widgets.begin(), page.widgets.end(), [](const ShipLua::MenuWidget& widget) {
                 return widget.type == ShipLua::MenuWidgetType::Action && !widget.iconPath.empty();
             });
         if (ImGui::CollapsingHeader(heading.c_str(), ImGuiTreeNodeFlags_DefaultOpen) &&
@@ -239,16 +266,18 @@ void SohMenuModRegistry::DrawOwner(const std::string& modId) {
             for (std::uint32_t column = 0; column < page.columns; ++column) {
                 ImGui::TableNextColumn();
                 for (const ShipLua::MenuWidget& widget : page.widgets) {
-                    if (!widget.visible || widget.column != column) continue;
+                    if (!widget.visible || widget.column != column)
+                        continue;
                     ImGui::PushID(widget.id.c_str());
                     ImGui::BeginDisabled(!widget.enabled);
                     bool changed = false;
                     ShipLua::MenuValue value = widget.value;
                     const bool slider = widget.type == ShipLua::MenuWidgetType::SliderInteger ||
                                         widget.type == ShipLua::MenuWidgetType::SliderNumber;
-                    const EditingKey editingKey{page.owner, page.id, widget.id, page.generation};
+                    const EditingKey editingKey{ page.owner, page.id, widget.id, page.generation };
                     auto editing = slider ? mEditing.find(editingKey) : mEditing.end();
-                    if (editing != mEditing.end()) value = editing->second.value;
+                    if (editing != mEditing.end())
+                        value = editing->second.value;
                     switch (widget.type) {
                         case ShipLua::MenuWidgetType::Checkbox: {
                             bool current = std::get_if<bool>(&value) != nullptr && std::get<bool>(value);
@@ -260,11 +289,11 @@ void SohMenuModRegistry::DrawOwner(const std::string& modId) {
                             std::int64_t current = IntegerOf(value);
                             const auto minimum = static_cast<std::int64_t>(std::ceil(widget.minimum));
                             const auto maximum = static_cast<std::int64_t>(std::floor(widget.maximum));
-                            changed = ImGui::SliderScalar(widget.label.c_str(), ImGuiDataType_S64, &current,
-                                                          &minimum, &maximum, IntegerFormat(widget));
+                            changed = ImGui::SliderScalar(widget.label.c_str(), ImGuiDataType_S64, &current, &minimum,
+                                                          &maximum, IntegerFormat(widget));
                             if (changed && widget.step > 1.0) {
-                                current = QuantizeInteger(current, minimum, maximum,
-                                                          static_cast<std::uint64_t>(widget.step));
+                                current =
+                                    QuantizeInteger(current, minimum, maximum, static_cast<std::uint64_t>(widget.step));
                             }
                             value = current;
                             break;
@@ -274,8 +303,8 @@ void SohMenuModRegistry::DrawOwner(const std::string& modId) {
                             changed = ImGui::SliderScalar(widget.label.c_str(), ImGuiDataType_Double, &current,
                                                           &widget.minimum, &widget.maximum, NumberFormat(widget));
                             if (changed && widget.step > 0.0) {
-                                current = widget.minimum +
-                                          std::round((current - widget.minimum) / widget.step) * widget.step;
+                                current =
+                                    widget.minimum + std::round((current - widget.minimum) / widget.step) * widget.step;
                                 current = std::clamp(current, widget.minimum, widget.maximum);
                             }
                             value = current;
@@ -283,13 +312,18 @@ void SohMenuModRegistry::DrawOwner(const std::string& modId) {
                         }
                         case ShipLua::MenuWidgetType::Choice: {
                             std::string preview = ValueText(value);
-                            const auto selectedChoice = std::find_if(widget.choices.begin(), widget.choices.end(),
-                                [&](const auto& choice) { return choice.value == value; });
-                            if (selectedChoice != widget.choices.end()) preview = selectedChoice->label;
+                            const auto selectedChoice =
+                                std::find_if(widget.choices.begin(), widget.choices.end(),
+                                             [&](const auto& choice) { return choice.value == value; });
+                            if (selectedChoice != widget.choices.end())
+                                preview = selectedChoice->label;
                             if (ImGui::BeginCombo(widget.label.c_str(), preview.c_str())) {
                                 for (const auto& choice : widget.choices) {
                                     const bool selected = choice.value == value;
-                                    if (ImGui::Selectable(choice.label.c_str(), selected)) { value = choice.value; changed = true; }
+                                    if (ImGui::Selectable(choice.label.c_str(), selected)) {
+                                        value = choice.value;
+                                        changed = true;
+                                    }
                                 }
                                 ImGui::EndCombo();
                             }
@@ -297,15 +331,16 @@ void SohMenuModRegistry::DrawOwner(const std::string& modId) {
                         }
                         case ShipLua::MenuWidgetType::Action:
                             if (widget.iconPath.empty() ? ImGui::Button(widget.label.c_str()) : IconAction(widget)) {
-                                Enqueue({page.owner, page.id, widget.id, page.generation,
-                                         ShipLua::MenuInputKind::Activate, false});
+                                Enqueue({ page.owner, page.id, widget.id, page.generation,
+                                          ShipLua::MenuInputKind::Activate, false });
                             }
                             break;
                         case ShipLua::MenuWidgetType::Text:
                             ImGui::TextWrapped("%s", widget.label.c_str());
                             break;
                         case ShipLua::MenuWidgetType::Separator:
-                            if (!widget.label.empty()) ImGui::TextUnformatted(widget.label.c_str());
+                            if (!widget.label.empty())
+                                ImGui::TextUnformatted(widget.label.c_str());
                             ImGui::Separator();
                             break;
                     }
@@ -314,14 +349,15 @@ void SohMenuModRegistry::DrawOwner(const std::string& modId) {
                         // Arrastando: o valor local manda. Solto: espera a página publicada chegar nele, com prazo,
                         // porque o core pode recusar o valor ou o jogo pode estar parado.
                         if (changed || ImGui::IsItemActive()) {
-                            mEditing.insert_or_assign(editingKey, Editing{value, kEditingHoldFrames});
+                            mEditing.insert_or_assign(editingKey, Editing{ value, kEditingHoldFrames });
                         } else if (editing != mEditing.end() &&
                                    NumberOf(widget.value) == NumberOf(editing->second.value)) {
                             mEditing.erase(editing);
                         }
                     }
-                    if (changed) Enqueue({page.owner, page.id, widget.id, page.generation,
-                                          ShipLua::MenuInputKind::Change, std::move(value)});
+                    if (changed)
+                        Enqueue({ page.owner, page.id, widget.id, page.generation, ShipLua::MenuInputKind::Change,
+                                  std::move(value) });
                     ImGui::EndDisabled();
                     ImGui::PopID();
                 }

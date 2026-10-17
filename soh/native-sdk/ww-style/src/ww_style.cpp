@@ -80,7 +80,7 @@ ShipNativeStatus SHIP_NATIVE_CALL OnFairyLights(void* user, const ShipNativeHook
 ShipNativeStatus Register(const ShipNativeRuntime* runtime, Mod* mod, const char* point, uint32_t version,
                           uint32_t size, uint32_t mode, ShipNativeHookFn callback,
                           uint32_t phase = SHIP_NATIVE_HOOK_BEFORE) {
-    const ShipNativeHookSpec spec{sizeof(ShipNativeHookSpec), point, version, size, mode, phase, 0, callback, mod};
+    const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), point, version, size, mode, phase, 0, callback, mod };
     uint64_t handle = 0;
     return runtime->register_hook(runtime->context, &spec, &handle);
 }
@@ -98,7 +98,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* input, uint3
     const ParseResult parsed = ParseSettings(std::string_view(input ? input : "", input ? length : 0), next);
     mod.cfg = next;
     const ShipNativeStatus status = ApplyRenderState(mod);
-    if (status != SHIP_NATIVE_OK) return status;
+    if (status != SHIP_NATIVE_OK)
+        return status;
     ++mod.stats.configures;
     char text[128];
     const int count = std::snprintf(text, sizeof(text), "ww-style: %u chaves, %u desconhecidas, %u invalidas",
@@ -108,7 +109,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* input, uint3
 
 ShipNativeStatus SHIP_NATIVE_CALL Stats(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
                                         void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     const auto& mod = *static_cast<const Mod*>(user);
     const auto& s = mod.stats;
     const auto& c = mod.cfg;
@@ -121,8 +123,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void* user, const char*, uint32_t length
         "wisps=%u texpack=%u skyfail=%u",
         s.configures, c.celEnabled ? 1u : 0u, c.shadowsEnabled ? 1u : 0u, s.actorDraws, s.excluded, s.toonOff,
         s.pointKeys, s.envKeys, s.keyFailures, s.shadowsArmed, s.shadowsOff, s.raycasts, mod.toon.keys.size(),
-        s.debugRays, s.debugSkipped, s.fairyCalls, s.naviSeen, s.naviSkipped, s.naviTinted, s.wildFairyLit,
-        s.flickered, mod.lighting.flicker.size(), s.pools, s.poolFailures, mod.lighting.lights.size(),
+        s.debugRays, s.debugSkipped, s.fairyCalls, s.naviSeen, s.naviSkipped, s.naviTinted, s.wildFairyLit, s.flickered,
+        mod.lighting.flicker.size(), s.pools, s.poolFailures, mod.lighting.lights.size(),
         mod.lighting.wildLights.size(), s.stickLights, c.skyEnabled ? 1u : 0u, s.skyDomes, s.skyStars, s.skyBands,
         s.skyClouds, s.skyWisps, s.skyTexOverrides, s.skyFailures);
     return Reply(write, writer, text, count, sizeof(text));
@@ -130,7 +132,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void* user, const char*, uint32_t length
 
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
     if (!runtime || !instance || runtime->size < sizeof(ShipNativeRuntime) || runtime->abi_minor < 2 ||
-        !runtime->get_service || !runtime->register_hook || !runtime->register_function) return SHIP_NATIVE_UNSUPPORTED;
+        !runtime->get_service || !runtime->register_hook || !runtime->register_function)
+        return SHIP_NATIVE_UNSUPPORTED;
     const auto* engine = static_cast<const ShipOotEngineV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(ShipOotEngineV1)));
     const auto* render = static_cast<const ShipOotRenderV3*>(runtime->get_service(
@@ -146,7 +149,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     const auto* resources = static_cast<const ShipOotResourcesV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION, sizeof(ShipOotResourcesV1)));
     auto* mod = new (std::nothrow) Mod;
-    if (!mod) return SHIP_NATIVE_FAILURE;
+    if (!mod)
+        return SHIP_NATIVE_FAILURE;
     mod->runtime = runtime;
     mod->engine = engine;
     mod->render = render;
@@ -155,33 +159,46 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     mod->resources = resources;
     // Até o primeiro configure vale o padrão do fork (cel ligado, sombras desligadas).
     ShipNativeStatus status = render->acquire_state(kOwner, &mod->renderState);
-    if (status == SHIP_NATIVE_OK) status = ApplyRenderState(*mod);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_PLAY_UPDATE, 1u,
-        sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnPlayUpdate);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_ACTOR_DRAW, 1u,
-        sizeof(ShipOotRenderActorDrawHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnRenderActorDraw);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_LIGHT_FAIRY,
-        LINKSPAN_OOT_HOOK_LIGHT_FAIRY_VERSION, sizeof(ShipOotFairyLightHookV1), SHIP_NATIVE_HOOK_TRANSFORM,
-        OnFairyLights);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_PLAY_UPDATE, 1u,
-        sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnPlayUpdateAfter, SHIP_NATIVE_HOOK_AFTER);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR,
-        LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR_VERSION, sizeof(ShipOotPointLightColorHookV2), SHIP_NATIVE_HOOK_TRANSFORM,
-        OnPointLightColor);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_WORLD_LIGHTS, 1u,
-        sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnWorldLights);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_SKY_GRADIENT, 1u,
-        sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnSkyGradient);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_SKY, 1u,
-        sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnSky);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_SKY_CLOUDS, 1u,
-        sizeof(ShipOotRenderPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnSkyClouds);
-    if (status == SHIP_NATIVE_OK) status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_FILE_SELECT_SKY, 1u,
-        sizeof(ShipOotRenderFileSelectSkyHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnFileSelectSky);
-    if (status == SHIP_NATIVE_OK) status = runtime->register_function(runtime->context, "configure", Configure, mod);
-    if (status == SHIP_NATIVE_OK) status = runtime->register_function(runtime->context, "stats", Stats, mod);
+    if (status == SHIP_NATIVE_OK)
+        status = ApplyRenderState(*mod);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_PLAY_UPDATE, 1u, sizeof(ShipOotPlayHookV1),
+                          SHIP_NATIVE_HOOK_OBSERVE, OnPlayUpdate);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_ACTOR_DRAW, 1u, sizeof(ShipOotRenderActorDrawHookV1),
+                          SHIP_NATIVE_HOOK_OBSERVE, OnRenderActorDraw);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_LIGHT_FAIRY, LINKSPAN_OOT_HOOK_LIGHT_FAIRY_VERSION,
+                          sizeof(ShipOotFairyLightHookV1), SHIP_NATIVE_HOOK_TRANSFORM, OnFairyLights);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_PLAY_UPDATE, 1u, sizeof(ShipOotPlayHookV1),
+                          SHIP_NATIVE_HOOK_OBSERVE, OnPlayUpdateAfter, SHIP_NATIVE_HOOK_AFTER);
+    if (status == SHIP_NATIVE_OK)
+        status =
+            Register(runtime, mod, LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR, LINKSPAN_OOT_HOOK_LIGHT_POINT_COLOR_VERSION,
+                     sizeof(ShipOotPointLightColorHookV2), SHIP_NATIVE_HOOK_TRANSFORM, OnPointLightColor);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_WORLD_LIGHTS, 1u, sizeof(ShipOotRenderPlayHookV1),
+                          SHIP_NATIVE_HOOK_OBSERVE, OnWorldLights);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_SKY_GRADIENT, 1u, sizeof(ShipOotRenderPlayHookV1),
+                          SHIP_NATIVE_HOOK_OBSERVE, OnSkyGradient);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_SKY, 1u, sizeof(ShipOotRenderPlayHookV1),
+                          SHIP_NATIVE_HOOK_OBSERVE, OnSky);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_SKY_CLOUDS, 1u, sizeof(ShipOotRenderPlayHookV1),
+                          SHIP_NATIVE_HOOK_OBSERVE, OnSkyClouds);
+    if (status == SHIP_NATIVE_OK)
+        status = Register(runtime, mod, LINKSPAN_OOT_HOOK_RENDER_FILE_SELECT_SKY, 1u,
+                          sizeof(ShipOotRenderFileSelectSkyHookV1), SHIP_NATIVE_HOOK_OBSERVE, OnFileSelectSky);
+    if (status == SHIP_NATIVE_OK)
+        status = runtime->register_function(runtime->context, "configure", Configure, mod);
+    if (status == SHIP_NATIVE_OK)
+        status = runtime->register_function(runtime->context, "stats", Stats, mod);
     if (status != SHIP_NATIVE_OK) {
-        if (mod->renderState) render->release_state(mod->renderState);
+        if (mod->renderState)
+            render->release_state(mod->renderState);
         delete mod;
         return status;
     }
@@ -191,7 +208,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
 
 void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* mod = static_cast<Mod*>(instance);
-    if (mod && mod->render && mod->renderState) mod->render->release_state(mod->renderState);
+    if (mod && mod->render && mod->renderState)
+        mod->render->release_state(mod->renderState);
     delete mod;
 }
 
@@ -199,7 +217,7 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
 } // namespace WWStyle
 
 extern "C" SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query(void) {
-    static const ShipNativeDescriptor descriptor{sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, 2u,
-                                                 WWStyle::Init, WWStyle::Shutdown};
+    static const ShipNativeDescriptor descriptor{ sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, 2u,
+                                                  WWStyle::Init, WWStyle::Shutdown };
     return &descriptor;
 }

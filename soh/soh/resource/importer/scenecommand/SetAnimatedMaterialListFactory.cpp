@@ -87,21 +87,18 @@ void AddColor(SetAnimatedMaterialList& list, tinyxml2::XMLElement* e) {
             throw EntryError("key frames must be ascending");
         }
         storage.keyFrames.push_back(frame);
-        storage.primColors.push_back({ static_cast<u8>(key->UnsignedAttribute("PrimR")),
-                                       static_cast<u8>(key->UnsignedAttribute("PrimG")),
-                                       static_cast<u8>(key->UnsignedAttribute("PrimB")),
-                                       static_cast<u8>(key->UnsignedAttribute("PrimA")),
-                                       static_cast<u8>(key->UnsignedAttribute("LodFrac")) });
+        storage.primColors.push_back(
+            { static_cast<u8>(key->UnsignedAttribute("PrimR")), static_cast<u8>(key->UnsignedAttribute("PrimG")),
+              static_cast<u8>(key->UnsignedAttribute("PrimB")), static_cast<u8>(key->UnsignedAttribute("PrimA")),
+              static_cast<u8>(key->UnsignedAttribute("LodFrac")) });
         const bool hasEnv = key->FindAttribute("EnvR") != nullptr;
         anyEnv = anyEnv || hasEnv;
         allEnv = allEnv && hasEnv;
-        storage.envColors.push_back({ static_cast<u8>(key->UnsignedAttribute("EnvR")),
-                                      static_cast<u8>(key->UnsignedAttribute("EnvG")),
-                                      static_cast<u8>(key->UnsignedAttribute("EnvB")),
-                                      static_cast<u8>(key->UnsignedAttribute("EnvA")) });
+        storage.envColors.push_back(
+            { static_cast<u8>(key->UnsignedAttribute("EnvR")), static_cast<u8>(key->UnsignedAttribute("EnvG")),
+              static_cast<u8>(key->UnsignedAttribute("EnvB")), static_cast<u8>(key->UnsignedAttribute("EnvA")) });
     }
-    if (storage.keyFrames.empty() || storage.keyFrames.size() > ANIM_MAT_MAX_KEY_FRAMES ||
-        storage.keyFrames[0] != 0) {
+    if (storage.keyFrames.empty() || storage.keyFrames.size() > ANIM_MAT_MAX_KEY_FRAMES || storage.keyFrames[0] != 0) {
         throw EntryError("key frames need 1.." + std::to_string(ANIM_MAT_MAX_KEY_FRAMES) + " entries starting at 0");
     }
     if (anyEnv != allEnv) {

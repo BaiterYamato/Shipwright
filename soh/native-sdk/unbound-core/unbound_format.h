@@ -22,10 +22,10 @@ struct DocumentError : std::runtime_error {
 };
 
 struct MergedDocument {
-    Json doc;              // sem $schema, $replace nem nulls
-    std::string schema;    // "$schema" da camada mais alta que o traz ("" se nenhuma)
-    std::string type;      // parte antes da última barra
-    int version = 0;       // número depois da última barra (0 se inválido)
+    Json doc;           // sem $schema, $replace nem nulls
+    std::string schema; // "$schema" da camada mais alta que o traz ("" se nenhuma)
+    std::string type;   // parte antes da última barra
+    int version = 0;    // número depois da última barra (0 se inválido)
     uint32_t layersUsed = 0;
     std::vector<std::string> notes; // camadas puladas e outros avisos
 };

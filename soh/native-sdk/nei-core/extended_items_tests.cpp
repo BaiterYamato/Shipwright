@@ -3,7 +3,13 @@
 #include "fork/item_mapping.h"
 #include "fork/progression.h"
 static int failures;
-#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "%d: %s\n", __LINE__, #x); ++failures; } } while (0)
+#define CHECK(x)                                            \
+    do {                                                    \
+        if (!(x)) {                                         \
+            std::fprintf(stderr, "%d: %s\n", __LINE__, #x); \
+            ++failures;                                     \
+        }                                                   \
+    } while (0)
 int main() {
     NeiItemMapping map{};
     NeiMapping_Set(&map, 0xA0, 0x9E);
@@ -21,9 +27,11 @@ int main() {
     CHECK(NeiMapping_Logical(&map, 0xA1) == 0);
     for (unsigned family = 0; family < NEI_POWER_COUNT; ++family) {
         uint8_t mask = 0;
-        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i) mask = NeiProgress_NextMask(family, i, mask);
+        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i)
+            mask = NeiProgress_NextMask(family, i, mask);
         CHECK(mask == NeiProgress_ValidMask(family));
-        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i) mask = NeiProgress_NextMask(family, i, mask);
+        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i)
+            mask = NeiProgress_NextMask(family, i, mask);
         CHECK(mask == 0);
         CHECK(NeiProgress_NextMask(family, NeiProgress_Limit(family), mask) == -1);
     }

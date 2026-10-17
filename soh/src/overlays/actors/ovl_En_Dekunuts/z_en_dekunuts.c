@@ -327,7 +327,8 @@ void EnDekunuts_Burrow(EnDekunuts* this, PlayState* play) {
     if (SkelAnime_Update(&this->skelAnime)) {
         EnDekunuts_SetupWait(this);
     } else {
-        this->collider.dim.height = LinkSpan_S16F(((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f) + 5.0f);
+        this->collider.dim.height =
+            LinkSpan_S16F(((3.0f - CLAMP(this->skelAnime.curFrame, 1.0f, 3.0f)) * 12.0f) + 5.0f);
     }
     if (Animation_OnFrame(&this->skelAnime, 4.0f)) {
         this->collider.base.acFlags &= ~AC_ON;

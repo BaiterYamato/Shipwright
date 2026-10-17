@@ -28,7 +28,7 @@ const char* const kSceneNames[] = {
 #undef DEFINE_SCENE
 
 #define DEFINE_ENTRANCE(enumValue, sceneId, spawn, continueBgm, displayTitleCard, endTransType, startTransType) \
-    #enumValue,
+#enumValue,
 const char* const kEntranceNames[] = {
 #include "tables/entrance_table.h"
 };
@@ -36,8 +36,8 @@ const char* const kEntranceNames[] = {
 
 static_assert(std::size(kSceneNames) == SCENE_ID_MAX);
 static_assert(std::size(kEntranceNames) == ENTR_MAX);
-constexpr int32_t kHorseScenes[] = { SCENE_HYRULE_FIELD, SCENE_LAKE_HYLIA, SCENE_GERUDO_VALLEY,
-                                     SCENE_GERUDOS_FORTRESS, SCENE_LON_LON_RANCH };
+constexpr int32_t kHorseScenes[] = { SCENE_HYRULE_FIELD, SCENE_LAKE_HYLIA, SCENE_GERUDO_VALLEY, SCENE_GERUDOS_FORTRESS,
+                                     SCENE_LON_LON_RANCH };
 
 void ApplyEntranceTable(EntranceInfo* table, int32_t) {
     gEntranceTable = table ? table : gEntranceTableVanilla;
@@ -123,8 +123,8 @@ extern "C" const char* LinkSpan_CustomSceneTitleCard(s32 sceneNum) {
         if (found == checked.end()) {
             const auto resource = std::dynamic_pointer_cast<Fast::Texture>(
                 Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(*texture));
-            const bool fits = resource && resource->Width == 144 && resource->Height == 24 &&
-                              resource->ImageDataSize >= 144u * 24u;
+            const bool fits =
+                resource && resource->Width == 144 && resource->Height == 24 && resource->ImageDataSize >= 144u * 24u;
             if (!fits) {
                 SPDLOG_WARN("Link-Span: título de cena {} não é uma textura de 144x24 com 3456 bytes; ignorado",
                             *texture);
@@ -132,9 +132,7 @@ extern "C" const char* LinkSpan_CustomSceneTitleCard(s32 sceneNum) {
             found = checked.emplace(*texture, fits).first;
         }
         return found->second ? paths.emplace("__OTR__" + *texture).first->c_str() : nullptr;
-    } catch (...) {
-        return nullptr;
-    }
+    } catch (...) { return nullptr; }
 }
 
 extern "C" s32 LinkSpan_EntranceCount(void) {
@@ -168,7 +166,7 @@ extern "C" s32 LinkSpan_ResolveHorseScene(s16* sceneNum) {
 }
 
 extern "C" BetterSceneSelectEntry* LinkSpan_BuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, s32 vanillaCount,
-                                                                     void (*loadFunc)(SelectContext*, s32), s32* count) {
+                                                                  void (*loadFunc)(SelectContext*, s32), s32* count) {
     if (!count) {
         return vanilla;
     }

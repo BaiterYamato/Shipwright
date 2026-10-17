@@ -1471,8 +1471,10 @@ void EnMb_Update(Actor* thisx, PlayState* play) {
         Actor_SetFocus(thisx, thisx->scale.x * 4500.0f);
         Collider_UpdateCylinder(thisx, &this->hitbox);
         if (thisx->colChkInfo.health <= 0) {
-            this->hitbox.dim.pos.x = LinkSpan_S16F(this->hitbox.dim.pos.x + (Math_SinS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y)));
-            this->hitbox.dim.pos.z = LinkSpan_S16F(this->hitbox.dim.pos.z + (Math_CosS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y)));
+            this->hitbox.dim.pos.x =
+                LinkSpan_S16F(this->hitbox.dim.pos.x + (Math_SinS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y)));
+            this->hitbox.dim.pos.z =
+                LinkSpan_S16F(this->hitbox.dim.pos.z + (Math_CosS(thisx->shape.rot.y) * (-4400.0f * thisx->scale.y)));
         }
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->hitbox.base);
         if (this->state >= ENMB_STATE_STUNNED &&

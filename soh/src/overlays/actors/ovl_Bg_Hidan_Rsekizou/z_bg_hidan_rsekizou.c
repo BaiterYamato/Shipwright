@@ -135,7 +135,8 @@ void BgHidanRsekizou_Init(Actor* thisx, PlayState* play) {
     Collider_InitJntSph(play, &this->collider);
     Collider_SetJntSph(play, &this->collider, &this->dyna.actor, &sJntSphInit, this->colliderItems);
     for (i = 0; i < ARRAY_COUNT(this->colliderItems); i++) {
-        this->collider.elements[i].dim.worldSphere.radius = LinkSpan_S16F(this->collider.elements[i].dim.modelSphere.radius);
+        this->collider.elements[i].dim.worldSphere.radius =
+            LinkSpan_S16F(this->collider.elements[i].dim.modelSphere.radius);
     }
     this->burnFrame = 0;
     this->bendFrame = 0;
@@ -172,11 +173,14 @@ void BgHidanRsekizou_Update(Actor* thisx, PlayState* play) {
 
     for (i = 0; i < ARRAY_COUNT(this->colliderItems); i++) {
         sphere = &this->collider.elements[i];
-        sphere->dim.worldSphere.center.x = LinkSpan_S16F(this->dyna.actor.home.pos.x + yawCosine * sphere->dim.modelSphere.center.x +
-                                           yawSine * sphere->dim.modelSphere.center.z);
-        sphere->dim.worldSphere.center.y = LinkSpan_S16F((s16)this->dyna.actor.home.pos.y + sphere->dim.modelSphere.center.y);
-        sphere->dim.worldSphere.center.z = LinkSpan_S16F((this->dyna.actor.home.pos.z - yawSine * sphere->dim.modelSphere.center.x) +
-                                           yawCosine * sphere->dim.modelSphere.center.z);
+        sphere->dim.worldSphere.center.x =
+            LinkSpan_S16F(this->dyna.actor.home.pos.x + yawCosine * sphere->dim.modelSphere.center.x +
+                          yawSine * sphere->dim.modelSphere.center.z);
+        sphere->dim.worldSphere.center.y =
+            LinkSpan_S16F((s16)this->dyna.actor.home.pos.y + sphere->dim.modelSphere.center.y);
+        sphere->dim.worldSphere.center.z =
+            LinkSpan_S16F((this->dyna.actor.home.pos.z - yawSine * sphere->dim.modelSphere.center.x) +
+                          yawCosine * sphere->dim.modelSphere.center.z);
     }
 
     CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);

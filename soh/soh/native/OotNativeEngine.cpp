@@ -54,30 +54,47 @@ namespace {
 std::thread::id gameThread;
 OotNativeGamepadBridge gamepadBridge;
 OotNativeResourceBridge resourceBridge;
-bool OnGameThread() { return std::this_thread::get_id() == gameThread; }
+bool OnGameThread() {
+    return std::this_thread::get_id() == gameThread;
+}
 // Leitura do VFS: na thread do jogo ou dentro de um transcode JSON (thread do pool de recursos).
-bool OnResourceThread() { return OnGameThread() || InOotJsonTranscode(); }
-bool ValidText(const char* value) { return value && *value && std::strlen(value) <= 4096; }
-void* SHIP_NATIVE_CALL Play() { return OnGameThread() ? gPlayState : nullptr; }
+bool OnResourceThread() {
+    return OnGameThread() || InOotJsonTranscode();
+}
+bool ValidText(const char* value) {
+    return value && *value && std::strlen(value) <= 4096;
+}
+void* SHIP_NATIVE_CALL Play() {
+    return OnGameThread() ? gPlayState : nullptr;
+}
 void* SHIP_NATIVE_CALL CurrentPlayer() {
     return OnGameThread() && gPlayState ? GET_PLAYER(gPlayState) : nullptr;
 }
-void* SHIP_NATIVE_CALL Save() { return OnGameThread() ? &gSaveContext : nullptr; }
-void* SHIP_NATIVE_CALL Spawn(int16_t id, float x, float y, float z,
-                            int16_t rx, int16_t ry, int16_t rz, int16_t params) {
-    if (!OnGameThread() || !gPlayState) return nullptr;
+void* SHIP_NATIVE_CALL Save() {
+    return OnGameThread() ? &gSaveContext : nullptr;
+}
+void* SHIP_NATIVE_CALL Spawn(int16_t id, float x, float y, float z, int16_t rx, int16_t ry, int16_t rz,
+                             int16_t params) {
+    if (!OnGameThread() || !gPlayState)
+        return nullptr;
     return Actor_Spawn(&gPlayState->actorCtx, gPlayState, id, x, y, z, rx, ry, rz, params);
 }
 ShipNativeStatus SHIP_NATIVE_CALL Kill(void* target) {
-    if (!OnGameThread() || !gPlayState || !target) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!OnGameThread() || !gPlayState || !target)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     for (const auto& list : gPlayState->actorCtx.actorLists) {
         for (Actor* actor = list.head; actor; actor = actor->next) {
-            if (actor == target) { Actor_Kill(actor); return SHIP_NATIVE_OK; }
+            if (actor == target) {
+                Actor_Kill(actor);
+                return SHIP_NATIVE_OK;
+            }
         }
     }
     return SHIP_NATIVE_INVALID_ARGUMENT;
 }
-bool ValidPort(uint8_t port) { return port < 4; }
+bool ValidPort(uint8_t port) {
+    return port < 4;
+}
 uint16_t SHIP_NATIVE_CALL InputCurrent(uint8_t port) {
     return OnGameThread() && gPlayState && ValidPort(port) ? gPlayState->state.input[port].cur.button : 0;
 }
@@ -116,7 +133,8 @@ ShipNativeStatus SHIP_NATIVE_CALL BindGamepadButton(uint8_t port, uint16_t virtu
     return gamepadBridge.bindButton(port, virtualButton, sdlButton);
 }
 ShipNativeStatus SHIP_NATIVE_CALL ReloadGamepadMappings(uint8_t port) {
-    if (!OnGameThread() || !ValidPort(port) || !gamepadBridge.reloadMappings) return SHIP_NATIVE_UNSUPPORTED;
+    if (!OnGameThread() || !ValidPort(port) || !gamepadBridge.reloadMappings)
+        return SHIP_NATIVE_UNSUPPORTED;
     return gamepadBridge.reloadMappings(port);
 }
 // Settings transitórios dos providers: ficam só em memória, nunca viram CVar nem vão para a
@@ -159,24 +177,32 @@ constexpr const char* PAUSE_EQUIP_SELECTOR_SETTING = "linkspan.pause.equip_selec
 bool pauseEquipSelector = false;
 int HiddenItemButtonIndex(const char* name) {
     for (int button = 1; button <= 3; ++button) {
-        if (std::strcmp(name, HIDDEN_ITEM_BUTTON_SETTINGS[button]) == 0) return button;
+        if (std::strcmp(name, HIDDEN_ITEM_BUTTON_SETTINGS[button]) == 0)
+            return button;
     }
     return 0;
 }
 int32_t SHIP_NATIVE_CALL GetSettingInt(const char* name, int32_t fallback) {
-    if (!OnGameThread() || !name || !*name) return fallback;
+    if (!OnGameThread() || !name || !*name)
+        return fallback;
     if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0)
         return TRANSIENT_HIDE_ITEM_BUTTONS | TRANSIENT_SWORD_OVER_SHIELD | TRANSIENT_DPAD_HUD |
                TRANSIENT_PAUSE_EQUIP_SELECTOR;
-    if (const int button = HiddenItemButtonIndex(name)) return hiddenItemButtons[button];
-    if (std::strcmp(name, SWORD_OVER_SHIELD_SETTING) == 0) return swordOverShield ? 1 : 0;
-    if (std::strcmp(name, DPAD_HUD_SETTING) == 0) return dpadHudOwned ? 1 : 0;
-    if (std::strcmp(name, PAUSE_EQUIP_SELECTOR_SETTING) == 0) return pauseEquipSelector ? 1 : 0;
+    if (const int button = HiddenItemButtonIndex(name))
+        return hiddenItemButtons[button];
+    if (std::strcmp(name, SWORD_OVER_SHIELD_SETTING) == 0)
+        return swordOverShield ? 1 : 0;
+    if (std::strcmp(name, DPAD_HUD_SETTING) == 0)
+        return dpadHudOwned ? 1 : 0;
+    if (std::strcmp(name, PAUSE_EQUIP_SELECTOR_SETTING) == 0)
+        return pauseEquipSelector ? 1 : 0;
     return gamepadBridge.getSettingInt ? gamepadBridge.getSettingInt(name, fallback) : fallback;
 }
 ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value) {
-    if (!OnGameThread() || !name || !*name) return SHIP_NATIVE_UNSUPPORTED;
-    if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!OnGameThread() || !name || !*name)
+        return SHIP_NATIVE_UNSUPPORTED;
+    if (std::strcmp(name, TRANSIENT_SETTINGS_PROBE) == 0)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     if (const int button = HiddenItemButtonIndex(name)) {
         hiddenItemButtons[button] = value != 0 ? 1 : 0;
         return SHIP_NATIVE_OK;
@@ -205,18 +231,19 @@ uint8_t SHIP_NATIVE_CALL Rolling() {
     return player && player->actionFunc == Player_Action_Roll ? 1 : 0;
 }
 bool CanMove(Player* player) {
-    return player && !(player->stateFlags1 & (PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE |
-                                             PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_WATER));
+    return player && !(player->stateFlags1 & (PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_ON_HORSE |
+                                              PLAYER_STATE1_IN_WATER));
 }
 ShipNativeStatus SHIP_NATIVE_CALL Jump(float velocity) {
     auto* player = static_cast<Player*>(CurrentPlayer());
-    if (!std::isfinite(velocity) || velocity <= 0.0f || velocity > 30.0f) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!std::isfinite(velocity) || velocity <= 0.0f || velocity > 30.0f)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     if (!gPlayState || !CanMove(player) || !(player->actor.bgCheckFlags & BGCHECKFLAG_GROUND))
         return SHIP_NATIVE_UNSUPPORTED;
     const int16_t yawDifference = static_cast<int16_t>(player->yaw - player->actor.shape.rot.y);
     const bool runningForward = std::abs(static_cast<int32_t>(yawDifference)) < 0x1000 && player->linearVelocity > 4.0f;
-    auto* animation = reinterpret_cast<LinkAnimationHeader*>(const_cast<char*>(
-        runningForward ? gPlayerAnim_link_normal_run_jump : gPlayerAnim_link_normal_jump));
+    auto* animation = reinterpret_cast<LinkAnimationHeader*>(
+        const_cast<char*>(runningForward ? gPlayerAnim_link_normal_run_jump : gPlayerAnim_link_normal_jump));
     func_80838940(player, animation, velocity, gPlayState, NA_SE_VO_LI_AUTO_JUMP);
     player->av2.actionVar2 = 1;
     return SHIP_NATIVE_OK;
@@ -225,7 +252,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Roll() {
     auto* player = static_cast<Player*>(CurrentPlayer());
     if (!gPlayState || !CanMove(player) || !(player->actor.bgCheckFlags & BGCHECKFLAG_GROUND))
         return SHIP_NATIVE_UNSUPPORTED;
-    if (player->actionFunc != Player_Action_Roll) Player_SetupRoll(player, gPlayState);
+    if (player->actionFunc != Player_Action_Roll)
+        Player_SetupRoll(player, gPlayState);
     return SHIP_NATIVE_OK;
 }
 int16_t SHIP_NATIVE_CALL GamepadAxis(uint8_t port, uint8_t axis) {
@@ -233,7 +261,8 @@ int16_t SHIP_NATIVE_CALL GamepadAxis(uint8_t port, uint8_t axis) {
 }
 ShipNativeStatus SHIP_NATIVE_CALL BindGamepadAxis(uint8_t port, uint16_t virtualButton, uint8_t axis,
                                                   int8_t direction) {
-    if (direction != 1 && direction != -1) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (direction != 1 && direction != -1)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     if (!OnGameThread() || !ValidPort(port) || !virtualButton || !gamepadBridge.bindAxis)
         return SHIP_NATIVE_UNSUPPORTED;
     return gamepadBridge.bindAxis(port, virtualButton, axis, direction);
@@ -246,17 +275,16 @@ bool SettingEnabled(const char* name) {
 // Player_CanUpdateItems (3566), Player_UpdateItems (2625) e Player_ProcessItemButtons
 // (2532) deixam; pausa e texto abertos também bloqueiam o botão.
 bool ItemButtonsActive(Player* player, PlayState* play) {
-    constexpr uint32_t blocking = PLAYER_STATE1_LOADING | PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE |
-                                  PLAYER_STATE1_CARRYING_ACTOR;
-    const bool waitingPutAway =
-        player->actionFunc == Player_Action_WaitForPutAway &&
-        !((player->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM) &&
-          (player->heldItemId == ITEM_LAST_USED || player->heldItemId == ITEM_NONE));
+    constexpr uint32_t blocking =
+        PLAYER_STATE1_LOADING | PLAYER_STATE1_DEAD | PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_CARRYING_ACTOR;
+    const bool waitingPutAway = player->actionFunc == Player_Action_WaitForPutAway &&
+                                !((player->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM) &&
+                                  (player->heldItemId == ITEM_LAST_USED || player->heldItemId == ITEM_NONE));
     const bool changingHeldItem = player->upperActionFunc == Player_UpperAction_ChangeHeldItem &&
                                   Player_ItemToItemAction(player->heldItemId) != player->heldItemAction;
-    const bool hookshotWithoutActor = (player->heldItemAction == PLAYER_IA_HOOKSHOT ||
-                                       player->heldItemAction == PLAYER_IA_LONGSHOT) &&
-                                      player->heldActor == nullptr;
+    const bool hookshotWithoutActor =
+        (player->heldItemAction == PLAYER_IA_HOOKSHOT || player->heldItemAction == PLAYER_IA_LONGSHOT) &&
+        player->heldActor == nullptr;
     return player->actor.category == ACTORCAT_PLAYER && !(player->stateFlags1 & blocking) && !waitingPutAway &&
            !changingHeldItem && !hookshotWithoutActor &&
            (SettingEnabled("gEnhancements.QuickPutaway") ||
@@ -305,14 +333,16 @@ bool ItemEnabledLikeCButton(Player* player, PlayState* play, uint8_t item) {
     if (item == ITEM_LENS) {
         return play->interfaceCtx.restrictions.all == 0 || play->sceneNum == SCENE_TREASURE_BOX_SHOP;
     }
-    if (ocarina) return play->interfaceCtx.restrictions.ocarina == 0;
+    if (ocarina)
+        return play->interfaceCtx.restrictions.ocarina == 0;
     return play->interfaceCtx.restrictions.tradeItems == 0 || SettingEnabled("gEnhancements.MMBunnyHood");
 }
 // Botões que mantêm a máscara sem PersistentMasks (z_player.c:2516-2530).
 bool ItemOnItemButton(uint8_t item) {
     const int count = SettingEnabled("gEnhancements.DpadEquips") ? 8 : 4;
     for (int button = 1; button < count; ++button) {
-        if (gSaveContext.equips.buttonItems[button] == item) return true;
+        if (gSaveContext.equips.buttonItems[button] == item)
+            return true;
     }
     return false;
 }
@@ -338,7 +368,8 @@ ShipNativeStatus UseEquipmentShortcut(Player* player, PlayState* play, uint8_t i
     // Usar o equipado volta ao Kokiri, como o botão do SoH.
     const u16 current = static_cast<u16>(CUR_EQUIP_VALUE(type));
     const u16 next = current == value ? (tunic ? EQUIP_VALUE_TUNIC_KOKIRI : EQUIP_VALUE_BOOTS_KOKIRI) : value;
-    if (next == current) return SHIP_NATIVE_UNSUPPORTED;
+    if (next == current)
+        return SHIP_NATIVE_UNSUPPORTED;
     Inventory_ChangeEquipment(type, next);
     Player_SetEquipmentData(play, player);
     func_808328EC(player, !tunic && next == EQUIP_VALUE_BOOTS_IRON ? NA_SE_PL_WALK_HEAVYBOOTS : NA_SE_PL_CHANGE_ARMS);
@@ -354,9 +385,11 @@ ShipNativeStatus UseOcarinaShortcut(Player* player, PlayState* play, uint8_t ite
         return SHIP_NATIVE_UNSUPPORTED;
     const s8 expected = Player_ItemToItemAction(item);
     Player_UseItem(play, player, item);
-    if (player->unk_6AD != 4 || player->itemAction != expected) return SHIP_NATIVE_UNSUPPORTED;
+    if (player->unk_6AD != 4 || player->itemAction != expected)
+        return SHIP_NATIVE_UNSUPPORTED;
     Player_ActionHandler_13(player, play);
-    if (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) return SHIP_NATIVE_OK;
+    if (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING)
+        return SHIP_NATIVE_OK;
     // Fora do chão o handler recusa: desfaz o pedido para não sobrar no próximo frame.
     player->itemAction = player->heldItemAction;
     player->unk_6AD = 0;
@@ -365,19 +398,25 @@ ShipNativeStatus UseOcarinaShortcut(Player* player, PlayState* play, uint8_t ite
 ShipNativeStatus SHIP_NATIVE_CALL UseItemShortcut(uint8_t item) {
     const bool lens = item == ITEM_LENS;
     const bool mask = item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH;
-    if (!lens && !mask && !IsOcarinaItem(item) && !IsEquipmentItem(item)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!lens && !mask && !IsOcarinaItem(item) && !IsEquipmentItem(item))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto* player = static_cast<Player*>(CurrentPlayer());
-    if (!player) return SHIP_NATIVE_UNSUPPORTED;
-    if (IsEquipmentItem(item)) return UseEquipmentShortcut(player, gPlayState, item);
+    if (!player)
+        return SHIP_NATIVE_UNSUPPORTED;
+    if (IsEquipmentItem(item))
+        return UseEquipmentShortcut(player, gPlayState, item);
     if (!ItemButtonsActive(player, gPlayState) || !ItemEnabledLikeCButton(player, gPlayState, item))
         return SHIP_NATIVE_UNSUPPORTED;
-    if (IsOcarinaItem(item)) return UseOcarinaShortcut(player, gPlayState, item);
+    if (IsOcarinaItem(item))
+        return UseOcarinaShortcut(player, gPlayState, item);
     if (lens) {
-        if (gSaveContext.inventory.items[SLOT_LENS] != ITEM_LENS) return SHIP_NATIVE_UNSUPPORTED;
+        if (gSaveContext.inventory.items[SLOT_LENS] != ITEM_LENS)
+            return SHIP_NATIVE_UNSUPPORTED;
         const bool wasActive = gPlayState->actorCtx.lensActive != 0;
         Player_UseItem(gPlayState, player, ITEM_LENS);
         const bool active = gPlayState->actorCtx.lensActive != 0;
-        if (active == wasActive) return SHIP_NATIVE_UNSUPPORTED;
+        if (active == wasActive)
+            return SHIP_NATIVE_UNSUPPORTED;
         lensKeptWithoutButton = active;
         return SHIP_NATIVE_OK;
     }
@@ -407,11 +446,11 @@ ShipNativeStatus SHIP_NATIVE_CALL ItemButtonRect(uint8_t button, int16_t* x, int
                                                  uint8_t* alpha) {
     if (button < LINKSPAN_OOT_ITEM_BUTTON_C_LEFT || button > LAST_CAPTURED_BUTTON || !x || !y || !size || !alpha)
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    if (!OnGameThread() || !gPlayState) return SHIP_NATIVE_UNSUPPORTED;
+    if (!OnGameThread() || !gPlayState)
+        return SHIP_NATIVE_UNSUPPORTED;
     const auto& captured = itemButtons[button];
     // O HUD Lua desenha antes de Interface_Draw: vale a captura do frame anterior.
-    if (!captured.valid || gPlayState->state.frames - captured.frame > 1 || captured.x <= -9999 ||
-        captured.size <= 0)
+    if (!captured.valid || gPlayState->state.frames - captured.frame > 1 || captured.x <= -9999 || captured.size <= 0)
         return SHIP_NATIVE_UNSUPPORTED;
     *x = captured.x;
     *y = captured.y;
@@ -422,15 +461,16 @@ ShipNativeStatus SHIP_NATIVE_CALL ItemButtonRect(uint8_t button, int16_t* x, int
 // linkspan.oot.ocarina v1 (OOT-MIC-001). func_800EE6F4 (code_800EC960.c) publica o
 // estado a cada update de input da ocarina, dentro de func_800F3054 (graph.c:393),
 // na thread do jogo e depois do game.frame; a música pendente é consumida ali.
-std::atomic<uint8_t> ocarinaActive{0};
-std::atomic<uint16_t> ocarinaSongFlags{0};
-std::atomic<int32_t> pendingOcarinaSong{-1};
+std::atomic<uint8_t> ocarinaActive{ 0 };
+std::atomic<uint16_t> ocarinaSongFlags{ 0 };
+std::atomic<int32_t> pendingOcarinaSong{ -1 };
 bool OcarinaPatternValid(uint8_t song) {
-    if (song > OCARINA_SONG_SCARECROW_SPAWN) return false;
+    if (song > OCARINA_SONG_SCARECROW_SPAWN)
+        return false;
     const auto& pattern = gOcarinaSongButtons[song];
-    if (pattern.numButtons < 2 || pattern.numButtons > LINKSPAN_OOT_OCARINA_MAX_NOTES) return false;
-    return song != OCARINA_SONG_SCARECROW_SPAWN ||
-           sOcarinaSongNotes[OCARINA_SONG_SCARECROW_SPAWN][1].volume != 0xFF;
+    if (pattern.numButtons < 2 || pattern.numButtons > LINKSPAN_OOT_OCARINA_MAX_NOTES)
+        return false;
+    return song != OCARINA_SONG_SCARECROW_SPAWN || sOcarinaSongNotes[OCARINA_SONG_SCARECROW_SPAWN][1].volume != 0xFF;
 }
 uint8_t SHIP_NATIVE_CALL OcarinaActive() {
     return OnGameThread() ? ocarinaActive.load() : 0;
@@ -440,119 +480,187 @@ uint16_t SHIP_NATIVE_CALL OcarinaSongFlags() {
 }
 // Doze músicas fixas; a do Espantalho (12) só existe depois de gravada (code_800EC960.c:1420).
 uint8_t SHIP_NATIVE_CALL OcarinaSongCount() {
-    if (!OnGameThread()) return 0;
+    if (!OnGameThread())
+        return 0;
     return OcarinaPatternValid(OCARINA_SONG_SCARECROW_SPAWN) ? OCARINA_SONG_SCARECROW_SPAWN + 1
-                                                            : OCARINA_SONG_SCARECROW_SPAWN;
+                                                             : OCARINA_SONG_SCARECROW_SPAWN;
 }
 ShipNativeStatus SHIP_NATIVE_CALL OcarinaSongPattern(uint8_t song, uint8_t* notes, uint32_t capacity,
                                                      uint32_t* outputCount) {
     if (!outputCount || (!notes && capacity) || song > OCARINA_SONG_SCARECROW_SPAWN)
         return SHIP_NATIVE_INVALID_ARGUMENT;
     *outputCount = 0;
-    if (!OnGameThread() || !OcarinaPatternValid(song)) return SHIP_NATIVE_UNSUPPORTED;
+    if (!OnGameThread() || !OcarinaPatternValid(song))
+        return SHIP_NATIVE_UNSUPPORTED;
     const auto& info = gOcarinaSongButtons[song];
     *outputCount = info.numButtons;
-    if (!notes) return SHIP_NATIVE_OK;
-    if (capacity < info.numButtons) return SHIP_NATIVE_LIMIT;
+    if (!notes)
+        return SHIP_NATIVE_OK;
+    if (capacity < info.numButtons)
+        return SHIP_NATIVE_LIMIT;
     std::memcpy(notes, info.buttonsIndex, info.numButtons);
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus SHIP_NATIVE_CALL OcarinaSubmitSong(uint8_t song) {
-    if (song > OCARINA_SONG_SCARECROW_SPAWN) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (song > OCARINA_SONG_SCARECROW_SPAWN)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     if (!OnGameThread() || !ocarinaActive.load() || !(ocarinaSongFlags.load() & (1u << song)))
         return SHIP_NATIVE_UNSUPPORTED;
     pendingOcarinaSong.store(song);
     return SHIP_NATIVE_OK;
 }
 uint8_t SHIP_NATIVE_CALL HasFile(const char* path) {
-    if (!OnResourceThread() || !ValidText(path) || !resourceBridge.hasFile) return 0;
-    try { return resourceBridge.hasFile(path); } catch (...) { return 0; }
+    if (!OnResourceThread() || !ValidText(path) || !resourceBridge.hasFile)
+        return 0;
+    try {
+        return resourceBridge.hasFile(path);
+    } catch (...) { return 0; }
 }
-ShipNativeStatus SHIP_NATIVE_CALL ReadFile(const char* path, uint8_t* output, uint32_t capacity,
-                                           uint32_t* outputSize) {
+ShipNativeStatus SHIP_NATIVE_CALL ReadFile(const char* path, uint8_t* output, uint32_t capacity, uint32_t* outputSize) {
     if (!OnResourceThread() || !ValidText(path) || !outputSize || (!output && capacity) || !resourceBridge.readFile)
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    try { return resourceBridge.readFile(path, output, capacity, outputSize); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    try {
+        return resourceBridge.readFile(path, output, capacity, outputSize);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL ListFiles(const char* mask, ShipOotResourcePathFn callback, void* user) {
     if (!OnGameThread() || !mask || std::strlen(mask) > 4096 || !callback || !resourceBridge.listFiles)
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    try { return resourceBridge.listFiles(mask, callback, user); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    try {
+        return resourceBridge.listFiles(mask, callback, user);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL DirtyResources(const char* mask) {
     if (!OnGameThread() || !ValidText(mask) || !resourceBridge.dirtyResources)
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    try { return resourceBridge.dirtyResources(mask); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    try {
+        return resourceBridge.dirtyResources(mask);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL UnloadResource(const char* path) {
     if (!OnGameThread() || !ValidText(path) || !resourceBridge.unloadResource)
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    try { return resourceBridge.unloadResource(path); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    try {
+        return resourceBridge.unloadResource(path);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL MountArchive(const char* path, uint64_t* handle) {
     if (!OnGameThread() || !ValidText(path) || !handle || !resourceBridge.mountArchive)
         return SHIP_NATIVE_INVALID_ARGUMENT;
     *handle = 0;
-    try { return resourceBridge.mountArchive(path, handle); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    try {
+        return resourceBridge.mountArchive(path, handle);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL UnmountArchive(uint64_t handle) {
-    if (!OnGameThread() || !handle || !resourceBridge.unmountArchive) return SHIP_NATIVE_INVALID_ARGUMENT;
-    try { return resourceBridge.unmountArchive(handle); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    if (!OnGameThread() || !handle || !resourceBridge.unmountArchive)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    try {
+        return resourceBridge.unmountArchive(handle);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL GetGameVersions(uint32_t* output, uint32_t capacity, uint32_t* outputCount) {
     if (!OnGameThread() || !outputCount || (!output && capacity) || !resourceBridge.getGameVersions)
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    try { return resourceBridge.getGameVersions(output, capacity, outputCount); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    try {
+        return resourceBridge.getGameVersions(output, capacity, outputCount);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL ReadFileLayers(const char* path, ShipOotResourceLayerFn callback, void* user) {
     if (!OnResourceThread() || !ValidText(path) || !callback || !resourceBridge.readFileLayers)
         return SHIP_NATIVE_INVALID_ARGUMENT;
-    try { return resourceBridge.readFileLayers(path, callback, user); }
-    catch (...) { return SHIP_NATIVE_FAILURE; }
+    try {
+        return resourceBridge.readFileLayers(path, callback, user);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
-const ShipOotEngineV1 engineV1{
-    sizeof(ShipOotEngineV1), LINKSPAN_OOT_LAYOUT_ID,
-    sizeof(PlayState), sizeof(Player), sizeof(SaveContext), Play, CurrentPlayer, Save, Spawn, Kill
-};
-const ShipOotMovementV1 movementV1{
-    sizeof(ShipOotMovementV1), LINKSPAN_OOT_LAYOUT_ID,
-    InputCurrent, InputPressed, InputReleased, StickX, StickY, RightStickX, RightStickY,
-    HasGamepad, GamepadButtons, ClearGamepadButtonBindings, BindGamepadButton, ReloadGamepadMappings,
-    GetSettingInt, SetSettingInt,
-    Grounded, Rolling, Jump, Roll
-};
-const ShipOotMovementV2 movementV2{
-    sizeof(ShipOotMovementV2), LINKSPAN_OOT_LAYOUT_ID,
-    InputCurrent, InputPressed, InputReleased, StickX, StickY, RightStickX, RightStickY,
-    HasGamepad, GamepadButtons, ClearGamepadButtonBindings, BindGamepadButton, ReloadGamepadMappings,
-    GetSettingInt, SetSettingInt,
-    Grounded, Rolling, Jump, Roll,
-    GamepadAxis, BindGamepadAxis, UseItemShortcut, ItemButtonRect
-};
-const ShipOotResourcesV1 resourcesV1{
-    sizeof(ShipOotResourcesV1), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
-    MountArchive, UnmountArchive, GetGameVersions
-};
-const ShipOotResourcesV2 resourcesV2{
-    sizeof(ShipOotResourcesV2), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
-    MountArchive, UnmountArchive, GetGameVersions, ReadFileLayers
-};
-const ShipOotResourcesV3 resourcesV3{
-    sizeof(ShipOotResourcesV3), HasFile, ReadFile, ListFiles, DirtyResources, UnloadResource,
-    MountArchive, UnmountArchive, GetGameVersions, ReadFileLayers, RegisterOotJsonType, UnregisterOotJsonType
-};
-const ShipOotOcarinaV1 ocarinaV1{
-    sizeof(ShipOotOcarinaV1), OcarinaActive, OcarinaSongFlags, OcarinaSongCount, OcarinaSongPattern,
-    OcarinaSubmitSong
-};
-}
+const ShipOotEngineV1 engineV1{ sizeof(ShipOotEngineV1),
+                                LINKSPAN_OOT_LAYOUT_ID,
+                                sizeof(PlayState),
+                                sizeof(Player),
+                                sizeof(SaveContext),
+                                Play,
+                                CurrentPlayer,
+                                Save,
+                                Spawn,
+                                Kill };
+const ShipOotMovementV1 movementV1{ sizeof(ShipOotMovementV1),
+                                    LINKSPAN_OOT_LAYOUT_ID,
+                                    InputCurrent,
+                                    InputPressed,
+                                    InputReleased,
+                                    StickX,
+                                    StickY,
+                                    RightStickX,
+                                    RightStickY,
+                                    HasGamepad,
+                                    GamepadButtons,
+                                    ClearGamepadButtonBindings,
+                                    BindGamepadButton,
+                                    ReloadGamepadMappings,
+                                    GetSettingInt,
+                                    SetSettingInt,
+                                    Grounded,
+                                    Rolling,
+                                    Jump,
+                                    Roll };
+const ShipOotMovementV2 movementV2{ sizeof(ShipOotMovementV2),
+                                    LINKSPAN_OOT_LAYOUT_ID,
+                                    InputCurrent,
+                                    InputPressed,
+                                    InputReleased,
+                                    StickX,
+                                    StickY,
+                                    RightStickX,
+                                    RightStickY,
+                                    HasGamepad,
+                                    GamepadButtons,
+                                    ClearGamepadButtonBindings,
+                                    BindGamepadButton,
+                                    ReloadGamepadMappings,
+                                    GetSettingInt,
+                                    SetSettingInt,
+                                    Grounded,
+                                    Rolling,
+                                    Jump,
+                                    Roll,
+                                    GamepadAxis,
+                                    BindGamepadAxis,
+                                    UseItemShortcut,
+                                    ItemButtonRect };
+const ShipOotResourcesV1 resourcesV1{ sizeof(ShipOotResourcesV1),
+                                      HasFile,
+                                      ReadFile,
+                                      ListFiles,
+                                      DirtyResources,
+                                      UnloadResource,
+                                      MountArchive,
+                                      UnmountArchive,
+                                      GetGameVersions };
+const ShipOotResourcesV2 resourcesV2{ sizeof(ShipOotResourcesV2),
+                                      HasFile,
+                                      ReadFile,
+                                      ListFiles,
+                                      DirtyResources,
+                                      UnloadResource,
+                                      MountArchive,
+                                      UnmountArchive,
+                                      GetGameVersions,
+                                      ReadFileLayers };
+const ShipOotResourcesV3 resourcesV3{ sizeof(ShipOotResourcesV3),
+                                      HasFile,
+                                      ReadFile,
+                                      ListFiles,
+                                      DirtyResources,
+                                      UnloadResource,
+                                      MountArchive,
+                                      UnmountArchive,
+                                      GetGameVersions,
+                                      ReadFileLayers,
+                                      RegisterOotJsonType,
+                                      UnregisterOotJsonType };
+const ShipOotOcarinaV1 ocarinaV1{ sizeof(ShipOotOcarinaV1), OcarinaActive,      OcarinaSongFlags,
+                                  OcarinaSongCount,         OcarinaSongPattern, OcarinaSubmitSong };
+} // namespace
 
 // Chamada pelo kaleido (z_kaleido_item.c) e pela cópia do fork do NEI.
 extern "C" uint8_t LinkSpan_PauseEquipSelectorEnabled(void) {
@@ -596,80 +704,81 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     InitializeOotNativeJsonTypes(gameThread);
     ShipLua::NativeProviderPolicy policy;
     policy.enabled = true;
-    policy.services.push_back({LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION,
-                               sizeof(engineV1), &engineV1});
-    policy.services.push_back({LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION,
-                               sizeof(movementV1), &movementV1});
-    policy.services.push_back({LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2,
-                               sizeof(movementV2), &movementV2});
-    policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION,
-                               sizeof(resourcesV1), &resourcesV1});
-    policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
-                               sizeof(resourcesV2), &resourcesV2});
+    policy.services.push_back(
+        { LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(engineV1), &engineV1 });
+    policy.services.push_back(
+        { LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION, sizeof(movementV1), &movementV1 });
+    policy.services.push_back(
+        { LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2, sizeof(movementV2), &movementV2 });
+    policy.services.push_back(
+        { LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION, sizeof(resourcesV1), &resourcesV1 });
+    policy.services.push_back(
+        { LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2, sizeof(resourcesV2), &resourcesV2 });
     const auto& registry = GetOotNativeRegistryService();
-    policy.services.push_back({LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION,
-                               sizeof(registry), &registry});
-    policy.services.push_back({LINKSPAN_OOT_OCARINA_SERVICE, LINKSPAN_OOT_OCARINA_VERSION,
-                               sizeof(ocarinaV1), &ocarinaV1});
+    policy.services.push_back(
+        { LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION, sizeof(registry), &registry });
+    policy.services.push_back(
+        { LINKSPAN_OOT_OCARINA_SERVICE, LINKSPAN_OOT_OCARINA_VERSION, sizeof(ocarinaV1), &ocarinaV1 });
     const auto& scenes = GetOotNativeScenesService();
-    policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION,
-                               sizeof(scenes), &scenes});
+    policy.services.push_back({ LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION, sizeof(scenes), &scenes });
     const auto& save = GetOotNativeSaveService();
-    policy.services.push_back({LINKSPAN_OOT_SAVE_SERVICE, LINKSPAN_OOT_SAVE_VERSION, sizeof(save), &save});
+    policy.services.push_back({ LINKSPAN_OOT_SAVE_SERVICE, LINKSPAN_OOT_SAVE_VERSION, sizeof(save), &save });
     const auto& items = GetOotNativeItemsService();
-    policy.services.push_back({LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION, sizeof(items), &items});
+    policy.services.push_back({ LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION, sizeof(items), &items });
     const auto& actors = GetOotNativeActorsService();
-    policy.services.push_back({LINKSPAN_OOT_ACTORS_SERVICE, LINKSPAN_OOT_ACTORS_VERSION, sizeof(actors), &actors});
+    policy.services.push_back({ LINKSPAN_OOT_ACTORS_SERVICE, LINKSPAN_OOT_ACTORS_VERSION, sizeof(actors), &actors });
     const auto& camera = GetOotNativeCameraService();
-    policy.services.push_back({LINKSPAN_OOT_CAMERA_SERVICE, LINKSPAN_OOT_CAMERA_VERSION, sizeof(camera), &camera});
+    policy.services.push_back({ LINKSPAN_OOT_CAMERA_SERVICE, LINKSPAN_OOT_CAMERA_VERSION, sizeof(camera), &camera });
     const auto& render = GetOotNativeRenderService();
-    policy.services.push_back({LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION, sizeof(render), &render});
+    policy.services.push_back({ LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION, sizeof(render), &render });
     const auto& world = GetOotNativeWorldService();
-    policy.services.push_back({LINKSPAN_OOT_WORLD_SERVICE, LINKSPAN_OOT_WORLD_VERSION, sizeof(world), &world});
+    policy.services.push_back({ LINKSPAN_OOT_WORLD_SERVICE, LINKSPAN_OOT_WORLD_VERSION, sizeof(world), &world });
     const auto& colliders = GetOotNativeCollidersService();
     policy.services.push_back(
-        {LINKSPAN_OOT_COLLIDERS_SERVICE, LINKSPAN_OOT_COLLIDERS_VERSION, sizeof(colliders), &colliders});
+        { LINKSPAN_OOT_COLLIDERS_SERVICE, LINKSPAN_OOT_COLLIDERS_VERSION, sizeof(colliders), &colliders });
     // Versões novas no fim: a posição dos serviços anteriores não muda.
     const auto& itemsV2 = GetOotNativeItemsServiceV2();
-    policy.services.push_back({LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_2, sizeof(itemsV2), &itemsV2});
+    policy.services.push_back({ LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_2, sizeof(itemsV2), &itemsV2 });
     const auto& skeletons = GetOotNativeSkeletonsService();
     policy.services.push_back(
-        {LINKSPAN_OOT_SKELETONS_SERVICE, LINKSPAN_OOT_SKELETONS_VERSION, sizeof(skeletons), &skeletons});
+        { LINKSPAN_OOT_SKELETONS_SERVICE, LINKSPAN_OOT_SKELETONS_VERSION, sizeof(skeletons), &skeletons });
     // OOT-CORE-008: NEI-002 e fase E do Unbound.
     const auto& itemsV3 = GetOotNativeItemsServiceV3();
-    policy.services.push_back({LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_3, sizeof(itemsV3), &itemsV3});
-    policy.services.push_back({LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_3,
-                               sizeof(resourcesV3), &resourcesV3});
+    policy.services.push_back({ LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION_3, sizeof(itemsV3), &itemsV3 });
+    policy.services.push_back(
+        { LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_3, sizeof(resourcesV3), &resourcesV3 });
     const auto& scenesV2 = GetOotNativeScenesServiceV2();
-    policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_2, sizeof(scenesV2), &scenesV2});
+    policy.services.push_back(
+        { LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_2, sizeof(scenesV2), &scenesV2 });
     const auto& text = GetOotNativeTextService();
-    policy.services.push_back({LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION, sizeof(text), &text});
+    policy.services.push_back({ LINKSPAN_OOT_TEXT_SERVICE, LINKSPAN_OOT_TEXT_VERSION, sizeof(text), &text });
     // Fase W: CEL-003 e UNBOUND-013.
     const auto& renderV2 = GetOotNativeRenderServiceV2();
     policy.services.push_back(
-        {LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_2, sizeof(renderV2), &renderV2});
+        { LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_2, sizeof(renderV2), &renderV2 });
     const auto& scenesV3 = GetOotNativeScenesServiceV3();
-    policy.services.push_back({LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_3, sizeof(scenesV3), &scenesV3});
+    policy.services.push_back(
+        { LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION_3, sizeof(scenesV3), &scenesV3 });
     // NEI-HOST-002: itens de mod no randomizer.
     const auto& randomizer = GetOotNativeRandomizerService();
     policy.services.push_back(
-        {LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION, sizeof(randomizer), &randomizer});
+        { LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION, sizeof(randomizer), &randomizer });
     // NEI-HOST-003: Anchor.
     const auto& anchor = GetOotNativeAnchorService();
-    policy.services.push_back({LINKSPAN_OOT_ANCHOR_SERVICE, LINKSPAN_OOT_ANCHOR_VERSION, sizeof(anchor), &anchor});
+    policy.services.push_back({ LINKSPAN_OOT_ANCHOR_SERVICE, LINKSPAN_OOT_ANCHOR_VERSION, sizeof(anchor), &anchor });
     // CEL-004: geometria própria do Wind Waker Style e luz do Deku Stick.
     const auto& renderV3 = GetOotNativeRenderServiceV3();
     policy.services.push_back(
-        {LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_3, sizeof(renderV3), &renderV3});
+        { LINKSPAN_OOT_RENDER_SERVICE, LINKSPAN_OOT_RENDER_VERSION_3, sizeof(renderV3), &renderV3 });
     const auto& lights = GetOotNativeLightsService();
-    policy.services.push_back({LINKSPAN_OOT_LIGHTS_SERVICE, LINKSPAN_OOT_LIGHTS_VERSION, sizeof(lights), &lights});
+    policy.services.push_back({ LINKSPAN_OOT_LIGHTS_SERVICE, LINKSPAN_OOT_LIGHTS_VERSION, sizeof(lights), &lights });
     const auto& registryV2 = GetOotNativeRegistryServiceV2();
-    policy.services.push_back({LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION_2,
-                               sizeof(registryV2), &registryV2});
+    policy.services.push_back(
+        { LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION_2, sizeof(registryV2), &registryV2 });
     policy.hooks = CreateOotHookRegistry();
     const auto& actorModels = GetOotNativeActorModelsService();
-    policy.services.push_back({LINKSPAN_OOT_ACTOR_MODELS_SERVICE, LINKSPAN_OOT_ACTOR_MODELS_VERSION,
-                               sizeof(actorModels), &actorModels});
+    policy.services.push_back(
+        { LINKSPAN_OOT_ACTOR_MODELS_SERVICE, LINKSPAN_OOT_ACTOR_MODELS_VERSION, sizeof(actorModels), &actorModels });
     policy.onProviderUnload = [](std::string_view owner) {
         ReleaseOotActorModelOwner(owner);
         ReleaseOotRegistryOwner(owner);
@@ -677,12 +786,12 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
         ReleaseOotLightOwner(owner);
     };
     const auto& randomizerV2 = GetOotNativeRandomizerServiceV2();
-    policy.services.push_back({LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION_2,
-                               sizeof(randomizerV2), &randomizerV2});
+    policy.services.push_back(
+        { LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION_2, sizeof(randomizerV2), &randomizerV2 });
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;
 }
-}
+} // namespace ShipLuaHost
 
 // Chamadas pelo código C do jogo (z_parameter.c), sempre na thread do jogo.
 extern "C" s32 LinkSpan_KeepLensWithoutButton(PlayState* play, s32 lensOnButton) {
@@ -699,8 +808,9 @@ extern "C" void LinkSpan_CaptureItemButton(PlayState* play, s32 button, s16 x, s
     if (!play || button < static_cast<s32>(LINKSPAN_OOT_ITEM_BUTTON_C_LEFT) ||
         button > static_cast<s32>(ShipLuaHost::LAST_CAPTURED_BUTTON))
         return;
-    ShipLuaHost::itemButtons[button] = {x, y, size, static_cast<uint8_t>(std::min<u16>(alpha, 255)),
-                                        play->state.frames, true};
+    ShipLuaHost::itemButtons[button] = {
+        x, y, size, static_cast<uint8_t>(std::min<u16>(alpha, 255)), play->state.frames, true
+    };
 }
 
 // Chamadas por func_800EE6F4 (code_800EC960.c) a cada update de input da ocarina.
@@ -708,7 +818,8 @@ extern "C" void OotNative_PublishOcarinaState(u8 active, u16 availableSongFlags)
     ShipLuaHost::ocarinaActive.store(active ? 1 : 0);
     ShipLuaHost::ocarinaSongFlags.store(active ? availableSongFlags : 0);
     // Música entregue para uma ocarina que já fechou não vale para a próxima.
-    if (!active) ShipLuaHost::pendingOcarinaSong.store(-1);
+    if (!active)
+        ShipLuaHost::pendingOcarinaSong.store(-1);
 }
 
 extern "C" s32 OotNative_TakePendingOcarinaSong(void) {
@@ -727,9 +838,11 @@ extern "C" s32 LinkSpan_DpadHudOwned(void) {
 
 // Chamada por Interface_Draw (z_parameter.c) no lugar do desenho do fundo do D-pad tomado.
 extern "C" void LinkSpan_CaptureDpadBackground(PlayState* play, s16 x, s16 y, u8 r, u8 g, u8 b, u16 alpha) {
-    if (!play) return;
-    ShipLuaHost::dpadBackground = { x, y, r, g, b, static_cast<uint8_t>(std::min<u16>(alpha, 255)),
-                                    play->state.frames, true };
+    if (!play)
+        return;
+    ShipLuaHost::dpadBackground = {
+        x, y, r, g, b, static_cast<uint8_t>(std::min<u16>(alpha, 255)), play->state.frames, true
+    };
 }
 
 // Para o hook do HUD Lua (ShipLuaBootstrap.cpp), que roda antes do Interface_Draw: vale a captura do frame

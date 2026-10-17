@@ -41,8 +41,8 @@ int main() {
     Check(result.applied == 0 && result.unknown == 1 && result.invalid == 3, "malformados e desconhecida");
     Check(Near(s.rampCenter, 0.25f) && s.shadowsEnabled, "malformado mantém o valor anterior");
 
-    result = WWStyle::ParseSettings("cel.highlight_intensity=9\nshadows.edge_softness=1.6\ncel.transition_time=nan\n",
-                                    s);
+    result =
+        WWStyle::ParseSettings("cel.highlight_intensity=9\nshadows.edge_softness=1.6\ncel.transition_time=nan\n", s);
     Check(Near(s.highlightIntensity, 2.0f) && s.shadowEdgeSoftness == 2 && result.invalid == 1,
           "máximo, arredondamento de inteiro e NaN");
 
@@ -65,6 +65,7 @@ int main() {
     Check(WWStyle::ObservePlay(stamp, nullptr, -1, 0), "saída do jogo");
     Check(!WWStyle::ObservePlay(stamp, nullptr, -1, 0), "continua fora do jogo");
 
-    if (failures == 0) std::puts("linkspan_ww_style_tests: ok");
+    if (failures == 0)
+        std::puts("linkspan_ww_style_tests: ok");
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

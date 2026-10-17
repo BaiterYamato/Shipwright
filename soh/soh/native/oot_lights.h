@@ -37,7 +37,7 @@ typedef struct ShipOotPointLightV1 {
 typedef struct ShipOotLightsV1 {
     uint32_t size;
     ShipNativeStatus(SHIP_NATIVE_CALL* create_point_light)(const char* owner, const ShipOotPointLightV1* light,
-                                                            uint64_t* handle);
+                                                           uint64_t* handle);
     ShipNativeStatus(SHIP_NATIVE_CALL* update_point_light)(uint64_t handle, const ShipOotPointLightV1* light);
     ShipNativeStatus(SHIP_NATIVE_CALL* destroy_point_light)(uint64_t handle);
     ShipNativeStatus(SHIP_NATIVE_CALL* get_point_light_info)(uint64_t handle, const void** light_info);

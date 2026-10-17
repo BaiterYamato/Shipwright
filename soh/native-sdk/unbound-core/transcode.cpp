@@ -173,7 +173,7 @@ constexpr int64_t kMaxSetupIndex = 255;
 
 // Tetos do runtime que o XML não carrega (z_scene_otr.cpp e z64object.h): o jogo corta com erro ao entrar na
 // sala; aqui a nota sai antes, já no game.ready (UNBOUND-019) para documento de mod.
-constexpr size_t kMaxRooms = 32768;      // índice de sala s16
+constexpr size_t kMaxRooms = 32768; // índice de sala s16
 // Atores de uma sala: numSetupActors é u16, mas LinkSpan_RoomActors (OotNativeHooksGame.cpp) copia a lista para o
 // buffer do oot.room.actors, de LINKSPAN_OOT_ROOM_ACTORS_MAX (8 192) vagas, e com mais escreve além dele
 // (UNBOUND-029). O teto de atores vivos (ACTOR_NUMBER_MAX) também é 8 192, com o Link na conta.
@@ -276,8 +276,8 @@ void Reference(References& references, const char* field, const std::string& pat
 // Faixas do `sound` (SPEC §4.2, Unbound 0.8). O motor indexa tabelas com esses bytes sem conferir, e o 255
 // que exportadores usavam como "nenhum" derrubava a thread de áudio no primeiro pôr do sol. Aqui o §2 não
 // embrulha: fora da faixa vira o "nenhum" do próprio jogo, com nota, e o resto do `sound` continua valendo.
-constexpr int64_t kLastVanillaSeq = 0x6D; // NA_BGM_VARIOUS_SFX
-constexpr int64_t kNoMusicSeq = 0x7F;     // NA_BGM_NO_MUSIC
+constexpr int64_t kLastVanillaSeq = 0x6D;   // NA_BGM_VARIOUS_SFX
+constexpr int64_t kNoMusicSeq = 0x7F;       // NA_BGM_NO_MUSIC
 constexpr int64_t kNoNatureAmbience = 0x13; // NATURE_ID_NONE, último da tabela de 20
 
 // Saídas (SPEC §4.2, Unbound 0.8). Só vale como número uma entrada com o mesmo número para todo jogador: as
@@ -287,8 +287,8 @@ constexpr int64_t kNoNatureAmbience = 0x13; // NATURE_ID_NONE, último da tabela
 constexpr int64_t kVanillaEntranceCount = 1556; // ENTR_MAX do SoH 9.2.3
 constexpr int64_t kFirstReturnEntrance = 0x7FF9;
 const char* const kReturnEntranceNames[] = {
-    "ENTR_RETURN_YOUSEI_IZUMI_YOKO", "ENTR_RETURN_SYATEKIJYOU",      "ENTR_RETURN_2",      "ENTR_RETURN_SHOP1",
-    "ENTR_RETURN_4",                 "ENTR_RETURN_DAIYOUSEI_IZUMI", "ENTR_RETURN_GROTTO",
+    "ENTR_RETURN_YOUSEI_IZUMI_YOKO", "ENTR_RETURN_SYATEKIJYOU", "ENTR_RETURN_2", "ENTR_RETURN_SHOP1", "ENTR_RETURN_4",
+    "ENTR_RETURN_DAIYOUSEI_IZUMI",   "ENTR_RETURN_GROTTO",
 };
 constexpr int64_t kLastReturnEntrance = kFirstReturnEntrance + std::size(kReturnEntranceNames) - 1;
 
@@ -316,9 +316,10 @@ void Lighting(Xml& xml, const Json& list, TranscodeContext& context) {
         const int64_t fogNear = ((Field(entry, "fogBlendRate") & 0x3F) << 10) | (Field(entry, "fogNear") & 0x3FF);
         xml.Attr("FogNear", S16(fogNear)).Attr("FogFar", S16(Field(entry, "fogFar")));
         // Neblina em unidades do mundo: a fábrica XML aplica os padrões do SPEC aos que faltam.
-        static const std::pair<const char*, const char*> kWorldFog[] = {
-            { "fogStart", "FogStart" }, { "fogEnd", "FogEnd" }, { "drawDistance", "DrawDistance" },
-            { "nearPlane", "NearPlane" } };
+        static const std::pair<const char*, const char*> kWorldFog[] = { { "fogStart", "FogStart" },
+                                                                         { "fogEnd", "FogEnd" },
+                                                                         { "drawDistance", "DrawDistance" },
+                                                                         { "nearPlane", "NearPlane" } };
         if (HasNumber(entry, "fogStart") || HasNumber(entry, "fogEnd") || HasNumber(entry, "drawDistance")) {
             for (const auto& [json, attr] : kWorldFog) {
                 if (HasNumber(entry, json)) {
@@ -359,10 +360,7 @@ void MaterialAnim(Xml& xml, const Json& entry, References& references) {
     const std::string type = PathField(entry, "type");
     if (type == "texScroll" || type == "twoTexScroll") {
         const Json& layers = SubArray(entry, "layers");
-        xml.Open("TexScroll")
-            .Attr("Segment", segment)
-            .Attr("Pass", pass)
-            .Attr("Type", type == "texScroll" ? 0 : 1);
+        xml.Open("TexScroll").Attr("Segment", segment).Attr("Pass", pass).Attr("Type", type == "texScroll" ? 0 : 1);
         for (const auto& layer : layers) {
             if (!layer.is_object()) {
                 throw EntryError("layers tem um elemento que não é objeto");
@@ -394,10 +392,13 @@ void MaterialAnim(Xml& xml, const Json& entry, References& references) {
         xml.Open("Color")
             .Attr("Segment", segment)
             .Attr("Pass", pass)
-            .Attr("Type", type == "color" ? 2 : type == "colorLerp" ? 3 : 4)
+            .Attr("Type", type == "color"       ? 2
+                          : type == "colorLerp" ? 3
+                                                : 4)
             .Attr("Length", length);
         for (size_t i = 0; i < keyFrames.size(); ++i) {
-            if (!prim[i].is_array() || prim[i].size() < 5 || (!env.empty() && (!env[i].is_array() || env[i].size() < 4))) {
+            if (!prim[i].is_array() || prim[i].size() < 5 ||
+                (!env.empty() && (!env[i].is_array() || env[i].size() < 4))) {
                 throw EntryError("cor do key frame " + std::to_string(i) + " com menos componentes");
             }
             xml.Leaf("KeyFrame")
@@ -570,8 +571,10 @@ void Mesh(Xml& xml, const Json& mesh, TranscodeContext& context) {
         xml.Leaf("Polygon").Attr("PolyType", type);
         if (type == 2) {
             const Vec3 pos = ReadVec3(SubArray(entry, "pos"));
-            xml.Float("PosX", pos.x).Float("PosY", pos.y).Float("PosZ", pos.z).Float("Unknown",
-                                                                                  NumberField(entry, "radius"));
+            xml.Float("PosX", pos.x)
+                .Float("PosY", pos.y)
+                .Float("PosZ", pos.z)
+                .Float("Unknown", NumberField(entry, "radius"));
         }
         xml.Attr("MeshOpa", PathField(entry, "opa")).Attr("MeshXlu", PathField(entry, "xlu")).Close();
         Reference(context.references, "mesh.entries.opa", PathField(entry, "opa"));
@@ -668,8 +671,7 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
         int64_t nature = Field(s, "natureAmbience");
         if (nature < 0 || nature > kNoNatureAmbience) {
             context.notes.push_back(Where(context, "sound") + ": natureAmbience " + std::to_string(nature) +
-                                    " não é uma ambiência; usando nenhuma (" + std::to_string(kNoNatureAmbience) +
-                                    ")");
+                                    " não é uma ambiência; usando nenhuma (" + std::to_string(kNoNatureAmbience) + ")");
             nature = kNoNatureAmbience;
         }
         xml.Leaf("SetSoundSettings")
@@ -744,13 +746,14 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
             int16_t actorId = -1;
             int64_t parsedId = 0;
             const auto idValue = t.find("id");
-            const bool named = idValue != t.end() && idValue->is_string() &&
-                               !ParseIntString(idValue->get<std::string>(), parsedId);
+            const bool named =
+                idValue != t.end() && idValue->is_string() && !ParseIntString(idValue->get<std::string>(), parsedId);
             const int64_t numericId = Field(t, "id");
             if (!named && numericId >= 0 && numericId < LINKSPAN_OOT_ACTOR_MODELS_ID_BASE)
                 actorId = static_cast<int16_t>(numericId);
-            else context.notes.push_back(Where(context, "transitionActors/" + key) +
-                                         ": id inválido; entrada preservada sem ator");
+            else
+                context.notes.push_back(Where(context, "transitionActors/" + key) +
+                                        ": id inválido; entrada preservada sem ator");
             const Vec3 pos = ReadVec3(SubArray(t, "pos"));
             outside.Add(key, pos);
             xml.Leaf("TransitionActorEntry")
@@ -777,7 +780,8 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
             context.notes.push_back(Where(context, "objects") + ": " + std::to_string(objects.size()) +
                                     " objetos; o banco do jogo tem 1024 vagas, até 4 delas com objetos permanentes "
                                     "(gameplay_keep, Link, keep da cena e cavalo), e acima de " +
-                                    std::to_string(kMaxObjects) + " os últimos podem ser descartados ao entrar na sala");
+                                    std::to_string(kMaxObjects) +
+                                    " os últimos podem ser descartados ao entrar na sala");
         }
         for (const auto& item : objects) {
             xml.Leaf("ObjectEntry").Attr("Id", S16(ToInt(*item.second))).Close();
@@ -794,11 +798,12 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
                                     " luzes; entradas além de 255 são descartadas mesmo com a rodada de host "
                                     "(sem ela, além de 32), com aviso no log do host");
         } else if (lights.size() > kLightSlots) {
-            context.notes.push_back(Where(context, "lights") + ": " + std::to_string(lights.size()) +
-                                    " luzes; sem a rodada de host, só 32 vagas no total para listas, atores e ambiente; "
-                                    "o resto é descartado. Com a rodada, o limite é 255 por comando de lista e 765 nós "
-                                    "cumulativos por cena para listas, separados das 32 vagas de atores/ambiente; "
-                                    "luzes de lista não voltam ao pool nas trocas de sala");
+            context.notes.push_back(
+                Where(context, "lights") + ": " + std::to_string(lights.size()) +
+                " luzes; sem a rodada de host, só 32 vagas no total para listas, atores e ambiente; "
+                "o resto é descartado. Com a rodada, o limite é 255 por comando de lista e 765 nós "
+                "cumulativos por cena para listas, separados das 32 vagas de atores/ambiente; "
+                "luzes de lista não voltam ao pool nas trocas de sala");
         }
         for (const auto& [key, item] : lights) {
             const Json& light = *item;
@@ -831,7 +836,8 @@ void Setup(Xml& xml, const Json& setup, const Shared& shared, TranscodeContext& 
             if (item->is_object()) {
                 int16_t actorId = -1;
                 if (!ResolveRoomActorId(*item, context.resolveActor, actorId, context.notes,
-                                        Where(context, "actors/" + key))) continue;
+                                        Where(context, "actors/" + key)))
+                    continue;
                 // UNBOUND-030: além do buffer do oot.room.actors o host corrompe o heap; não grava o excesso.
                 if (written == kMaxRoomActors) {
                     ++dropped;
@@ -917,12 +923,25 @@ struct DungeonMinimap {
     bool masterQuest; // tem variante MQ (scenes/<cena>_mq): só as dez dungeons (SceneHasMasterQuest)
 };
 constexpr DungeonMinimap kDungeonMinimaps[] = {
-    { "ydan", 0, true },       { "ddan", 1, true },        { "bdan", 2, true },      { "Bmori1", 3, true },
-    { "HIDAN", 4, true },      { "MIZUsin", 5, true },     { "jyasinzou", 6, true }, { "HAKAdan", 7, true },
-    { "HAKAdanCH", 8, true },  { "ice_doukutu", 9, true },
+    { "ydan", 0, true },
+    { "ddan", 1, true },
+    { "bdan", 2, true },
+    { "Bmori1", 3, true },
+    { "HIDAN", 4, true },
+    { "MIZUsin", 5, true },
+    { "jyasinzou", 6, true },
+    { "HAKAdan", 7, true },
+    { "HAKAdanCH", 8, true },
+    { "ice_doukutu", 9, true },
     // O chefe usa a tabela da dungeon dele (mapIndex = cena - SCENE_DEKU_TREE_BOSS).
-    { "ydan_boss", 0, false }, { "ddan_boss", 1, false },  { "bdan_boss", 2, false }, { "moribossroom", 3, false },
-    { "FIRE_bs", 4, false },   { "MIZUsin_bs", 5, false }, { "jyasinboss", 6, false }, { "HAKAdan_bs", 7, false },
+    { "ydan_boss", 0, false },
+    { "ddan_boss", 1, false },
+    { "bdan_boss", 2, false },
+    { "moribossroom", 3, false },
+    { "FIRE_bs", 4, false },
+    { "MIZUsin_bs", 5, false },
+    { "jyasinboss", 6, false },
+    { "HAKAdan_bs", 7, false },
 };
 constexpr size_t kDungeonCount = 10;
 constexpr size_t kMinimapRooms[kDungeonCount] = { 13, 19, 17, 27, 38, 44, 32, 27, 10, 12 };
@@ -1162,8 +1181,8 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
     // `count` pontos: o jogo lê max(count, 3) vetores a partir de positionIndex, conforme o preset. A fábrica confere
     // só o início; fora dele, ou sem positionIndex, aponta para um único vetor zero e o jogo lê o que vem depois.
     // `count` é guardado em s16 e lido como u16 (BgCheck_GetBgCamCount).
-    const auto positionCount = static_cast<int64_t>(PositionalItems(Sub(doc, "cameraPositions"),
-                                                                    Where(context, "cameraPositions")).size());
+    const auto positionCount =
+        static_cast<int64_t>(PositionalItems(Sub(doc, "cameraPositions"), Where(context, "cameraPositions")).size());
     ListNote positionOutside;
     ListNote positionMissing;
     ListNote countRange;
@@ -1172,9 +1191,9 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
         const auto index = c.is_object() ? c.find("positionIndex") : c.end();
         const int64_t position = index != c.end() && !index->is_null() ? ToInt(*index, -1) : -1;
         const int64_t count = Field(c, "count");
-        const std::string example =
-            item.first + ": positionIndex=" + (position < 0 ? "null" : std::to_string(position)) +
-            " count=" + std::to_string(count);
+        const std::string example = item.first +
+                                    ": positionIndex=" + (position < 0 ? "null" : std::to_string(position)) +
+                                    " count=" + std::to_string(count);
         if (count < 0 || count > INT16_MAX) {
             countRange.Add(example);
         }
@@ -1213,8 +1232,8 @@ std::string TranscodeCollision(const Json& doc, TranscodeContext& context) {
                     v[j * 3 + k] = static_cast<int64_t>(std::llround(ToNumber(vector[k])));
                     if (v[j * 3 + k] < INT16_MIN || v[j * 3 + k] > INT16_MAX) {
                         if (wrapped++ == 0) {
-                            firstWrapped = positionItems[i + j].first + "[" + std::to_string(k) + "]=" +
-                                           std::to_string(v[j * 3 + k]);
+                            firstWrapped = positionItems[i + j].first + "[" + std::to_string(k) +
+                                           "]=" + std::to_string(v[j * 3 + k]);
                         }
                     }
                 }

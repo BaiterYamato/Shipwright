@@ -17,12 +17,12 @@ using Refs = std::vector<std::pair<std::string, std::string>>;
 
 int gFailures = 0;
 
-#define CHECK(expr)                                                                  \
-    do {                                                                             \
-        if (!(expr)) {                                                               \
-            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr);  \
-            ++gFailures;                                                             \
-        }                                                                            \
+#define CHECK(expr)                                                                 \
+    do {                                                                            \
+        if (!(expr)) {                                                              \
+            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr); \
+            ++gFailures;                                                            \
+        }                                                                           \
     } while (0)
 
 ReferenceReport Collect(const std::vector<std::string>& jsons, const std::string& path = "scenes/x/scene.json") {
@@ -67,9 +67,9 @@ void TestScene() {
     CHECK(r.typed && r.accepted && r.error.empty());
     CHECK(r.schema == "unbound/scene/1");
     const Refs expected = {
-        { "materialAnims.textures", "t/a" },   { "materialAnims.textures", "t/b" },
-        { "sound.song", "custom/music/Tema" }, { "paths", "scenes/x/paths/a.json" },
-        { "collision", "scenes/x/collision.json" }, { "rooms", "scenes/x/rooms/0.json" },
+        { "materialAnims.textures", "t/a" },         { "materialAnims.textures", "t/b" },
+        { "sound.song", "custom/music/Tema" },       { "paths", "scenes/x/paths/a.json" },
+        { "collision", "scenes/x/collision.json" },  { "rooms", "scenes/x/rooms/0.json" },
         { "rooms", "__OTR__scenes/x/rooms/1.json" }, { "cutscene", "scenes/x/cs/abertura" },
     };
     for (const auto& [field, path] : expected) {
@@ -93,14 +93,14 @@ void TestRoom() {
                                          "1": {"pos": [0, 0, 0], "radius": 50, "opa": "dl/b", "xlu": "dl/b_xlu"}}}}}})" },
                      "scenes/x/rooms/0.json");
     CHECK(r.typed && r.accepted);
-    CHECK((r.references == Refs{ { "mesh.entries.opa", "dl/a" }, { "mesh.entries.opa", "dl/b" },
-                                 { "mesh.entries.xlu", "dl/b_xlu" } }));
+    CHECK((r.references ==
+           Refs{ { "mesh.entries.opa", "dl/a" }, { "mesh.entries.opa", "dl/b" }, { "mesh.entries.xlu", "dl/b_xlu" } }));
     // Mesh tipo 1 formato 2: display list e cada imagem de fundo.
     r = Collect({ R"({"$schema":"unbound/room/1","setups":{"0":{"mesh":{"type":1,"format":2,"opa":"dl/bg",
         "images":{"0":{"source":"tex/bg0","width":320,"height":240,"id":1},"1":{"source":"tex/bg1"}}}}}})" });
     CHECK(r.accepted);
-    CHECK((r.references == Refs{ { "mesh.opa", "dl/bg" }, { "mesh.image.source", "tex/bg0" },
-                                 { "mesh.image.source", "tex/bg1" } }));
+    CHECK((r.references ==
+           Refs{ { "mesh.opa", "dl/bg" }, { "mesh.image.source", "tex/bg0" }, { "mesh.image.source", "tex/bg1" } }));
     // Formato 1: uma imagem só, em "image".
     r = Collect({ R"({"$schema":"unbound/room/1","setups":{"0":{"mesh":{"type":1,"format":1,"opa":"dl/um",
         "image":{"source":"tex/um"}}}}})" });
@@ -109,9 +109,10 @@ void TestRoom() {
 
 void TestDelta() {
     // Delta de mod sobre a sala da base: vale a referência mesclada (a de cima), não a de baixo.
-    const auto r = Collect({ R"({"$schema":"unbound/room/1","setups":{"0":{"mesh":{"type":0,
+    const auto r =
+        Collect({ R"({"$schema":"unbound/room/1","setups":{"0":{"mesh":{"type":0,
         "entries":{"0":{"opa":"dl/vanilla_ntsc","xlu":null}}}}}})",
-                             R"({"$schema":"unbound/room/1","setups":{"0":{"mesh":{"entries":{"0":{"opa":"dl/mod"}}}}}})" });
+                  R"({"$schema":"unbound/room/1","setups":{"0":{"mesh":{"entries":{"0":{"opa":"dl/mod"}}}}}})" });
     CHECK(r.accepted);
     CHECK((r.references == Refs{ { "mesh.entries.opa", "dl/mod" } }));
 }
@@ -177,7 +178,8 @@ void TestDiscardedCycles() {
                                R"("textures":["t/sumida"],"frames":[-1])", R"("textures":["t/sumida",4],"frames":[0])",
                                R"("textures":[],"frames":[0])" }) {
         const auto r = Collect({ std::string(R"({"$schema":"unbound/scene/1","setups":{"0":{"materialAnims":{"0":{)"
-                                             R"("segment":8,"type":"texCycle",)") + cycle + "}}}}}" });
+                                             R"("segment":8,"type":"texCycle",)") +
+                                 cycle + "}}}}}" });
         CHECK(r.typed && r.accepted && r.references.empty());
         bool discarded = false;
         for (const auto& note : r.notes) {
@@ -244,9 +246,15 @@ struct GraphFixture {
         reports[path] = Collect({ json }, path);
         CHECK(reports[path].accepted);
     }
-    ReferenceReport& Scene() { return reports.at("scene.json"); }
-    Json& SceneDoc() { return reports.at("scene.json").document; }
-    Json& Collision() { return reports.at("collision.json").document; }
+    ReferenceReport& Scene() {
+        return reports.at("scene.json");
+    }
+    Json& SceneDoc() {
+        return reports.at("scene.json").document;
+    }
+    Json& Collision() {
+        return reports.at("collision.json").document;
+    }
     SceneGraph Graph() {
         reads.clear();
         auto graph = CollectSceneGraph(Scene(), [this](const std::string& path) -> const ReferenceReport* {
@@ -315,7 +323,8 @@ void TestGraphWater() {
         f.Collision()["waterBoxes"] = Json{ { "0", Json{ { "room", value } } } };
         const auto graph = f.Graph();
         const int32_t room = static_cast<int32_t>(value);
-        CHECK(AnyText(graph.notes, "water box(es) com room fora das 3 salas") == (room != -1 && (room < 0 || room >= 3)));
+        CHECK(AnyText(graph.notes, "water box(es) com room fora das 3 salas") ==
+              (room != -1 && (room < 0 || room >= 3)));
         CHECK(f.reads["room.json"] == 1); // três slots, uma sala
     }
     // Room.num é s16: com 32 769 slots, 32 767 é a última sala alcançável.
@@ -330,9 +339,10 @@ void TestGraphDoors() {
     // Câmera da porta (s8): -1 (0xFF) e -99 (157) não leem a tabela; 3 de 3 lê fora; 128 vira -128.
     for (const int64_t value : { 2LL, 3LL, -1LL, 255LL, -99LL, 157LL, -2LL, 128LL }) {
         GraphFixture f;
-        f.SceneDoc()["setups"]["0"]["transitionActors"] =
-            Json{ { "0", Json{ { "id", 9 }, { "front", Json{ { "effects", value } } },
-                               { "back", Json{ { "effects", -1 } } } } } };
+        f.SceneDoc()["setups"]["0"]["transitionActors"] = Json{
+            { "0",
+              Json{ { "id", 9 }, { "front", Json{ { "effects", value } } }, { "back", Json{ { "effects", -1 } } } } }
+        };
         const auto graph = f.Graph();
         const int32_t camera = static_cast<int8_t>(value);
         const bool outside = camera != -1 && camera != -99 && (camera < 0 || camera >= 3);
@@ -355,8 +365,9 @@ void TestGraphDoors() {
     for (const int64_t value : { 0LL, 2LL, 3LL, -1LL, -2LL, 32768LL, 65539LL }) {
         GraphFixture g;
         g.SceneDoc()["rooms"] = ParseJson(R"({"0":"room.json","1":"room.json","2":"room.json"})");
-        g.SceneDoc()["setups"]["0"]["transitionActors"] =
-            Json{ { "0", Json{ { "id", -1 }, { "front", Json{ { "room", value } } }, { "back", Json{ { "room", -1 } } } } } };
+        g.SceneDoc()["setups"]["0"]["transitionActors"] = Json{
+            { "0", Json{ { "id", -1 }, { "front", Json{ { "room", value } } }, { "back", Json{ { "room", -1 } } } } }
+        };
         const int32_t room = static_cast<int16_t>(value);
         CHECK(AnyText(g.Graph().notes, "com room além das 3 salas da cena") == (room >= 3));
     }
@@ -367,9 +378,12 @@ void TestGraphGaps() {
     for (const int mode : { 0, 1, 2 }) {
         GraphFixture f;
         f.Collision()["surfaceTypes"]["0"]["exit"] = 9;
-        if (mode == 0) f.reports.erase("collision.json");
-        if (mode == 1) f.reports["collision.json"].accepted = false;
-        if (mode == 2) f.reports["collision.json"].kind = DocumentKind::Room;
+        if (mode == 0)
+            f.reports.erase("collision.json");
+        if (mode == 1)
+            f.reports["collision.json"].accepted = false;
+        if (mode == 2)
+            f.reports["collision.json"].kind = DocumentKind::Room;
         const auto graph = f.Graph();
         CHECK(graph.notes.empty());
         CHECK(graph.gaps.size() == 1 && AnyText(graph.gaps, "colisão collision.json sem documento Unbound aceito"));
@@ -385,11 +399,13 @@ void TestGraphGaps() {
     GraphFixture m;
     m.reports["scene.json"] = Collect({ R"({"$schema":"unbound/scene/1","collision":"__OTR__collision.json",
         "rooms":{"0":"__OTR__room.json"},"setups":{"0":{"exits":{"0":0},
-        "transitionActors":{"0":{"id":9,"pos":[0,0,0],"front":{"effects":1},"back":{"effects":-1}}}}}})" }, "scene.json");
+        "transitionActors":{"0":{"id":9,"pos":[0,0,0],"front":{"effects":1},"back":{"effects":-1}}}}}})" },
+                                      "scene.json");
     CHECK(m.Scene().accepted);
     m.reports["collision.json"] = Collect({ R"({"$schema":"unbound/collision/3","bulk":{"file":"x.bin"},
         "cameras":{"0":{},"1":{},"2":{}},"surfaceTypes":{"0":{"exit":0}}})",
-        R"({"cameras":{"$replace":true,"0":{}},"surfaceTypes":{"0":{"exit":2}}})" }, "collision.json");
+                                            R"({"cameras":{"$replace":true,"0":{}},"surfaceTypes":{"0":{"exit":2}}})" },
+                                          "collision.json");
     const auto merged = m.Graph();
     CHECK(m.reads["collision.json"] == 1 && m.reads["room.json"] == 1);
     CHECK(AnyText(merged.notes, "câmera fora das 1"));
@@ -432,7 +448,8 @@ void TestGraphCompact() {
     // A versão do cache tira atores, geometria e campos que o grafo não lê; chaves e $order das listas ficam.
     const auto room = Collect({ R"({"$schema":"unbound/room/1","setups":{"0":{"actors":{"0":{"id":9,"pos":[0,0,0]}},
         "transitionActors":{"0":{"id":9,"pos":[1,2,3],"rotY":0,"params":5,"front":{"room":0,"effects":2},
-        "back":{"room":1,"effects":-1}}},"exits":{"0":0}},"1":{"echo":3}}})" }, "room.json");
+        "back":{"room":1,"effects":-1}}},"exits":{"0":0}},"1":{"echo":3}}})" },
+                              "room.json");
     CHECK(room.accepted);
     const Json small = CompactForGraph(room.document, DocumentKind::Room);
     CHECK(!small["setups"]["0"].contains("actors"));
@@ -442,8 +459,9 @@ void TestGraphCompact() {
     CHECK(!small.contains("$schema"));
     const Json collision = ParseJson(R"({"bulk":{"file":"x.bin"},"cameras":{"$order":["1","0"],"1":{"sType":3},
         "0":{"sType":1}},"waterBoxes":[{"xMin":0,"room":2},{"camera":1}],"surfaceTypes":{"0":{"exit":4,"camera":2}}})");
-    CHECK(CompactForGraph(collision, DocumentKind::Collision).dump() ==
-          R"({"cameras":{"$order":["1","0"],"1":{},"0":{}},"waterBoxes":[{"room":2},{}],"surfaceTypes":{"0":{"exit":4}}})");
+    CHECK(
+        CompactForGraph(collision, DocumentKind::Collision).dump() ==
+        R"({"cameras":{"$order":["1","0"],"1":{},"0":{}},"waterBoxes":[{"room":2},{}],"surfaceTypes":{"0":{"exit":4}}})");
     CHECK(CompactForGraph(collision, DocumentKind::Paths).empty());
     CHECK(CompactForGraph(collision, DocumentKind::Scene) == collision);
     // Listas no teto (a UB024-A tem 32 770 câmeras): linear, sem a busca por chave do ordered_json.

@@ -692,8 +692,8 @@ static s32 EnHorse_CallPointOnGround(EnHorse* this, PlayState* play, s16 offset,
     Player* player = GET_PLAYER(play);
     CollisionPoly* floorPoly;
     f32 floorY;
-    EnHorse_Vec3fOffset(&player->actor.world.pos, player->actor.shape.rot.y + 0x8000 + offset,
-                         ENHORSE_CALL_RADIUS, ENHORSE_CALL_RAYCAST_HEIGHT, pos);
+    EnHorse_Vec3fOffset(&player->actor.world.pos, player->actor.shape.rot.y + 0x8000 + offset, ENHORSE_CALL_RADIUS,
+                        ENHORSE_CALL_RAYCAST_HEIGHT, pos);
     if (EnHorse_CalcFloorHeight(this, play, pos, &floorPoly, &floorY) != 0 ||
         fabsf(floorY - player->actor.world.pos.y) > ENHORSE_CALL_MAX_DROP) {
         return false;
@@ -3888,8 +3888,8 @@ void EnHorse_PostDraw(Actor* thisx, PlayState* play, Skin* skin) {
         this->jntSph.elements[i].dim.worldSphere.center.x = LinkSpan_S16F(newCenter.x);
         this->jntSph.elements[i].dim.worldSphere.center.y = LinkSpan_S16F(newCenter.y);
         this->jntSph.elements[i].dim.worldSphere.center.z = LinkSpan_S16F(newCenter.z);
-        this->jntSph.elements[i].dim.worldSphere.radius = LinkSpan_S16F(
-            this->jntSph.elements[i].dim.modelSphere.radius * this->jntSph.elements[i].dim.scale);
+        this->jntSph.elements[i].dim.worldSphere.radius =
+            LinkSpan_S16F(this->jntSph.elements[i].dim.modelSphere.radius * this->jntSph.elements[i].dim.scale);
     }
 
     //! @bug Setting colliders in a draw function allows for duplicate entries to be added to their respective lists

@@ -2464,8 +2464,8 @@ s32 AudioOcarina_MemoryGameNextNote(void) {
 }
 
 void AudioOcarina_Update(void) {
-    const u8 linkSpanOcarinaActive = (sOcarinaInstrumentId != OCARINA_INSTRUMENT_OFF) &&
-                                     (sIsOcarinaInputEnabled == true) && (sOcarinaFlags != 0);
+    const u8 linkSpanOcarinaActive =
+        (sOcarinaInstrumentId != OCARINA_INSTRUMENT_OFF) && (sIsOcarinaInputEnabled == true) && (sOcarinaFlags != 0);
     s32 linkSpanForcedSong = -1;
 
     // OOT-VANILLA-001: estado para providers nativos, só com mod.
@@ -2473,8 +2473,7 @@ void AudioOcarina_Update(void) {
         OotNative_PublishOcarinaState(linkSpanOcarinaActive, linkSpanOcarinaActive ? sAvailOcarinaSongFlags : 0);
         linkSpanForcedSong = OotNative_TakePendingOcarinaSong();
     }
-    if (linkSpanOcarinaActive && linkSpanForcedSong >= 0 &&
-        linkSpanForcedSong <= OCARINA_SONG_SCARECROW_SPAWN &&
+    if (linkSpanOcarinaActive && linkSpanForcedSong >= 0 && linkSpanForcedSong <= OCARINA_SONG_SCARECROW_SPAWN &&
         (sAvailOcarinaSongFlags & (u16)(1 << linkSpanForcedSong))) {
         sPlayedOcarinaSongIndexPlusOne = linkSpanForcedSong + 1;
         sIsOcarinaInputEnabled = false;

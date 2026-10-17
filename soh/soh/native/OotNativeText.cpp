@@ -34,8 +34,8 @@ ShipNativeStatus SHIP_NATIVE_CALL SetMessage(uint32_t language, uint32_t id, uin
         return SHIP_NATIVE_UNSUPPORTED;
     }
     const auto typePos = static_cast<uint8_t>((boxType << 4) | boxPos);
-    return set(static_cast<int32_t>(language), static_cast<uint16_t>(id), typePos,
-               reinterpret_cast<const char*>(bytes), length)
+    return set(static_cast<int32_t>(language), static_cast<uint16_t>(id), typePos, reinterpret_cast<const char*>(bytes),
+               length)
                ? SHIP_NATIVE_OK
                : SHIP_NATIVE_FAILURE;
 }
@@ -99,8 +99,9 @@ ShipNativeStatus SHIP_NATIVE_CALL ListMessages(uint32_t language, ShipOotMessage
     return call.status;
 }
 
-const ShipOotTextV1 textV1{ sizeof(ShipOotTextV1), SetMessage, RemoveMessage, ClearLanguage, ResetLanguage,
-                            ListMessages };
+const ShipOotTextV1 textV1{
+    sizeof(ShipOotTextV1), SetMessage, RemoveMessage, ClearLanguage, ResetLanguage, ListMessages
+};
 
 } // namespace
 

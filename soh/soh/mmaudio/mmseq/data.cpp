@@ -25,7 +25,6 @@
 
 namespace mmsfx {
 
-
 s16 gLowPassFilterData[16 * 8] ALIGNED(16) = {
     /* 0x0 */ 0,     0,     0,    32767, 0,    0,     0,     0,    // Identity filter (delta function)
     /* 0x1 */ 3854,  4188,  4398, 4469,  4398, 4188,  3854,  3416, // low-freq cutoff (more filtering)

@@ -11,10 +11,10 @@
 #include <shiplua/native/NativeDiagnostics.h>
 
 #define WRITE_VAR_LINE(buff, len, varName, varValue, capacity) \
-    append_str(buff, len, varName, capacity);                 \
+    append_str(buff, len, varName, capacity);                  \
     append_line(buff, len, varValue, capacity);
 #define WRITE_VAR(buff, len, varName, varValue, capacity) \
-    append_str(buff, len, varName, capacity);            \
+    append_str(buff, len, varName, capacity);             \
     append_str(buff, len, varValue, capacity);
 
 extern "C" PlayState* gPlayState;
@@ -62,13 +62,11 @@ static bool append_text(char* buf, size_t* len, const char* str, bool newline, s
     return true;
 }
 
-static bool append_str(char* buf, size_t* len, const char* str,
-                       size_t capacity = sCrashReportCapacity) {
+static bool append_str(char* buf, size_t* len, const char* str, size_t capacity = sCrashReportCapacity) {
     return append_text(buf, len, str, false, capacity);
 }
 
-static bool append_line(char* buf, size_t* len, const char* str,
-                        size_t capacity = sCrashReportCapacity) {
+static bool append_line(char* buf, size_t* len, const char* str, size_t capacity = sCrashReportCapacity) {
     return append_text(buf, len, str, true, capacity);
 }
 
@@ -168,7 +166,8 @@ extern "C" void CrashHandler_PrintSohData(char* buffer, size_t* pos) {
         WRITE_VAR_LINE(buffer, pos, "Scene: ",
                        gPlayState->sceneNum >= 0 && gPlayState->sceneNum < SCENE_ID_MAX
                            ? sSceneIdToStrArray[gPlayState->sceneNum]
-                           : "mod scene", textCapacity);
+                           : "mod scene",
+                       textCapacity);
 
         snprintf(intCharBuffer, sizeof(intCharBuffer), "%i", gPlayState->roomCtx.curRoom.num);
         WRITE_VAR_LINE(buffer, pos, "Room: ", intCharBuffer, textCapacity);

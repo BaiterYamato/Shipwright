@@ -68,10 +68,11 @@ void CheckDocument(const std::string& path, const std::string& bytes, CheckResul
             Json doc;
             ActorDefinition definition;
             std::vector<std::string> notes;
-            if (!MergeActorLayers({{"check", bytes, 0}}, doc, notes) ||
+            if (!MergeActorLayers({ { "check", bytes, 0 } }, doc, notes) ||
                 (!doc.is_null() && !ReadActorDefinition(ActorNameFromPath(path), doc, definition, notes)))
                 throw DocumentError("tipo de ator inválido");
-            for (const auto& note : notes) report(note);
+            for (const auto& note : notes)
+                report(note);
             ++result.checked;
             return;
         }
@@ -137,7 +138,8 @@ int Check(const fs::path& root) {
 
 int Convert(const fs::path& root, const fs::path& output) {
     std::vector<SceneSource> scenes;
-    for (const auto& [variant, mq] : { std::pair<const char*, bool>{ "shared", false }, { "nonmq", false }, { "mq", true } }) {
+    for (const auto& [variant, mq] :
+         { std::pair<const char*, bool>{ "shared", false }, { "nonmq", false }, { "mq", true } }) {
         const fs::path folder = root / "scenes" / variant;
         if (!fs::is_directory(folder)) {
             continue;
@@ -145,7 +147,8 @@ int Convert(const fs::path& root, const fs::path& output) {
         for (const auto& entry : fs::directory_iterator(folder)) {
             const std::string name = entry.path().filename().string();
             if (entry.is_directory() && fs::is_regular_file(entry.path() / name)) {
-                scenes.push_back({ std::string("scenes/") + variant + "/" + name + "/" + name, SceneDirName(name, mq) });
+                scenes.push_back(
+                    { std::string("scenes/") + variant + "/" + name + "/" + name, SceneDirName(name, mq) });
             }
         }
     }

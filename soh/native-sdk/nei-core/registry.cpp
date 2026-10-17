@@ -151,8 +151,7 @@ void Registry::Refresh(Item& item) {
         mItems->set_item_ammo(item.runtime, LINKSPAN_OOT_ITEMS_NO_AMMO, 0);
     }
     if (!state.owned) {
-        for (uint8_t button = LINKSPAN_OOT_ITEMS_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEMS_BUTTON_C_RIGHT;
-             ++button) {
+        for (uint8_t button = LINKSPAN_OOT_ITEMS_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEMS_BUTTON_C_RIGHT; ++button) {
             uint8_t current = kNoItem;
             if (mItems->get_button_item(button, &current) == SHIP_NATIVE_OK && current == item.runtime) {
                 mItems->set_button_item(button, kNoItem);
@@ -188,8 +187,7 @@ void Registry::Flush() {
         if (mSave->write(mSaveHandle, json.data(), static_cast<uint32_t>(json.size())) == SHIP_NATIVE_OK) {
             mDirty = false;
         }
-    } catch (...) {
-    }
+    } catch (...) {}
 }
 
 void Registry::ResetForNewSlot() {
@@ -226,8 +224,8 @@ void Registry::OnSaveLoaded() {
                         SavedState state;
                         const auto owned = value.find("owned");
                         state.owned = owned != value.end() && owned->is_boolean() && owned->get<bool>();
-                        state.count =
-                            static_cast<uint16_t>(std::clamp<int64_t>(integer(value, "count"), 0, LINKSPAN_NEI_MAX_COUNT));
+                        state.count = static_cast<uint16_t>(
+                            std::clamp<int64_t>(integer(value, "count"), 0, LINKSPAN_NEI_MAX_COUNT));
                         state.level = static_cast<uint8_t>(
                             std::clamp<int64_t>(integer(value, "level"), 0, LINKSPAN_NEI_MAX_LEVELS - 1));
                         mStates[id] = state;
@@ -289,8 +287,12 @@ ShipNativeStatus Registry::Define(const NeiItemDefinitionV1* definition, uint64_
 
         const SavedState* saved = FindState(*item);
         const size_t level = saved ? std::min<size_t>(saved->level, item->levels.size() - 1) : 0;
-        const ShipOotItemSpecV1 spec{ sizeof(ShipOotItemSpecV1), item->id.c_str(), item->levels[level].icon.c_str(),
-                                      item->age, UseTrampoline, item.get() };
+        const ShipOotItemSpecV1 spec{ sizeof(ShipOotItemSpecV1),
+                                      item->id.c_str(),
+                                      item->levels[level].icon.c_str(),
+                                      item->age,
+                                      UseTrampoline,
+                                      item.get() };
         const ShipNativeStatus status = mItems->register_item(&spec, &item->runtime);
         if (status != SHIP_NATIVE_OK) {
             return status;
@@ -365,7 +367,8 @@ ShipNativeStatus Registry::GetState(uint64_t handle, NeiItemStateV1* out) const 
 
 std::string Registry::IconPath(uint64_t handle) const {
     const Item* item = Lookup(handle);
-    if (!item || item->levels.empty()) return {};
+    if (!item || item->levels.empty())
+        return {};
     const SavedState* state = FindState(*item);
     const size_t level = state ? std::min<size_t>(state->level, item->levels.size() - 1) : 0;
     return item->levels[level].icon;
@@ -413,10 +416,12 @@ ShipNativeStatus Registry::Grant(uint64_t handle) {
 
 ShipNativeStatus Registry::UpdateIcon(uint64_t handle, const char* path) {
     Item* item = Lookup(handle);
-    if (!item || !ValidPath(path)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!item || !ValidPath(path))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     const SavedState* state = FindState(*item);
     const unsigned level = state ? state->level : 0;
-    if (level >= item->levels.size()) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (level >= item->levels.size())
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     if (item->levels[level].icon != path) {
         item->levels[level].icon = path;
         Refresh(*item);
@@ -495,8 +500,7 @@ ShipNativeStatus Registry::Equip(uint64_t handle, uint8_t button) {
     }
     for (uint8_t other = LINKSPAN_OOT_ITEMS_BUTTON_C_LEFT; other <= LINKSPAN_OOT_ITEMS_BUTTON_C_RIGHT; ++other) {
         uint8_t current = kNoItem;
-        if (other != button && mItems->get_button_item(other, &current) == SHIP_NATIVE_OK &&
-            current == item->runtime) {
+        if (other != button && mItems->get_button_item(other, &current) == SHIP_NATIVE_OK && current == item->runtime) {
             mItems->set_button_item(other, kNoItem);
         }
     }

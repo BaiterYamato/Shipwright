@@ -39,7 +39,8 @@ struct SceneRegistryDocument {
 };
 
 // Lê unbound/scenes.json já mesclado (SPEC do Unbound §7). Cenas e entradas saem na ordem de chave da
-// §3.5 ($order, inteiros, depois bytes); chaves começadas por '$' ficam de fora. Retorna false só quando o documento inteiro é inválido.
+// §3.5 ($order, inteiros, depois bytes); chaves começadas por '$' ficam de fora. Retorna false só quando o documento
+// inteiro é inválido.
 bool ParseSceneRegistry(const std::string& json, SceneRegistryDocument& output, std::string& error);
 
 } // namespace LinkSpanUnbound

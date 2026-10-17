@@ -4693,14 +4693,13 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
     // Link-Span (OOT-MOVE-006): posição final dos ícones do D-pad para providers nativos. Sem
     // textura, o provider desenha o ícone e aqui só a posição é capturada.
     if (button >= 4) {
-        LinkSpan_CaptureItemButton(play, button, ItemIconPos[button][0], ItemIconPos[button][1],
-                                   gItemIconWidth[button], ItemsSlotsAlpha[button]);
+        LinkSpan_CaptureItemButton(play, button, ItemIconPos[button][0], ItemIconPos[button][1], gItemIconWidth[button],
+                                   ItemsSlotsAlpha[button]);
     }
     // CLOSE_DISPS fecha a chave aberta por OPEN_DISPS: sem retorno antecipado.
     if (texture != NULL) {
-        gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
-                            G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
-                            G_TX_NOLOD, G_TX_NOLOD);
+        gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                            G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
 
         gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
                                 (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
@@ -4987,10 +4986,10 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
         OVERLAY_DISP = Gfx_TextureIA8(OVERLAY_DISP, (u8*)_gAmmoDigit0Tex[ammo], 8, 8, ItemIconPos[button][0] + 6,
                                       ItemIconPos[button][1], 8, 8, 1 << 10, 1 << 10);
     } else if (GameInteractor_Should(VB_DRAW_AMMO_COUNT,
-                              ((i == ITEM_STICK) || (i == ITEM_NUT) || (i == ITEM_BOMB) || (i == ITEM_BOW) ||
-                               ((i >= ITEM_BOW_ARROW_FIRE) && (i <= ITEM_BOW_ARROW_LIGHT)) || (i == ITEM_SLINGSHOT) ||
-                               (i == ITEM_BOMBCHU) || (i == ITEM_BEAN)),
-                              &i)) {
+                                     ((i == ITEM_STICK) || (i == ITEM_NUT) || (i == ITEM_BOMB) || (i == ITEM_BOW) ||
+                                      ((i >= ITEM_BOW_ARROW_FIRE) && (i <= ITEM_BOW_ARROW_LIGHT)) ||
+                                      (i == ITEM_SLINGSHOT) || (i == ITEM_BOMBCHU) || (i == ITEM_BEAN)),
+                                     &i)) {
         if ((i >= ITEM_BOW_ARROW_FIRE) && (i <= ITEM_BOW_ARROW_LIGHT)) {
             i = ITEM_BOW;
         }

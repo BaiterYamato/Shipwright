@@ -7,8 +7,8 @@
 #define NEI_MODEL_LAYER_TRANSLUCENT 1
 
 typedef struct NeiItemModel {
-    unsigned char item;  // id lógico do fork (ITEM_*)
-    const char* path;    // display list no VFS, sem __OTR__
+    unsigned char item; // id lógico do fork (ITEM_*)
+    const char* path;   // display list no VFS, sem __OTR__
     float scale;
     unsigned char layer; // NEI_MODEL_LAYER_*
 } NeiItemModel;

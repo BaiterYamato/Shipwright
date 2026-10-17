@@ -129,10 +129,12 @@ float SmoothDamp(float current, float target, float* vel, float smoothTime, floa
 void Slerp(const float from[3], const float to[3], float t, float out[3]) {
     float dot = std::clamp((from[0] * to[0]) + (from[1] * to[1]) + (from[2] * to[2]), -1.0f, 1.0f);
     if (dot > 0.9995f) {
-        for (int i = 0; i < 3; ++i) out[i] = from[i] + ((to[i] - from[i]) * t);
+        for (int i = 0; i < 3; ++i)
+            out[i] = from[i] + ((to[i] - from[i]) * t);
         const float len = std::sqrt((out[0] * out[0]) + (out[1] * out[1]) + (out[2] * out[2]));
         if (len > 0.0001f) {
-            for (int i = 0; i < 3; ++i) out[i] /= len;
+            for (int i = 0; i < 3; ++i)
+                out[i] /= len;
         }
         return;
     }
@@ -143,19 +145,22 @@ void Slerp(const float from[3], const float to[3], float t, float out[3]) {
         float perp[3] = { ref[0] - (from[0] * d), ref[1] - (from[1] * d), ref[2] - (from[2] * d) };
         const float len = std::sqrt((perp[0] * perp[0]) + (perp[1] * perp[1]) + (perp[2] * perp[2]));
         if (len > 0.0001f) {
-            for (int i = 0; i < 3; ++i) perp[i] /= len;
+            for (int i = 0; i < 3; ++i)
+                perp[i] /= len;
         }
         const float angle = t * 3.14159265f;
         const float c = std::cos(angle);
         const float s = std::sin(angle);
-        for (int i = 0; i < 3; ++i) out[i] = (from[i] * c) + (perp[i] * s);
+        for (int i = 0; i < 3; ++i)
+            out[i] = (from[i] * c) + (perp[i] * s);
         return;
     }
     const float theta = std::acos(dot);
     const float sinTheta = std::sin(theta);
     const float s0 = std::sin((1.0f - t) * theta) / sinTheta;
     const float s1 = std::sin(t * theta) / sinTheta;
-    for (int i = 0; i < 3; ++i) out[i] = (s0 * from[i]) + (s1 * to[i]);
+    for (int i = 0; i < 3; ++i)
+        out[i] = (s0 * from[i]) + (s1 * to[i]);
 }
 
 // A luz pontual mais próxima no alcance (raio × pointRange) vence; o brilho não conta, então tocha tremendo não
@@ -166,7 +171,8 @@ bool ClosestPointLight(Mod& mod, PlayState* play, const Actor* actor, float dirO
     float bestDistSq = -1.0f;
     for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) {
         const LightInfo* info = node->info;
-        if (info == nullptr || info->type == LIGHT_DIRECTIONAL) continue;
+        if (info == nullptr || info->type == LIGHT_DIRECTIONAL)
+            continue;
         if (info == naviGlow || info == naviNoGlow) {
             ++mod.stats.naviSkipped;
             continue;
@@ -226,7 +232,7 @@ bool FloorUnder(Mod& mod, const Actor* actor, ToonKeyState& st, float* floorHeig
     const float mdy = actor->world.pos.y - st.floorPos[1];
     const float mdz = actor->world.pos.z - st.floorPos[2];
     if (!st.floorSampled || ((mdx * mdx) + (mdy * mdy) + (mdz * mdz)) > 16.0f) {
-        ShipOotWorldHitV1 hit{sizeof(hit)};
+        ShipOotWorldHitV1 hit{ sizeof(hit) };
         st.floorValid = mod.world &&
                         mod.world->raycast_floor(actor->world.pos.x, actor->world.pos.y + 1.0f, actor->world.pos.z,
                                                  &hit) == SHIP_NATIVE_OK &&
@@ -238,7 +244,8 @@ bool FloorUnder(Mod& mod, const Actor* actor, ToonKeyState& st, float* floorHeig
         st.floorPos[2] = actor->world.pos.z;
         ++mod.stats.raycasts;
     }
-    if (st.floorValid) *floorHeight = st.floorY;
+    if (st.floorValid)
+        *floorHeight = st.floorY;
     return st.floorValid;
 }
 
@@ -267,7 +274,8 @@ void WriteDebugVert(Vtx& v, int16_t x, int16_t y, int16_t z) {
 
 void BuildDebugGeometry() {
     const int16_t ray[5][3] = { { -1, 0, -1 }, { 1, 0, -1 }, { 1, 0, 1 }, { -1, 0, 1 }, { 0, 1, 0 } };
-    for (int i = 0; i < 5; ++i) WriteDebugVert(sRayVtx[i], ray[i][0], ray[i][1], ray[i][2]);
+    for (int i = 0; i < 5; ++i)
+        WriteDebugVert(sRayVtx[i], ray[i][0], ray[i][1], ray[i][2]);
     Gfx* g = sRayDL;
     __gSPVertex(g++, reinterpret_cast<uintptr_t>(sRayVtx), 5, 0);
     gSP2Triangles(g++, 0, 1, 4, 0, 1, 2, 4, 0);
@@ -275,11 +283,12 @@ void BuildDebugGeometry() {
     gSP2Triangles(g++, 0, 2, 1, 0, 0, 3, 2, 0);
     gSPEndDisplayList(g++);
 
-    const int16_t ring[24][2] = { { 97, 0 },    { 103, 0 },   { 84, 48 },   { 89, 52 },   { 48, 84 },   { 52, 89 },
-                                  { 0, 97 },    { 0, 103 },   { -48, 84 },  { -52, 89 },  { -84, 48 },  { -89, 52 },
-                                  { -97, 0 },   { -103, 0 },  { -84, -48 }, { -89, -52 }, { -48, -84 }, { -52, -89 },
-                                  { 0, -97 },   { 0, -103 },  { 48, -84 },  { 52, -89 },  { 84, -48 },  { 89, -52 } };
-    for (int i = 0; i < 24; ++i) WriteDebugVert(sRingVtx[i], ring[i][0], 0, ring[i][1]);
+    const int16_t ring[24][2] = { { 97, 0 },  { 103, 0 },  { 84, 48 },   { 89, 52 },   { 48, 84 },   { 52, 89 },
+                                  { 0, 97 },  { 0, 103 },  { -48, 84 },  { -52, 89 },  { -84, 48 },  { -89, 52 },
+                                  { -97, 0 }, { -103, 0 }, { -84, -48 }, { -89, -52 }, { -48, -84 }, { -52, -89 },
+                                  { 0, -97 }, { 0, -103 }, { 48, -84 },  { 52, -89 },  { 84, -48 },  { 89, -52 } };
+    for (int i = 0; i < 24; ++i)
+        WriteDebugVert(sRingVtx[i], ring[i][0], 0, ring[i][1]);
     g = sRingDL;
     __gSPVertex(g++, reinterpret_cast<uintptr_t>(sRingVtx), 24, 0);
     for (int i = 0; i < 24; i += 2) {
@@ -293,10 +302,13 @@ void BuildDebugGeometry() {
 // Matriz corrente trocada pela translação (o MTXMODE_NEW do fork), exportada e devolvida ao host.
 template <typename Transform> const void* DebugMatrix(Mod& mod, const float at[3], Transform&& transform) {
     const void* mtx = nullptr;
-    if (mod.render->matrix_push() != SHIP_NATIVE_OK) return nullptr;
+    if (mod.render->matrix_push() != SHIP_NATIVE_OK)
+        return nullptr;
     ShipNativeStatus status = mod.render->matrix_translate_new(at[0], at[1], at[2]);
-    if (status == SHIP_NATIVE_OK) status = transform();
-    if (status == SHIP_NATIVE_OK) status = mod.render->export_current_matrix(&mtx);
+    if (status == SHIP_NATIVE_OK)
+        status = transform();
+    if (status == SHIP_NATIVE_OK)
+        status = mod.render->export_current_matrix(&mtx);
     mod.render->matrix_pop();
     return status == SHIP_NATIVE_OK ? mtx : nullptr;
 }
@@ -324,7 +336,8 @@ bool DebugRay(Mod& mod, Gfx*& g, const float base[3], const float dir[3], const 
         }
         return status == SHIP_NATIVE_OK ? mod.render->matrix_scale(thickness, length, thickness) : status;
     });
-    if (mtx == nullptr) return false;
+    if (mtx == nullptr)
+        return false;
     DebugMaterial(g, col[0], col[1], col[2], 200, mtx);
     __gSPDisplayList(g++, sRayDL);
     return true;
@@ -333,7 +346,8 @@ bool DebugRay(Mod& mod, Gfx*& g, const float base[3], const float dir[3], const 
 bool DebugRing(Mod& mod, Gfx*& g, const float center[3], float radius) {
     const void* mtx =
         DebugMatrix(mod, center, [&] { return mod.render->matrix_scale(radius * 0.01f, 1.0f, radius * 0.01f); });
-    if (mtx == nullptr) return false;
+    if (mtx == nullptr)
+        return false;
     DebugMaterial(g, 0, 255, 255, 110, mtx);
     __gSPDisplayList(g++, sRingDL);
     return true;
@@ -343,7 +357,8 @@ void DrawDebugOverlay(Mod& mod, PlayState* play, const Actor* actor, const float
     ToonState& toon = mod.toon;
     size_t pointLights = 0;
     for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) {
-        if (node->info != nullptr && node->info->type != LIGHT_DIRECTIONAL) ++pointLights;
+        if (node->info != nullptr && node->info->type != LIGHT_DIRECTIONAL)
+            ++pointLights;
     }
     // Pior caso deste ator: sol, lua, raio e anel por luz pontual e a agulha, mais o fim da lista.
     const size_t need = ((3 + (2 * pointLights)) * kGfxPerRay) + 1;
@@ -351,7 +366,8 @@ void DrawDebugOverlay(Mod& mod, PlayState* play, const Actor* actor, const float
         ++mod.stats.debugSkipped;
         return;
     }
-    if (!sDebugBuilt) BuildDebugGeometry();
+    if (!sDebugBuilt)
+        BuildDebugGeometry();
     Gfx* const start = &toon.debugGfx[toon.debugUsed];
     Gfx* g = start;
     uint32_t drawn = 0;
@@ -364,14 +380,17 @@ void DrawDebugOverlay(Mod& mod, PlayState* play, const Actor* actor, const float
         const LightDirectional& d = env->params.dir;
         const float len = std::sqrt(static_cast<float>((d.x * d.x) + (d.y * d.y) + (d.z * d.z)));
         const float lum = (d.color[0] + d.color[1] + d.color[2]) / (3.0f * 255.0f);
-        if (len <= 0.001f) continue;
+        if (len <= 0.001f)
+            continue;
         const float dir[3] = { d.x / len, d.y / len, d.z / len };
-        if (DebugRay(mod, g, base, dir, d.color, 10.0f + (std::min(lum, 1.0f) * 15.0f), 1.2f)) ++drawn;
+        if (DebugRay(mod, g, base, dir, d.color, 10.0f + (std::min(lum, 1.0f) * 15.0f), 1.2f))
+            ++drawn;
     }
 
     for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) {
         const LightInfo* info = node->info;
-        if (info == nullptr || info->type == LIGHT_DIRECTIONAL) continue;
+        if (info == nullptr || info->type == LIGHT_DIRECTIONAL)
+            continue;
         const LightPoint& p = info->params.point;
         const float dx = p.x - actor->world.pos.x;
         const float dy = p.y - actor->world.pos.y;
@@ -381,24 +400,30 @@ void DrawDebugOverlay(Mod& mod, PlayState* play, const Actor* actor, const float
         // Anel em toda luz pontual, perto ou não, para o alcance do slider Point Light Range aparecer.
         if (isPlayer && radius > 0.0f) {
             const float center[3] = { static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z) };
-            if (DebugRing(mod, g, center, radius)) ++drawn;
+            if (DebugRing(mod, g, center, radius))
+                ++drawn;
         }
-        if (radius <= 0.0f || distSq >= radius * radius) continue;
+        if (radius <= 0.0f || distSq >= radius * radius)
+            continue;
         const float dist = std::sqrt(distSq);
-        if (dist <= 0.001f) continue;
+        if (dist <= 0.001f)
+            continue;
         const float scale = 1.0f - ((dist / radius) * (dist / radius));
         const float att = 0.5f + (0.5f * scale); // queda com a distância, só no comprimento visual
         const float lum = ((p.color[0] + p.color[1] + p.color[2]) / (3.0f * 255.0f)) * att;
         const float dir[3] = { dx / dist, dy / dist, dz / dist };
         const uint8_t col[3] = { static_cast<uint8_t>(p.color[0] * att), static_cast<uint8_t>(p.color[1] * att),
                                  static_cast<uint8_t>(p.color[2] * att) };
-        if (DebugRay(mod, g, base, dir, col, 10.0f + (std::min(lum, 2.0f) * 12.5f), 1.2f)) ++drawn;
+        if (DebugRay(mod, g, base, dir, col, 10.0f + (std::min(lum, 2.0f) * 12.5f), 1.2f))
+            ++drawn;
     }
 
     // A chave escolhida: agulha magenta fina no meio do cone da luz, que continua visível na cor dela.
     const uint8_t magenta[3] = { 255, 0, 255 };
-    if (DebugRay(mod, g, base, chosenDir, magenta, 35.0f, 0.3f)) ++drawn;
-    if (drawn == 0) return;
+    if (DebugRay(mod, g, base, chosenDir, magenta, 35.0f, 0.3f))
+        ++drawn;
+    if (drawn == 0)
+        return;
     gSPEndDisplayList(g++);
     toon.debugUsed += static_cast<size_t>(g - start);
     if (mod.render->draw_native_display_list(start, LINKSPAN_OOT_RENDER_TRANSLUCENT) == SHIP_NATIVE_OK) {
@@ -413,32 +438,36 @@ void DrawDebugOverlay(Mod& mod, PlayState* play, const Actor* actor, const float
 ShipNativeStatus ApplyRenderState(Mod& mod) {
     const Settings& cfg = mod.cfg;
     uint32_t features = 0;
-    if (cfg.celEnabled) features |= LINKSPAN_OOT_RENDER_FEATURE_TOON_ACTORS;
+    if (cfg.celEnabled)
+        features |= LINKSPAN_OOT_RENDER_FEATURE_TOON_ACTORS;
     if (cfg.shadowsEnabled && cfg.suppressVanillaShadows)
         features |= LINKSPAN_OOT_RENDER_FEATURE_SUPPRESS_VANILLA_SHADOWS;
     // A projeção substitui o brilho desenhado no ponto das luzes GLOW (tochas, fogo).
-    if (cfg.lightCasting && cfg.hideVanillaGlow) features |= LINKSPAN_OOT_RENDER_FEATURE_HIDE_VANILLA_POINT_GLOW;
+    if (cfg.lightCasting && cfg.hideVanillaGlow)
+        features |= LINKSPAN_OOT_RENDER_FEATURE_HIDE_VANILLA_POINT_GLOW;
     // Sem receptores o host não descarrega os volumes de sombra; a lista vai sempre que a sombra está ligada.
     const bool receivers = cfg.shadowsEnabled;
-    ShipNativeStatus status = mod.render->set_state(
-        mod.renderState, features, receivers ? kShadowReceivers : nullptr,
-        receivers ? static_cast<uint32_t>(std::size(kShadowReceivers)) : 0u);
-    if (status != SHIP_NATIVE_OK || (!cfg.celEnabled && !cfg.shadowsEnabled)) return status;
+    ShipNativeStatus status =
+        mod.render->set_state(mod.renderState, features, receivers ? kShadowReceivers : nullptr,
+                              receivers ? static_cast<uint32_t>(std::size(kShadowReceivers)) : 0u);
+    if (status != SHIP_NATIVE_OK || (!cfg.celEnabled && !cfg.shadowsEnabled))
+        return status;
     status = mod.render->set_toon_ramp(cfg.rampCenter, cfg.rampSoftness, cfg.highlightIntensity, cfg.shadowIntensity,
                                        cfg.debugHighlightBands ? 1 : 0);
-    if (status != SHIP_NATIVE_OK) return status;
+    if (status != SHIP_NATIVE_OK)
+        return status;
     // Comprimento da sombra: quanto a chave é levantada antes de projetar. 0 => 0,95 (curta, sob o ator); 1 => 0,10.
     const float minElevation = 0.95f - (std::clamp(cfg.shadowLength, 0.0f, 1.0f) * 0.85f);
-    return mod.render->set_toon_shadow_params(cfg.shadowOpacity, minElevation, cfg.shadowSlabDepth,
-                                              cfg.shadowSlabRise, cfg.shadowEdgeSoftness,
-                                              cfg.debugShadowVolume ? 1 : 0);
+    return mod.render->set_toon_shadow_params(cfg.shadowOpacity, minElevation, cfg.shadowSlabDepth, cfg.shadowSlabRise,
+                                              cfg.shadowEdgeSoftness, cfg.debugShadowVolume ? 1 : 0);
 }
 
 void ToonFrame(Mod& mod, PlayState* play) {
     ToonState& toon = mod.toon;
     ++toon.frame;
     toon.debugUsed = 0;
-    if (mod.cfg.debugLightSources && toon.debugGfx.size() < kDebugGfxCap) toon.debugGfx.resize(kDebugGfxCap);
+    if (mod.cfg.debugLightSources && toon.debugGfx.size() < kDebugGfxCap)
+        toon.debugGfx.resize(kDebugGfxCap);
     const int16_t scene = play ? play->sceneNum : -1;
     const uint32_t frames = play ? static_cast<uint32_t>(play->state.frames) : 0;
     if (ObservePlay(toon.stamp, play, scene, frames)) {
@@ -451,14 +480,15 @@ void ToonFrame(Mod& mod, PlayState* play) {
         toon.keys.clear();
         return;
     }
-    ShipOotRenderFrameInfoV1 info{sizeof(info)};
+    ShipOotRenderFrameInfoV1 info{ sizeof(info) };
     toon.dt = mod.render->get_frame_info(&info) == SHIP_NATIVE_OK && info.delta_seconds > 0.0f ? info.delta_seconds
                                                                                                : 3.0f / 60.0f;
     const float transition = std::max(mod.cfg.transitionTime, 0.05f);
     toon.alpha = 1.0f - std::exp(-4.6f * toon.dt / transition);
     // A Navi registrada precisa continuar sendo a fada do Link; senão o endereço pode ser de outra coisa.
     const Player* player = play ? GET_PLAYER(play) : nullptr;
-    if (player == nullptr || player->naviActor != mod.navi.actor) mod.navi = {};
+    if (player == nullptr || player->naviActor != mod.navi.actor)
+        mod.navi = {};
     if (toon.frame % kPruneEvery == 0) {
         std::erase_if(toon.keys, [&](const auto& entry) { return toon.frame - entry.second.lastFrame > kStaleFrames; });
     }
@@ -466,10 +496,12 @@ void ToonFrame(Mod& mod, PlayState* play) {
 
 void ToonActorDraw(Mod& mod, const ShipOotRenderActorDrawHookV1& payload) {
     const Settings& cfg = mod.cfg;
-    if (!cfg.celEnabled && !cfg.shadowsEnabled) return;
+    if (!cfg.celEnabled && !cfg.shadowsEnabled)
+        return;
     auto* play = static_cast<PlayState*>(payload.play_state);
     auto* actor = static_cast<Actor*>(payload.actor);
-    if (play == nullptr || actor == nullptr) return;
+    if (play == nullptr || actor == nullptr)
+        return;
     ++mod.stats.actorDraws;
 
     // Excluídos ficam com a luz vanilla (o host religa o colchete no ator seguinte) e marcam a borda da captura
@@ -477,8 +509,10 @@ void ToonActorDraw(Mod& mod, const ShipOotRenderActorDrawHookV1& payload) {
     // colchete já faz isso).
     if (ToonActorExcluded(actor)) {
         ++mod.stats.excluded;
-        if (cfg.celEnabled && mod.render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK) ++mod.stats.toonOff;
-        if (cfg.shadowsEnabled) mod.render->emit_toon_shadow(LINKSPAN_OOT_RENDER_OPAQUE, kNoClamp, 0.0f);
+        if (cfg.celEnabled && mod.render->set_actor_toon_enabled(0) == SHIP_NATIVE_OK)
+            ++mod.stats.toonOff;
+        if (cfg.shadowsEnabled)
+            mod.render->emit_toon_shadow(LINKSPAN_OOT_RENDER_OPAQUE, kNoClamp, 0.0f);
         return;
     }
 
@@ -520,7 +554,8 @@ void ToonActorDraw(Mod& mod, const ShipOotRenderActorDrawHookV1& payload) {
         mod.render->emit_toon_key(LINKSPAN_OOT_RENDER_TRANSLUCENT, dx, dy, dz, r, g, b) != SHIP_NATIVE_OK) {
         ++mod.stats.keyFailures;
     }
-    if (cfg.debugLightSources) DrawDebugOverlay(mod, play, actor, st.dir);
+    if (cfg.debugLightSources)
+        DrawDebugOverlay(mod, play, actor, st.dir);
 
     if (!cfg.shadowsEnabled) {
         // Religar a sombra a faz crescer de novo em vez de estalar no tamanho congelado.

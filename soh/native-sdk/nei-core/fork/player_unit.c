@@ -100,17 +100,18 @@ s32 CustomForms_OverrideLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 #undef B_BTN_ITEM
 #undef C_BTN_ITEM
 #undef DPAD_ITEM
-#define B_BTN_ITEM                                                                                  \
-    NeiFork_BButtonItem((gSaveContext.buttonStatus[0] == ITEM_NONE)                    ? ITEM_NONE      \
-                          : (gSaveContext.equips.buttonItems[0] == ITEM_SWORD_KNIFE) ? ITEM_SWORD_BGS \
-                                                                                     : gSaveContext.equips.buttonItems[0])
-#define C_BTN_ITEM(button)                                                                                  \
-    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[(button) + 1] != BTN_DISABLED)                        \
-                              ? gSaveContext.equips.buttonItems[(button) + 1]                              \
+#define B_BTN_ITEM                                                                 \
+    NeiFork_BButtonItem((gSaveContext.buttonStatus[0] == ITEM_NONE) ? ITEM_NONE    \
+                        : (gSaveContext.equips.buttonItems[0] == ITEM_SWORD_KNIFE) \
+                            ? ITEM_SWORD_BGS                                       \
+                            : gSaveContext.equips.buttonItems[0])
+#define C_BTN_ITEM(button)                                                          \
+    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[(button) + 1] != BTN_DISABLED) \
+                              ? gSaveContext.equips.buttonItems[(button) + 1]       \
                               : ITEM_NONE)
-#define DPAD_ITEM(button)                                                                                   \
-    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[(button) + 5] != BTN_DISABLED)                        \
-                              ? gSaveContext.equips.buttonItems[(button) + 4]                              \
+#define DPAD_ITEM(button)                                                           \
+    NeiFork_ToLogicalItem((gSaveContext.buttonStatus[(button) + 5] != BTN_DISABLED) \
+                              ? gSaveContext.equips.buttonItems[(button) + 4]       \
                               : ITEM_NONE)
 
 // Funções que o fork acrescentou ao z_player.c do host (fork/extract.txt) e as que ele mudou (overlay.py),
@@ -163,10 +164,9 @@ void NeiItems_PostUpdate(void* actor, void* state, const void* input) {
     ExtEquip_Update();
     if (frame.press.button & BTN_R) {
         Player* player = (Player*)actor;
-        sLastSurfGate = gExtEquipState.currentExtShield |
-            ((player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 0x10 : 0) |
-            (KiteSurf_Allowed(player) ? 0x20 : 0) |
-            (Player_InBlockingCsMode((PlayState*)state, player) ? 0x40 : 0);
+        sLastSurfGate =
+            gExtEquipState.currentExtShield | ((player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? 0x10 : 0) |
+            (KiteSurf_Allowed(player) ? 0x20 : 0) | (Player_InBlockingCsMode((PlayState*)state, player) ? 0x40 : 0);
     }
     ExtEquip_UpdateBehavior((Player*)actor, (PlayState*)state);
     NeiBottles_Project(state);
@@ -174,6 +174,6 @@ void NeiItems_PostUpdate(void* actor, void* state, const void* input) {
 }
 uint32_t NeiEquipment_Describe(char* out, uint32_t capacity) {
     int n = snprintf(out, capacity, "equipment: sword=%u shield=%u surf=%u lastR=0x%02X",
-        gExtEquipState.currentExtSword, gExtEquipState.currentExtShield, sKSurf.state, sLastSurfGate);
+                     gExtEquipState.currentExtSword, gExtEquipState.currentExtShield, sKSurf.state, sLastSurfGate);
     return n > 0 && (uint32_t)n < capacity ? (uint32_t)n : 0;
 }

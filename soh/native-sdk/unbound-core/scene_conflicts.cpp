@@ -51,7 +51,7 @@ struct Directory {
     uint64_t entries = 0;
     uint64_t size = 0;
     uint64_t offset = 0;
-    uint64_t endOffset = 0;  // onde o diretório central deveria terminar (registro final ou registro ZIP64)
+    uint64_t endOffset = 0; // onde o diretório central deveria terminar (registro final ou registro ZIP64)
 };
 
 // Posição do diretório central pelo registro final em `endOffset`. Campos saturados (0xFFFF/0xFFFFFFFF) são
@@ -179,7 +179,7 @@ bool SameValue(const Json& a, const Json& b) {
         }
         return true;
     }
-    return a == b;  // números inteiros e decimais comparam pelo valor
+    return a == b; // números inteiros e decimais comparam pelo valor
 }
 
 bool IsReplace(const Json& node) {
@@ -190,7 +190,7 @@ bool IsReplace(const Json& node) {
 // Índice das chaves de um objeto mesclado: ordered_json procura em ordem, então um objeto grande ganha um mapa
 // (sem ele, um objeto de 50 000 chaves custaria ~10^9 comparações por par de camadas).
 class ChildIndex {
-public:
+  public:
     explicit ChildIndex(const Json* node) : node_(node && node->is_object() ? node : nullptr) {
         if (node_ && node_->size() > 16) {
             map_.reserve(node_->size());
@@ -212,7 +212,7 @@ public:
         return it == node_->end() ? nullptr : &*it;
     }
 
-private:
+  private:
     const Json* node_;
     std::unordered_map<std::string_view, const Json*> map_;
 };
@@ -425,7 +425,7 @@ DocumentAnalysis AnalyzeDocument(const std::vector<LayerDocument>& layers, Merge
         Json doc = ParseJson(layer.json);
         if (doc.is_discarded() || !doc.is_object()) {
             analysis.notes.push_back(label + (directives ? ": JSON inválido; o jogo pula esta camada"
-                                                          : ": JSON inválido; o jogo recusa o registro inteiro"));
+                                                         : ": JSON inválido; o jogo recusa o registro inteiro"));
             continue;
         }
         if (directives) {

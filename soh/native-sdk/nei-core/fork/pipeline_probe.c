@@ -57,11 +57,12 @@ uint32_t NeiPipeline_Describe(char* out, uint32_t capacity) {
             camera = play->cameraPtrs[play->activeCamera]->setting;
         }
     }
-    int escrito = snprintf(out, capacity,
-                           "pipeline: visual=0x%X acao=%d segurando=%d item=%d arma=%d grupo=%d at=%d camera=%d bloq=%d fire=%u lanternHand=%u swing=%u",
-                           ativos, acao, segurando, item, arma, grupo, at, camera, bloqueado,
-                           gCustomItemState.lanternFireType, gCustomItemState.lanternEquipped,
-                           gCustomItemState.lanternSwinging);
+    int escrito =
+        snprintf(out, capacity,
+                 "pipeline: visual=0x%X acao=%d segurando=%d item=%d arma=%d grupo=%d at=%d camera=%d bloq=%d fire=%u "
+                 "lanternHand=%u swing=%u",
+                 ativos, acao, segurando, item, arma, grupo, at, camera, bloqueado, gCustomItemState.lanternFireType,
+                 gCustomItemState.lanternEquipped, gCustomItemState.lanternSwinging);
     if (escrito < 0 || (uint32_t)escrito >= capacity) {
         return 0;
     }

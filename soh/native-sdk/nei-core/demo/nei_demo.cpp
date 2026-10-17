@@ -131,12 +131,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Stats(void* user, const char*, uint32_t length
     uint32_t nameSize = 0;
     demo.nei->get_name(demo.item, LINKSPAN_OOT_LANGUAGE_ENGLISH, name, LINKSPAN_NEI_MAX_NAME, &nameSize);
     char text[320];
-    const int count = std::snprintf(
-        text, sizeof(text),
-        "item=0x%02X nome='%s' posse=%u nivel=%u qtd=%u/%u botao=C%u placement=%s gives=%u recusas=%u "
-        "recebidos=%u usos=%u coracoes=%u",
-        state.runtime_id, name, state.owned, state.level, state.count, state.max_count, state.button, demo.placement,
-        demo.gives, demo.giveRefused, demo.received, demo.uses, demo.hearts);
+    const int count =
+        std::snprintf(text, sizeof(text),
+                      "item=0x%02X nome='%s' posse=%u nivel=%u qtd=%u/%u botao=C%u placement=%s gives=%u recusas=%u "
+                      "recebidos=%u usos=%u coracoes=%u",
+                      state.runtime_id, name, state.owned, state.level, state.count, state.max_count, state.button,
+                      demo.placement, demo.gives, demo.giveRefused, demo.received, demo.uses, demo.hearts);
     if (count < 0 || static_cast<size_t>(count) >= sizeof(text)) {
         return SHIP_NATIVE_FAILURE;
     }
@@ -154,8 +154,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     }
     demo->engine = static_cast<const ShipOotEngineV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(ShipOotEngineV1)));
-    demo->nei = static_cast<const NeiItemsV1*>(runtime->get_service(
-        runtime->context, LINKSPAN_NEI_ITEMS_SERVICE, LINKSPAN_NEI_ITEMS_VERSION, sizeof(NeiItemsV1)));
+    demo->nei = static_cast<const NeiItemsV1*>(runtime->get_service(runtime->context, LINKSPAN_NEI_ITEMS_SERVICE,
+                                                                    LINKSPAN_NEI_ITEMS_VERSION, sizeof(NeiItemsV1)));
     demo->items = static_cast<const ShipOotItemsV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_ITEMS_SERVICE, LINKSPAN_OOT_ITEMS_VERSION, sizeof(ShipOotItemsV1)));
     if (!demo->engine || !demo->engine->layout_id || std::strcmp(demo->engine->layout_id, LINKSPAN_OOT_LAYOUT_ID) ||
@@ -181,9 +181,15 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     definition.user = demo;
     ShipNativeStatus status = demo->nei->define_item(&definition, &demo->item);
     if (status == SHIP_NATIVE_OK) {
-        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec), LINKSPAN_OOT_HOOK_PLAY_UPDATE,
-                                       LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotPlayHookV1),
-                                       SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_AFTER, 0, OnFrame, demo };
+        const ShipNativeHookSpec spec{ sizeof(ShipNativeHookSpec),
+                                       LINKSPAN_OOT_HOOK_PLAY_UPDATE,
+                                       LINKSPAN_OOT_HOOKS_VERSION,
+                                       sizeof(ShipOotPlayHookV1),
+                                       SHIP_NATIVE_HOOK_OBSERVE,
+                                       SHIP_NATIVE_HOOK_AFTER,
+                                       0,
+                                       OnFrame,
+                                       demo };
         uint64_t handle = 0;
         status = runtime->register_hook(runtime->context, &spec, &handle);
     }

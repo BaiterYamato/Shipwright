@@ -20,7 +20,7 @@
 void Select_SwitchBetterWarpMode(SelectContext* this, u8 isBetterWarpMode);
 void Sram_InitDebugSave(void);
 BetterSceneSelectEntry* LinkSpan_BuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, s32 vanillaCount,
-                                                        void (*loadFunc)(SelectContext*, s32), s32* count);
+                                                       void (*loadFunc)(SelectContext*, s32), s32* count);
 
 void Select_LoadTitle(SelectContext* this) {
     this->state.running = false;

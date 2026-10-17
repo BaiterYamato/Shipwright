@@ -128,7 +128,8 @@ bool ReadInteger(const Json& value, int64_t& output) {
         return false;
     }
     size_t start = (text[0] == '-' || text[0] == '+') ? 1 : 0;
-    const bool hex = text.size() > start + 2 && text[start] == '0' && (text[start + 1] == 'x' || text[start + 1] == 'X');
+    const bool hex =
+        text.size() > start + 2 && text[start] == '0' && (text[start + 1] == 'x' || text[start + 1] == 'X');
     const char* begin = text.c_str();
     char* end = nullptr;
     const long long parsed = std::strtoll(begin, &end, hex ? 16 : 10);
@@ -313,11 +314,10 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
         actorObject.reserve(vanilla.size());
         for (size_t i = 0; i < vanilla.size(); ++i) {
             const auto& actor = vanilla[i];
-            actorObject.emplace_back(std::to_string(i),
-                                     Json{ { "id", actor.id },
-                                           { "pos", { actor.pos[0], actor.pos[1], actor.pos[2] } },
-                                           { "rot", { actor.rot[0], actor.rot[1], actor.rot[2] } },
-                                           { "params", actor.params } });
+            actorObject.emplace_back(std::to_string(i), Json{ { "id", actor.id },
+                                                              { "pos", { actor.pos[0], actor.pos[1], actor.pos[2] } },
+                                                              { "rot", { actor.rot[0], actor.rot[1], actor.rot[2] } },
+                                                              { "params", actor.params } });
         }
         Json merged = Json{ { "$schema", ROOM_SCHEMA }, { "setups", { { setupKey, { { "actors", actors } } } } } };
         for (const auto& layer : layers) {
@@ -363,7 +363,8 @@ bool ApplyRoomActorLayers(const std::vector<RoomActor>& vanilla, int32_t setup,
                 continue;
             }
             RoomActor actor;
-            if (!ResolveRoomActorId(entry, resolveActor, actor.id, output.notes, "actors." + key)) continue;
+            if (!ResolveRoomActorId(entry, resolveActor, actor.id, output.notes, "actors." + key))
+                continue;
             ReadPosition(entry, "pos", actor.pos);
             ReadVector(entry, "rot", actor.rot);
             actor.params = ReadField(entry, "params");

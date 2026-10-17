@@ -33,12 +33,12 @@ bool ReadValue(const Json& value, const NeiSaveField& field, int64_t* signedValu
             return false;
         }
         const int64_t number = value.get<int64_t>();
-        const int64_t minimum = field.elementSize == 1 ? std::numeric_limits<int8_t>::min()
+        const int64_t minimum = field.elementSize == 1   ? std::numeric_limits<int8_t>::min()
                                 : field.elementSize == 2 ? std::numeric_limits<int16_t>::min()
-                                                        : std::numeric_limits<int32_t>::min();
-        const int64_t maximum = field.elementSize == 1 ? std::numeric_limits<int8_t>::max()
+                                                         : std::numeric_limits<int32_t>::min();
+        const int64_t maximum = field.elementSize == 1   ? std::numeric_limits<int8_t>::max()
                                 : field.elementSize == 2 ? std::numeric_limits<int16_t>::max()
-                                                        : std::numeric_limits<int32_t>::max();
+                                                         : std::numeric_limits<int32_t>::max();
         if (field.elementSize != 1 && field.elementSize != 2 && field.elementSize != 4 || number < minimum ||
             number > maximum) {
             return false;
@@ -52,7 +52,8 @@ bool ReadValue(const Json& value, const NeiSaveField& field, int64_t* signedValu
     if (value.is_number_integer() && value.get<int64_t>() < 0) {
         return false;
     }
-    const uint64_t number = value.is_number_unsigned() ? value.get<uint64_t>() : static_cast<uint64_t>(value.get<int64_t>());
+    const uint64_t number =
+        value.is_number_unsigned() ? value.get<uint64_t>() : static_cast<uint64_t>(value.get<int64_t>());
     if (number > MaxUnsigned(field.elementSize)) {
         return false;
     }
@@ -231,8 +232,7 @@ void ForkSave::OnSaving() {
     try {
         const std::string json = SerializeForTests();
         mSave->write(mSaveHandle, json.data(), static_cast<uint32_t>(json.size()));
-    } catch (...) {
-    }
+    } catch (...) {}
 }
 
 } // namespace LinkSpanNei

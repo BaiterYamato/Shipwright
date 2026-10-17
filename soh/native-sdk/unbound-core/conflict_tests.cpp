@@ -17,12 +17,12 @@ namespace fs = std::filesystem;
 
 int gFailures = 0;
 
-#define CHECK(expr)                                                                  \
-    do {                                                                             \
-        if (!(expr)) {                                                               \
-            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr);  \
-            ++gFailures;                                                             \
-        }                                                                            \
+#define CHECK(expr)                                                                 \
+    do {                                                                            \
+        if (!(expr)) {                                                              \
+            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr); \
+            ++gFailures;                                                            \
+        }                                                                           \
     } while (0)
 
 DocumentAnalysis Analyze(const std::vector<std::string>& jsons) {
@@ -93,7 +93,8 @@ void TestMerge() {
     }
 
     // Exemplos limitados, contagem inteira; comentário depois do '{' aceito; camada inválida vira nota.
-    r = Analyze({ R"({"a":1,"b":2,"c":3,"d":4,"e":5})", "{ // cópia completa\n\"a\":0,\"b\":0,\"c\":0,\"d\":0,\"e\":0}" });
+    r = Analyze(
+        { R"({"a":1,"b":2,"c":3,"d":4,"e":5})", "{ // cópia completa\n\"a\":0,\"b\":0,\"c\":0,\"d\":0,\"e\":0}" });
     CHECK(r.conflicts.size() == 1 && r.conflicts[0].lost == 5 && r.conflicts[0].keys.size() == kConflictKeyExamples);
     r = Analyze({ R"({"x":1})", "{quebrado", R"({"x":2})" });
     CHECK(r.notes.size() == 1 && r.conflicts.size() == 1);
@@ -113,7 +114,8 @@ DocumentAnalysis AnalyzeRegistry(const std::vector<std::string>& jsons) {
 
 void TestRegistry() {
     // Cenas diferentes no registro mesclam; comentário antes do '{' vale no registro.
-    auto r = AnalyzeRegistry({ R"({"mod/a":{"scene":"scenes/a"}})", "// registro\n{\"mod/b\":{\"scene\":\"scenes/b\"}}" });
+    auto r =
+        AnalyzeRegistry({ R"({"mod/a":{"scene":"scenes/a"}})", "// registro\n{\"mod/b\":{\"scene\":\"scenes/b\"}}" });
     CHECK(r.conflicts.empty() && r.notes.empty());
     // A mesma cena com outro caminho conflita.
     r = AnalyzeRegistry({ R"({"mod/a":{"scene":"scenes/a"}})", R"({"mod/a":{"scene":"scenes/outra"}})" });
@@ -141,10 +143,14 @@ void TestOtherRules() {
     // Texto: comentário antes do '{' vale (BuildTextTable não é estrito); mensagens diferentes mesclam e a mesma
     // mensagem com outro texto conflita.
     files = { { "A", R"({"messages":{"4096":{"text":"a"}}})", 0 },
-              { "B", "// pt\n" R"({"messages":{"4097":{"text":"b"}}})", 0 } };
+              { "B",
+                "// pt\n"
+                R"({"messages":{"4097":{"text":"b"}}})",
+                0 } };
     r = AnalyzeDocument(files, MergeRule::Text);
     CHECK(r.notes.empty() && r.conflicts.empty());
-    files = { { "A", R"({"messages":{"4096":{"text":"a"}}})", 0 }, { "B", R"({"messages":{"4096":{"text":"b"}}})", 0 } };
+    files = { { "A", R"({"messages":{"4096":{"text":"a"}}})", 0 },
+              { "B", R"({"messages":{"4096":{"text":"b"}}})", 0 } };
     r = AnalyzeDocument(files, MergeRule::Text);
     CHECK(r.conflicts.size() == 1 && r.conflicts[0].keys == std::vector<std::string>{ "messages.4096.text" });
 }
@@ -165,7 +171,8 @@ void TestPaths() {
     CHECK(RuleFor("text/eng/messages.json", untyped) == MergeRule::Text);
     CHECK(RuleFor("custom/templo.json", typed) == MergeRule::Scene);
     CHECK(RuleFor("scenes/spot04/scene.json", untyped) == MergeRule::WholeFile);
-    // O carregador tipa pelo conteúdo ('{' + $schema), sem olhar extensão; binário e texto de outro arquivo são inteiros.
+    // O carregador tipa pelo conteúdo ('{' + $schema), sem olhar extensão; binário e texto de outro arquivo são
+    // inteiros.
     CHECK(RuleFor("scenes/templo/scene", typed) == MergeRule::Scene);
     const std::vector<LayerDocument> binary = { { "a", std::string("\x01\x02{\"$schema\":\"unbound/scene/1\"}"), 0 } };
     CHECK(RuleFor("scenes/shared/spot04_scene/dl", binary) == MergeRule::WholeFile);
@@ -188,7 +195,8 @@ void TestZip() {
     std::vector<std::string> names;
     std::string error;
     CHECK(ListZipNames(zip, names, error));
-    CHECK((names == std::vector<std::string>{ "unbound.json", "scenes/spot04/scene.json", "scenes/spot04/rooms/0.json" }));
+    CHECK((names ==
+           std::vector<std::string>{ "unbound.json", "scenes/spot04/scene.json", "scenes/spot04/rooms/0.json" }));
 
     // Comentário no fim do ZIP: o registro final continua achado.
     std::string commented = zip;
@@ -255,7 +263,7 @@ std::vector<ConvertedFile> ZipFiles() {
 const std::vector<std::string> kZipNames = { "unbound.json", "scenes/spot04/scene.json", "scenes/spot04/rooms/0.json" };
 
 std::string ZipComment(std::string zip, const std::string& comment) {
-    ZipSet(zip, zip.size() - 2, comment.size(), 2);  // BuildStoredZip grava o registro final sem comentário
+    ZipSet(zip, zip.size() - 2, comment.size(), 2); // BuildStoredZip grava o registro final sem comentário
     return zip + comment;
 }
 
@@ -274,8 +282,8 @@ std::string FakeEnd(uint16_t entries, uint32_t size, uint32_t offset) {
 
 void TestReviewMerge() {
     // $order é array: outra ordem perde a folha inteira, mesmo que a ordem final calculada coincida.
-    auto r = Analyze({ R"({"actors":{"$order":["a","b"],"a":{"id":1},"b":{"id":2}}})",
-                       R"({"actors":{"$order":["b","a"]}})" });
+    auto r = Analyze(
+        { R"({"actors":{"$order":["a","b"],"a":{"id":1},"b":{"id":2}}})", R"({"actors":{"$order":["b","a"]}})" });
     CHECK(r.conflicts.size() == 1 && r.conflicts[0].lost == 1 &&
           r.conflicts[0].keys == std::vector<std::string>{ "actors.$order" });
     r = Analyze({ R"({"actors":{"$order":["a"],"a":{}}})", R"({"actors":{"$order":["a"],"b":{}}})" });

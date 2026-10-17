@@ -25,7 +25,6 @@
 
 namespace mmsfx {
 
-
 void AudioPlayback_NoteSetResamplingRate(NoteSampleState* sampleState, f32 resamplingRateInput);
 void AudioPlayback_AudioListPushFront(AudioListItem* list, AudioListItem* item);
 void AudioPlayback_NoteInitForLayer(Note* note, SequenceLayer* layer);

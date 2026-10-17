@@ -211,11 +211,12 @@ void EnCrow_SetupRespawn(EnCrow* this) {
     if (sDeathCount == 10) {
         this->actor.params = 1;
         sDeathCount = 0;
-        this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
-            sJntSphInit.elements[0].dim.modelSphere.radius * 0.03f * 100.0f);
+        this->collider.elements[0].dim.worldSphere.radius =
+            LinkSpan_S16F(sJntSphInit.elements[0].dim.modelSphere.radius * 0.03f * 100.0f);
     } else {
         this->actor.params = 0;
-        this->collider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(sJntSphInit.elements[0].dim.modelSphere.radius);
+        this->collider.elements[0].dim.worldSphere.radius =
+            LinkSpan_S16F(sJntSphInit.elements[0].dim.modelSphere.radius);
     }
 
     Animation_PlayLoop(&this->skelAnime, &gGuayFlyAnim);

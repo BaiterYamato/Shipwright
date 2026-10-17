@@ -29,8 +29,9 @@ extern "C" void NeiActor_Unload(int dryRun);
 extern "C" void NeiBottles_Project(void* state);
 
 extern "C" uint64_t NeiInventory_Milliseconds(void) {
-    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count());
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+            .count());
 }
 
 namespace LinkSpanNei {
@@ -75,12 +76,11 @@ struct ForkState {
 ForkState gFork;
 
 extern "C" uint16_t NeiInventory_PadButtons(void) {
-    if (!gFork.movement || !gFork.movement->has_gamepad(0)) return 0;
+    if (!gFork.movement || !gFork.movement->has_gamepad(0))
+        return 0;
     const uint32_t buttons = gFork.movement->get_gamepad_buttons(0);
-    return ((buttons & (1u << 11)) ? BTN_DUP : 0) |
-           ((buttons & (1u << 12)) ? BTN_DDOWN : 0) |
-           ((buttons & (1u << 13)) ? BTN_DLEFT : 0) |
-           ((buttons & (1u << 14)) ? BTN_DRIGHT : 0);
+    return ((buttons & (1u << 11)) ? BTN_DUP : 0) | ((buttons & (1u << 12)) ? BTN_DDOWN : 0) |
+           ((buttons & (1u << 13)) ? BTN_DLEFT : 0) | ((buttons & (1u << 14)) ? BTN_DRIGHT : 0);
 }
 
 // DMR gives ordinary sword attacks priority over shielding. Four Sword charge
@@ -98,11 +98,12 @@ void FilterEquipmentInput(Input* input) {
         return;
     }
     gFork.originalInput(input);
-    if (input) gFork.frameInput = *input;
+    if (input)
+        gFork.frameInput = *input;
 }
 
 extern "C" void NeiLantern_UpdateLight(float x, float y, float z, uint8_t r, uint8_t g, uint8_t b, int16_t radius) {
-    const ShipOotPointLightV1 light{ sizeof(light), {x, y, z}, radius, {r, g, b}, 0 };
+    const ShipOotPointLightV1 light{ sizeof(light), { x, y, z }, radius, { r, g, b }, 0 };
     gFork.lanternLight.Set(light);
 }
 
@@ -153,7 +154,8 @@ void PlayerRipple(PlayState* play, s32 type, s32 priority, void* initParams) {
         const auto* ripple = static_cast<const EffectSsGRippleInitParams*>(initParams);
         if (ripple->radius == 100 && ripple->radiusMax == 500 &&
             (ripple->life == 0 || ripple->life == 4 || ripple->life == 8) &&
-            NeiVisual_SuppressRipple(play, &ripple->pos)) return;
+            NeiVisual_SuppressRipple(play, &ripple->pos))
+            return;
     }
     gFork.originalRipple(play, type, priority, initParams);
 }
@@ -384,15 +386,15 @@ const ForkItem* FindItem(const std::string& query) {
 } // namespace
 
 void RefreshForkInventory() {
-    if (gFork.active) SyncInventory();
+    if (gFork.active)
+        SyncInventory();
 }
 
 void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     gFork = ForkState{};
     gFork.runtime = runtime;
     gFork.movement = static_cast<const ShipOotMovementV2*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2,
-        sizeof(ShipOotMovementV2)));
+        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2, sizeof(ShipOotMovementV2)));
     if (gFork.movement && (!gFork.movement->has_gamepad || !gFork.movement->get_gamepad_buttons))
         gFork.movement = nullptr;
     gFork.registry = registry;
@@ -409,8 +411,8 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     gFork.resolved = true;
     const auto* lights = static_cast<const ShipOotLightsV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_LIGHTS_SERVICE, LINKSPAN_OOT_LIGHTS_VERSION, sizeof(ShipOotLightsV1)));
-    if (!lights || !lights->create_point_light || !lights->update_point_light ||
-        !lights->destroy_point_light || !lights->get_point_light_info) {
+    if (!lights || !lights->create_point_light || !lights->update_point_light || !lights->destroy_point_light ||
+        !lights->get_point_light_info) {
         gFork.status = "disabled: host has no point-light service";
         return;
     }
@@ -439,7 +441,7 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     uintptr_t inputTarget = 0;
     if (runtime->resolve_symbol(runtime->context, "LinkSpan_FilterPlayerInput", &inputTarget) != SHIP_NATIVE_OK ||
         runtime->install_patch(runtime->context, inputTarget, reinterpret_cast<void*>(FilterEquipmentInput),
-            reinterpret_cast<void**>(&gFork.originalInput), &gFork.inputPatch) != SHIP_NATIVE_OK) {
+                               reinterpret_cast<void**>(&gFork.originalInput), &gFork.inputPatch) != SHIP_NATIVE_OK) {
         StopFork();
         gFork.status = "disabled: equipment input detour rejected";
         return;
@@ -449,7 +451,7 @@ void StartFork(const ShipNativeRuntime* runtime, Registry* registry) {
     uintptr_t rippleTarget = 0;
     if (runtime->resolve_symbol(runtime->context, "EffectSs_Spawn", &rippleTarget) != SHIP_NATIVE_OK ||
         runtime->install_patch(runtime->context, rippleTarget, reinterpret_cast<void*>(PlayerRipple),
-            reinterpret_cast<void**>(&gFork.originalRipple), &gFork.ripplePatch) != SHIP_NATIVE_OK) {
+                               reinterpret_cast<void**>(&gFork.originalRipple), &gFork.ripplePatch) != SHIP_NATIVE_OK) {
         StopFork();
         gFork.status = "disabled: frozen-water ripple detour rejected";
         return;
@@ -480,8 +482,10 @@ void StopFork() {
     StopKaleido();
     StopOverlays();
     if (gFork.runtime && gFork.runtime->remove_patch) {
-        if (gFork.ripplePatch) gFork.runtime->remove_patch(gFork.runtime->context, gFork.ripplePatch);
-        if (gFork.inputPatch) gFork.runtime->remove_patch(gFork.runtime->context, gFork.inputPatch);
+        if (gFork.ripplePatch)
+            gFork.runtime->remove_patch(gFork.runtime->context, gFork.ripplePatch);
+        if (gFork.inputPatch)
+            gFork.runtime->remove_patch(gFork.runtime->context, gFork.inputPatch);
         if (gFork.drawPatch) {
             gFork.runtime->remove_patch(gFork.runtime->context, gFork.drawPatch);
         }
@@ -518,7 +522,8 @@ std::string ForkLightStatus() {
     char status[160];
     std::snprintf(status, sizeof(status), "lantern: light=%u radius=%d rgb=%u,%u,%u pos=%.1f,%.1f,%.1f",
                   unsigned(gFork.lanternLight.Active()), int(light.radius), unsigned(light.color[0]),
-                  unsigned(light.color[1]), unsigned(light.color[2]), light.position[0], light.position[1], light.position[2]);
+                  unsigned(light.color[1]), unsigned(light.color[2]), light.position[0], light.position[1],
+                  light.position[2]);
     return status;
 }
 

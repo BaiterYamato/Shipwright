@@ -266,9 +266,10 @@ void EnBombf_Explode(EnBombf* this, PlayState* play) {
         Rumble_Request(this->actor.xzDistToPlayer, 0xFF, 0x14, 0x96);
     }
 
-    this->explosionCollider.elements[0].dim.modelSphere.radius = LinkSpan_S16F(this->explosionCollider.elements[0].dim.modelSphere.radius + (8));
-    this->explosionCollider.elements[0].dim.worldSphere.radius = LinkSpan_S16F(
-        this->explosionCollider.elements[0].dim.modelSphere.radius);
+    this->explosionCollider.elements[0].dim.modelSphere.radius =
+        LinkSpan_S16F(this->explosionCollider.elements[0].dim.modelSphere.radius + (8));
+    this->explosionCollider.elements[0].dim.worldSphere.radius =
+        LinkSpan_S16F(this->explosionCollider.elements[0].dim.modelSphere.radius);
 
     if (this->actor.params == BOMBFLOWER_EXPLOSION) {
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->explosionCollider.base);

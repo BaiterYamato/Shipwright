@@ -30,27 +30,27 @@ std::string ArchiveLabel(const std::string& archive);
 
 // A regra que o jogo aplica ao caminho, para a comparação ver o mesmo resultado.
 enum class MergeRule {
-    Scene,      // JSON tipado pelo conteúdo ('{' + $schema "unbound/..."): MergeLayers estrito e MergeJson
-    Registry,   // unbound/scenes.json: MergeSchemaFreeDocuments (comentários, null remove, sem $replace)
-    Text,       // text/<lang>/messages.json: BuildTextTable (MergeJson, sem exigir '{' no primeiro byte)
-    WholeFile,  // o resto: o VFS entrega o arquivo da camada mais alta, sem merge
+    Scene,     // JSON tipado pelo conteúdo ('{' + $schema "unbound/..."): MergeLayers estrito e MergeJson
+    Registry,  // unbound/scenes.json: MergeSchemaFreeDocuments (comentários, null remove, sem $replace)
+    Text,      // text/<lang>/messages.json: BuildTextTable (MergeJson, sem exigir '{' no primeiro byte)
+    WholeFile, // o resto: o VFS entrega o arquivo da camada mais alta, sem merge
 };
 // `layers`: todas as camadas do caminho (base incluída), para achar o $schema que tipa o documento.
 MergeRule RuleFor(const std::string& path, const std::vector<LayerDocument>& layers);
 
 struct LayerConflict {
-    std::string lower;              // archive da camada que perde
-    std::string upper;              // archive que vence (montado depois)
-    size_t lost = 0;                // folhas da camada de baixo que não sobrevivem ao merge (1 no arquivo inteiro)
-    std::vector<std::string> keys;  // até kConflictKeyExamples caminhos, "setups.0.actors.a.pos"
-    bool wholeFile = false;         // o arquivo de baixo some inteiro (MergeRule::WholeFile)
+    std::string lower;             // archive da camada que perde
+    std::string upper;             // archive que vence (montado depois)
+    size_t lost = 0;               // folhas da camada de baixo que não sobrevivem ao merge (1 no arquivo inteiro)
+    std::vector<std::string> keys; // até kConflictKeyExamples caminhos, "setups.0.actors.a.pos"
+    bool wholeFile = false;        // o arquivo de baixo some inteiro (MergeRule::WholeFile)
 };
 
 struct DocumentAnalysis {
-    std::vector<LayerConflict> conflicts;  // um por par (baixo, cima) com perda
-    std::vector<std::string> notes;        // camadas ilegíveis, puladas da comparação
-    bool identical = false;                // WholeFile: todas as camadas de mod com o mesmo conteúdo
-    size_t compared = 0;                   // camadas que entraram na comparação (menos de 2: nada foi comparado)
+    std::vector<LayerConflict> conflicts; // um por par (baixo, cima) com perda
+    std::vector<std::string> notes;       // camadas ilegíveis, puladas da comparação
+    bool identical = false;               // WholeFile: todas as camadas de mod com o mesmo conteúdo
+    size_t compared = 0;                  // camadas que entraram na comparação (menos de 2: nada foi comparado)
 };
 
 // `layers`: só as camadas de mod de um caminho, da menor para a maior prioridade (a base fica de fora).

@@ -76,6 +76,6 @@ const std::string& PendingOotHorseSceneSnapshotName();
 bool ResolveOotHorseSceneSnapshotName(int32_t& sceneId);
 // Anexa cenas registradas à lista Better Debug Warp sem manter política de mod no menu C.
 BetterSceneSelectEntry* OotBuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, int32_t vanillaCount,
-                                                  void (*loadFunc)(SelectContext*, int32_t), int32_t& count);
+                                                 void (*loadFunc)(SelectContext*, int32_t), int32_t& count);
 
 } // namespace ShipLuaHost

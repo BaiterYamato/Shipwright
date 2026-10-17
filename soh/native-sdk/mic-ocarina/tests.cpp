@@ -59,10 +59,10 @@ int main() {
 
     // Padrões como o host 78dc6d970 entrega: índices de botão A, C-baixo, C-direita, C-esquerda e C-cima.
     const MicOcarina::SongPattern ootSongs[] = {
-        { 0, 6, { 0, 4, 3, 2, 3, 2 } },  { 1, 8, { 1, 0, 1, 0, 2, 1, 2, 1 } }, { 2, 5, { 0, 1, 2, 2, 3 } },
-        { 3, 6, { 0, 1, 0, 2, 1, 0 } },  { 4, 7, { 3, 2, 2, 0, 3, 2, 1 } },    { 5, 6, { 4, 2, 4, 2, 3, 4 } },
-        { 6, 6, { 1, 2, 3, 1, 2, 3 } },  { 7, 6, { 4, 3, 2, 4, 3, 2 } },       { 8, 6, { 3, 4, 2, 3, 4, 2 } },
-        { 9, 6, { 2, 1, 4, 2, 1, 4 } },  { 10, 6, { 2, 0, 1, 2, 0, 1 } },      { 11, 6, { 0, 1, 4, 0, 1, 4 } },
+        { 0, 6, { 0, 4, 3, 2, 3, 2 } }, { 1, 8, { 1, 0, 1, 0, 2, 1, 2, 1 } }, { 2, 5, { 0, 1, 2, 2, 3 } },
+        { 3, 6, { 0, 1, 0, 2, 1, 0 } }, { 4, 7, { 3, 2, 2, 0, 3, 2, 1 } },    { 5, 6, { 4, 2, 4, 2, 3, 4 } },
+        { 6, 6, { 1, 2, 3, 1, 2, 3 } }, { 7, 6, { 4, 3, 2, 4, 3, 2 } },       { 8, 6, { 3, 4, 2, 3, 4, 2 } },
+        { 9, 6, { 2, 1, 4, 2, 1, 4 } }, { 10, 6, { 2, 0, 1, 2, 0, 1 } },      { 11, 6, { 0, 1, 4, 0, 1, 4 } },
     };
 
     // Zelda's Lullaby cantarolada no teste de 14/09 (telemetria do Mic de diagnóstico): os dois Lá saíram
@@ -72,8 +72,7 @@ int main() {
     Check(lullaby.song == 8 && MicOcarina::IsConfident(lullaby, 120.0f, 40.0f),
           "nota partida por vibrato não deve impedir a Zelda's Lullaby");
 
-    const float lullabyBothSplit[] = { -1992.0f, -1744.0f, -2277.0f, -2200.0f,
-                                       -1995.0f, -1740.0f, -2374.0f, -2322.0f };
+    const float lullabyBothSplit[] = { -1992.0f, -1744.0f, -2277.0f, -2200.0f, -1995.0f, -1740.0f, -2374.0f, -2322.0f };
     const auto lullabyFull = MicOcarina::RankSuffixes(lullabyBothSplit, 8, ootSongs, 12, 0x07FF);
     Check(lullabyFull.song == 8 && MicOcarina::IsConfident(lullabyFull, 120.0f, 40.0f),
           "as duas notas partidas da Zelda's Lullaby devem ser juntadas");

@@ -39,7 +39,9 @@ constexpr uint8_t SDL_AXIS_ZL = 4;
 // ZR (SDL_CONTROLLER_AXIS_TRIGGERRIGHT): usa o item do botão C equipado.
 constexpr uint8_t SDL_AXIS_ZR = 5;
 constexpr int16_t ZR_HELD = 8000;
-constexpr uint32_t PhysicalButton(uint8_t button) { return uint32_t{ 1 } << button; }
+constexpr uint32_t PhysicalButton(uint8_t button) {
+    return uint32_t{ 1 } << button;
+}
 constexpr const char* FREE_LOOK_SETTING = "gSettings.FreeLook.Enabled";
 // Sem a chave na config, o SoH usa o eixo vertical invertido (z_camera.c, Camera_FreeLook).
 constexpr const char* FREE_LOOK_INVERT_Y_SETTING = "gSettings.FreeLook.InvertYAxis";
@@ -166,7 +168,8 @@ enum class CameraChange { None, FreeLook, Automatic };
 int ReadMenuStep(const Mod& mod, int8_t& latch) {
     const int x = mod.movement->get_right_stick_x(0);
     if (latch != 0) {
-        if (x > -MENU_STICK_RELEASE && x < MENU_STICK_RELEASE) latch = 0;
+        if (x > -MENU_STICK_RELEASE && x < MENU_STICK_RELEASE)
+            latch = 0;
         return 0;
     }
     if (x >= MENU_STICK_PRESS) {
@@ -192,7 +195,8 @@ void SuspendCamera(Mod& mod, PlayState* play) {
     if (mod.cameraFreeLookActive && mod.movement->set_setting_int(FREE_LOOK_SETTING, 0) == SHIP_NATIVE_OK) {
         mod.cameraFreeLookActive = false;
     }
-    if (play && !mod.cameraFreeLookActive) play->manualCamera = false;
+    if (play && !mod.cameraFreeLookActive)
+        play->manualCamera = false;
 }
 
 CameraChange UpdateCamera(Mod& mod, PlayState* play, bool stickBusy) {
@@ -218,7 +222,8 @@ CameraChange UpdateCamera(Mod& mod, PlayState* play, bool stickBusy) {
         return CameraChange::None;
     }
     if (mod.cameraWaitCenter) {
-        if (stickActive) return CameraChange::None;
+        if (stickActive)
+            return CameraChange::None;
         mod.cameraWaitCenter = false;
         mod.lastCameraInput = now;
     }
@@ -226,7 +231,8 @@ CameraChange UpdateCamera(Mod& mod, PlayState* play, bool stickBusy) {
         mod.lastCameraInput = now;
         if (!mod.cameraFreeLookActive || !play->manualCamera) {
             // Without the host's conversion (other executable), enable free look unsynced, as before 0.2.14.
-            if ((!mod.cameraGeometry || ResumeCameraFromView(*play, *play->cameraPtrs[CAM_ID_MAIN], mod.cameraGeometry)) &&
+            if ((!mod.cameraGeometry ||
+                 ResumeCameraFromView(*play, *play->cameraPtrs[CAM_ID_MAIN], mod.cameraGeometry)) &&
                 mod.movement->set_setting_int(FREE_LOOK_SETTING, 1) == SHIP_NATIVE_OK) {
                 mod.cameraFreeLookActive = true;
                 return CameraChange::FreeLook;
@@ -269,15 +275,15 @@ const char* UpdateShortcut(Mod& mod, const Player& player, uint32_t physical) {
             mod.shortcutHoldFired = true;
             // Máscara em uso: qualquer item de máscara a tira, como o botão C nativo.
             const uint8_t mask = player.currentMask != PLAYER_MASK_NONE
-                ? static_cast<uint8_t>(ITEM_MASK_KEATON + player.currentMask - PLAYER_MASK_KEATON)
-                : save->inventory.items[SLOT_TRADE_CHILD];
+                                     ? static_cast<uint8_t>(ITEM_MASK_KEATON + player.currentMask - PLAYER_MASK_KEATON)
+                                     : save->inventory.items[SLOT_TRADE_CHILD];
             result = mod.movement->player_use_item_shortcut(mask) != SHIP_NATIVE_OK ? "mask-blocked"
-                     : player.currentMask != PLAYER_MASK_NONE                      ? "mask-on"
+                     : player.currentMask != PLAYER_MASK_NONE                       ? "mask-on"
                                                                                     : "mask-off";
         } else if (!down && mod.shortcutWasDown && !mod.shortcutHoldFired) {
             result = mod.movement->player_use_item_shortcut(ITEM_LENS) != SHIP_NATIVE_OK ? "lens-blocked"
-                     : play->actorCtx.lensActive                                           ? "lens-on"
-                                                                                           : "lens-off";
+                     : play->actorCtx.lensActive                                         ? "lens-on"
+                                                                                         : "lens-off";
         }
     }
     mod.shortcutWasDown = down;
@@ -305,7 +311,8 @@ bool HostSupports(const Mod& mod, int32_t feature) {
 // Só o botão C equipado no ZR aparece no HUD. O host oculta os outros só em memória: nada vai
 // para a config, e um host sem o recurso mantém os três botões visíveis.
 void ApplyItemHud(Mod& mod) {
-    if (!HostSupports(mod, TRANSIENT_HIDE_ITEM_BUTTONS)) return;
+    if (!HostSupports(mod, TRANSIENT_HIDE_ITEM_BUTTONS))
+        return;
     for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
         mod.movement->set_setting_int(HIDDEN_ITEM_BUTTON_SETTINGS[button], button == mod.selectedItemButton ? 0 : 1);
     }
@@ -313,7 +320,8 @@ void ApplyItemHud(Mod& mod) {
 }
 
 void RestoreItemHud(Mod& mod) {
-    if (!mod.itemHudApplied) return;
+    if (!mod.itemHudApplied)
+        return;
     for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
         mod.movement->set_setting_int(HIDDEN_ITEM_BUTTON_SETTINGS[button], 0);
     }
@@ -328,8 +336,9 @@ ShipNativeStatus ApplyNintendoBindings(Mod& mod) {
     // pressionado, o host baixa o escudo para a espada sair. "−" é o L do N64 e o L físico
     // fica livre. R3, R e o resto do D-pad (ocarina, traje e botas) são lidos
     // fisicamente, sem botão virtual.
-    const uint16_t remappedButtons[] = { BTN_A, BTN_B, BTN_CUP, BTN_DRIGHT, BTN_R, BTN_L,
-                                         BTN_DUP, BTN_DDOWN, BTN_DLEFT };
+    const uint16_t remappedButtons[] = {
+        BTN_A, BTN_B, BTN_CUP, BTN_DRIGHT, BTN_R, BTN_L, BTN_DUP, BTN_DDOWN, BTN_DLEFT
+    };
     for (const uint16_t button : remappedButtons) {
         if (mod.movement->clear_gamepad_button_bindings(0, button) != SHIP_NATIVE_OK) {
             mod.movement->reload_gamepad_mappings(0);
@@ -369,7 +378,8 @@ bool HasItem(const SaveContext& save, uint8_t button) {
 
 uint8_t FirstItemButton(const SaveContext& save) {
     for (uint8_t button = LINKSPAN_OOT_ITEM_BUTTON_C_LEFT; button <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT; ++button) {
-        if (HasItem(save, button)) return button;
+        if (HasItem(save, button))
+            return button;
     }
     return 0;
 }
@@ -379,7 +389,8 @@ uint8_t StepItemButton(uint8_t current, int direction, const SaveContext& save) 
     for (int candidate = current + direction;
          candidate >= LINKSPAN_OOT_ITEM_BUTTON_C_LEFT && candidate <= LINKSPAN_OOT_ITEM_BUTTON_C_RIGHT;
          candidate += direction) {
-        if (HasItem(save, static_cast<uint8_t>(candidate))) return static_cast<uint8_t>(candidate);
+        if (HasItem(save, static_cast<uint8_t>(candidate)))
+            return static_cast<uint8_t>(candidate);
     }
     return current;
 }
@@ -412,23 +423,26 @@ const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
         return nullptr;
     }
     if (pressed) {
-        const uint8_t start =
-            HasItem(*save, mod.selectedItemButton) ? mod.selectedItemButton : FirstItemButton(*save);
-        if (!start) return "item-menu-empty";
+        const uint8_t start = HasItem(*save, mod.selectedItemButton) ? mod.selectedItemButton : FirstItemButton(*save);
+        if (!start)
+            return "item-menu-empty";
         mod.itemMenu = ItemMenu{ true, start, {} };
         return "item-menu";
     }
-    if (!mod.itemMenu.open) return nullptr;
+    if (!mod.itemMenu.open)
+        return nullptr;
     if (down) {
-        const bool next = (physical & (PhysicalButton(SDL_BUTTON_DPAD_RIGHT) |
-                                      PhysicalButton(SDL_BUTTON_DPAD_UP))) != 0;
-        const bool previous = (physical & (PhysicalButton(SDL_BUTTON_DPAD_LEFT) |
-                                          PhysicalButton(SDL_BUTTON_DPAD_DOWN))) != 0;
+        const bool next =
+            (physical & (PhysicalButton(SDL_BUTTON_DPAD_RIGHT) | PhysicalButton(SDL_BUTTON_DPAD_UP))) != 0;
+        const bool previous =
+            (physical & (PhysicalButton(SDL_BUTTON_DPAD_LEFT) | PhysicalButton(SDL_BUTTON_DPAD_DOWN))) != 0;
         const int leftX = mod.menuInputCaptured ? mod.menuLeftX : mod.movement->get_stick_x(0);
         const int rightX = mod.menuInputCaptured ? mod.menuRightX : mod.movement->get_right_stick_x(0);
         mod.menuInputCaptured = false;
         if (const int step = LinkSpanMenuStep(&mod.itemMenu.navigation, leftX, rightX,
-                next == previous ? 0 : next ? 1 : -1)) {
+                                              next == previous ? 0
+                                              : next           ? 1
+                                                               : -1)) {
             mod.itemMenu.highlight = StepItemButton(mod.itemMenu.highlight, step, *save);
         }
         return nullptr;
@@ -436,8 +450,10 @@ const char* UpdateItemSelection(Mod& mod, uint32_t physical) {
     mod.itemMenu.open = false;
     mod.menuInputCaptured = false;
     const uint8_t target = mod.itemMenu.highlight;
-    if (!released || target == mod.selectedItemButton) return nullptr;
-    if (mod.movement->get_gamepad_axis(0, SDL_AXIS_ZR) > ZR_HELD) return "item-zr-held";
+    if (!released || target == mod.selectedItemButton)
+        return nullptr;
+    if (mod.movement->get_gamepad_axis(0, SDL_AXIS_ZR) > ZR_HELD)
+        return "item-zr-held";
     if (BindItemTrigger(mod, target) != SHIP_NATIVE_OK) {
         mod.movement->reload_gamepad_mappings(0);
         mod.faceBindingsApplied = false;
@@ -455,11 +471,12 @@ ShipNativeStatus SHIP_NATIVE_CALL CaptureItemMenuInput(void* user, const ShipNat
     auto* play = static_cast<PlayState*>(static_cast<ShipOotPlayHookV1*>(call->payload)->play_state);
     const auto* player = static_cast<const Player*>(mod.engine->get_player());
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (!play || !player || !save || play->pauseCtx.state ||
-        (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) || !mod.movement->has_gamepad(0))
+    if (!play || !player || !save || play->pauseCtx.state || (player->stateFlags2 & PLAYER_STATE2_OCARINA_PLAYING) ||
+        !mod.movement->has_gamepad(0))
         return SHIP_NATIVE_OK;
     const bool rHeld = (mod.movement->get_gamepad_buttons(0) & PhysicalButton(SDL_BUTTON_R)) != 0;
-    if (!mod.itemMenu.open && (!rHeld || !FirstItemButton(*save))) return SHIP_NATIVE_OK;
+    if (!mod.itemMenu.open && (!rHeld || !FirstItemButton(*save)))
+        return SHIP_NATIVE_OK;
     Input& input = play->state.input[0];
     mod.menuLeftX = input.rel.stick_x;
     mod.menuRightX = input.rel.right_stick_x;
@@ -482,9 +499,11 @@ const char* UpdateOcarina(Mod& mod, uint32_t physical) {
     const bool pressed = down && !mod.ocarinaWasDown;
     mod.ocarinaWasDown = down;
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (!pressed || !save) return nullptr;
+    if (!pressed || !save)
+        return nullptr;
     const uint8_t ocarina = save->inventory.items[SLOT_OCARINA];
-    if (ocarina != ITEM_OCARINA_FAIRY && ocarina != ITEM_OCARINA_TIME) return "ocarina-blocked";
+    if (ocarina != ITEM_OCARINA_FAIRY && ocarina != ITEM_OCARINA_TIME)
+        return "ocarina-blocked";
     return mod.movement->player_use_item_shortcut(ocarina) == SHIP_NATIVE_OK ? "ocarina" : "ocarina-blocked";
 }
 
@@ -495,7 +514,8 @@ uint8_t CurrentEquip(const SaveContext& save, uint8_t type) {
 // Obtido (inventory.equipment) e permitido pela idade: Goron, Zora, ferro e flutuantes são
 // de adulto (gEquipAgeReqs), salvo TimelessEquipment. O host confere de novo ao equipar.
 bool EquipAvailable(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t value) {
-    if (value < 1 || value > 3 || !(save.inventory.equipment & (1u << (4 * type + value - 1)))) return false;
+    if (value < 1 || value > 3 || !(save.inventory.equipment & (1u << (4 * type + value - 1))))
+        return false;
     return value == 1 || save.linkAge == LINK_AGE_ADULT ||
            mod.movement->get_setting_int("gCheats.TimelessEquipment", 0) != 0;
 }
@@ -503,7 +523,8 @@ bool EquipAvailable(const Mod& mod, const SaveContext& save, uint8_t type, uint8
 uint8_t NextEquip(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t from) {
     for (uint8_t step = 1; step <= 3; ++step) {
         const uint8_t candidate = static_cast<uint8_t>((from + 2 + step) % 3 + 1);
-        if (EquipAvailable(mod, save, type, candidate)) return candidate;
+        if (EquipAvailable(mod, save, type, candidate))
+            return candidate;
     }
     return from;
 }
@@ -511,7 +532,8 @@ uint8_t NextEquip(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t
 // Próximo equipamento disponível na direção pedida, na ordem dos ícones (1..3), sem dar a volta.
 uint8_t StepEquip(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t from, int direction) {
     for (int candidate = from + direction; candidate >= 1 && candidate <= 3; candidate += direction) {
-        if (EquipAvailable(mod, save, type, static_cast<uint8_t>(candidate))) return static_cast<uint8_t>(candidate);
+        if (EquipAvailable(mod, save, type, static_cast<uint8_t>(candidate)))
+            return static_cast<uint8_t>(candidate);
     }
     return from;
 }
@@ -520,8 +542,10 @@ uint8_t StepEquip(const Mod& mod, const SaveContext& save, uint8_t type, uint8_t
 // vai do Kokiri para o primeiro especial disponível.
 uint8_t TapTarget(const Mod& mod, const SaveContext& save, uint8_t type, const EquipGesture& gesture) {
     const uint8_t current = CurrentEquip(save, type);
-    if (type == EQUIP_TYPE_BOOTS && current != EQUIP_VALUE_BOOTS_KOKIRI) return EQUIP_VALUE_BOOTS_KOKIRI;
-    if (gesture.last != current && EquipAvailable(mod, save, type, gesture.last)) return gesture.last;
+    if (type == EQUIP_TYPE_BOOTS && current != EQUIP_VALUE_BOOTS_KOKIRI)
+        return EQUIP_VALUE_BOOTS_KOKIRI;
+    if (gesture.last != current && EquipAvailable(mod, save, type, gesture.last))
+        return gesture.last;
     return current != 1 ? 1 : NextEquip(mod, save, type, 1);
 }
 
@@ -531,7 +555,8 @@ const char* UpdateEquipGesture(Mod& mod, EquipGesture& gesture, uint32_t physica
     const bool down = (physical & PhysicalButton(button)) != 0;
     if (gesture.waitRelease) {
         gesture.wasDown = down;
-        if (!down) gesture.waitRelease = false;
+        if (!down)
+            gesture.waitRelease = false;
         return nullptr;
     }
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
@@ -581,12 +606,14 @@ const char* UpdateEquipGesture(Mod& mod, EquipGesture& gesture, uint32_t physica
     return result;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t length,
-                                        ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                         void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     char result[768];
-    const int size = std::snprintf(result, sizeof(result),
+    const int size = std::snprintf(
+        result, sizeof(result),
         "perfil=nintendo; X=pulo %.2f; A=contexto/rolar/sprint; Y=espada; B=cancelar; "
         "ZR=item do C equipado; R (segurar)=menu de itens com o analógico direito; "
         "ZL=mirar + escudo (Y ataca mesmo defendendo); "
@@ -601,14 +628,16 @@ ShipNativeStatus SHIP_NATIVE_CALL Status(void* user, const char*, uint32_t lengt
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uint32_t length,
-                                           ShipNativeWriteFn write, void* writer) {
-    if (!payload || !length || length >= 16) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uint32_t length, ShipNativeWriteFn write,
+                                            void* writer) {
+    if (!payload || !length || length >= 16)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     char value[16]{};
     std::memcpy(value, payload, length);
     char* end = nullptr;
     const unsigned long parsed = std::strtoul(value, &end, 0);
-    if (end == value || parsed > 0xFFFFu) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (end == value || parsed > 0xFFFFu)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     // Segundo valor: atraso em ms (0..60000) sem analógico direito antes de a
     // câmera voltar a seguir Link quando ele anda.
     unsigned long followDelay = 500;
@@ -662,34 +691,36 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* payload, uin
     // Ícones do mod (a Navi do D-pad): pasta assets/ do pacote, montada uma vez.
     if (!mod.iconArchive) {
         const std::string assets = ProviderAssetsDirectory();
-        if (!assets.empty()) mod.resources->mount_archive(assets.c_str(), &mod.iconArchive);
+        if (!assets.empty())
+            mod.resources->mount_archive(assets.c_str(), &mod.iconArchive);
     }
     return Write(write, writer, "configured");
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL Jump(void* user, const char*, uint32_t length,
-                                      ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL Jump(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                       void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     const ShipNativeStatus result = mod.movement->player_jump(float(JUMP_VELOCITY));
     return result == SHIP_NATIVE_OK ? Write(write, writer, "jump") : result;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL ResourceProbe(void* user, const char*, uint32_t length,
-                                                ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL ResourceProbe(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                                void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     uint32_t size = 0;
-    if (mod.resources->read_file("test/core.json", nullptr, 0, &size) != SHIP_NATIVE_OK ||
-        !size || size > SHIP_NATIVE_MAX_BYTES) {
+    if (mod.resources->read_file("test/core.json", nullptr, 0, &size) != SHIP_NATIVE_OK || !size ||
+        size > SHIP_NATIVE_MAX_BYTES) {
         return SHIP_NATIVE_UNSUPPORTED;
     }
     auto* bytes = new (std::nothrow) uint8_t[size];
-    if (!bytes) return SHIP_NATIVE_FAILURE;
+    if (!bytes)
+        return SHIP_NATIVE_FAILURE;
     const auto read = mod.resources->read_file("test/core.json", bytes, size, &size);
-    const auto written = read == SHIP_NATIVE_OK
-        ? write(writer, reinterpret_cast<const char*>(bytes), size)
-        : read;
+    const auto written = read == SHIP_NATIVE_OK ? write(writer, reinterpret_cast<const char*>(bytes), size) : read;
     delete[] bytes;
     return written;
 }
@@ -701,16 +732,16 @@ struct LayerProbeState {
     uint64_t mergedHash = 14695981039346656037ULL;
 };
 
-ShipNativeStatus SHIP_NATIVE_CALL CollectLayer(void* user, const ShipOotResourceLayerV2* layer,
-                                               const char* archivePath, const uint8_t* data) {
+ShipNativeStatus SHIP_NATIVE_CALL CollectLayer(void* user, const ShipOotResourceLayerV2* layer, const char* archivePath,
+                                               const uint8_t* data) {
     auto& state = *static_cast<LayerProbeState*>(user);
-    if (!layer || layer->size < sizeof(ShipOotResourceLayerV2) || !archivePath ||
-        (!data && layer->data_size) || layer->layer_index != state.count) {
+    if (!layer || layer->size < sizeof(ShipOotResourceLayerV2) || !archivePath || (!data && layer->data_size) ||
+        layer->layer_index != state.count) {
         return SHIP_NATIVE_FAILURE;
     }
-    const int written = std::snprintf(state.archives + state.used, sizeof(state.archives) - state.used,
-                                      "%s%.*s", state.count ? ">" : "",
-                                      static_cast<int>(layer->archive_path_length), archivePath);
+    const int written =
+        std::snprintf(state.archives + state.used, sizeof(state.archives) - state.used, "%s%.*s",
+                      state.count ? ">" : "", static_cast<int>(layer->archive_path_length), archivePath);
     if (written < 0 || static_cast<uint32_t>(written) >= sizeof(state.archives) - state.used) {
         return SHIP_NATIVE_LIMIT;
     }
@@ -723,20 +754,23 @@ ShipNativeStatus SHIP_NATIVE_CALL CollectLayer(void* user, const ShipOotResource
     return SHIP_NATIVE_OK;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL LayerProbe(void* user, const char* payload, uint32_t length,
-                                             ShipNativeWriteFn write, void* writer) {
-    if ((!payload && length) || length > 4096) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL LayerProbe(void* user, const char* payload, uint32_t length, ShipNativeWriteFn write,
+                                             void* writer) {
+    if ((!payload && length) || length > 4096)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     char path[4097]{};
-    if (length) std::memcpy(path, payload, length);
-    else std::memcpy(path, "test/layers.json", sizeof("test/layers.json"));
+    if (length)
+        std::memcpy(path, payload, length);
+    else
+        std::memcpy(path, "test/layers.json", sizeof("test/layers.json"));
     LayerProbeState state;
     const auto& mod = *static_cast<Mod*>(user);
     const auto status = mod.resources->read_file_layers(path, CollectLayer, &state);
-    if (status != SHIP_NATIVE_OK) return status;
+    if (status != SHIP_NATIVE_OK)
+        return status;
     char report[448];
-    const int size = std::snprintf(report, sizeof(report), "layers=%u; order=%s; merged=%016llx",
-                                   state.count, state.archives,
-                                   static_cast<unsigned long long>(state.mergedHash));
+    const int size = std::snprintf(report, sizeof(report), "layers=%u; order=%s; merged=%016llx", state.count,
+                                   state.archives, static_cast<unsigned long long>(state.mergedHash));
     return size > 0 && size < int(sizeof(report)) ? write(writer, report, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
@@ -772,13 +806,12 @@ ShipNativeStatus SHIP_NATIVE_CALL LayerRuntimeProbe(void* user, const char*, uin
 // Decodifica o arquivo "version" do archive: byte 0 = endianness
 // (0 = little, 1 = big), seguido de uint32 com a versão do jogo.
 uint32_t ParseVersionFile(const uint8_t* bytes, uint32_t size) {
-    if (!bytes || size != 5) return 0;
+    if (!bytes || size != 5)
+        return 0;
     if (bytes[0] == 1) {
-        return (uint32_t(bytes[1]) << 24) | (uint32_t(bytes[2]) << 16) | (uint32_t(bytes[3]) << 8) |
-               uint32_t(bytes[4]);
+        return (uint32_t(bytes[1]) << 24) | (uint32_t(bytes[2]) << 16) | (uint32_t(bytes[3]) << 8) | uint32_t(bytes[4]);
     }
-    return uint32_t(bytes[1]) | (uint32_t(bytes[2]) << 8) | (uint32_t(bytes[3]) << 16) |
-           (uint32_t(bytes[4]) << 24);
+    return uint32_t(bytes[1]) | (uint32_t(bytes[2]) << 8) | (uint32_t(bytes[3]) << 16) | (uint32_t(bytes[4]) << 24);
 }
 
 struct ListCounter {
@@ -801,17 +834,18 @@ struct RegistryCounter {
     int32_t firstId = LINKSPAN_OOT_REGISTRY_AUTO_ID;
 };
 
-ShipNativeStatus SHIP_NATIVE_CALL CountRegistryEntry(void* user, uint64_t, int32_t id,
-                                                     const char*, uint32_t) {
+ShipNativeStatus SHIP_NATIVE_CALL CountRegistryEntry(void* user, uint64_t, int32_t id, const char*, uint32_t) {
     auto& counter = *static_cast<RegistryCounter*>(user);
-    if (!counter.count) counter.firstId = id;
+    if (!counter.count)
+        counter.firstId = id;
     ++counter.count;
     return SHIP_NATIVE_OK;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL RegistryProbe(void* user, const char*, uint32_t length,
-                                                ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL RegistryProbe(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                                void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     uint64_t space = 0;
     if (mod.registry->find_space("example/dynamic_movement/actions", &space) != SHIP_NATIVE_OK ||
@@ -820,8 +854,7 @@ ShipNativeStatus SHIP_NATIVE_CALL RegistryProbe(void* user, const char*, uint32_
     }
     uint64_t entry = 0;
     int32_t id = 0;
-    if (mod.registry->find_entry_by_name(space, "example/dynamic_movement/jump", &entry, &id) !=
-            SHIP_NATIVE_OK ||
+    if (mod.registry->find_entry_by_name(space, "example/dynamic_movement/jump", &entry, &id) != SHIP_NATIVE_OK ||
         entry != mod.jumpEntry) {
         return Write(write, writer, "fail@jump");
     }
@@ -830,8 +863,8 @@ ShipNativeStatus SHIP_NATIVE_CALL RegistryProbe(void* user, const char*, uint32_
     uint32_t nameSize = 0;
     uint32_t payloadSize = 0;
     int32_t readId = 0;
-    if (mod.registry->read_entry(entry, name, sizeof(name), &nameSize, payload, sizeof(payload),
-                                 &payloadSize, &readId) != SHIP_NATIVE_OK) {
+    if (mod.registry->read_entry(entry, name, sizeof(name), &nameSize, payload, sizeof(payload), &payloadSize,
+                                 &readId) != SHIP_NATIVE_OK) {
         return Write(write, writer, "fail@read");
     }
     RegistryCounter counter;
@@ -839,10 +872,9 @@ ShipNativeStatus SHIP_NATIVE_CALL RegistryProbe(void* user, const char*, uint32_
         return Write(write, writer, "fail@list");
     }
     char report[256];
-    const int size = std::snprintf(
-        report, sizeof(report), "space=ok; entries=%u; first=%d; jump=%.*s:%.*s; id=%d",
-        counter.count, counter.firstId, static_cast<int>(nameSize), name,
-        static_cast<int>(payloadSize), reinterpret_cast<const char*>(payload), readId);
+    const int size = std::snprintf(report, sizeof(report), "space=ok; entries=%u; first=%d; jump=%.*s:%.*s; id=%d",
+                                   counter.count, counter.firstId, static_cast<int>(nameSize), name,
+                                   static_cast<int>(payloadSize), reinterpret_cast<const char*>(payload), readId);
     return size > 0 && size < int(sizeof(report)) ? write(writer, report, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
@@ -851,7 +883,8 @@ ShipNativeStatus SHIP_NATIVE_CALL RegistryProbe(void* user, const char*, uint32_
 // montagem/desmontagem de um archive auxiliar com marcador conhecido).
 ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, uint32_t length,
                                                        ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     const char* step = "versions";
     char report[768];
@@ -875,8 +908,7 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, 
     const uint8_t hasReal = mod.resources->has_file("objects/gameplay_keep/gArrow1Anim");
     const uint8_t hasMissing = mod.resources->has_file("linkspan/definitely-missing.bin");
     if (hasReal != 1 || hasMissing != 0) {
-        std::snprintf(report + used, sizeof(report) - used, "; fail@has_file real=%u missing=%u", hasReal,
-                      hasMissing);
+        std::snprintf(report + used, sizeof(report) - used, "; fail@has_file real=%u missing=%u", hasReal, hasMissing);
         return Write(write, writer, report);
     }
     used += std::snprintf(report + used, sizeof(report) - used, "; has=1/0");
@@ -894,7 +926,8 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, 
     }
     const uint32_t fileVersion = ParseVersionFile(versionBytes, versionSize);
     bool versionListed = false;
-    for (uint32_t i = 0; i < versionCount; ++i) versionListed = versionListed || versions[i] == fileVersion;
+    for (uint32_t i = 0; i < versionCount; ++i)
+        versionListed = versionListed || versions[i] == fileVersion;
     used += std::snprintf(report + used, sizeof(report) - used, "; version_file=0x%08X listed=%u", fileVersion,
                           versionListed ? 1u : 0u);
 
@@ -905,8 +938,7 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, 
         std::snprintf(report + used, sizeof(report) - used, "; fail@list_files");
         return Write(write, writer, report);
     }
-    used += std::snprintf(report + used, sizeof(report) - used, "; arrows=%u first=%s", counter.count,
-                          counter.first);
+    used += std::snprintf(report + used, sizeof(report) - used, "; arrows=%u first=%s", counter.count, counter.first);
 
     step = "mount_archive";
     uint64_t handle = 0;
@@ -920,13 +952,12 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, 
     uint32_t markerSize = 0;
     const bool mountedVisible = mod.resources->has_file(markerPath) == 1;
     const bool markerOk = mountedVisible &&
-        mod.resources->read_file(markerPath, reinterpret_cast<uint8_t*>(marker), sizeof(marker) - 1,
-                                 &markerSize) == SHIP_NATIVE_OK &&
-        markerSize == std::strlen(markerExpected) && !std::memcmp(marker, markerExpected, markerSize);
+                          mod.resources->read_file(markerPath, reinterpret_cast<uint8_t*>(marker), sizeof(marker) - 1,
+                                                   &markerSize) == SHIP_NATIVE_OK &&
+                          markerSize == std::strlen(markerExpected) && !std::memcmp(marker, markerExpected, markerSize);
     const auto unmount = mod.resources->unmount_archive(handle);
     const bool gone = mod.resources->has_file(markerPath) == 0;
-    used += std::snprintf(report + used, sizeof(report) - used,
-                          "; mount=ok handle=%llu marker=%s unmount=%s gone=%u",
+    used += std::snprintf(report + used, sizeof(report) - used, "; mount=ok handle=%llu marker=%s unmount=%s gone=%u",
                           static_cast<unsigned long long>(handle), markerOk ? "match" : "fail",
                           unmount == SHIP_NATIVE_OK ? "ok" : "fail", gone ? 1u : 0u);
     if (!markerOk || unmount != SHIP_NATIVE_OK || !gone) {
@@ -936,17 +967,17 @@ ShipNativeStatus SHIP_NATIVE_CALL ResourceRuntimeProbe(void* user, const char*, 
 }
 
 // Posição do botão C equipado para o anel do HUD Lua: "x,y,lado,alpha" ou "none".
-ShipNativeStatus SHIP_NATIVE_CALL HudSelection(void* user, const char*, uint32_t length,
-                                              ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL HudSelection(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                               void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     int16_t x = 0;
     int16_t y = 0;
     int16_t side = 0;
     uint8_t alpha = 0;
     if (!mod.faceBindingsApplied || !mod.movement->has_gamepad(0) ||
-        mod.movement->get_item_button_rect(mod.selectedItemButton, &x, &y, &side, &alpha) != SHIP_NATIVE_OK ||
-        !alpha) {
+        mod.movement->get_item_button_rect(mod.selectedItemButton, &x, &y, &side, &alpha) != SHIP_NATIVE_OK || !alpha) {
         return Write(write, writer, "none");
     }
     char result[48];
@@ -955,20 +986,23 @@ ShipNativeStatus SHIP_NATIVE_CALL HudSelection(void* user, const char*, uint32_t
 }
 
 // Menu de traje/botas aberto para o HUD Lua: "tunic;<destaque>;<opções>", "boots;..." ou "none".
-ShipNativeStatus SHIP_NATIVE_CALL HudQuickSwap(void* user, const char*, uint32_t length,
-                                              ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL HudQuickSwap(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                               void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
     const bool tunic = mod.tunic.quickSwap;
-    if (!save || (!tunic && !mod.boots.quickSwap)) return Write(write, writer, "none");
+    if (!save || (!tunic && !mod.boots.quickSwap))
+        return Write(write, writer, "none");
     const uint8_t type = tunic ? EQUIP_TYPE_TUNIC : EQUIP_TYPE_BOOTS;
     const EquipGesture& gesture = tunic ? mod.tunic : mod.boots;
     char result[32];
     int size = std::snprintf(result, sizeof(result), "%s;%u;", tunic ? "tunic" : "boots", unsigned(gesture.highlight));
     bool first = true;
     for (uint8_t value = 1; value <= 3 && size > 0 && size < int(sizeof(result)) - 3; ++value) {
-        if (!EquipAvailable(mod, *save, type, value)) continue;
+        if (!EquipAvailable(mod, *save, type, value))
+            continue;
         size += std::snprintf(result + size, sizeof(result) - size, first ? "%u" : ",%u", unsigned(value));
         first = false;
     }
@@ -977,12 +1011,14 @@ ShipNativeStatus SHIP_NATIVE_CALL HudQuickSwap(void* user, const char*, uint32_t
 
 // D-pad do HUD para o Lua: "x,y,lado,alpha;" de cima, baixo, esquerda e direita, seguido de
 // "traje,botas,ocarina" (valores de equipamento 1..3 e o item do slot da ocarina), ou "none".
-ShipNativeStatus SHIP_NATIVE_CALL HudDpad(void* user, const char*, uint32_t length,
-                                         ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL HudDpad(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                          void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (!mod.dpadHudApplied || !save || !mod.movement->has_gamepad(0)) return Write(write, writer, "none");
+    if (!mod.dpadHudApplied || !save || !mod.movement->has_gamepad(0))
+        return Write(write, writer, "none");
     char result[128];
     int size = 0;
     for (const uint8_t slot : DPAD_HUD_SLOTS) {
@@ -995,38 +1031,42 @@ ShipNativeStatus SHIP_NATIVE_CALL HudDpad(void* user, const char*, uint32_t leng
         }
         size += std::snprintf(result + size, sizeof(result) - size, "%d,%d,%d,%u;", x, y, side, unsigned(alpha));
     }
-    size += std::snprintf(result + size, sizeof(result) - size, "%u,%u,%u",
-                          unsigned(CurrentEquip(*save, EQUIP_TYPE_TUNIC)),
-                          unsigned(CurrentEquip(*save, EQUIP_TYPE_BOOTS)),
-                          unsigned(save->inventory.items[SLOT_OCARINA]));
+    size +=
+        std::snprintf(result + size, sizeof(result) - size, "%u,%u,%u", unsigned(CurrentEquip(*save, EQUIP_TYPE_TUNIC)),
+                      unsigned(CurrentEquip(*save, EQUIP_TYPE_BOOTS)), unsigned(save->inventory.items[SLOT_OCARINA]));
     return size > 0 && size < int(sizeof(result)) ? write(writer, result, uint32_t(size)) : SHIP_NATIVE_FAILURE;
 }
 
 // Menu do R: "<highlight>;<button>:<item>:<icon path>\t...", or "none".
-ShipNativeStatus SHIP_NATIVE_CALL HudItemMenu(void* user, const char*, uint32_t length,
-                                             ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL HudItemMenu(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                              void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (!save || !mod.itemMenu.open) return Write(write, writer, "none");
+    if (!save || !mod.itemMenu.open)
+        return Write(write, writer, "none");
     const std::string result = ItemSelectorIcons(mod.itemMenu.highlight, save->equips.buttonItems, mod.itemIcons);
     return write(writer, result.data(), static_cast<uint32_t>(result.size()));
 }
 
 // Read-only diagnostic, including when the menu is closed.
-ShipNativeStatus SHIP_NATIVE_CALL HudItemIcons(void* user, const char*, uint32_t length,
-                                              ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL HudItemIcons(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                               void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     const auto* save = static_cast<const SaveContext*>(mod.engine->get_save_context());
-    if (!save) return Write(write, writer, "none");
+    if (!save)
+        return Write(write, writer, "none");
     const std::string result = ItemSelectorIcons(mod.itemMenu.highlight, save->equips.buttonItems, mod.itemIcons);
     return write(writer, result.data(), static_cast<uint32_t>(result.size()));
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length,
-                                        ShipNativeWriteFn write, void* writer) {
-    if (length) return SHIP_NATIVE_INVALID_ARGUMENT;
+ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t length, ShipNativeWriteFn write,
+                                         void* writer) {
+    if (length)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     auto& mod = *static_cast<Mod*>(user);
     auto* player = static_cast<Player*>(mod.engine->get_player());
     auto* play = static_cast<PlayState*>(mod.engine->get_play_state());
@@ -1106,15 +1146,14 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     const bool aiming = (player->stateFlags1 & (PLAYER_STATE1_FIRST_PERSON | PLAYER_STATE1_READY_TO_FIRE)) != 0;
     const CameraChange cameraChange = UpdateCamera(mod, play, menuOpen || aiming);
     for (const char* event : events) {
-        if (event) return Write(write, writer, event);
+        if (event)
+            return Write(write, writer, event);
     }
     const uint16_t current = mod.movement->get_input_current(0);
-    const bool jumpDown = hasGamepad
-        ? (physical & PhysicalButton(SDL_BUTTON_X_NINTENDO)) != 0
-        : mod.keyboardJumpMask && (current & mod.keyboardJumpMask) != 0;
-    const bool actionDown = hasGamepad
-        ? (physical & PhysicalButton(SDL_BUTTON_A_NINTENDO)) != 0
-        : (current & BTN_A) != 0;
+    const bool jumpDown = hasGamepad ? (physical & PhysicalButton(SDL_BUTTON_X_NINTENDO)) != 0
+                                     : mod.keyboardJumpMask && (current & mod.keyboardJumpMask) != 0;
+    const bool actionDown =
+        hasGamepad ? (physical & PhysicalButton(SDL_BUTTON_A_NINTENDO)) != 0 : (current & BTN_A) != 0;
     const bool justJumpPressed = jumpDown && !mod.jumpWasDown;
     mod.jumpWasDown = jumpDown;
 
@@ -1127,7 +1166,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     }
 
     if (mod.phase == Phase::Airborne) {
-        if (!grounded) return Write(write, writer, "airborne");
+        if (!grounded)
+            return Write(write, writer, "airborne");
         mod.phase = Phase::Ready;
         return Write(write, writer, "landed");
     }
@@ -1162,8 +1202,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         return Write(write, writer, "running");
     }
 
-    if (cameraChange == CameraChange::Automatic) return Write(write, writer, "camera-auto");
-    if (cameraChange == CameraChange::FreeLook) return Write(write, writer, "camera-free");
+    if (cameraChange == CameraChange::Automatic)
+        return Write(write, writer, "camera-auto");
+    if (cameraChange == CameraChange::FreeLook)
+        return Write(write, writer, "camera-free");
     return Write(write, writer, actionDown ? "context" : "idle");
 }
 
@@ -1171,40 +1213,38 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     const auto* engine = static_cast<const ShipOotEngineV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(ShipOotEngineV1)));
     const auto* movement = static_cast<const ShipOotMovementV2*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2,
-        sizeof(ShipOotMovementV2)));
-    const auto* resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
-        sizeof(ShipOotResourcesV2)));
+        runtime->context, LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_2, sizeof(ShipOotMovementV2)));
+    const auto* resources = static_cast<const ShipOotResourcesV2*>(
+        runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
+                             sizeof(ShipOotResourcesV2)));
     const auto* registry = static_cast<const ShipOotRegistryV1*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION,
-        sizeof(ShipOotRegistryV1)));
+        runtime->context, LINKSPAN_OOT_REGISTRY_SERVICE, LINKSPAN_OOT_REGISTRY_VERSION, sizeof(ShipOotRegistryV1)));
     if (!engine || engine->size < sizeof(ShipOotEngineV1) || !engine->layout_id ||
-        std::strcmp(engine->layout_id, LINKSPAN_OOT_LAYOUT_ID) ||
-        engine->player_size != sizeof(Player) || engine->play_state_size != sizeof(PlayState) ||
-        engine->save_context_size != sizeof(SaveContext) || !engine->get_player || !movement ||
-        movement->size < sizeof(ShipOotMovementV2) || !movement->layout_id ||
-        std::strcmp(movement->layout_id, LINKSPAN_OOT_LAYOUT_ID) ||
-        !movement->get_input_current || !movement->get_stick_x || !movement->get_stick_y ||
-        !movement->get_right_stick_x || !movement->get_right_stick_y ||
-        !movement->has_gamepad || !movement->get_gamepad_buttons ||
+        std::strcmp(engine->layout_id, LINKSPAN_OOT_LAYOUT_ID) || engine->player_size != sizeof(Player) ||
+        engine->play_state_size != sizeof(PlayState) || engine->save_context_size != sizeof(SaveContext) ||
+        !engine->get_player || !movement || movement->size < sizeof(ShipOotMovementV2) || !movement->layout_id ||
+        std::strcmp(movement->layout_id, LINKSPAN_OOT_LAYOUT_ID) || !movement->get_input_current ||
+        !movement->get_stick_x || !movement->get_stick_y || !movement->get_right_stick_x ||
+        !movement->get_right_stick_y || !movement->has_gamepad || !movement->get_gamepad_buttons ||
         !movement->clear_gamepad_button_bindings || !movement->bind_gamepad_button ||
         !movement->reload_gamepad_mappings || !movement->get_setting_int || !movement->set_setting_int ||
-        !movement->is_player_grounded ||
-        !movement->is_player_rolling || !movement->player_jump || !movement->player_roll ||
-        !movement->get_gamepad_axis || !movement->bind_gamepad_axis || !movement->player_use_item_shortcut ||
-        !movement->get_item_button_rect)
+        !movement->is_player_grounded || !movement->is_player_rolling || !movement->player_jump ||
+        !movement->player_roll || !movement->get_gamepad_axis || !movement->bind_gamepad_axis ||
+        !movement->player_use_item_shortcut || !movement->get_item_button_rect)
         return SHIP_NATIVE_UNSUPPORTED;
-    if (!resources || resources->size < sizeof(ShipOotResourcesV2) || !resources->has_file ||
-        !resources->read_file || !resources->list_files || !resources->dirty_resources ||
-        !resources->unload_resource || !resources->mount_archive || !resources->unmount_archive ||
-        !resources->get_game_versions || !resources->read_file_layers) return SHIP_NATIVE_UNSUPPORTED;
-    if (!registry || registry->size < sizeof(ShipOotRegistryV1) || !registry->create_space ||
-        !registry->find_space || !registry->destroy_space || !registry->register_entry ||
-        !registry->unregister_entry || !registry->find_entry_by_name || !registry->find_entry_by_id ||
-        !registry->read_entry || !registry->list_entries) return SHIP_NATIVE_UNSUPPORTED;
-    auto* mod = new (std::nothrow) Mod{engine, movement, resources, registry};
-    if (!mod) return SHIP_NATIVE_FAILURE;
+    if (!resources || resources->size < sizeof(ShipOotResourcesV2) || !resources->has_file || !resources->read_file ||
+        !resources->list_files || !resources->dirty_resources || !resources->unload_resource ||
+        !resources->mount_archive || !resources->unmount_archive || !resources->get_game_versions ||
+        !resources->read_file_layers)
+        return SHIP_NATIVE_UNSUPPORTED;
+    if (!registry || registry->size < sizeof(ShipOotRegistryV1) || !registry->create_space || !registry->find_space ||
+        !registry->destroy_space || !registry->register_entry || !registry->unregister_entry ||
+        !registry->find_entry_by_name || !registry->find_entry_by_id || !registry->read_entry ||
+        !registry->list_entries)
+        return SHIP_NATIVE_UNSUPPORTED;
+    auto* mod = new (std::nothrow) Mod{ engine, movement, resources, registry };
+    if (!mod)
+        return SHIP_NATIVE_FAILURE;
     // Host texture table and camera math, protected by the exact executable
     // fingerprint. No dependency on NEI IDs, its registry, or load order.
     // Optional: on another executable the selector shows no icons and free look
@@ -1212,15 +1252,16 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     uintptr_t icons = 0;
     uintptr_t cameraGeometry = 0;
     if (runtime->abi_minor >= 3 && runtime->resolve_symbol) {
-        if (runtime->resolve_symbol(runtime->context, "gItemIcons", &icons) != SHIP_NATIVE_OK) icons = 0;
-        if (runtime->resolve_symbol(runtime->context, "OLib_Vec3fDiffToVecSphGeo", &cameraGeometry) !=
-            SHIP_NATIVE_OK) cameraGeometry = 0;
+        if (runtime->resolve_symbol(runtime->context, "gItemIcons", &icons) != SHIP_NATIVE_OK)
+            icons = 0;
+        if (runtime->resolve_symbol(runtime->context, "OLib_Vec3fDiffToVecSphGeo", &cameraGeometry) != SHIP_NATIVE_OK)
+            cameraGeometry = 0;
     }
     mod->itemIcons = reinterpret_cast<const void* const*>(icons);
     mod->cameraGeometry = reinterpret_cast<CameraGeometryFn>(cameraGeometry);
     *instance = mod;
-    if (registry->create_space("example/dynamic_movement/actions", 0x80, 0xFF, 1,
-                               &mod->registrySpace) != SHIP_NATIVE_OK) {
+    if (registry->create_space("example/dynamic_movement/actions", 0x80, 0xFF, 1, &mod->registrySpace) !=
+        SHIP_NATIVE_OK) {
         delete mod;
         *instance = nullptr;
         return SHIP_NATIVE_FAILURE;
@@ -1228,12 +1269,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     int32_t assignedId = 0;
     static const char jumpPayload[] = "action=jump";
     static const char sprintPayload[] = "action=sprint";
-    if (registry->register_entry(mod->registrySpace, "example/dynamic_movement/jump",
-                                 LINKSPAN_OOT_REGISTRY_AUTO_ID,
+    if (registry->register_entry(mod->registrySpace, "example/dynamic_movement/jump", LINKSPAN_OOT_REGISTRY_AUTO_ID,
                                  reinterpret_cast<const uint8_t*>(jumpPayload), sizeof(jumpPayload) - 1,
                                  &mod->jumpEntry, &assignedId) != SHIP_NATIVE_OK ||
-        registry->register_entry(mod->registrySpace, "example/dynamic_movement/sprint",
-                                 LINKSPAN_OOT_REGISTRY_AUTO_ID,
+        registry->register_entry(mod->registrySpace, "example/dynamic_movement/sprint", LINKSPAN_OOT_REGISTRY_AUTO_ID,
                                  reinterpret_cast<const uint8_t*>(sprintPayload), sizeof(sprintPayload) - 1,
                                  &mod->sprintEntry, &assignedId) != SHIP_NATIVE_OK) {
         registry->destroy_space(mod->registrySpace);
@@ -1262,10 +1301,17 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         return SHIP_NATIVE_FAILURE;
     }
     mod->runtime = runtime;
-    ShipNativeHookSpec menuHook{ sizeof(menuHook), LINKSPAN_OOT_HOOK_PLAY_UPDATE, 1,
-        sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE, 0,
-        CaptureItemMenuInput, mod };
-    if (!runtime->register_hook || runtime->register_hook(runtime->context, &menuHook, &mod->menuInputHook) != SHIP_NATIVE_OK) {
+    ShipNativeHookSpec menuHook{ sizeof(menuHook),
+                                 LINKSPAN_OOT_HOOK_PLAY_UPDATE,
+                                 1,
+                                 sizeof(ShipOotPlayHookV1),
+                                 SHIP_NATIVE_HOOK_OBSERVE,
+                                 SHIP_NATIVE_HOOK_BEFORE,
+                                 0,
+                                 CaptureItemMenuInput,
+                                 mod };
+    if (!runtime->register_hook ||
+        runtime->register_hook(runtime->context, &menuHook, &mod->menuInputHook) != SHIP_NATIVE_OK) {
         registry->destroy_space(mod->registrySpace);
         delete mod;
         *instance = nullptr;
@@ -1277,7 +1323,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
 bool LensOnItemButton(const Mod& mod, const SaveContext& save) {
     const int count = mod.movement->get_setting_int("gEnhancements.DpadEquips", 0) != 0 ? 8 : 4;
     for (int button = 1; button < count; ++button) {
-        if (save.equips.buttonItems[button] == ITEM_LENS) return true;
+        if (save.equips.buttonItems[button] == ITEM_LENS)
+            return true;
     }
     return false;
 }
@@ -1286,17 +1333,24 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     auto* mod = static_cast<Mod*>(instance);
     if (mod && mod->menuInputHook && mod->runtime && mod->runtime->unregister_hook)
         mod->runtime->unregister_hook(mod->runtime->context, mod->menuInputHook);
-    if (mod && mod->faceBindingsApplied) mod->movement->reload_gamepad_mappings(0);
-    if (mod && mod->freeLookApplied) mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
+    if (mod && mod->faceBindingsApplied)
+        mod->movement->reload_gamepad_mappings(0);
+    if (mod && mod->freeLookApplied)
+        mod->movement->set_setting_int(FREE_LOOK_SETTING, mod->previousFreeLook);
     if (mod && mod->invertYApplied)
         mod->movement->set_setting_int(FREE_LOOK_INVERT_Y_SETTING, mod->previousInvertY);
     for (size_t index = mod ? mod->firstPersonApplied : 0; index > 0; --index)
         mod->movement->set_setting_int(FIRST_PERSON_SETTINGS[index - 1].name, mod->previousFirstPerson[index - 1]);
-    if (mod) RestoreItemHud(*mod);
-    if (mod && mod->swordOverShieldApplied) mod->movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 0);
-    if (mod && mod->dpadHudApplied) mod->movement->set_setting_int(DPAD_HUD_SETTING, 0);
-    if (mod && mod->pauseEquipSelectorApplied) mod->movement->set_setting_int(PAUSE_EQUIP_SELECTOR_SETTING, 0);
-    if (mod && mod->iconArchive) mod->resources->unmount_archive(mod->iconArchive);
+    if (mod)
+        RestoreItemHud(*mod);
+    if (mod && mod->swordOverShieldApplied)
+        mod->movement->set_setting_int(SWORD_OVER_SHIELD_SETTING, 0);
+    if (mod && mod->dpadHudApplied)
+        mod->movement->set_setting_int(DPAD_HUD_SETTING, 0);
+    if (mod && mod->pauseEquipSelectorApplied)
+        mod->movement->set_setting_int(PAUSE_EQUIP_SELECTOR_SETTING, 0);
+    if (mod && mod->iconArchive)
+        mod->resources->unmount_archive(mod->iconArchive);
     if (mod && mod->persistentMasksApplied)
         mod->movement->set_setting_int(PERSISTENT_MASKS_SETTING, mod->previousPersistentMasks);
     // Lente fora dos botões só seguia ligada pelo atalho: desligá-la deixa o
@@ -1307,14 +1361,14 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
         if (play && save && play->actorCtx.lensActive && !LensOnItemButton(*mod, *save))
             play->actorCtx.lensActive = false;
     }
-    if (mod && mod->registrySpace) mod->registry->destroy_space(mod->registrySpace);
+    if (mod && mod->registrySpace)
+        mod->registry->destroy_space(mod->registrySpace);
     delete mod;
 }
-}
+} // namespace
 
 extern "C" SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query() {
-    static const ShipNativeDescriptor descriptor{
-        sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR, SHIP_NATIVE_ABI_MINOR, Init, Shutdown
-    };
+    static const ShipNativeDescriptor descriptor{ sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR,
+                                                  SHIP_NATIVE_ABI_MINOR, Init, Shutdown };
     return &descriptor;
 }

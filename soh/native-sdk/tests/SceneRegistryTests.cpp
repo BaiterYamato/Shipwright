@@ -167,7 +167,8 @@ int main() {
     Check(vanillaKept, "tabela combinada deve preservar as entradas vanilla");
     Check(publishedTable && publishedTable[6].scene == kSceneCount && publishedTable[7].scene == kSceneCount,
           "posições sem uso devem apontar para a cena vanilla sem uso");
-    const uint16_t expectedField = ENTRANCE_INFO_DISPLAY_TITLE_CARD_FLAG | (5 << ENTRANCE_INFO_END_TRANS_TYPE_SHIFT) | 7;
+    const uint16_t expectedField =
+        ENTRANCE_INFO_DISPLAY_TITLE_CARD_FLAG | (5 << ENTRANCE_INFO_END_TRANS_TYPE_SHIFT) | 7;
     bool groupFilled = publishedTable != nullptr;
     for (int32_t index = 8; groupFilled && index < 12; ++index) {
         groupFilled = publishedTable[index].scene == 128 && publishedTable[index].spawn == 2 &&
@@ -262,7 +263,8 @@ int main() {
     Check(publishedTable && publishedTable[8].scene == kSceneCount && publishedCount == 24,
           "remoção deve liberar o grupo sem encolher a tabela");
     Check(scenes.find_entrance("demo/field/main", &found) == SHIP_NATIVE_UNSUPPORTED &&
-              scenes.travel_to_entrance(8) == SHIP_NATIVE_INVALID_ARGUMENT && !ShipLuaHost::FindOotCustomScene(128, custom),
+              scenes.travel_to_entrance(8) == SHIP_NATIVE_INVALID_ARGUMENT &&
+              !ShipLuaHost::FindOotCustomScene(128, custom),
           "cena removida deve sumir com as entradas");
     Check(!ShipLuaHost::OotEntranceStableName(8, entranceName, layer) &&
               !ShipLuaHost::OotEntranceGroupFromStableName("demo/field/main", group),
@@ -306,7 +308,7 @@ int main() {
     // V2 (OOT-CORE-008): título, info e override de cena vanilla.
     const auto& v2 = ShipLuaHost::GetOotNativeScenesServiceV2();
     Check(v2.size == sizeof(ShipOotScenesV2) && v2.get_scene_count() == kSceneCount, "V2 e contagem vanilla");
-    ShipOotSceneDefinitionV2 titled{ sizeof(titled), "demo/titled", nullptr, "scenes/demo/titled", 300, 1,
+    ShipOotSceneDefinitionV2 titled{ sizeof(titled),       "demo/titled", nullptr, "scenes/demo/titled", 300, 1,
                                      "textures/demo/title" };
     uint64_t titledHandle = 0;
     int32_t titledId = 0;
@@ -339,20 +341,23 @@ int main() {
     Check(v2.get_scene_info(1, 0, &info) == SHIP_NATIVE_OK && info.overridden &&
               std::string(info.scene_path) == "scenes/b/scene.json",
           "info mostra o override");
-    Check(v2.override_scene(1, 0, nullptr) == SHIP_NATIVE_OK && !ShipLuaHost::OotSceneOverridePath(1, false, overridePath),
+    Check(v2.override_scene(1, 0, nullptr) == SHIP_NATIVE_OK &&
+              !ShipLuaHost::OotSceneOverridePath(1, false, overridePath),
           "NULL volta ao vanilla");
     const auto& v3 = ShipLuaHost::GetOotNativeScenesServiceV3();
-    ShipOotSceneDefinitionV3 horse{ sizeof(horse), "demo/horse", nullptr, "scenes/demo/horse", 301, 1, nullptr,
-                                    1, 1, 1.5f, 2.0f, 3.0f, -16384 };
+    ShipOotSceneDefinitionV3 horse{
+        sizeof(horse), "demo/horse", nullptr, "scenes/demo/horse", 301, 1, nullptr, 1, 1, 1.5f, 2.0f, 3.0f, -16384
+    };
     uint64_t horseHandle = 0;
     int32_t horseId = 0;
-    Check(v3.size == sizeof(ShipOotScenesV3) && v3.register_scene_v3(&horse, &horseHandle, &horseId) == SHIP_NATIVE_OK &&
-              horseId == 301 && ShipLuaHost::OotSceneHorseAllowed(0) && ShipLuaHost::OotSceneHorseAllowed(horseId),
+    Check(v3.size == sizeof(ShipOotScenesV3) &&
+              v3.register_scene_v3(&horse, &horseHandle, &horseId) == SHIP_NATIVE_OK && horseId == 301 &&
+              ShipLuaHost::OotSceneHorseAllowed(0) && ShipLuaHost::OotSceneHorseAllowed(horseId),
           "V3 deve preservar a semente vanilla e registrar a capacidade de cavalo");
     Vec3f horsePos{};
     int16_t horseAngle = 0;
-    Check(ShipLuaHost::OotSceneHorseSpawn(horseId, horsePos, horseAngle) && horsePos.x == 1.5f && horseAngle == -16384 &&
-              ShipLuaHost::OotSceneUsesGeneratedHorseCall(horseId),
+    Check(ShipLuaHost::OotSceneHorseSpawn(horseId, horsePos, horseAngle) && horsePos.x == 1.5f &&
+              horseAngle == -16384 && ShipLuaHost::OotSceneUsesGeneratedHorseCall(horseId),
           "V3 deve publicar a posição de espera e a chamada gerada");
     v2.override_scene(0, 0, "scenes/a/scene.json");
     ShipLuaHost::ResetOotNativeScenes();

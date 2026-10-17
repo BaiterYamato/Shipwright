@@ -3293,8 +3293,8 @@ void Collider_UpdateSpheres(s32 limb, ColliderJntSph* collider) {
             collider->elements[i].dim.worldSphere.center.x = LinkSpan_S16F(D_8015CF00.x);
             collider->elements[i].dim.worldSphere.center.y = LinkSpan_S16F(D_8015CF00.y);
             collider->elements[i].dim.worldSphere.center.z = LinkSpan_S16F(D_8015CF00.z);
-            collider->elements[i].dim.worldSphere.radius = LinkSpan_S16F(
-                collider->elements[i].dim.modelSphere.radius * collider->elements[i].dim.scale);
+            collider->elements[i].dim.worldSphere.radius =
+                LinkSpan_S16F(collider->elements[i].dim.modelSphere.radius * collider->elements[i].dim.scale);
         }
     }
 }

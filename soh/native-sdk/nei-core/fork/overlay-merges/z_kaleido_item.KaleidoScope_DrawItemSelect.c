@@ -27,8 +27,8 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     NeiInventoryAction aAction = NEI_INVENTORY_NONE;
     const bool aDown = CHECK_BTN_ALL(input->cur.button, BTN_A);
     const bool variantWasOpen = IsItemCycling() || sGustOverlayActive || sArrowWheelOverlayActive;
-    const bool itemContext = pauseCtx->state == 6 && pauseCtx->pageIndex == PAUSE_ITEM &&
-                             pauseCtx->unk_1E4 == 0 && pauseCtx->cursorSpecialPos == 0;
+    const bool itemContext = pauseCtx->state == 6 && pauseCtx->pageIndex == PAUSE_ITEM && pauseCtx->unk_1E4 == 0 &&
+                             pauseCtx->cursorSpecialPos == 0;
     const u16 physicalPad = NeiInventory_PadButtons();
     input->press.button |= physicalPad & ~sLinkSpanPreviousPad;
     input->cur.button |= physicalPad;
@@ -46,7 +46,8 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
                             ((u32)pauseCtx->cursorItem[PAUSE_ITEM] << 8);
         aAction = NeiInventoryInput(&sLinkSpanAGesture, aDown, context, NeiInventory_Milliseconds());
         input->press.button &= ~BTN_A;
-        if (aAction == NEI_INVENTORY_VARIANT) input->press.button |= BTN_A;
+        if (aAction == NEI_INVENTORY_VARIANT)
+            input->press.button |= BTN_A;
         // Keep the cursor on the item whose A gesture is pending.
         if (sLinkSpanAGesture.down && !sLinkSpanAGesture.fired) {
             pauseCtx->stickRelX = pauseCtx->stickRelY = 0;
@@ -54,8 +55,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
         }
     }
     if (variantWasOpen) {
-        const int step = LinkSpanMenuStep(&sLinkSpanVariantNavigation, input->rel.stick_x,
-                                          input->rel.right_stick_x, 0);
+        const int step = LinkSpanMenuStep(&sLinkSpanVariantNavigation, input->rel.stick_x, input->rel.right_stick_x, 0);
         pauseCtx->stickRelX = step * 40;
         pauseCtx->stickRelY = 0;
     } else {
@@ -68,28 +68,32 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
 
-    if (!LinkSpan_PauseEquipSelectorEnabled() || pauseCtx->state != 6 ||
-        pauseCtx->pageIndex != PAUSE_ITEM || pauseCtx->unk_1E4 != 0 || pauseCtx->cursorSpecialPos != 0 ||
+    if (!LinkSpan_PauseEquipSelectorEnabled() || pauseCtx->state != 6 || pauseCtx->pageIndex != PAUSE_ITEM ||
+        pauseCtx->unk_1E4 != 0 || pauseCtx->cursorSpecialPos != 0 ||
         (sLinkSpanEquipMenuOpen && pauseCtx->cursorSlot[PAUSE_ITEM] != sLinkSpanEquipVisualSlot)) {
         sLinkSpanEquipMenuOpen = 0;
     }
     if (sLinkSpanEquipMenuOpen) {
         const bool next = CHECK_BTN_ANY(input->press.button, BTN_DRIGHT | BTN_DUP);
         const bool previous = CHECK_BTN_ANY(input->press.button, BTN_DLEFT | BTN_DDOWN);
-        const int step = LinkSpanMenuStep(&sLinkSpanEquipNavigation, input->rel.stick_x,
-                                          input->rel.right_stick_x, next == previous ? 0 : next ? 1 : -1);
+        const int step = LinkSpanMenuStep(&sLinkSpanEquipNavigation, input->rel.stick_x, input->rel.right_stick_x,
+                                          next == previous ? 0
+                                          : next           ? 1
+                                                           : -1);
         if (step > 0) {
-            if (sLinkSpanEquipChoice < 3) ++sLinkSpanEquipChoice;
+            if (sLinkSpanEquipChoice < 3)
+                ++sLinkSpanEquipChoice;
         } else if (step < 0) {
-            if (sLinkSpanEquipChoice > 1) --sLinkSpanEquipChoice;
+            if (sLinkSpanEquipChoice > 1)
+                --sLinkSpanEquipChoice;
         }
         if (CHECK_BTN_ALL(input->press.button, BTN_B)) {
             sLinkSpanEquipMenuOpen = 0;
         } else if (CHECK_BTN_ALL(input->press.button, BTN_A)) {
-            const u16 selectedButton = sLinkSpanEquipChoice == 1 ? BTN_CLEFT :
-                                       sLinkSpanEquipChoice == 2 ? BTN_CDOWN : BTN_CRIGHT;
-            if (GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, sLinkSpanEquipSlot,
-                                      sLinkSpanEquipItem)) {
+            const u16 selectedButton = sLinkSpanEquipChoice == 1   ? BTN_CLEFT
+                                       : sLinkSpanEquipChoice == 2 ? BTN_CDOWN
+                                                                   : BTN_CRIGHT;
+            if (GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, sLinkSpanEquipSlot, sLinkSpanEquipItem)) {
                 input->press.button |= selectedButton;
                 KaleidoScope_SetupItemEquip(play, sLinkSpanEquipItem, sLinkSpanEquipSlot,
                                             pauseCtx->itemVtx[sLinkSpanEquipVisualSlot * 4].v.ob[0] * 10,

@@ -348,8 +348,8 @@ std::vector<ListItem> PositionalItems(const Json& list, const std::string& what)
     std::vector<ListItem> items = ListItems(list);
     for (size_t i = 0; i < items.size(); ++i) {
         if (items[i].first != std::to_string(i)) {
-            throw DocumentError(what + ": lista posicional com buraco no índice " + std::to_string(i) +
-                                " (chave '" + items[i].first + "')");
+            throw DocumentError(what + ": lista posicional com buraco no índice " + std::to_string(i) + " (chave '" +
+                                items[i].first + "')");
         }
     }
     return items;

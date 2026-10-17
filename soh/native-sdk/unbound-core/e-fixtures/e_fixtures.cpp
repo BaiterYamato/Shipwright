@@ -189,10 +189,10 @@ std::string Describe(const Fixtures& fixtures, const PlayState* play, const Play
                              camera ? camera->setting : -1, static_cast<int>(player->actor.floorBgId),
                              static_cast<unsigned>(play->actorCtx.total), CountLights(play));
     if (nearest && used > 0 && used < static_cast<int>(sizeof(text))) {
-        used += std::snprintf(text + used, sizeof(text) - used,
-                              " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X", items, nearest->world.pos.x,
-                              nearest->world.pos.y, nearest->world.pos.z, nearest->draw != nullptr ? 1 : 0,
-                              static_cast<unsigned>(nearest->flags));
+        used +=
+            std::snprintf(text + used, sizeof(text) - used, " coletaveis=%u proximo=%.1f,%.1f,%.1f draw=%d flags=0x%X",
+                          items, nearest->world.pos.x, nearest->world.pos.y, nearest->world.pos.z,
+                          nearest->draw != nullptr ? 1 : 0, static_cast<unsigned>(nearest->flags));
     }
     // UNBOUND-013: idade, cavalo vivo, montaria e a cena gravada da Epona.
     const Actor* horse = nullptr;
@@ -233,9 +233,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Configure(void* user, const char* request, uin
             }
             start = end + 1;
         }
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
     if (!fixtures.assets) {
         const std::string assets = ProviderAssetsDirectory();
         if (assets.empty() || fixtures.resources->mount_archive(assets.c_str(), &fixtures.assets) != SHIP_NATIVE_OK) {
@@ -290,8 +288,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Next(void* user, const char*, uint32_t length,
 
 // Só teste (UNBOUND-013): Link adulto na próxima carga, Epona obtida, ocarina e Epona's Song, e viagem de volta para a
 // cena pedida. O save da cópia de teste é restaurado depois da sessão.
-ShipNativeStatus SHIP_NATIVE_CALL AdultEpona(void* user, const char* request, uint32_t length,
-                                             ShipNativeWriteFn write, void* writer) {
+ShipNativeStatus SHIP_NATIVE_CALL AdultEpona(void* user, const char* request, uint32_t length, ShipNativeWriteFn write,
+                                             void* writer) {
     auto& fixtures = *static_cast<Fixtures*>(user);
     const PlayState* play = nullptr;
     const Player* player = nullptr;
@@ -451,7 +449,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
         }
         return Write(write, writer, "idle");
     }
-    // J/K marcam travelling; uma saída de colisão é iniciada pelo host. Registre a chegada dela sem interferir no input.
+    // J/K marcam travelling; uma saída de colisão é iniciada pelo host. Registre a chegada dela sem interferir no
+    // input.
     if (fixtures.stableScene == -1) {
         fixtures.stableScene = play->sceneNum;
     } else if (fixtures.stableScene != play->sceneNum) {
@@ -477,8 +476,8 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     } else if (pauseState != fixtures.lastPauseState || pausePage != fixtures.lastPausePage) {
         fixtures.lastPauseState = pauseState;
         fixtures.lastPausePage = pausePage;
-        return Write(write, writer, "pausa frame " + std::to_string(fixtures.framesInScene) + " " +
-                                        Describe(fixtures, play, player));
+        return Write(write, writer,
+                     "pausa frame " + std::to_string(fixtures.framesInScene) + " " + Describe(fixtures, play, player));
     }
     // UNBOUND-031: a troca de sala só é registrada aqui; o relatório sai ROOM_REPORT_DELAY frames depois da primeira
     // troca pendente, com a sala de origem dela e a sala atual.
@@ -495,21 +494,22 @@ ShipNativeStatus SHIP_NATIVE_CALL Update(void* user, const char*, uint32_t lengt
     if (fixtures.lastGround != -1 && ground != fixtures.lastGround && fixtures.groundChanges < MAX_GROUND_CHANGES) {
         fixtures.lastGround = ground;
         ++fixtures.groundChanges;
-        return Write(write, writer, std::string("chao ") + (ground ? "0->1 " : "1->0 ") + "frame " +
-                                        std::to_string(fixtures.framesInScene) + " " + Describe(fixtures, play, player));
+        return Write(write, writer,
+                     std::string("chao ") + (ground ? "0->1 " : "1->0 ") + "frame " +
+                         std::to_string(fixtures.framesInScene) + " " + Describe(fixtures, play, player));
     }
     fixtures.lastGround = ground;
     if (fixtures.roomReportFrame && fixtures.framesInScene >= fixtures.roomReportFrame) {
         fixtures.roomReportFrame = 0;
-        return Write(write, writer, "sala " + std::to_string(fixtures.roomFrom) + "->" + std::to_string(room) +
-                                        " frame " + std::to_string(fixtures.framesInScene) + " " +
-                                        Describe(fixtures, play, player));
+        return Write(write, writer,
+                     "sala " + std::to_string(fixtures.roomFrom) + "->" + std::to_string(room) + " frame " +
+                         std::to_string(fixtures.framesInScene) + " " + Describe(fixtures, play, player));
     }
     if (fixtures.reportsDone < std::size(REPORT_FRAMES) &&
         fixtures.framesInScene >= REPORT_FRAMES[fixtures.reportsDone]) {
         ++fixtures.reportsDone;
-        return Write(write, writer, "after " + std::to_string(fixtures.framesInScene) + " frames " +
-                                        Describe(fixtures, play, player));
+        return Write(write, writer,
+                     "after " + std::to_string(fixtures.framesInScene) + " frames " + Describe(fixtures, play, player));
     }
     return Write(write, writer, "idle");
 }
@@ -519,8 +519,8 @@ struct Probe {
     std::string found[3];
 };
 
-ShipNativeStatus SHIP_NATIVE_CALL VisitMessage(void* user, uint32_t id, uint8_t box, uint8_t pos,
-                                               const uint8_t* bytes, uint32_t length) {
+ShipNativeStatus SHIP_NATIVE_CALL VisitMessage(void* user, uint32_t id, uint8_t box, uint8_t pos, const uint8_t* bytes,
+                                               uint32_t length) {
     auto& probe = *static_cast<Probe*>(user);
     for (size_t i = 0; i < 3; ++i) {
         if (probe.ids[i] == id) {
@@ -561,15 +561,15 @@ ShipNativeStatus SHIP_NATIVE_CALL TextProbe(void* user, const char*, uint32_t le
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
-    if (!runtime || runtime->size < sizeof(ShipNativeRuntime) || !runtime->get_service ||
-        !runtime->register_function || !instance) {
+    if (!runtime || runtime->size < sizeof(ShipNativeRuntime) || !runtime->get_service || !runtime->register_function ||
+        !instance) {
         return SHIP_NATIVE_UNSUPPORTED;
     }
     const auto* engine = static_cast<const ShipOotEngineV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_ENGINE_SERVICE, LINKSPAN_OOT_ENGINE_VERSION, sizeof(ShipOotEngineV1)));
-    const auto* resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
-        runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
-        sizeof(ShipOotResourcesV2)));
+    const auto* resources = static_cast<const ShipOotResourcesV2*>(
+        runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
+                             sizeof(ShipOotResourcesV2)));
     const auto* scenes = static_cast<const ShipOotScenesV1*>(runtime->get_service(
         runtime->context, LINKSPAN_OOT_SCENES_SERVICE, LINKSPAN_OOT_SCENES_VERSION, sizeof(ShipOotScenesV1)));
     if (!engine || engine->size < sizeof(ShipOotEngineV1) || !engine->layout_id ||

@@ -16,17 +16,18 @@ using namespace LinkSpanUnbound;
 
 int gFailures = 0;
 
-#define CHECK(expr)                                                                  \
-    do {                                                                             \
-        if (!(expr)) {                                                               \
-            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr);  \
-            ++gFailures;                                                             \
-        }                                                                            \
+#define CHECK(expr)                                                                 \
+    do {                                                                            \
+        if (!(expr)) {                                                              \
+            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr); \
+            ++gFailures;                                                            \
+        }                                                                           \
     } while (0)
 
 class Bin {
   public:
-    Bin() : mBytes(0x40, '\0') {} // cabeçalho OTR, little-endian
+    Bin() : mBytes(0x40, '\0') {
+    } // cabeçalho OTR, little-endian
     Bin& U8(uint32_t v) {
         mBytes.push_back(static_cast<char>(v & 0xFF));
         return *this;
@@ -77,8 +78,16 @@ std::map<std::string, std::string> Resources() {
     room.U32(5);
     room.U32(0x01).U32(1).U16(16).U16(static_cast<uint16_t>(-100)).U16(0).U16(50).U16(0).U16(0xC000).U16(0).U16(0xFFFF);
     room.U32(0x0B).U32(2).U16(1).U16(0x15);
-    room.U32(0x0A).U8(0).U8(0).U8(2).U8(0).Str("__OTR__scenes/shared/test_scene/test_room_0DL_1").Str("").U8(0).Str("").Str(
-        "scenes/shared/test_scene/test_room_0DL_2");
+    room.U32(0x0A)
+        .U8(0)
+        .U8(0)
+        .U8(2)
+        .U8(0)
+        .Str("__OTR__scenes/shared/test_scene/test_room_0DL_1")
+        .Str("")
+        .U8(0)
+        .Str("")
+        .Str("scenes/shared/test_scene/test_room_0DL_2");
     room.U32(0x10).U8(0xFF).U8(0xFF).U8(0);
     room.U32(0x14);
     r["scenes/shared/test_scene/test_room_0"] = room.Bytes();
@@ -92,7 +101,13 @@ std::map<std::string, std::string> Resources() {
     col.U32(1).U32((5u << 6) | 3).U32((2u << 8) | 7); // data1, data0
     col.U32(1).U16(1).U16(3).U32(0);
     col.U32(3).U16(1).U16(2).U16(3).U16(4).U16(5).U16(6).U16(7).U16(8).U16(9);
-    col.U32(1).U16(static_cast<uint16_t>(-50)).U16(0).U16(0).U16(100).U16(100).U32((0x3Fu << 13) | (2u << 8) | 1 | (1u << 19));
+    col.U32(1)
+        .U16(static_cast<uint16_t>(-50))
+        .U16(0)
+        .U16(0)
+        .U16(100)
+        .U16(100)
+        .U32((0x3Fu << 13) | (2u << 8) | 1 | (1u << 19));
     r["scenes/shared/test_scene/testCol"] = col.Bytes();
 
     Bin path;
@@ -119,7 +134,8 @@ void TestConvert() {
     std::vector<ConvertedFile> files;
     ConvertReport report;
     CHECK(ConvertScene(read, "scenes/shared/test_scene/test_scene", "scenes/test", files, report));
-    CHECK(report.scenes == 1 && report.rooms == 1 && report.collisions == 1 && report.paths == 1 && report.failures == 0);
+    CHECK(report.scenes == 1 && report.rooms == 1 && report.collisions == 1 && report.paths == 1 &&
+          report.failures == 0);
     std::map<std::string, std::string> byPath;
     for (const auto& file : files) {
         byPath[file.path] = file.bytes;
@@ -129,7 +145,8 @@ void TestConvert() {
     CHECK(scene["$schema"] == "unbound/scene/1" && scene["collision"] == "scenes/test/collision.json");
     CHECK(scene["rooms"]["0"] == "scenes/test/rooms/0.json");
     CHECK(scene["setups"]["0"]["specialObjects"]["globalObject"] == 3);
-    CHECK(scene["setups"]["0"]["lighting"]["0"]["fogNear"] == 993 && scene["setups"]["0"]["lighting"]["0"]["fogBlendRate"] == 1);
+    CHECK(scene["setups"]["0"]["lighting"]["0"]["fogNear"] == 993 &&
+          scene["setups"]["0"]["lighting"]["0"]["fogBlendRate"] == 1);
     CHECK(scene["setups"]["0"]["lighting"]["0"]["light1Dir"][0] == -73);
     CHECK(scene["setups"]["0"]["paths"][0] == "scenes/test/paths/testPath.json");
     CHECK(!scene["setups"].contains("1") && scene["setups"]["2"]["skybox"]["id"] == 29);
@@ -167,9 +184,11 @@ void TestConvert() {
     CHECK(Contains(colXml, "<CameraData SType=\"1\" NumData=\"3\" CameraPosDataSeg=\"0\"/>"));
     CHECK(MergeLayers({ { "base", byPath["scenes/test/rooms/0.json"], 0 } }, true, merged));
     const std::string roomXml = TranscodeScene(merged.doc, true, context);
-    CHECK(Contains(roomXml, "<ActorEntry Id=\"16\" PosX=\"-100\" PosY=\"0\" PosZ=\"50\" RotX=\"0\" RotY=\"-16384\" RotZ=\"0\" "
-                            "Params=\"-1\"/>"));
-    CHECK(Contains(roomXml, "<Polygon PolyType=\"0\" MeshOpa=\"scenes/shared/test_scene/test_room_0DL_1\" MeshXlu=\"\"/>"));
+    CHECK(Contains(roomXml,
+                   "<ActorEntry Id=\"16\" PosX=\"-100\" PosY=\"0\" PosZ=\"50\" RotX=\"0\" RotY=\"-16384\" RotZ=\"0\" "
+                   "Params=\"-1\"/>"));
+    CHECK(Contains(roomXml,
+                   "<Polygon PolyType=\"0\" MeshOpa=\"scenes/shared/test_scene/test_room_0DL_1\" MeshXlu=\"\"/>"));
 
     // Recurso que falta ou truncado: a cena fica de fora e nada é emitido.
     auto broken = resources;

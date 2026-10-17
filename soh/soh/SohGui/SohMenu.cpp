@@ -107,18 +107,23 @@ void SohMenu::AddMenuElements() {
 
 void SohMenu::AddMenuMods() {
     AddMenuEntry("Mods", CVAR_SETTING("Menu.ModsSidebarSection"));
-    WidgetPath path{"Mods", "Installed Mods", SECTION_COLUMN_1};
+    WidgetPath path{ "Mods", "Installed Mods", SECTION_COLUMN_1 };
     AddSidebarEntry("Mods", path.sidebarName, 1);
-    AddWidget(path, "Mod Overview", WIDGET_CUSTOM).CustomFunction([](WidgetInfo&) {
-        if (auto* registry = ShipLuaHost::ModMenuRegistry(); registry != nullptr) registry->DrawOverview();
-    }).HideInSearch(true);
+    AddWidget(path, "Mod Overview", WIDGET_CUSTOM)
+        .CustomFunction([](WidgetInfo&) {
+            if (auto* registry = ShipLuaHost::ModMenuRegistry(); registry != nullptr)
+                registry->DrawOverview();
+        })
+        .HideInSearch(true);
 }
 
 void SohMenu::SyncModSidebars() {
     auto* registry = ShipLuaHost::ModMenuRegistry();
-    if (registry == nullptr) return;
+    if (registry == nullptr)
+        return;
     auto mods = registry->SidebarMods();
-    if (mods == mModSidebarEntries) return;
+    if (mods == mModSidebarEntries)
+        return;
 
     auto& entry = menuEntries.at("Mods");
     for (const auto& label : mModSidebarLabels) {
@@ -130,11 +135,14 @@ void SohMenu::SyncModSidebars() {
     for (const auto& [owner, title] : mModSidebarEntries) {
         // O sufixo oculto mantém IDs distintos quando dois mods usam o mesmo título.
         const std::string label = title + "##mod-" + owner;
-        WidgetPath path{"Mods", label, SECTION_COLUMN_1};
+        WidgetPath path{ "Mods", label, SECTION_COLUMN_1 };
         AddSidebarEntry("Mods", label, 1);
-        AddWidget(path, "Mod Options", WIDGET_CUSTOM).CustomFunction([owner](WidgetInfo&) {
-            if (auto* current = ShipLuaHost::ModMenuRegistry(); current != nullptr) current->DrawOwner(owner);
-        }).HideInSearch(true);
+        AddWidget(path, "Mod Options", WIDGET_CUSTOM)
+            .CustomFunction([owner](WidgetInfo&) {
+                if (auto* current = ShipLuaHost::ModMenuRegistry(); current != nullptr)
+                    current->DrawOwner(owner);
+            })
+            .HideInSearch(true);
         mModSidebarLabels.push_back(label);
     }
 }

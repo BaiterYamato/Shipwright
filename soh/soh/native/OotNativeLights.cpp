@@ -41,14 +41,19 @@ LightsState& State() {
 // Invalidate before entering callbacks, including failed insertions that write HostLight::info.
 void AdvanceSaveStateGeneration() {
     auto& generation = State().saveStateGeneration;
-    if (generation != 0) ++generation;
+    if (generation != 0)
+        ++generation;
 }
 
 // Marca a bridge ocupada durante uma operação; a reentrada responde UNSUPPORTED sem mexer em vaga.
 struct BusyScope {
     bool previous;
-    BusyScope() : previous(State().busy) { State().busy = true; }
-    ~BusyScope() { State().busy = previous; }
+    BusyScope() : previous(State().busy) {
+        State().busy = true;
+    }
+    ~BusyScope() {
+        State().busy = previous;
+    }
     BusyScope(const BusyScope&) = delete;
     BusyScope& operator=(const BusyScope&) = delete;
 };
@@ -63,11 +68,14 @@ void* Gameplay() {
 }
 
 bool ValidOwner(const char* text) {
-    if (!text) return false;
+    if (!text)
+        return false;
     const size_t length = strnlen(text, LINKSPAN_OOT_LIGHTS_MAX_OWNER + 1);
-    if (length == 0 || length > LINKSPAN_OOT_LIGHTS_MAX_OWNER) return false;
+    if (length == 0 || length > LINKSPAN_OOT_LIGHTS_MAX_OWNER)
+        return false;
     for (size_t i = 0; i < length; ++i) {
-        if (static_cast<unsigned char>(text[i]) < 0x20) return false;
+        if (static_cast<unsigned char>(text[i]) < 0x20)
+            return false;
     }
     return true;
 }
@@ -83,8 +91,10 @@ Slot* Find(uint64_t handle, bool* issued = nullptr) {
     auto& state = State();
     const uint64_t serial = handle >> kSlotBits;
     const uint32_t index = static_cast<uint32_t>(handle & ((1u << kSlotBits) - 1));
-    if (issued) *issued = serial != 0 && serial < state.nextSerial && index < LINKSPAN_OOT_LIGHTS_MAX;
-    if (index >= LINKSPAN_OOT_LIGHTS_MAX || serial == 0) return nullptr;
+    if (issued)
+        *issued = serial != 0 && serial < state.nextSerial && index < LINKSPAN_OOT_LIGHTS_MAX;
+    if (index >= LINKSPAN_OOT_LIGHTS_MAX || serial == 0)
+        return nullptr;
     Slot& slot = state.slots[index];
     return slot.used && slot.serial == serial ? &slot : nullptr;
 }
@@ -117,19 +127,24 @@ Slot* Live(uint64_t handle, bool* issued = nullptr) {
 
 ShipNativeStatus SHIP_NATIVE_CALL CreatePointLight(const char* owner, const ShipOotPointLightV1* light,
                                                    uint64_t* handle) {
-    if (!OnOwnerThread() || !ValidOwner(owner) || !ValidLight(light) || !handle) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!OnOwnerThread() || !ValidOwner(owner) || !ValidLight(light) || !handle)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     *handle = 0;
     auto& state = State();
-    if (state.busy || !state.bridge.insert) return SHIP_NATIVE_UNSUPPORTED;
+    if (state.busy || !state.bridge.insert)
+        return SHIP_NATIVE_UNSUPPORTED;
     void* play = Gameplay();
-    if (!play) return SHIP_NATIVE_UNSUPPORTED;
+    if (!play)
+        return SHIP_NATIVE_UNSUPPORTED;
     for (auto& slot : state.slots) {
-        if (slot.used) continue;
+        if (slot.used)
+            continue;
         try {
             std::string name(owner);
             BusyScope busy;
             AdvanceSaveStateGeneration();
-            if (!state.bridge.insert(play, IndexOf(slot), *light)) return SHIP_NATIVE_LIMIT;
+            if (!state.bridge.insert(play, IndexOf(slot), *light))
+                return SHIP_NATIVE_LIMIT;
             slot.used = true;
             slot.serial = state.nextSerial++;
             slot.owner = std::move(name);
@@ -142,13 +157,17 @@ ShipNativeStatus SHIP_NATIVE_CALL CreatePointLight(const char* owner, const Ship
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL UpdatePointLight(uint64_t handle, const ShipOotPointLightV1* light) {
-    if (!OnOwnerThread() || !ValidLight(light)) return SHIP_NATIVE_INVALID_ARGUMENT;
-    if (State().busy) return SHIP_NATIVE_UNSUPPORTED;
+    if (!OnOwnerThread() || !ValidLight(light))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (State().busy)
+        return SHIP_NATIVE_UNSUPPORTED;
     bool issued = false;
     Slot* slot = Live(handle, &issued);
-    if (!slot) return issued ? SHIP_NATIVE_UNSUPPORTED : SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!slot)
+        return issued ? SHIP_NATIVE_UNSUPPORTED : SHIP_NATIVE_INVALID_ARGUMENT;
     const auto& bridge = State().bridge;
-    if (!bridge.update) return SHIP_NATIVE_UNSUPPORTED;
+    if (!bridge.update)
+        return SHIP_NATIVE_UNSUPPORTED;
     BusyScope busy;
     // Same node and LightInfo address: value updates do not invalidate snapshots.
     bridge.update(IndexOf(*slot), *light);
@@ -156,23 +175,29 @@ ShipNativeStatus SHIP_NATIVE_CALL UpdatePointLight(uint64_t handle, const ShipOo
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL DestroyPointLight(uint64_t handle) {
-    if (!OnOwnerThread()) return SHIP_NATIVE_INVALID_ARGUMENT;
-    if (State().busy) return SHIP_NATIVE_UNSUPPORTED;
+    if (!OnOwnerThread())
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (State().busy)
+        return SHIP_NATIVE_UNSUPPORTED;
     bool issued = false;
     Slot* slot = Find(handle, &issued);
-    if (!slot) return issued ? SHIP_NATIVE_OK : SHIP_NATIVE_INVALID_ARGUMENT; // já saiu com a cena ou o unload
+    if (!slot)
+        return issued ? SHIP_NATIVE_OK : SHIP_NATIVE_INVALID_ARGUMENT; // já saiu com a cena ou o unload
     Free(*slot);
     return SHIP_NATIVE_OK;
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL GetPointLightInfo(uint64_t handle, const void** info) {
-    if (!OnOwnerThread() || !info) return SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!OnOwnerThread() || !info)
+        return SHIP_NATIVE_INVALID_ARGUMENT;
     *info = nullptr;
     bool issued = false;
     Slot* slot = Live(handle, &issued);
-    if (!slot) return issued ? SHIP_NATIVE_UNSUPPORTED : SHIP_NATIVE_INVALID_ARGUMENT;
+    if (!slot)
+        return issued ? SHIP_NATIVE_UNSUPPORTED : SHIP_NATIVE_INVALID_ARGUMENT;
     const auto& bridge = State().bridge;
-    if (!bridge.info) return SHIP_NATIVE_UNSUPPORTED;
+    if (!bridge.info)
+        return SHIP_NATIVE_UNSUPPORTED;
     *info = bridge.info(IndexOf(*slot));
     return SHIP_NATIVE_OK;
 }
@@ -195,7 +220,8 @@ void InitializeOotNativeLights(std::thread::id ownerThread) {
 
 void ResetOotNativeLights() {
     for (auto& slot : State().slots) {
-        if (slot.used) Free(slot);
+        if (slot.used)
+            Free(slot);
     }
 }
 
@@ -210,7 +236,8 @@ const ShipOotLightsV1& GetOotNativeLightsService() {
 
 void ReleaseOotLightOwner(std::string_view owner) {
     for (auto& slot : State().slots) {
-        if (slot.used && slot.owner == owner) Free(slot);
+        if (slot.used && slot.owner == owner)
+            Free(slot);
     }
 }
 
@@ -220,7 +247,8 @@ void ReleaseOotSceneLights() {
 
 uint32_t OotLightCount() {
     uint32_t count = 0;
-    for (const auto& slot : State().slots) count += slot.used ? 1 : 0;
+    for (const auto& slot : State().slots)
+        count += slot.used ? 1 : 0;
     return count;
 }
 

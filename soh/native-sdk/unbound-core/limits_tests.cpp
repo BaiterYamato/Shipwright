@@ -17,12 +17,12 @@ using namespace LinkSpanUnbound;
 
 int gFailures = 0;
 
-#define CHECK(expr)                                                                  \
-    do {                                                                             \
-        if (!(expr)) {                                                               \
-            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr);  \
-            ++gFailures;                                                             \
-        }                                                                            \
+#define CHECK(expr)                                                                 \
+    do {                                                                            \
+        if (!(expr)) {                                                              \
+            std::fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr); \
+            ++gFailures;                                                            \
+        }                                                                           \
     } while (0)
 
 size_t Count(const std::string& text, const std::string& needle) {
@@ -108,8 +108,8 @@ void TestMessageBytes() {
 
 std::string CollisionText(size_t surfaces, size_t water) {
     return R"({"bounds":{"min":[0,0,0],"max":[1,1,1]},"bulk":{"file":"limites/vazio.bin","vertices":0,"polys":0},)"
-           R"("surfaceTypes":)" + PositionalText(surfaces, "{}") + R"(,"waterBoxes":)" + PositionalText(water, "{}") +
-           "}";
+           R"("surfaceTypes":)" +
+           PositionalText(surfaces, "{}") + R"(,"waterBoxes":)" + PositionalText(water, "{}") + "}";
 }
 
 // R06: 65 535 surface types e water boxes por cena (índices u16); acima disso o documento é recusado.
@@ -124,9 +124,7 @@ void TestCollisionCounts() {
             std::string error;
             try {
                 xml = TranscodeCollision(doc, context);
-            } catch (const DocumentError& e) {
-                error = e.what();
-            }
+            } catch (const DocumentError& e) { error = e.what(); }
             std::printf("colisão %s=%zu: parse %.0f ms, total %.0f ms\n", surfaces ? "surfaceTypes" : "waterBoxes", n,
                         parsed, MillisecondsSince(start));
             if (n <= 65535) {
@@ -267,12 +265,12 @@ void TestReviewCosts() {
     start = std::chrono::steady_clock::now();
     RoomActorsResult mod;
     std::string error;
-    CHECK(ApplyRoomActorLayers({}, 0,
-                               { { "mod",
-                                   R"({"$schema":"unbound/room/1","setups":{"0":{"actors":)" +
-                                       PositionalText(16384, R"({"id":16})") + "}}}",
-                                   0 } },
-                               mod, error));
+    CHECK(ApplyRoomActorLayers(
+        {}, 0,
+        { { "mod",
+            R"({"$schema":"unbound/room/1","setups":{"0":{"actors":)" + PositionalText(16384, R"({"id":16})") + "}}}",
+            0 } },
+        mod, error));
     CHECK(mod.actors.size() == 16384 && error.empty());
     // Lista vanilla grande com camada que apaga, muda, substitui e acrescenta (caminho indexado do MergeLayer).
     std::vector<RoomActor> vanilla(16384);
@@ -280,12 +278,13 @@ void TestReviewCosts() {
         vanilla[i].params = static_cast<int16_t>(i);
     }
     RoomActorsResult patched;
-    CHECK(ApplyRoomActorLayers(vanilla, 0,
-                               { { "mod",
-                                   R"({"$schema":"unbound/room/1","setups":{"0":{"actors":{"1":{"id":9},"2":{"params":7},)"
-                                   R"("3":{"$replace":true,"id":5},"4":null,"novo":{"id":16,"params":-1}}}}})",
-                                   0 } },
-                               patched, error));
+    CHECK(ApplyRoomActorLayers(
+        vanilla, 0,
+        { { "mod",
+            R"({"$schema":"unbound/room/1","setups":{"0":{"actors":{"1":{"id":9},"2":{"params":7},)"
+            R"("3":{"$replace":true,"id":5},"4":null,"novo":{"id":16,"params":-1}}}}})",
+            0 } },
+        patched, error));
     CHECK(patched.actors.size() == 16384 && error.empty());
     CHECK(patched.actors.size() > 4 && patched.actors[1].id == 9 && patched.actors[1].params == 1 &&
           patched.actors[2].params == 7 && patched.actors[3].id == 5 && patched.actors[3].params == 0 &&
@@ -358,18 +357,21 @@ void TestMinimapRooms() {
     CHECK(note(ydan, 32) == head(ydan, 32, "ydan", 13) + "textura da dungeon seguinte nas salas 13 a 31");
     CHECK(note(ydan, 33) == head(ydan, 33, "ydan", 13) + "textura das dungeons seguintes nas salas 13 a 32; " + visit +
                                 "; paleta da dungeon seguinte na sala 32");
-    CHECK(note(ydan, 240) == head(ydan, 240, "ydan", 13) +
-                                 "textura das dungeons seguintes nas salas 13 a 238 e além da lista de 239 nomes da sala "
-                                 "239 em diante; " +
-                                 visit + "; paleta das dungeons seguintes nas salas 32 a 239; bússola das dungeons "
-                                         "seguintes nas salas 44 a 239");
-    CHECK(note(ydan, 441) == head(ydan, 441, "ydan", 13) +
-                                 "textura das dungeons seguintes nas salas 13 a 238 e além da lista de 239 nomes da sala "
-                                 "239 em diante; " +
-                                 visit +
-                                 "; paleta das dungeons seguintes nas salas 32 a 319 e além da tabela da sala 320 em "
-                                 "diante (risco de escrita fora de mapPalette); bússola das dungeons seguintes nas salas 44 a 439 "
-                                 "e além da tabela da sala 440 em diante");
+    CHECK(note(ydan, 240) ==
+          head(ydan, 240, "ydan", 13) +
+              "textura das dungeons seguintes nas salas 13 a 238 e além da lista de 239 nomes da sala "
+              "239 em diante; " +
+              visit +
+              "; paleta das dungeons seguintes nas salas 32 a 239; bússola das dungeons "
+              "seguintes nas salas 44 a 239");
+    CHECK(note(ydan, 441) ==
+          head(ydan, 441, "ydan", 13) +
+              "textura das dungeons seguintes nas salas 13 a 238 e além da lista de 239 nomes da sala "
+              "239 em diante; " +
+              visit +
+              "; paleta das dungeons seguintes nas salas 32 a 319 e além da tabela da sala 320 em "
+              "diante (risco de escrita fora de mapPalette); bússola das dungeons seguintes nas salas 44 a 439 "
+              "e além da tabela da sala 440 em diante");
     const std::string ice = "scenes/ice_doukutu/scene.json";
     const std::string iceTexture = "textura além da lista de 239 nomes da sala 12 em diante";
     CHECK(note(ice, 12).empty());
@@ -378,18 +380,22 @@ void TestMinimapRooms() {
     CHECK(note(ice, 33) == head(ice, 33, "ice_doukutu", 12) + iceTexture + "; " + visit +
                                "; paleta além da tabela da sala 32 em diante (risco de escrita fora de mapPalette)");
     CHECK(note(ice, 44) == note(ice, 33).replace(note(ice, 33).find("33 salas"), 2, "44"));
-    CHECK(note(ice, 45) == head(ice, 45, "ice_doukutu", 12) + iceTexture + "; " + visit +
-                               "; paleta além da tabela da sala 32 em diante (risco de escrita fora de mapPalette); bússola além "
-                               "da tabela da sala 44 em diante");
+    CHECK(note(ice, 45) ==
+          head(ice, 45, "ice_doukutu", 12) + iceTexture + "; " + visit +
+              "; paleta além da tabela da sala 32 em diante (risco de escrita fora de mapPalette); bússola além "
+              "da tabela da sala 44 em diante");
     const std::string water = "scenes/MIZUsin/scene.json";
     CHECK(note(water, 32).empty());
     CHECK(note(water, 33) == head(water, 33, "MIZUsin", 44) + visit + "; paleta da dungeon seguinte na sala 32");
-    CHECK(note(water, 45) == head(water, 45, "MIZUsin", 44) + "textura da dungeon seguinte na sala 44; " + visit +
-                                 "; paleta da dungeon seguinte nas salas 32 a 44; bússola da dungeon seguinte na sala 44");
-    CHECK(note(water, 161).find("paleta das dungeons seguintes nas salas 32 a 159 e além da tabela da sala 160 em "
-                                "diante") != std::string::npos);
-    CHECK(note(water, 221).find("bússola das dungeons seguintes nas salas 44 a 219 e além da tabela da sala 220 em "
-                                "diante") != std::string::npos);
+    CHECK(note(water, 45) ==
+          head(water, 45, "MIZUsin", 44) + "textura da dungeon seguinte na sala 44; " + visit +
+              "; paleta da dungeon seguinte nas salas 32 a 44; bússola da dungeon seguinte na sala 44");
+    CHECK(note(water, 161)
+              .find("paleta das dungeons seguintes nas salas 32 a 159 e além da tabela da sala 160 em "
+                    "diante") != std::string::npos);
+    CHECK(note(water, 221)
+              .find("bússola das dungeons seguintes nas salas 44 a 219 e além da tabela da sala 220 em "
+                    "diante") != std::string::npos);
     const std::string boss = "scenes/moribossroom/scene.json";
     CHECK(note(boss, 28) == head(boss, 28, "moribossroom", 27) + "textura da dungeon seguinte na sala 27");
     const std::string mq = "scenes/ydan_mq/scene.json";
@@ -420,7 +426,8 @@ void TestWorldMapArea() {
     // Alias de setup ("01" e "1"): só um vira o <AlternateHeader> 1, e a nota segue o que foi emitido.
     TranscodeContext context = Context();
     const std::string xml = TranscodeScene(ParseJson(R"({"setups":{"0":{},"1":{"cameraSettings":{"worldMapArea":3}},
-        "01":{"cameraSettings":{"worldMapArea":-5}}}})"), false, context);
+        "01":{"cameraSettings":{"worldMapArea":-5}}}})"),
+                                           false, context);
     const bool negative = xml.find(R"(WorldMapArea="-5")") != std::string::npos;
     CHECK(negative != (xml.find(R"(WorldMapArea="3")") != std::string::npos));
     CHECK(AnyNote(context, "1 setup(s) fora de 0..22") == negative);
@@ -430,8 +437,8 @@ void TestWorldMapArea() {
 // objetos por sala (banco de 1 024).
 void TestActorAndObjectCounts() {
     for (const size_t n : { 8191u, 8192u, 8193u, 65536u }) {
-        const std::string doc = R"({"setups":{"0":{"actors":)" +
-                                PositionalText(n, R"({"id":16,"pos":[0,0,0]})") + "}}}";
+        const std::string doc =
+            R"({"setups":{"0":{"actors":)" + PositionalText(n, R"({"id":16,"pos":[0,0,0]})") + "}}}";
         TranscodeContext context = Context();
         const std::string xml = TranscodeScene(ParseJson(doc), true, context);
         CHECK(Count(xml, "<ActorEntry ") == std::min<size_t>(n, 8192));
@@ -444,8 +451,8 @@ void TestActorAndObjectCounts() {
             actors += ",\"" + std::to_string(i) + R"(":{"id":16,"pos":[0,0,0]})";
         }
         TranscodeContext context = Context();
-        const std::string xml = TranscodeScene(ParseJson(R"({"setups":{"0":{"actors":)" + actors + "}}}}"), true,
-                                               context);
+        const std::string xml =
+            TranscodeScene(ParseJson(R"({"setups":{"0":{"actors":)" + actors + "}}}}"), true, context);
         CHECK(Count(xml, "<ActorEntry ") == 8192);
         CHECK(!AnyNote(context, "o framework grava só os primeiros"));
     }
@@ -476,8 +483,7 @@ void TestLightListCounts() {
             CHECK(Count(xml, "<LightInfo ") == n); // Nota não corta nem recusa o XML.
             CHECK(context.notes.size() == (n > 32 ? 1u : 0u));
             if (n > 32 && !context.notes.empty()) {
-                CHECK(context.notes.front() == context.path + " lights: " + std::to_string(n) +
-                                               (n > 255 ? high : low));
+                CHECK(context.notes.front() == context.path + " lights: " + std::to_string(n) + (n > 255 ? high : low));
             }
             CHECK(AnyNote(context, low) == (n > 32 && n <= 255));
             CHECK(AnyNote(context, high) == (n > 255));
@@ -498,8 +504,8 @@ void TestLightListCounts() {
         // Setups de níveis distintos continuam independentes; não usar o total do documento.
         TranscodeContext mixed = Context();
         const std::string mixedDoc = R"({"setups":{"0":{"lights":)" + PositionalText(32, light) +
-                                     R"(},"1":{"lights":)" + PositionalText(33, light) +
-                                     R"(},"2":{"lights":)" + PositionalText(256, light) + "}}}";
+                                     R"(},"1":{"lights":)" + PositionalText(33, light) + R"(},"2":{"lights":)" +
+                                     PositionalText(256, light) + "}}}";
         CHECK(Count(TranscodeScene(ParseJson(mixedDoc), room, mixed), "<LightInfo ") == 321);
         CHECK(mixed.notes.size() == 2);
         CHECK(AnyNote(mixed, " lights: 33" + low));
@@ -549,7 +555,8 @@ void TestWorldLimit() {
         }
     }
     // Finito no JSON, além do f32: o FloatAttribute lê ±inf e a nota sai (antes dependia da biblioteca).
-    const std::pair<const char*, const char*> huges[] = { { "1e39", "1e+39" }, { "-1e39", "-1e+39" },
+    const std::pair<const char*, const char*> huges[] = { { "1e39", "1e+39" },
+                                                          { "-1e39", "-1e+39" },
                                                           { "1e100", "1e+100" } };
     for (const auto& [v, shown] : huges) {
         const std::string pos = std::string("[0,") + v + ",0]";
@@ -560,8 +567,8 @@ void TestWorldLimit() {
         CHECK(AnyNote(huge, "limites transitionActors: 1 posição(ões)"));
     }
     TranscodeContext outside = Context();
-    const std::string xml = TranscodeScene(
-        ParseJson(scene("[1048577,0,0]", "[0,0,-1048576.07]", "[0,1048600.5,0]")), true, outside);
+    const std::string xml =
+        TranscodeScene(ParseJson(scene("[1048577,0,0]", "[0,0,-1048576.07]", "[0,1048600.5,0]")), true, outside);
     CHECK(AnyNote(outside, "limites spawns: 1 posição(ões) além de ±1048576 (ex.: 0=1048577,0,0)"));
     // -1 048 576,07 vira o f32 -1 048 576,125.
     CHECK(AnyNote(outside, "limites actors: 1 posição(ões) além de ±1048576 (ex.: a=0,0,-1048576.12)"));
@@ -606,8 +613,8 @@ void TestMeshEntries() {
 void TestCollisionCameras() {
     const auto collision = [](size_t cameras, int64_t surface, int64_t water) {
         return std::string(R"({"bounds":{"min":[0,0,0],"max":[1,1,1]},"bulk":{"file":"x.bin"},)") +
-               R"("surfaceTypes":{"0":{"camera":)" + std::to_string(surface) + "}}," +
-               R"("cameras":)" + PositionalText(cameras, R"({"sType":1,"count":0,"positionIndex":null})") + "," +
+               R"("surfaceTypes":{"0":{"camera":)" + std::to_string(surface) + "}}," + R"("cameras":)" +
+               PositionalText(cameras, R"({"sType":1,"count":0,"positionIndex":null})") + "," +
                R"("waterBoxes":{"0":{"xMin":0,"ySurface":0,"zMin":0,"xLength":1,"zLength":1,"camera":)" +
                std::to_string(water) + "}}}";
     };

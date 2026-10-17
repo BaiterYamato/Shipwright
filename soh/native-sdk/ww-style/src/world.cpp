@@ -72,17 +72,18 @@ void IcoWriteVert(int index, float x, float y, float z, uint8_t shade) {
 // Monta os 240 vértices e a display list em cargas. A sombra por face (clara/escura conforme uma direção fixa do
 // próprio objeto) só aparece no debug, que multiplica a cor da luz por ela; as projeções usam só PRIMITIVE.
 void BuildIcosphere() {
-    if (sIcoBuilt) return;
+    if (sIcoBuilt)
+        return;
     const float t = 1.618033988749895f;
     const float base[12][3] = {
-        { -1, t, 0 }, { 1, t, 0 },  { -1, -t, 0 }, { 1, -t, 0 }, { 0, -1, t },  { 0, 1, t },
+        { -1, t, 0 },  { 1, t, 0 },  { -1, -t, 0 }, { 1, -t, 0 }, { 0, -1, t },  { 0, 1, t },
         { 0, -1, -t }, { 0, 1, -t }, { t, 0, -1 },  { t, 0, 1 },  { -t, 0, -1 }, { -t, 0, 1 },
     };
     // Faces com a normal para fora (anti-horário), para o culling das passadas de stencil.
     const int faces[20][3] = {
-        { 0, 11, 5 }, { 0, 5, 1 },  { 0, 1, 7 },  { 0, 7, 10 }, { 0, 10, 11 }, { 1, 5, 9 },  { 5, 11, 4 },
-        { 11, 10, 2 }, { 10, 7, 6 }, { 7, 1, 8 },  { 3, 9, 4 },  { 3, 4, 2 },   { 3, 2, 6 },  { 3, 6, 8 },
-        { 3, 8, 9 },  { 4, 9, 5 },  { 2, 4, 11 }, { 6, 2, 10 }, { 8, 6, 7 },   { 9, 8, 1 },
+        { 0, 11, 5 },  { 0, 5, 1 },  { 0, 1, 7 },  { 0, 7, 10 }, { 0, 10, 11 }, { 1, 5, 9 }, { 5, 11, 4 },
+        { 11, 10, 2 }, { 10, 7, 6 }, { 7, 1, 8 },  { 3, 9, 4 },  { 3, 4, 2 },   { 3, 2, 6 }, { 3, 6, 8 },
+        { 3, 8, 9 },   { 4, 9, 5 },  { 2, 4, 11 }, { 6, 2, 10 }, { 8, 6, 7 },   { 9, 8, 1 },
     };
     const float shadeDir[3] = { 0.40f, 0.72f, 0.57f };
     int w = 0;
@@ -102,7 +103,8 @@ void BuildIcosphere() {
             const float dot =
                 clen > 0.0001f ? ((cx * shadeDir[0]) + (cy * shadeDir[1]) + (cz * shadeDir[2])) / clen : 0.0f;
             const auto shade = static_cast<uint8_t>((0.5f + (0.25f * (dot + 1.0f))) * 255.0f);
-            for (const float* corner : tri) IcoWriteVert(w++, corner[0], corner[1], corner[2], shade);
+            for (const float* corner : tri)
+                IcoWriteVert(w++, corner[0], corner[1], corner[2], shade);
         }
     }
     Gfx* g = sIcoDL;
@@ -157,7 +159,7 @@ void MaskPass(Gfx*& g, uint32_t stencil, uint32_t cull) {
     gSPSetGeometryMode(g++, G_ZBUFFER | cull);
     gDPSetCombineLERP(g++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE);
     gDPSetRenderMode(g++, G_RM_AA_ZB_XLU_SURF, G_RM_AA_ZB_XLU_SURF2); // testa o depth, não grava
-    gDPSetPrimColor(g++, 0, 0, 0, 0, 0, 0);                            // alfa 0: invisível, o stencil atualiza
+    gDPSetPrimColor(g++, 0, 0, 0, 0, 0, 0);                           // alfa 0: invisível, o stencil atualiza
     __gSPDisplayList(g++, sIcoDL);
 }
 
@@ -195,13 +197,16 @@ constexpr size_t kGfxPerLight = 1 + (3 * 8) + 8;
 // outro; o salto (com uma retenção curta) separa as chamas das luzes estáveis, que ficam intactas. A chama ganha
 // uma caminhada aleatória suavizada, mantendo o tom.
 void FlameFlicker(Mod& mod, ShipOotPointLightColorHookV2& light) {
-    if (!mod.cfg.improveFlameFlicker || light.light == nullptr) return;
+    if (!mod.cfg.improveFlameFlicker || light.light == nullptr)
+        return;
     const int inMax = std::max({ light.r, light.g, light.b });
-    if (inMax <= 0) return;
+    if (inMax <= 0)
+        return;
     auto& table = mod.lighting.flicker;
     // Toda luz que passa por aqui precisa da amostra anterior; o conjunto é pequeno e os endereços se repetem, então
     // um teto basta (zerar tudo custa um frame imperceptível).
-    if (table.size() > 256) table.clear();
+    if (table.size() > 256)
+        table.clear();
     auto [it, isNew] = table.try_emplace(light.light);
     FlameFlickerState& f = it->second;
     uint32_t& rng = mod.lighting.rng;
@@ -214,10 +219,12 @@ void FlameFlicker(Mod& mod, ShipOotPointLightColorHookV2& light) {
     }
     const int delta = std::abs(inMax - f.lastInMax);
     f.lastInMax = inMax;
-    if (delta > 12) f.hold = 8;
+    if (delta > 12)
+        f.hold = 8;
     // Acompanha o brilho cheio da luz, adaptando devagar a uma chama que realmente enfraquece.
     f.maxSeen = std::max(f.maxSeen * 0.99f, static_cast<float>(inMax));
-    if (f.hold <= 0) return;
+    if (f.hold <= 0)
+        return;
     --f.hold;
     const float interval = 0.25f / std::max(mod.cfg.flickerSpeed, 0.05f);
     f.phase += mod.lighting.dt;
@@ -248,18 +255,17 @@ void WorldFrame(Mod& mod, PlayState* play) {
         lighting.fairyNoGlow.clear();
         DropDekuStickLight(mod);
     }
-    ShipOotRenderFrameInfoV1 info{sizeof(info)};
-    lighting.dt = mod.render->get_frame_info(&info) == SHIP_NATIVE_OK && info.delta_seconds > 0.0f
-                      ? info.delta_seconds
-                      : 3.0f / 60.0f;
+    ShipOotRenderFrameInfoV1 info{ sizeof(info) };
+    lighting.dt = mod.render->get_frame_info(&info) == SHIP_NATIVE_OK && info.delta_seconds > 0.0f ? info.delta_seconds
+                                                                                                   : 3.0f / 60.0f;
 }
 
 // Depois do update do Link: a ponta do Deku Stick já está na posição do frame.
 void DekuStickLight(Mod& mod, PlayState* play) {
     const Player* player = play ? GET_PLAYER(play) : nullptr;
     // unk_860 é o tempo de queima (também usado pela vara de pesca), então o item na mão vem primeiro.
-    const bool lit = mod.cfg.dekuStickLight && player != nullptr &&
-                     player->heldItemAction == PLAYER_IA_DEKU_STICK && player->unk_860 != 0;
+    const bool lit = mod.cfg.dekuStickLight && player != nullptr && player->heldItemAction == PLAYER_IA_DEKU_STICK &&
+                     player->unk_860 != 0;
     if (!lit) {
         DropDekuStickLight(mod);
         return;
@@ -267,13 +273,13 @@ void DekuStickLight(Mod& mod, PlayState* play) {
     // O ruído branco de uma tocha (obj_syokudai): a tremulação o detecta e suaviza como em toda tocha.
     const float brightness = ((RandomZeroOne(mod.lighting.rng) * 127.0f) + 128.0f) / 255.0f;
     const Vec3f& tip = player->meleeWeaponInfo[0].tip;
-    ShipOotPointLightV1 light{sizeof(light),
-                              { tip.x, tip.y, tip.z },
-                              kStickLightRadius,
-                              { static_cast<uint8_t>(kStickColor[0] * brightness),
-                                static_cast<uint8_t>(kStickColor[1] * brightness),
-                                static_cast<uint8_t>(kStickColor[2] * brightness) },
-                              0};
+    ShipOotPointLightV1 light{ sizeof(light),
+                               { tip.x, tip.y, tip.z },
+                               kStickLightRadius,
+                               { static_cast<uint8_t>(kStickColor[0] * brightness),
+                                 static_cast<uint8_t>(kStickColor[1] * brightness),
+                                 static_cast<uint8_t>(kStickColor[2] * brightness) },
+                               0 };
     if (mod.lighting.stickLight && mod.lights->update_point_light(mod.lighting.stickLight, &light) == SHIP_NATIVE_OK)
         return;
     // Handle velho (troca de cena) ou nenhum: cria de novo.
@@ -288,14 +294,16 @@ void DekuStickLight(Mod& mod, PlayState* play) {
 }
 
 void DropDekuStickLight(Mod& mod) {
-    if (mod.lighting.stickLight && mod.lights) mod.lights->destroy_point_light(mod.lighting.stickLight);
+    if (mod.lighting.stickLight && mod.lights)
+        mod.lights->destroy_point_light(mod.lighting.stickLight);
     mod.lighting.stickLight = 0;
     mod.lighting.stickInfo = nullptr;
 }
 
 void DrawWorldLights(Mod& mod, PlayState* play) {
     const Settings& cfg = mod.cfg;
-    if (!cfg.lightCasting || play == nullptr) return;
+    if (!cfg.lightCasting || play == nullptr)
+        return;
     BuildIcosphere();
     LightingState& lighting = mod.lighting;
     ++lighting.gen;
@@ -313,25 +321,30 @@ void DrawWorldLights(Mod& mod, PlayState* play) {
     if (cfg.otherFairyLights) {
         Actor* actor = play->actorCtx.actorLists[ACTORCAT_ITEMACTION].head;
         for (; actor != nullptr; actor = actor->next) {
-            if (actor->id != ACTOR_EN_ELF) continue;
+            if (actor->id != ACTOR_EN_ELF)
+                continue;
             const auto found = lighting.fairyNoGlow.find(actor);
-            if (found != lighting.fairyNoGlow.end()) lighting.wildLights.push_back(found->second);
+            if (found != lighting.fairyNoGlow.end())
+                lighting.wildLights.push_back(found->second);
         }
     }
 
     size_t lights = 0;
-    for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) ++lights;
+    for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next)
+        ++lights;
     lighting.dl.resize((lights * kGfxPerLight) + 2);
     Gfx* g = lighting.dl.data();
     uint32_t drawn = 0;
     for (LightNode* node = play->lightCtx.listHead; node != nullptr; node = node->next) {
         LightInfo* info = node->info;
-        if (info == nullptr || info->type == LIGHT_DIRECTIONAL) continue;
+        if (info == nullptr || info->type == LIGHT_DIRECTIONAL)
+            continue;
         const bool isNavi = info == mod.navi.glow || info == mod.navi.noGlow;
         const bool isWild = !isNavi && std::find(lighting.wildLights.begin(), lighting.wildLights.end(),
                                                  static_cast<const void*>(info)) != lighting.wildLights.end();
         const bool isStick = !isNavi && !isWild && lighting.stickInfo != nullptr && info == lighting.stickInfo;
-        if (isNavi && !cfg.naviLightCasting) continue;
+        if (isNavi && !cfg.naviLightCasting)
+            continue;
         WorldLightState& s = LightState(mod, info);
         const LightPoint& p = info->params.point;
         // Cor viva: a tremulação e o tom da Navi já agiram na fonte.
@@ -347,7 +360,8 @@ void DrawWorldLights(Mod& mod, PlayState* play) {
             // apagar em vez de estalar.
             const float target = p.radius > 0 ? static_cast<float>(p.radius) : 0.0f;
             s.spawnRadius = WWEase(s.spawnRadius, target, 0.3f, 10000.0f, dt);
-            if (target <= 0.0f && s.spawnRadius < 0.5f) s.spawnRadius = 0.0f;
+            if (target <= 0.0f && s.spawnRadius < 0.5f)
+                s.spawnRadius = 0.0f;
             worldRadius = s.spawnRadius * cfg.naviSphereSize;
             thisAlpha = naviAlpha;
         } else if (isWild) {
@@ -371,7 +385,8 @@ void DrawWorldLights(Mod& mod, PlayState* play) {
             s.alphaCur = WWEase(s.alphaCur, s.alphaTarget, 1.0f, 0.08f, dt);
             thisAlpha = static_cast<uint8_t>(std::clamp(alpha * s.alphaCur, 0.0f, 255.0f));
         }
-        if (worldRadius <= 0.0f) continue;
+        if (worldRadius <= 0.0f)
+            continue;
 
         // Matriz da luz num filho de interpolação: translação, giro Y, giro X e escala (a ordem do Wind Waker).
         const void* mtx = nullptr;
@@ -381,10 +396,14 @@ void DrawWorldLights(Mod& mod, PlayState* play) {
             if (status == SHIP_NATIVE_OK) {
                 const float scale = worldRadius * 0.01f;
                 status = mod.render->matrix_translate_new(p.x, p.y, p.z);
-                if (status == SHIP_NATIVE_OK) status = mod.render->matrix_rotate_axis(s.angleY, 0.0f, 1.0f, 0.0f);
-                if (status == SHIP_NATIVE_OK) status = mod.render->matrix_rotate_axis(s.angleX, 1.0f, 0.0f, 0.0f);
-                if (status == SHIP_NATIVE_OK) status = mod.render->matrix_scale(scale, scale, scale);
-                if (status == SHIP_NATIVE_OK) status = mod.render->export_current_matrix(&mtx);
+                if (status == SHIP_NATIVE_OK)
+                    status = mod.render->matrix_rotate_axis(s.angleY, 0.0f, 1.0f, 0.0f);
+                if (status == SHIP_NATIVE_OK)
+                    status = mod.render->matrix_rotate_axis(s.angleX, 1.0f, 0.0f, 0.0f);
+                if (status == SHIP_NATIVE_OK)
+                    status = mod.render->matrix_scale(scale, scale, scale);
+                if (status == SHIP_NATIVE_OK)
+                    status = mod.render->export_current_matrix(&mtx);
                 mod.render->matrix_pop();
             }
             mod.render->interpolation_end();
@@ -397,7 +416,8 @@ void DrawWorldLights(Mod& mod, PlayState* play) {
         MaskPass(g, kStencilIncr, G_CULL_FRONT); // faces de trás: stencil ++ (z-fail)
         MaskPass(g, kStencilDecr, G_CULL_BACK);  // faces da frente: stencil -- (z-fail)
         CompositePass(g, col, thisAlpha);
-        if (cfg.debugLightSpheres) DebugSphere(g, col);
+        if (cfg.debugLightSpheres)
+            DebugSphere(g, col);
         ++drawn;
     }
     // O modo de stencil persiste no renderer: desliga para os atores seguintes.

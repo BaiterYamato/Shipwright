@@ -20,13 +20,12 @@ std::string ProviderAssetsDirectory() {
     }
     wchar_t path[MAX_PATH];
     const DWORD length = GetModuleFileNameW(module, path, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) return {};
+    if (length == 0 || length >= MAX_PATH)
+        return {};
     try {
         const std::filesystem::path assets = std::filesystem::path(path).parent_path().parent_path() / "assets";
         std::error_code error;
         // mount_archive recebe char* na página de código ativa, como std::filesystem no Windows.
         return std::filesystem::is_directory(assets, error) ? assets.string() : std::string{};
-    } catch (const std::exception&) {
-        return {};
-    }
+    } catch (const std::exception&) { return {}; }
 }

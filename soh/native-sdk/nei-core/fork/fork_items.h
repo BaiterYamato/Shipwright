@@ -11,15 +11,15 @@ extern "C" {
 
 // O que o fork diz de um item (linha do sNeiItems[] e tabela de modelos), para o registro linkspan.nei.items.
 typedef struct NeiForkItemInfo {
-    uint16_t logicalId;     // ITEM_* or u16 EXT_ITEM_* in the fork
-    uint8_t slot;           // slot da página do NEI (24..47), ou 0xFF sem célula
-    uint8_t age;            // LINKSPAN_OOT_ITEM_AGE_* (0 adulto, 1 criança, 9 qualquer)
-    const char* icon;       // textura do ícone sem __OTR__, ou NULL
-    const char* message;    // texto do get-item em inglês, com os códigos do fork, ou NULL
-    const char* modelPath;  // display list do get-item sem __OTR__, ou NULL
+    uint16_t logicalId;    // ITEM_* or u16 EXT_ITEM_* in the fork
+    uint8_t slot;          // slot da página do NEI (24..47), ou 0xFF sem célula
+    uint8_t age;           // LINKSPAN_OOT_ITEM_AGE_* (0 adulto, 1 criança, 9 qualquer)
+    const char* icon;      // textura do ícone sem __OTR__, ou NULL
+    const char* message;   // texto do get-item em inglês, com os códigos do fork, ou NULL
+    const char* modelPath; // display list do get-item sem __OTR__, ou NULL
     float modelScale;
-    uint8_t modelLayer;     // NEI_MODEL_LAYER_* (fork_models.h)
-    const char* component;  // componente de assets de que o item depende ("core", "expansion.ssbb"...)
+    uint8_t modelLayer;    // NEI_MODEL_LAYER_* (fork_models.h)
+    const char* component; // componente de assets de que o item depende ("core", "expansion.ssbb"...)
 } NeiForkItemInfo;
 
 // Ids lógicos dos itens do fork que o coremod liga ao registro. Devolve quantos escreveu.

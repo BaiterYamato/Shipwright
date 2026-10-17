@@ -11,11 +11,14 @@ typedef struct LinkSpanMenuInput {
 
 static inline int LinkSpanMenuStickStep(int x, int8_t* latch) {
     if (*latch) {
-        if (x > -20 && x < 20) *latch = 0;
+        if (x > -20 && x < 20)
+            *latch = 0;
         return 0;
     }
-    if (x >= 45) return *latch = 1;
-    if (x <= -45) return *latch = -1;
+    if (x >= 45)
+        return *latch = 1;
+    if (x <= -45)
+        return *latch = -1;
     return 0;
 }
 

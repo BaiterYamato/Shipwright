@@ -223,9 +223,7 @@ ShipNativeStatus RegisterSceneRecord(const ShipOotSceneDefinitionV1* definition,
         *sceneHandle = handle;
         *sceneId = id;
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL RegisterScene(const ShipOotSceneDefinitionV1* definition, uint64_t* sceneHandle,
@@ -244,8 +242,9 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterSceneV2(const ShipOotSceneDefinitionV2
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     // Os campos V1 são o prefixo da V2.
-    const ShipOotSceneDefinitionV1 v1{ sizeof(ShipOotSceneDefinitionV1), definition->name, definition->display_name,
-                                       definition->scene_path, definition->requested_id, definition->draw_config };
+    const ShipOotSceneDefinitionV1 v1{ sizeof(ShipOotSceneDefinitionV1), definition->name,
+                                       definition->display_name,         definition->scene_path,
+                                       definition->requested_id,         definition->draw_config };
     return RegisterSceneRecord(&v1, definition->title_card_texture, nullptr, sceneHandle, sceneId);
 }
 
@@ -255,8 +254,9 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterSceneV3(const ShipOotSceneDefinitionV3
         !sceneId) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    const ShipOotSceneDefinitionV1 v1{ sizeof(ShipOotSceneDefinitionV1), definition->name, definition->display_name,
-                                       definition->scene_path, definition->requested_id, definition->draw_config };
+    const ShipOotSceneDefinitionV1 v1{ sizeof(ShipOotSceneDefinitionV1), definition->name,
+                                       definition->display_name,         definition->scene_path,
+                                       definition->requested_id,         definition->draw_config };
     return RegisterSceneRecord(&v1, definition->title_card_texture, definition, sceneHandle, sceneId);
 }
 
@@ -333,9 +333,7 @@ ShipNativeStatus SHIP_NATIVE_CALL RegisterEntrance(uint64_t sceneHandle, const S
         tableChanged = true;
         state.nextEntranceIndex = std::max(state.nextEntranceIndex, index + ENTRANCE_LAYERS);
         *entranceIndex = index;
-    } catch (...) {
-        status = SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { status = SHIP_NATIVE_FAILURE; }
     if (tableChanged) {
         PublishTable(state);
     }
@@ -398,9 +396,7 @@ ShipNativeStatus SHIP_NATIVE_CALL FindScene(const char* name, int32_t* sceneId) 
             return SHIP_NATIVE_OK;
         }
         return SHIP_NATIVE_UNSUPPORTED;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL FindEntrance(const char* name, int32_t* entranceIndex) {
@@ -426,9 +422,7 @@ ShipNativeStatus SHIP_NATIVE_CALL FindEntrance(const char* name, int32_t* entran
             return SHIP_NATIVE_OK;
         }
         return SHIP_NATIVE_UNSUPPORTED;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL TravelToEntrance(int32_t entranceIndex) {
@@ -499,9 +493,7 @@ ShipNativeStatus SHIP_NATIVE_CALL GetSceneInfo(int32_t sceneId, uint8_t masterQu
         CopyText(info->name, sizeof(info->name), record->name);
         CopyText(info->scene_path, sizeof(info->scene_path), record->path);
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL OverrideScene(int32_t sceneId, uint8_t masterQuest, const char* scenePath) {
@@ -521,9 +513,7 @@ ShipNativeStatus SHIP_NATIVE_CALL OverrideScene(int32_t sceneId, uint8_t masterQ
     try {
         overrides[{ sceneId, mq }].assign(scenePath, length);
         return SHIP_NATIVE_OK;
-    } catch (...) {
-        return SHIP_NATIVE_FAILURE;
-    }
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 const ShipOotScenesV1 scenesService{
@@ -532,13 +522,13 @@ const ShipOotScenesV1 scenesService{
 };
 
 const ShipOotScenesV2 scenesServiceV2{
-    sizeof(ShipOotScenesV2), RegisterScene, RegisterEntrance, UnregisterScene, FindScene, FindEntrance,
-    TravelToEntrance, RegisterSceneV2, GetSceneCount, GetSceneInfo, OverrideScene,
+    sizeof(ShipOotScenesV2), RegisterScene,   RegisterEntrance, UnregisterScene, FindScene,     FindEntrance,
+    TravelToEntrance,        RegisterSceneV2, GetSceneCount,    GetSceneInfo,    OverrideScene,
 };
 
 const ShipOotScenesV3 scenesServiceV3{
-    sizeof(ShipOotScenesV3), RegisterScene, RegisterEntrance, UnregisterScene, FindScene, FindEntrance,
-    TravelToEntrance, RegisterSceneV2, GetSceneCount, GetSceneInfo, OverrideScene, RegisterSceneV3,
+    sizeof(ShipOotScenesV3), RegisterScene,   RegisterEntrance, UnregisterScene, FindScene,     FindEntrance,
+    TravelToEntrance,        RegisterSceneV2, GetSceneCount,    GetSceneInfo,    OverrideScene, RegisterSceneV3,
 };
 
 } // namespace
@@ -616,9 +606,7 @@ bool FindOotCustomScene(int32_t sceneId, OotCustomScene& scene) {
         scene.path = record->path;
         scene.drawConfig = record->drawConfig;
         return true;
-    } catch (...) {
-        return false;
-    }
+    } catch (...) { return false; }
 }
 
 const std::string* OotCustomSceneDisplayName(int32_t sceneId) {
@@ -640,9 +628,7 @@ bool OotSceneOverridePath(int32_t sceneId, bool masterQuest, std::string& path) 
     try {
         path = found->second;
         return true;
-    } catch (...) {
-        return false;
-    }
+    } catch (...) { return false; }
 }
 
 bool OotSceneStableName(int32_t sceneId, std::string& name) {
@@ -688,9 +674,7 @@ bool OotEntranceStableName(int32_t entranceIndex, std::string& name, int32_t& la
         if (index == group) {
             try {
                 name = entranceName;
-            } catch (...) {
-                return false;
-            }
+            } catch (...) { return false; }
             layer = entranceIndex - group;
             return true;
         }
@@ -713,8 +697,7 @@ SavedSceneFlags* OotCustomSceneFlags(int32_t sceneId) {
     if (const SceneRecord* record = FindRecordById(sceneId)) {
         try {
             return &state.flags[record->name];
-        } catch (...) {
-        }
+        } catch (...) {}
     }
     state.scratch = SavedSceneFlags{};
     return &state.scratch;
@@ -783,7 +766,7 @@ bool ResolveOotHorseSceneSnapshotName(int32_t& sceneId) {
 }
 
 BetterSceneSelectEntry* OotBuildBetterWarpScenes(BetterSceneSelectEntry* vanilla, int32_t vanillaCount,
-                                                  void (*loadFunc)(SelectContext*, int32_t), int32_t& count) {
+                                                 void (*loadFunc)(SelectContext*, int32_t), int32_t& count) {
     static std::vector<BetterSceneSelectEntry> entries;
     static std::deque<std::string> text;
     entries.clear();

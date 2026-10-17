@@ -54,8 +54,7 @@ namespace {
 // Camada (cabeçalho alternativo) cujos comandos estão executando, para oot.room.actors.
 s32 sLinkSpanSceneLayer = 0;
 
-template <typename Target>
-Target ClampSceneCount(uint32_t count, const char* label) {
+template <typename Target> Target ClampSceneCount(uint32_t count, const char* label) {
     constexpr uint32_t max = std::numeric_limits<Target>::max();
     if (count > max) {
         SPDLOG_ERROR("[Unbound] {} count {} exceeds the runtime limit {}; truncating safely", label, count, max);
@@ -213,8 +212,8 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
     }
 
     if (k < objects.size()) {
-        SPDLOG_ERROR("[Unbound] object list exceeds the bank ({} slots); dropping {} objects",
-                     OBJECT_EXCHANGE_BANK_MAX, objects.size() - k);
+        SPDLOG_ERROR("[Unbound] object list exceeds the bank ({} slots); dropping {} objects", OBJECT_EXCHANGE_BANK_MAX,
+                     objects.size() - k);
     }
 
     play->objectCtx.num = i;
@@ -245,9 +244,8 @@ bool Scene_CommandTransitionActorList(PlayState* play, SOH::ISceneCommand* cmd) 
     // SOH::SetTransitionActorList* cmdActor = static_pointer_cast<SOH::SetTransitionActorList>(cmd);
     SOH::SetTransitionActorList* cmdActor = (SOH::SetTransitionActorList*)cmd;
 
-    play->transiActorCtx.numActors =
-        ClampSceneCount<decltype(play->transiActorCtx.numActors)>(cmdActor->numTransitionActors,
-                                                                  "transition actor list");
+    play->transiActorCtx.numActors = ClampSceneCount<decltype(play->transiActorCtx.numActors)>(
+        cmdActor->numTransitionActors, "transition actor list");
     play->transiActorCtx.list = (TransitionActorEntry*)cmdActor->GetRawPointer();
 
     // Loops transition actors and sets them to default values (not spawned yet)

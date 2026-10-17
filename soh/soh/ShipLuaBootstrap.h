@@ -18,7 +18,9 @@ OotHotkeyRegistry* Hotkeys();
 OotWorldAdapter* WorldAdapter();
 } // namespace ShipLuaHost
 
-namespace SohGui { class SohMenuModRegistry; }
+namespace SohGui {
+class SohMenuModRegistry;
+}
 
 namespace ShipLuaHost {
 SohGui::SohMenuModRegistry* ModMenuRegistry();
