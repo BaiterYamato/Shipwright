@@ -1,4 +1,5 @@
-"""Confere o catálogo público dentro do soh.exe contra o soh.symbols (RFC 0029). Sai com 77 sem soh.symbols."""
+"""Confere o catálogo público dentro do soh.exe contra o soh.symbols (RFC 0029). Sai com 77 sem soh.symbols ou
+com um soh.symbols de outro exe."""
 import argparse
 import hashlib
 from pathlib import Path
@@ -52,8 +53,9 @@ def main():
     # Mesmo cabeçalho que o escape hatch confere (symdump.cpp:209-210, OotNativeEscapeWin.cpp:142).
     header = args.symbols.read_text(encoding="utf-8", errors="replace").splitlines()[:2]
     if header != ["linkspan-symbols 1", "sha256 " + hashlib.sha256(image).hexdigest()]:
-        print(f"{args.symbols} não é do {args.exe.name}: cabeçalho ou sha256 diferente")
-        return 1
+        # soh.symbols velho (exe recompilado sem o alvo soh_symbols): pula, como sem o arquivo.
+        print(f"{args.symbols} não é do {args.exe.name} (cabeçalho ou sha256 diferente): rode o alvo soh_symbols")
+        return 77
     base, layout = sections(image)
     symbols = read_symbols(args.symbols)
     table_rva = symbols["LinkSpan_PublicSymbols"][0]

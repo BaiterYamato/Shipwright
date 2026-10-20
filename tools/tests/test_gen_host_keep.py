@@ -56,6 +56,8 @@ extern void (*gHandlers[3])(int);
 extern int gMissing;
 extern int gStatic;
 extern SaveContext gSaveContext;
+extern int gIncluded;
+extern int gOnlyLocal;
 #endif
 ''')
         self.write('soh/src/api.c', '''
@@ -74,7 +76,11 @@ u8 gOpenArray[8];
 void (*gHandler)(int);
 void (*gHandlers[3])(int);
 static int gStatic;
+void UsesLocal(void) {
+    int gOnlyLocal;
+}
 ''')
+        self.write('soh/src/code/data.inc', 'int gIncluded;\n')
         self.write('soh/soh/save.cpp', 'extern "C" {\nSaveContext gSaveContext;\n}\n')
         self.write('tools/host-keep-extra.txt', 'PrivateHelper\n')
         self.write('tools/host-keep-exclude.txt', 'LinkExcluded\n')
@@ -94,9 +100,9 @@ static int gStatic;
 
     def test_catalog_and_report_contract(self):
         keep, extras, prototypes, public, report, count = gen.build(self.root)
-        self.assertEqual(count, 14)  # 7 funções C + 7 variáveis; LinuxOnly é condicional.
+        self.assertEqual(count, 16)  # 7 funções C + 9 variáveis; LinuxOnly é condicional.
         self.assertEqual([n for n, _ in public], ['COnly', 'Multi', 'Plain', 'TakesCallback',
-                         'WithMacro', 'gHandler', 'gHandlers', 'gSaveContext', 'gTable'])
+                         'WithMacro', 'gHandler', 'gHandlers', 'gIncluded', 'gSaveContext', 'gTable'])
         self.assertEqual(dict(public), {**{n: gen.FUNCTION for n in public_names(public)[:5]},
                                        **{n: gen.VARIABLE for n in public_names(public)[5:]}})
         self.assertEqual({n: reason for n, _, _, reason in report}, {
@@ -104,6 +110,7 @@ static int gStatic;
             'LinuxOnly': 'declaração condicional de plataforma',
             'Undefined': 'sem definição não static em soh/src ou soh/soh',
             'gMissing': 'sem definição de armazenamento em soh/src ou soh/soh',
+            'gOnlyLocal': 'sem definição de armazenamento em soh/src ou soh/soh',
             'gOpenArray': 'tamanho desconhecido em C',
             'gStatic': 'sem definição de armazenamento em soh/src ou soh/soh'})
         self.assertEqual(extras, ['PrivateHelper'])
