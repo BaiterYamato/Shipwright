@@ -1,0 +1,37 @@
+# Declarações de soh/include/functions.h e variables.h fora do catálogo público: nome  # motivo.
+# O linker é a prova final: um LNK2001 em OotNativePublicSymbols.c vira uma linha aqui.
+__Dom1SpeedParam  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__Dom2SpeedParam  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__OSGlobalIntMask  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__additional_scanline  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osActiveQueue  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osBaseCounter  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osContLastPoll  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osCurrentHandle  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osFaultedThread  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPfsInodeCache  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPfsInodeCacheBank  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPfsLastChannel  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPiAccessQueue  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPiAccessQueueEnabled  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPiTable  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPifInternalBuff  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osRunQueue  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osRunningThread  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osShutdown  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osThreadTail  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osTimerCounter  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osTimerList  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osViCurr  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osViIntrCount  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osViNext  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+gPifMempakBuf  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+osViClock  # definida só em fonte de libultra que soh/CMakeLists.txt não compila
+gBuildDate  # declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+gBuildMakeOption  # declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+gBuildTeam  # declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+gBuildVersionMajor  # declarada u16 em variables.h, definida const u16 em src/boot/build.c
+gBuildVersionMinor  # declarada u16 em variables.h, definida const u16 em src/boot/build.c
+gBuildVersionPatch  # declarada u16 em variables.h, definida const u16 em src/boot/build.c
+gGitCommitTag  # declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+osAppNmiBuffer  # declarada u8[0x40] em variables.h, definida u8[2048] em soh/stubs.c

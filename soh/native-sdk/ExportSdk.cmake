@@ -126,3 +126,10 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         DEPENDS soh linkspan_symdump
         VERBATIM)
 endif()
+
+# RFC 0029: gerador do catálogo público e da retenção; o sync falha quando functions.h/variables.h mudam sem
+# regenerar (era assim que faltavam os três AudioLoad_*).
+add_test(NAME linkspan_host_keep_generator
+    COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_SOURCE_DIR}/tools/tests" -v)
+add_test(NAME linkspan_host_keep_sync
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/gen-host-keep.py" --root "${CMAKE_SOURCE_DIR}" --check)
