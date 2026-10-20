@@ -286,9 +286,12 @@ def render_public(public):
         "",
         '#pragma comment(linker, "/include:LinkSpan_PublicSymbols")',
         '#pragma comment(linker, "/include:LinkSpan_PublicSymbolCount")',
+        "// Uma entrada por linha, para o diff do catálogo ler símbolo a símbolo.",
+        "// clang-format off",
         "const LinkSpanPublicSymbol LinkSpan_PublicSymbols[] = {",
         *[f'    {{ "{name}", (const void*)&{name}, {kinds[kind]} }},' for name, kind in public],
         "};",
+        "// clang-format on",
         "const size_t LinkSpan_PublicSymbolCount = sizeof(LinkSpan_PublicSymbols) / sizeof(LinkSpan_PublicSymbols[0]);",
         "",
     ])

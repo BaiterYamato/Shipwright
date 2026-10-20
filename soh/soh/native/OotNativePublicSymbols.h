@@ -32,7 +32,7 @@ namespace ShipLuaHost {
 const LinkSpanPublicSymbol* FindOotPublicSymbol(const LinkSpanPublicSymbol* table, size_t count, const char* name);
 // Catálogo da política: layout do host e busca na tabela dada (os testes passam uma tabela própria).
 std::shared_ptr<ShipLua::NativePublicSymbols> CreateOotPublicSymbols(std::string layoutId,
-                                                                    const LinkSpanPublicSymbol* table, size_t count);
+                                                                     const LinkSpanPublicSymbol* table, size_t count);
 // O do soh.exe: LINKSPAN_OOT_LAYOUT_ID e LinkSpan_PublicSymbols.
 std::shared_ptr<ShipLua::NativePublicSymbols> CreateOotPublicSymbols();
 } // namespace ShipLuaHost

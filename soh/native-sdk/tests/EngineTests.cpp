@@ -756,14 +756,14 @@ int main(int argc, char** argv) {
                   "nome fora do catálogo: UNSUPPORTED e saída zero");
         }
         address = 0xDEAD;
-        Check(policy.publicSymbols->resolve(nullptr, &address) == SHIP_NATIVE_INVALID_ARGUMENT,
-              "nome nulo recusado");
+        Check(policy.publicSymbols->resolve(nullptr, &address) == SHIP_NATIVE_INVALID_ARGUMENT, "nome nulo recusado");
         Check(policy.publicSymbols->resolve("Math_SinS", nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
               "saída nula recusada");
         static const LinkSpanPublicSymbol unsorted[] = { { "b", &failures, 1 }, { "a", &failures, 1 } };
-        Check(ShipLuaHost::FindOotPublicSymbol(unsorted, 2, "a") == nullptr,
-              "tabela fora de ordem não é usada");
-        static const LinkSpanPublicSymbol sorted[] = { { "A", &failures, 1 }, { "B", &failures, 1 }, { "_c", &failures, 1 } };
+        Check(ShipLuaHost::FindOotPublicSymbol(unsorted, 2, "a") == nullptr, "tabela fora de ordem não é usada");
+        static const LinkSpanPublicSymbol sorted[] = { { "A", &failures, 1 },
+                                                       { "B", &failures, 1 },
+                                                       { "_c", &failures, 1 } };
         Check(ShipLuaHost::FindOotPublicSymbol(sorted, 3, "_c") == &sorted[2] &&
                   ShipLuaHost::FindOotPublicSymbol(sorted, 3, "A") == &sorted[0],
               "busca binária na ordem de strcmp");
@@ -2469,8 +2469,7 @@ int main(int argc, char** argv) {
     Check(engine->kill_actor(&spawned) == SHIP_NATIVE_OK && killed == &spawned, "kill do ator presente");
 
     if (argc == 3 && std::string(argv[2]) == "public") {
-        const auto manifest =
-            ShipLua::ParseManifestFile((std::filesystem::path(argv[1]) / "manifest.toml").string());
+        const auto manifest = ShipLua::ParseManifestFile((std::filesystem::path(argv[1]) / "manifest.toml").string());
         if (!manifest.isOk()) {
             std::cerr << manifest.message;
             return 1;
