@@ -1,6 +1,6 @@
 # Gerado por tools/gen-host-keep.py. Não editar à mão.
 # Declarações de soh/include/functions.h e variables.h fora do catálogo público (ABI 1.4), com o motivo.
-# 2399 declaradas; no catálogo, 2088 funções e 181 variáveis; 132 fora.
+# 2399 declaradas; no catálogo, 2088 funções e 182 variáveis; 131 fora.
 # nome	tipo	header	motivo
 D_80009320	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
 D_800093F0	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
@@ -118,7 +118,6 @@ gBuildTeam	variable	variables.h	declarada u8[] em variables.h, definida const ch
 gBuildVersionMajor	variable	variables.h	declarada u16 em variables.h, definida const u16 em src/boot/build.c
 gBuildVersionMinor	variable	variables.h	declarada u16 em variables.h, definida const u16 em src/boot/build.c
 gBuildVersionPatch	variable	variables.h	declarada u16 em variables.h, definida const u16 em src/boot/build.c
-gDbgCamEnabled	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
 gFaultStruct	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
 gGitCommitTag	variable	variables.h	declarada u8[] em variables.h, definida const char[] em src/boot/build.c
 gJpegUCode	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh

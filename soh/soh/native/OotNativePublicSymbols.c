@@ -2059,6 +2059,7 @@ const LinkSpanPublicSymbol LinkSpan_PublicSymbols[] = {
     { "gCustomLensFlarePos", (const void*)&gCustomLensFlarePos, LINKSPAN_PUBLIC_VARIABLE },
     { "gDPSetTileSizeInterp", (const void*)&gDPSetTileSizeInterp, LINKSPAN_PUBLIC_FUNCTION },
     { "gDPSetTileSizeLerp", (const void*)&gDPSetTileSizeLerp, LINKSPAN_PUBLIC_FUNCTION },
+    { "gDbgCamEnabled", (const void*)&gDbgCamEnabled, LINKSPAN_PUBLIC_VARIABLE },
     { "gDebugCutsceneScript", (const void*)&gDebugCutsceneScript, LINKSPAN_PUBLIC_VARIABLE },
     { "gDefaultEnvelope", (const void*)&gDefaultEnvelope, LINKSPAN_PUBLIC_VARIABLE },
     { "gDefaultNoteSub", (const void*)&gDefaultNoteSub, LINKSPAN_PUBLIC_VARIABLE },

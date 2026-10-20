@@ -135,7 +135,8 @@ def source_files(sources):
     for base in sources:
         for folder, _, files in os.walk(base):
             for file in sorted(files):
-                if file.endswith((".c", ".cpp")):
+                # .inc: dados incluídos por um .c compilado (ex.: z_camera_data.inc). O linker é a prova final.
+                if file.endswith((".c", ".cpp", ".inc")):
                     yield os.path.join(folder, file)
 
 
@@ -149,6 +150,18 @@ def defined_functions(sources):
             if not m.group(1).lstrip().startswith(("static", "else", "return")):
                 names.add(m.group(2))
     return names
+
+
+def at_file_scope(text, position):
+    """True se `position` está fora de toda chave, salvo as de `extern "C" {` (definição global em C++)."""
+    stack = []
+    for m in re.finditer(r'extern\s+"C"\s*\{|[{}]', text[:position]):
+        if m.group(0) == "}":
+            if stack:
+                stack.pop()
+        else:
+            stack.append(m.group(0) != "{")
+    return all(stack)
 
 
 def defined_variables(sources, wanted):
@@ -166,7 +179,8 @@ def defined_variables(sources, wanted):
                 text = strip_comments(raw)
             pattern = (r"^[ \t]*(?!static\b|extern\b|typedef\b|return\b)[A-Za-z_][^;{}()=\n]*?(?:\(\s*\*\s*)?\b"
                        + re.escape(name) + r"\s*(?:\[[^\]\n]*\]\s*)*(?:\)\s*\([^;{}]*\)\s*)?(?:=|;)")
-            if re.search(pattern, text, re.M):
+            # Variável local com o mesmo nome não é armazenamento global (daria LNK2001).
+            if any(at_file_scope(text, m.start()) for m in re.finditer(pattern, text, re.M)):
                 found.add(name)
         pending -= found
     return found
