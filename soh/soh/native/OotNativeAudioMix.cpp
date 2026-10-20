@@ -32,21 +32,38 @@ uint64_t gPoint = 0;
 std::atomic<MixList*> gPublished{ nullptr };
 std::atomic<uint32_t> gInFlight{ 0 };
 std::atomic<bool> gFailuresPending{ false };
+std::atomic<bool> gWaitingForReaders{ false };
+// Thread do jogo: hooks desligados na thread de áudio cuja lista saiu sem levá-los (reconstrução que falhou ou
+// remoção). O Pump desliga no registro; handle que já saiu dele é recusado sem efeito.
+std::vector<uint64_t> gDisabledOrphans;
 
 // Retira a lista antes de esperar leitores. Só depois da quiescência copia os estados por handle.
 // Ordem sequencial (padrão): o leitor incrementa gInFlight antes de ler gPublished.
 void Publish(MixList* next) noexcept {
     MixList* previous = gPublished.exchange(nullptr);
-    while (gInFlight.load() != 0)
-        std::this_thread::yield();
-    for (std::size_t index = 0; next && index < next->count; ++index) {
-        auto& hook = next->hooks[index];
-        for (std::size_t old = 0; previous && old < previous->count; ++old) {
-            if (previous->hooks[old].handle != hook.handle)
+    if (gInFlight.load() != 0) {
+        gWaitingForReaders.store(true);
+        while (gInFlight.load() != 0)
+            std::this_thread::yield();
+        gWaitingForReaders.store(false);
+    }
+    for (std::size_t old = 0; previous && old < previous->count; ++old) {
+        const auto& before = previous->hooks[old];
+        bool carried = false;
+        for (std::size_t index = 0; next && index < next->count; ++index) {
+            auto& hook = next->hooks[index];
+            if (hook.handle != before.handle)
                 continue;
-            hook.failures.store(previous->hooks[old].failures.load());
-            hook.disabled.store(previous->hooks[old].disabled.load());
+            hook.failures.store(before.failures.load());
+            hook.disabled.store(before.disabled.load());
+            carried = true;
             break;
+        }
+        // Revisão do Codex: sem isto, uma reconstrução que lança (Publish(nullptr)) apagaria o desligamento.
+        if (!carried && before.disabled.load()) {
+            try {
+                gDisabledOrphans.push_back(before.handle);
+            } catch (...) {}
         }
     }
     delete previous;
@@ -113,6 +130,11 @@ void ResetOotAudioMix() {
     gRegistry = nullptr;
     gPoint = 0;
     gFailuresPending.store(false);
+    gDisabledOrphans.clear();
+}
+
+bool OotAudioMixWaitingForReaders() {
+    return gWaitingForReaders.load();
 }
 
 bool OotAudioMixActive() {
@@ -177,6 +199,7 @@ void PumpOotAudioMix() {
     if (!gFailuresPending.exchange(false) || !gRegistry)
         return;
     std::vector<uint64_t> failed;
+    failed.swap(gDisabledOrphans);
     if (const MixList* list = gPublished.load()) {
         for (std::size_t index = 0; index < list->count; ++index) {
             if (list->hooks[index].disabled.load())

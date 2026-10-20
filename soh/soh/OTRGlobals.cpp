@@ -43,6 +43,7 @@
 #include "soh/mmaudio/MmSfxPlayer.h"
 #include "soh/mmaudio/mmseq/MmAudioEngine.h"
 #include "soh/native/OotNativeAudioMix.h"
+#include "soh/native/oot_audio.h"
 #include "soh/Enhancements/randomizer/settings.h"
 #include "soh/Enhancements/savestates.h"
 #include "soh/Enhancements/speedrun/Speedrun.h"
@@ -2333,9 +2334,15 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
     const bool hasMix = ShipLuaHost::OotAudioMixActive();
 
     if (hasSample || hasSequence || hasMix) {
-        static thread_local std::vector<uint8_t> mixed;
-        mixed.assign(buf, buf + len);
-        int16_t* pcm = reinterpret_cast<int16_t*>(mixed.data());
+        // Sem alocação na thread de áudio (revisão do Codex): o maior bloco do AudioMgr são 3 × SAMPLES_HIGH
+        // quadros estéreo s16, o LINKSPAN_OOT_AUDIO_MAX_FRAMES do oot.audio.mix.
+        alignas(int16_t) static thread_local uint8_t mixed[LINKSPAN_OOT_AUDIO_MAX_FRAMES * 2 * sizeof(int16_t)];
+        if (len > sizeof(mixed)) {
+            AudioPlayerPlayFrame(buf, len);
+            return;
+        }
+        memcpy(mixed, buf, len);
+        int16_t* pcm = reinterpret_cast<int16_t*>(mixed);
         const uint32_t frames = len / (2 * sizeof(int16_t));
 
         // Amostra crua (Fase 1) e interpretador de sequência (Fase 2) somam no
@@ -2351,7 +2358,7 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
             ShipLuaHost::MixOotAudio(pcm, frames);
         }
 
-        AudioPlayerPlayFrame(mixed.data(), len);
+        AudioPlayerPlayFrame(mixed, len);
         return;
     }
 
