@@ -816,6 +816,7 @@ std::atomic<bool> entered{ false };
 std::atomic<bool> release{ false };
 std::atomic<bool> exited{ false };
 std::atomic<bool> unregisterStarted{ false };
+std::atomic<bool> sawWait{ false };
 ShipNativeStatus SHIP_NATIVE_CALL Slow(void*, const ShipNativeHookCall*) {
     entered.store(true); // persistente: a thread do jogo não perde a entrada
     while (!release.load())
@@ -938,16 +939,22 @@ int main(int argc, char** argv) {
         });
         while (!entered.load())
             std::this_thread::yield();
+        sawWait.store(false);
         std::thread releaser([] {
             while (!unregisterStarted.load())
                 std::this_thread::yield();
-            // Unregister já começou e tem de estar esperando: sem a espera, exited ainda seria falso no Check.
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // Só solta o callback depois de ver o Unregister esperando a thread de áudio (com prazo, para uma
+            // implementação sem espera reprovar em vez de travar).
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            while (!ShipLuaHost::OotAudioMixWaitingForReaders() && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::yield();
+            sawWait.store(ShipLuaHost::OotAudioMixWaitingForReaders());
             release.store(true);
         });
         unregisterStarted.store(true); // começo da tentativa, com Slow já dentro do callback
         const auto status = registry->Unregister("audio.test", slow);
-        Check(status == SHIP_NATIVE_OK && exited.load(),
+        Check(status == SHIP_NATIVE_OK && sawWait.load() && exited.load() &&
+                  !ShipLuaHost::OotAudioMixWaitingForReaders(),
               "unregister só volta depois que a thread de áudio saiu do callback");
         audio.join();
         releaser.join();

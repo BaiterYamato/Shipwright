@@ -9,6 +9,8 @@ namespace ShipLuaHost {
 // do jogo publica uma cópia imutável para a thread de áudio. Install e Reset na thread do jogo.
 uint64_t InstallOotAudioMix(ShipLua::NativeHookRegistry& registry);
 void ResetOotAudioMix();
+// Diagnóstico e teste: a thread do jogo está esperando a thread de áudio sair de um callback (unregister ou unload).
+bool OotAudioMixWaitingForReaders();
 // Thread de áudio. Barato: há hook publicado?
 bool OotAudioMixActive();
 // Thread de áudio. Roda os hooks sobre `frames` quadros estéreo s16 em `samples`; false sem hook ou fora do limite.
