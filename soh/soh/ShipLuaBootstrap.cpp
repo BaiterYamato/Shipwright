@@ -6582,38 +6582,41 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     gPendingUnboundArchives.clear();
     // HOST-SLIM-001 (RFC 0029): archives aceitos para quem monta camadas (o Unbound, na F4). Pasta de mod rejeitado
     // fica fora. A origem deve ser a pasta efetivamente carregada, não apenas outro mod com o mesmo id.
-    std::vector<ShipLuaHost::OotModArchive> acceptedArchives;
-    for (const auto& candidate : gModArchiveCandidates) {
-        std::string owner;
-        if (!candidate.modDirectory.empty()) {
-            const auto manifest = ShipLua::ParseManifestFile((candidate.modDirectory / "manifest.toml").string());
-            bool accepted = false;
-            if (manifest.isOk()) {
-                const auto& directories = loaded.value->loadedDirectories;
-                const auto origin = directories.find(manifest.value->id);
-                if (origin != directories.end()) {
-                    std::error_code originError, candidateError;
-                    const auto loadedDirectory =
-                        std::filesystem::absolute(origin->second, originError).lexically_normal();
-                    const auto candidateDirectory =
-                        std::filesystem::absolute(candidate.modDirectory, candidateError).lexically_normal();
-                    accepted = !originError && !candidateError && loadedDirectory == candidateDirectory;
+    // Sem observer (o caso sem mod de camadas), nada de reler manifestos nem logar: o boot fica como antes.
+    if (ShipLuaHost::HasOotHooks(ShipLuaHost::GetOotHookPoints().modsArchives)) {
+        std::vector<ShipLuaHost::OotModArchive> acceptedArchives;
+        for (const auto& candidate : gModArchiveCandidates) {
+            std::string owner;
+            if (!candidate.modDirectory.empty()) {
+                const auto manifest = ShipLua::ParseManifestFile((candidate.modDirectory / "manifest.toml").string());
+                bool accepted = false;
+                if (manifest.isOk()) {
+                    const auto& directories = loaded.value->loadedDirectories;
+                    const auto origin = directories.find(manifest.value->id);
+                    if (origin != directories.end()) {
+                        std::error_code originError, candidateError;
+                        const auto loadedDirectory =
+                            std::filesystem::absolute(origin->second, originError).lexically_normal();
+                        const auto candidateDirectory =
+                            std::filesystem::absolute(candidate.modDirectory, candidateError).lexically_normal();
+                        accepted = !originError && !candidateError && loadedDirectory == candidateDirectory;
+                    }
                 }
+                if (!accepted) {
+                    SPDLOG_INFO("ShipLua: '{}' fora de oot.mods.archives: o mod da pasta '{}' não carregou",
+                                candidate.archive.string(), candidate.modDirectory.string());
+                    continue;
+                }
+                owner = manifest.value->id;
             }
-            if (!accepted) {
-                SPDLOG_INFO("ShipLua: '{}' fora de oot.mods.archives: o mod da pasta '{}' não carregou",
-                            candidate.archive.string(), candidate.modDirectory.string());
-                continue;
-            }
-            owner = manifest.value->id;
+            // Revisão do Codex: o modsRoot pode ser relativo ("./mods"); o contrato promete caminho absoluto.
+            std::error_code pathError;
+            const auto archivePath = std::filesystem::absolute(candidate.archive, pathError).lexically_normal();
+            acceptedArchives.push_back(
+                { (pathError ? candidate.archive : archivePath).generic_string(), owner, candidate.privatePrefix });
         }
-        // Revisão do Codex: o modsRoot pode ser relativo ("./mods"); o contrato promete caminho absoluto.
-        std::error_code pathError;
-        const auto archivePath = std::filesystem::absolute(candidate.archive, pathError).lexically_normal();
-        acceptedArchives.push_back(
-            { (pathError ? candidate.archive : archivePath).generic_string(), owner, candidate.privatePrefix });
+        ShipLuaHost::DispatchOotModArchives(acceptedArchives);
     }
-    ShipLuaHost::DispatchOotModArchives(acceptedArchives);
     gModArchiveCandidates.clear();
     SPDLOG_INFO("ShipLua carregou {} mod(s) de '{}'", loaded.value->loadedIds.size(), modsRoot.string());
     if (gMenuRegistry != nullptr)
