@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <shiplua/native/NativeHooks.h>
 
@@ -38,6 +39,7 @@ struct OotHookPoints {
     uint64_t playerMaskDraw = 0;
     uint64_t playDestroy = 0;
     uint64_t audioMix = 0;
+    uint64_t modsArchives = 0;
 };
 void SetOotHookLogger(void (*logger)(const std::string& message));
 // Cria um registro novo com os pontos do host declarados. Chamar na thread do jogo.
@@ -68,4 +70,12 @@ void DispatchOotPlayerTick(uint64_t point, void* play, void* player);
 void DispatchOotPlayerMaskDraw(void* play, void* player, int32_t mask, uint8_t vanillaAllowed,
                                void (*drawVanilla)(void* context), void* context);
 void DispatchOotPlayDestroy(void* play);
+// oot.mods.archives: um archive candidato aceito, na ordem de prioridade crescente.
+struct OotModArchive {
+    std::string path;          // absoluto, com '/'
+    std::string owner;         // id do manifesto da pasta; vazio para arquivo solto em mods/
+    std::string privatePrefix; // onde o host montou; vazio se não montou
+};
+// Dispara oot.mods.archives (OBSERVE) com as entradas; thread do jogo, uma vez no boot.
+void DispatchOotModArchives(const std::vector<OotModArchive>& archives);
 } // namespace ShipLuaHost

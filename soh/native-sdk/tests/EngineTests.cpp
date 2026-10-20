@@ -838,6 +838,27 @@ uint64_t Hook(uint32_t mode, uint32_t phase, int32_t priority, ShipNativeHookFn 
 }
 } // namespace HostSlimAudio
 
+namespace HostSlimArchives {
+struct Seen {
+    std::string path, owner, prefix;
+    uint32_t order;
+};
+std::vector<Seen> seen;
+uint32_t stride = 0;
+int calls = 0;
+ShipNativeStatus SHIP_NATIVE_CALL Observe(void*, const ShipNativeHookCall* call) {
+    const auto* payload = static_cast<const ShipOotModArchivesHookV1*>(call->payload);
+    ++calls;
+    stride = payload->archive_stride;
+    const auto* bytes = reinterpret_cast<const uint8_t*>(payload->archives);
+    for (uint32_t index = 0; index < payload->count; ++index) {
+        const auto* entry = reinterpret_cast<const ShipOotModArchiveV1*>(bytes + index * payload->archive_stride);
+        seen.push_back({ entry->path, entry->owner, entry->private_prefix, entry->order });
+    }
+    return SHIP_NATIVE_OK;
+}
+} // namespace HostSlimArchives
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -875,6 +896,50 @@ int main(int argc, char** argv) {
         Check(ShipLuaHost::FindOotPublicSymbol(sorted, 3, "_c") == &sorted[2] &&
                   ShipLuaHost::FindOotPublicSymbol(sorted, 3, "A") == &sorted[0],
               "busca binária na ordem de strcmp");
+    }
+    {
+        using namespace HostSlimArchives;
+        auto* registry = ShipLuaHost::GetOotHookRegistry();
+        const auto point = ShipLuaHost::GetOotHookPoints().modsArchives;
+        Check(point && registry->FindPoint(LINKSPAN_OOT_HOOK_MODS_ARCHIVES, 1) == point, "oot.mods.archives v1");
+        const ShipNativeHookSpec replace{ sizeof(replace),
+                                          LINKSPAN_OOT_HOOK_MODS_ARCHIVES,
+                                          1,
+                                          sizeof(ShipOotModArchivesHookV1),
+                                          SHIP_NATIVE_HOOK_REPLACE,
+                                          0,
+                                          0,
+                                          Observe,
+                                          nullptr };
+        uint64_t handle = 0;
+        Check(registry->Register("archives.test", replace, &handle) == SHIP_NATIVE_UNSUPPORTED, "só OBSERVE");
+        const std::vector<ShipLuaHost::OotModArchive> archives{
+            { "C:/jogo/mods/camada.o2r", "", "mod/camada/" },
+            { "C:/jogo/mods/fases/assets/fase.o2r", "exemplo.fases", "" },
+        };
+        ShipLuaHost::DispatchOotModArchives(archives); // sem hook: nada a fazer
+        Check(calls == 0, "sem observer, nenhuma chamada");
+        const ShipNativeHookSpec observe{ sizeof(observe),
+                                          LINKSPAN_OOT_HOOK_MODS_ARCHIVES,
+                                          1,
+                                          sizeof(ShipOotModArchivesHookV1),
+                                          SHIP_NATIVE_HOOK_OBSERVE,
+                                          SHIP_NATIVE_HOOK_AFTER,
+                                          0,
+                                          Observe,
+                                          nullptr };
+        Check(registry->Register("archives.test", observe, &handle) == SHIP_NATIVE_OK, "observer registrado");
+        ShipLuaHost::DispatchOotModArchives(archives);
+        Check(stride == sizeof(ShipOotModArchiveV1) && seen.size() == 2, "duas entradas, stride do host");
+        Check(seen.size() == 2 && seen[0].order == 0 && seen[0].owner.empty() && seen[0].prefix == "mod/camada/" &&
+                  seen[1].order == 1 && seen[1].owner == "exemplo.fases" && seen[1].prefix.empty() &&
+                  seen[1].path == "C:/jogo/mods/fases/assets/fase.o2r",
+              "entradas na ordem dada, com dono e prefixo");
+        seen.clear();
+        calls = 0;
+        ShipLuaHost::DispatchOotModArchives({});
+        Check(calls == 1 && seen.empty(), "lista vazia também é entregue, sem entradas");
+        registry->RemoveOwner("archives.test");
     }
     {
         using namespace HostSlimAudio;
