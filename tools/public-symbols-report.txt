@@ -1,0 +1,135 @@
+# Gerado por tools/gen-host-keep.py. Não editar à mão.
+# Declarações de soh/include/functions.h e variables.h fora do catálogo público (ABI 1.4), com o motivo.
+# 2399 declaradas; no catálogo, 2088 funções e 182 variáveis; 131 fora.
+# nome	tipo	header	motivo
+D_80009320	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+D_800093F0	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+D_801120C0	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+D_80113070	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+D_80155F50	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+D_80157580	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+D_801579A0	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+Title_PrintBuildInfo	function	functions.h	sem definição não static em soh/src ou soh/soh
+UCodeDisas_Destroy	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+UCodeDisas_Init	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+UCodeDisas_RegisterUCode	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+UCodeDisas_SetCurUCode	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+_Ldtob	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+_Litob	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+_VirtualToPhysicalTask	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__Dom1SpeedParam	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__Dom2SpeedParam	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__OSGlobalIntMask	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__additional_scanline	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__assert	function	functions.h	declaração condicional de plataforma
+__osActiveQueue	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osBaseCounter	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osCheckId	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osCheckPackId	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osContAddressCrc	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osContDataCrc	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osContGetInitData	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osContLastPoll	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osContRamRead	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osContRamWrite	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osCurrentHandle	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osDequeueThread	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osDevMgrMain	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osDispatchThread	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osEPiRawReadIo	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osEPiRawStartDma	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osEPiRawWriteIo	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osEnqueueAndYield	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osEnqueueThread	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osFaultedThread	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osGetCause	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osGetId	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osGetSR	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osIdCheckSum	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osInsertTimer	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPackReadData	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPackRequestData	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsDeclearPage	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsGetInitData	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsGetNextPage	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsGetOneChannelData	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsGetStatus	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsInodeCache	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPfsInodeCacheBank	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPfsLastChannel	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPfsRWInode	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsReleasePages	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsRequestData	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsRequestOneChannel	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPfsSelectBank	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPiAccessQueue	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPiAccessQueueEnabled	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPiCreateAccessQueue	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPiGetAccess	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPiRawStartDma	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPiRelAccess	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osPiTable	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPifInternalBuff	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osPopThread	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osProbeTLB	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osRepairPackId	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osResetGlobalIntMask	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osRunQueue	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osRunningThread	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osSetCompare	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osSetGlobalIntMask	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSetSR	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osSetTimerIntr	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSetWatchLo	function	functions.h	sem definição não static em soh/src ou soh/soh
+__osShutdown	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osSiCreateAccessQueue	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSiDeviceBusy	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSiGetAccess	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSiRawReadIo	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSiRawStartDma	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSiRawWriteIo	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSiRelAccess	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSpDeviceBusy	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSpRawStartDma	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSpSetPc	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osSumcalc	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osThreadTail	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osTimerCounter	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osTimerInterrupt	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osTimerList	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osTimerServicesInit	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osViCurr	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osViGetCurrentContext	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osViInit	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+__osViIntrCount	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osViNext	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+__osViSwapContext	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+_assert	function	functions.h	declaração condicional de plataforma
+absf	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+func_800635D0	function	functions.h	sem definição não static em soh/src ou soh/soh
+func_800C55D0	function	functions.h	sem definição não static em soh/src ou soh/soh
+func_800F94FC	function	functions.h	sem definição não static em soh/src ou soh/soh
+func_800FF334	function	functions.h	sem definição não static em soh/src ou soh/soh
+func_80105788	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+func_80105A60	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+gBuildDate	variable	variables.h	declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+gBuildMakeOption	variable	variables.h	declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+gBuildTeam	variable	variables.h	declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+gBuildVersionMajor	variable	variables.h	declarada u16 em variables.h, definida const u16 em src/boot/build.c
+gBuildVersionMinor	variable	variables.h	declarada u16 em variables.h, definida const u16 em src/boot/build.c
+gBuildVersionPatch	variable	variables.h	declarada u16 em variables.h, definida const u16 em src/boot/build.c
+gFaultStruct	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+gGitCommitTag	variable	variables.h	declarada u8[] em variables.h, definida const char[] em src/boot/build.c
+gJpegUCode	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+gJpegUCodeData	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+gPifMempakBuf	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+gSramSlotOffsets	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+mysteryItemScale	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+osAppNmiBuffer	variable	variables.h	declarada u8[0x40] em variables.h, definida u8[2048] em soh/stubs.c
+osMapTLBRdb	function	functions.h	sem definição não static em soh/src ou soh/soh
+osPfsIsPlug	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+osPiGetCmdQueue	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)
+osRomBase	variable	variables.h	sem definição de armazenamento em soh/src ou soh/soh
+osUnmapTLBAll	function	functions.h	sem definição não static em soh/src ou soh/soh
+osViClock	variable	variables.h	definida só em fonte de libultra que soh/CMakeLists.txt não compila
+osYieldThread	function	functions.h	fora do link do host (tools/host-keep-exclude.txt)

@@ -26,7 +26,7 @@ ActorDBEntry* ActorDB_Retrieve(const int id);
 Vtx* ResourceMgr_LoadVtxByName(char* path);
 
 #pragma comment(linker, "/include:LinkSpan_HostKeep")
-const void* const LinkSpan_HostKeep[2102] = {
+const void* const LinkSpan_HostKeep[2105] = {
     (const void*)&gSPSegment,
     (const void*)&gSPSegmentLoadRes,
     (const void*)&gSPDisplayList,
@@ -1705,8 +1705,11 @@ const void* const LinkSpan_HostKeep[2102] = {
     (const void*)&AudioLoad_ProcessLoads,
     (const void*)&AudioLoad_SetDmaHandler,
     (const void*)&AudioLoad_Init,
+    (const void*)&AudioLoad_InitSlowLoads,
     (const void*)&AudioLoad_SlowLoadSample,
     (const void*)&AudioLoad_SlowLoadSeq,
+    (const void*)&AudioLoad_InitAsyncLoads,
+    (const void*)&AudioLoad_LoadPermanentSamples,
     (const void*)&AudioLoad_ScriptLoad,
     (const void*)&AudioLoad_ProcessScriptLoads,
     (const void*)&AudioLoad_InitScriptLoads,

@@ -1,0 +1,12 @@
+id = "linkspan.test.public_probe"
+name = "Public Symbols Probe"
+version = "0.1.0"
+api = ">=0.5.0 <0.6.0"
+entrypoint = "main.lua"
+games = ["oot"]
+kind = "core_extension"
+load_phase = "pre_game"
+
+[provider]
+abi_version = "1.4"
+win64 = "provider/public_probe.dll"

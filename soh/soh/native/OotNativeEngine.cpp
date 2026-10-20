@@ -14,6 +14,7 @@
 #include "OotNativeWorld.h"
 #include "OotNativeSkeletons.h"
 #include "OotNativeText.h"
+#include "OotNativePublicSymbols.h"
 #include "oot_engine.h"
 #include "oot_layout_id.h"
 #include "oot_ocarina.h"
@@ -788,6 +789,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& randomizerV2 = GetOotNativeRandomizerServiceV2();
     policy.services.push_back(
         { LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION_2, sizeof(randomizerV2), &randomizerV2 });
+    // RFC 0029 (ABI 1.4): nome → endereço de functions.h/variables.h, preso ao layout id.
+    policy.publicSymbols = CreateOotPublicSymbols();
     policy.escapeHatch = CreateOotEscapeHatch();
     return policy;
 }

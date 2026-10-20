@@ -28,6 +28,7 @@ target_include_directories(soh PRIVATE "${native_sdk_dir}")
 file(GENERATE OUTPUT "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake" CONTENT
 "set(OOT_NATIVE_INCLUDE_DIRS [==[$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>;${CMAKE_SOURCE_DIR}/soh/soh/native]==])
 set(OOT_NATIVE_COMPILE_DEFINITIONS [==[$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS>]==])
+set(OOT_NATIVE_LAYOUT_ID [==[${layout_id}]==])
 ")
 
 add_executable(oot_native_engine_tests
@@ -46,6 +47,7 @@ add_executable(oot_native_engine_tests
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeSkeletons.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeText.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeJsonTypes.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativePublicSymbolsLookup.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeEscape.cpp")
 target_include_directories(oot_native_engine_tests PRIVATE
     "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
@@ -91,6 +93,13 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         --example "${CMAKE_SOURCE_DIR}/soh/native-sdk/example"
         --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}"
         --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
+    add_test(NAME oot_native_public_probe COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/test_public_probe.py"
+        --probe $<TARGET_FILE:oot_native_engine_tests>
+        --sdk "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake"
+        --source "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/public-probe"
+        --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}"
+        --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
 endif()
 
 # Escape hatch (COREEXT-008, RFC 0023): MinHook v1.3.4 compilada direto das fontes, sem o
@@ -124,4 +133,15 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         COMMAND linkspan_symdump "$<TARGET_FILE:soh>" "$<TARGET_FILE_DIR:soh>/soh.symbols"
         DEPENDS soh linkspan_symdump
         VERBATIM)
+    add_test(NAME linkspan_public_symbols_pe COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tools/check-public-symbols.py"
+        --exe "$<TARGET_FILE:soh>" --symbols "$<TARGET_FILE_DIR:soh>/soh.symbols")
+    set_tests_properties(linkspan_public_symbols_pe PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+
+# RFC 0029: gerador do catálogo público e da retenção; o sync falha quando functions.h/variables.h mudam sem
+# regenerar (era assim que faltavam os três AudioLoad_*).
+add_test(NAME linkspan_host_keep_generator
+    COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_SOURCE_DIR}/tools/tests" -v)
+add_test(NAME linkspan_host_keep_sync
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/gen-host-keep.py" --root "${CMAKE_SOURCE_DIR}" --check)
