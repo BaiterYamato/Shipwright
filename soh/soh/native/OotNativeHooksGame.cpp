@@ -274,3 +274,73 @@ extern "C" void LinkSpan_RoomActors(PlayState* play, s32 layer) {
     play->setupActorList = reinterpret_cast<ActorEntry*>(buffer.data());
     play->numSetupActors = static_cast<u16>(result);
 }
+
+// HOST-SLIM-001 (RFC 0029): pontes dos hooks do Link e do Play, chamadas pelo código C do jogo na thread do jogo.
+extern "C" {
+extern PlayState* gPlayState;
+u8 ShipLua_ShouldBlockRoll(void);
+u8 ShipLua_ShouldBlockLedgeGrabs(void);
+}
+
+namespace {
+struct PlayerActionCall {
+    Player* player;
+    PlayState* play;
+};
+
+void RunPlayerAction(void* context) {
+    const auto* call = static_cast<PlayerActionCall*>(context);
+    call->player->actionFunc(call->player, call->play);
+}
+
+struct PlayerMaskCall {
+    PlayState* play;
+    Player* player;
+    void (*draw)(PlayState*, Player*);
+};
+
+void RunPlayerMaskDraw(void* context) {
+    const auto* call = static_cast<PlayerMaskCall*>(context);
+    call->draw(call->play, call->player);
+}
+} // namespace
+
+extern "C" u8 LinkSpan_PlayerVoiceSfx(Player* player, u16* sfxId) {
+    return ShipLuaHost::DispatchOotPlayerVoice(gPlayState, player, sfxId);
+}
+
+// O veto antigo (set_roll_blocked e o corpo customizado, até a F4) é o valor de entrada.
+extern "C" s32 LinkSpan_PlayerRollAllowed(Player* player, PlayState* play) {
+    return ShipLuaHost::DispatchOotPlayerGate(ShipLuaHost::GetOotHookPoints().playerRollAllowed, play, player,
+                                              !ShipLua_ShouldBlockRoll());
+}
+
+extern "C" s32 LinkSpan_PlayerLedgeGrabAllowed(Player* player, PlayState* play) {
+    return ShipLuaHost::DispatchOotPlayerGate(ShipLuaHost::GetOotHookPoints().playerLedgeGrabAllowed, play, player,
+                                              !ShipLua_ShouldBlockLedgeGrabs());
+}
+
+extern "C" void LinkSpan_PlayerAction(Player* player, PlayState* play, Input* input, s32 vanillaAllowed) {
+    PlayerActionCall call{ player, play };
+    ShipLuaHost::DispatchOotPlayerAction(play, player, input, vanillaAllowed != 0, RunPlayerAction, &call);
+}
+
+extern "C" void LinkSpan_PlayerUpdateEnd(Player* player, PlayState* play) {
+    ShipLuaHost::DispatchOotPlayerTick(ShipLuaHost::GetOotHookPoints().playerUpdateEnd, play, player);
+}
+
+extern "C" void LinkSpan_PlayerMaskDraw(PlayState* play, Player* player, s32 vanillaAllowed,
+                                        void (*drawVanilla)(PlayState*, Player*)) {
+    PlayerMaskCall call{ play, player, drawVanilla };
+    const bool hooked = ShipLuaHost::HasOotHooks(ShipLuaHost::GetOotHookPoints().playerMaskDraw);
+    if (hooked)
+        ShipLuaHost::EnterOotRenderScope(play->state.gfxCtx);
+    ShipLuaHost::DispatchOotPlayerMaskDraw(play, player, player->currentMask, vanillaAllowed != 0, RunPlayerMaskDraw,
+                                           &call);
+    if (hooked)
+        ShipLuaHost::LeaveOotRenderScope();
+}
+
+extern "C" void LinkSpan_PlayDestroy(PlayState* play) {
+    ShipLuaHost::DispatchOotPlayDestroy(play);
+}
