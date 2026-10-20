@@ -178,7 +178,8 @@ uint8_t DispatchOotPlayerAction(void* play, void* player, void* input, uint8_t v
         return 1;
     }
     ShipOotPlayerActionHookV1 payload{ sizeof(payload), play, player, input, operation.allowed, 0, {} };
-    registry->Dispatch(points.playerAction, &payload, sizeof(payload), RunAction, const_cast<GameOperation*>(&operation));
+    registry->Dispatch(points.playerAction, &payload, sizeof(payload), RunAction,
+                       const_cast<GameOperation*>(&operation));
     return payload.executed;
 }
 

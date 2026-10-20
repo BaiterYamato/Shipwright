@@ -840,8 +840,7 @@ int main(int argc, char** argv) {
                     Action) &&
                   !Hook(LINKSPAN_OOT_HOOK_PLAYER_ROLL_ALLOWED, sizeof(ShipOotPlayerGateHookV1),
                         SHIP_NATIVE_HOOK_REPLACE, 0, Veto) &&
-                  !Hook(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_TRANSFORM, 0,
-                        Seen),
+                  !Hook(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_TRANSFORM, 0, Seen),
               "modos fora do contrato são recusados");
 
         uint16_t sfx = 0x6800;
@@ -907,7 +906,8 @@ int main(int argc, char** argv) {
         Hook(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE,
              SHIP_NATIVE_HOOK_BEFORE, Seen);
         ShipLuaHost::DispatchOotPlayDestroy(&play);
-        Check(trace == std::vector<std::string>{ LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END, LINKSPAN_OOT_HOOK_PLAY_DESTROY } &&
+        Check(trace ==
+                      std::vector<std::string>{ LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END, LINKSPAN_OOT_HOOK_PLAY_DESTROY } &&
                   seenPlay == &play && seenPlayer == nullptr,
               "play.destroy com o PlayState");
         registry->RemoveOwner("hooks.test");
