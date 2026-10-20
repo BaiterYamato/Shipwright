@@ -42,6 +42,7 @@
 #include "Enhancements/randomizer/static_data.h"
 #include "soh/mmaudio/MmSfxPlayer.h"
 #include "soh/mmaudio/mmseq/MmAudioEngine.h"
+#include "soh/native/OotNativeAudioMix.h"
 #include "soh/Enhancements/randomizer/settings.h"
 #include "soh/Enhancements/savestates.h"
 #include "soh/Enhancements/speedrun/Speedrun.h"
@@ -2326,10 +2327,12 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
     // funil único, logo antes de ir para o dispositivo. O formato dos dois lados
     // é o mesmo — 32 kHz, estéreo, s16 intercalado — então não há resample.
     // Ver coordination/handoffs/OOT-AUDIO-001-port-mm-sfx.md.
+    // HOST-SLIM-001: oot.audio.mix (oot_audio.h) roda por último, sobre a mistura completa.
     const bool hasSample = ShipLua::MmAudio_HasPending();
     const bool hasSequence = ShipLua::MmSeq_IsReady();
+    const bool hasMix = ShipLuaHost::OotAudioMixActive();
 
-    if (hasSample || hasSequence) {
+    if (hasSample || hasSequence || hasMix) {
         static thread_local std::vector<uint8_t> mixed;
         mixed.assign(buf, buf + len);
         int16_t* pcm = reinterpret_cast<int16_t*>(mixed.data());
@@ -2343,6 +2346,9 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
         }
         if (hasSequence) {
             ShipLua::MmSeq_RenderInto(pcm, frames);
+        }
+        if (hasMix) {
+            ShipLuaHost::MixOotAudio(pcm, frames);
         }
 
         AudioPlayerPlayFrame(mixed.data(), len);

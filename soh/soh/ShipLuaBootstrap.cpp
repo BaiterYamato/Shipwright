@@ -3,6 +3,7 @@
 #include "native/OotNativeRegistry.h"
 #include "native/OotNativeScenes.h"
 #include "native/OotNativeHooks.h"
+#include "native/OotNativeAudioMix.h"
 #include "native/OotNativeItems.h"
 #include "native/OotNativeView.h"
 #include "native/OotNativeLights.h"
@@ -6609,6 +6610,7 @@ extern "C" void ShipLua_DrawMaskTransitionHead(PlayState* play, Player* player) 
 // Sobra uma janela: gravação feita em callback de ator antes do update do jogador só vale no frame seguinte.
 // Sem mod nada grava, e a fila fica vazia.
 extern "C" void LinkSpan_ApplyPendingSettings(void) {
+    ShipLuaHost::PumpOotAudioMix();
     if (gPendingShipInit.empty()) {
         return;
     }
