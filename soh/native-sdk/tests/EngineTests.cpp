@@ -22,6 +22,8 @@
 #include "oot_skeletons.h"
 #include "OotNativeSkeletons.h"
 #include "OotNativeHooks.h"
+#include "oot_audio.h"
+#include "OotNativeAudioMix.h"
 #include "oot_text.h"
 #include "OotNativeText.h"
 #include "oot_randomizer.h"
@@ -34,6 +36,7 @@
 #include "oot_layout_id.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cstdio>
 #include <cmath>
@@ -789,6 +792,52 @@ uint64_t Hook(const char* point, uint32_t size, uint32_t mode, uint32_t phase, S
 }
 } // namespace HostSlimHooks
 
+namespace HostSlimAudio {
+struct Add {
+    int16_t delta;
+    int calls = 0;
+    ShipNativeStatus status = SHIP_NATIVE_OK;
+};
+ShipNativeStatus SHIP_NATIVE_CALL Transform(void* user, const ShipNativeHookCall* call) {
+    auto* add = static_cast<Add*>(user);
+    const auto* payload = static_cast<const ShipOotAudioMixHookV1*>(call->payload);
+    ++add->calls;
+    for (uint32_t index = 0; index < payload->frames * payload->channels; ++index)
+        payload->samples[index] = int16_t(std::clamp(payload->samples[index] + int32_t(add->delta), -32768, 32767));
+    return add->status;
+}
+std::vector<std::vector<int16_t>> seen;
+ShipNativeStatus SHIP_NATIVE_CALL Observe(void*, const ShipNativeHookCall* call) {
+    const auto* payload = static_cast<const ShipOotAudioMixHookV1*>(call->payload);
+    seen.emplace_back(payload->samples, payload->samples + payload->frames * payload->channels);
+    return SHIP_NATIVE_OK;
+}
+std::atomic<bool> entered{ false };
+std::atomic<bool> release{ false };
+std::atomic<bool> exited{ false };
+std::atomic<bool> unregisterStarted{ false };
+ShipNativeStatus SHIP_NATIVE_CALL Slow(void*, const ShipNativeHookCall*) {
+    entered.store(true); // persistente: a thread do jogo não perde a entrada
+    while (!release.load())
+        std::this_thread::yield();
+    exited.store(true);
+    return SHIP_NATIVE_OK;
+}
+uint64_t Hook(uint32_t mode, uint32_t phase, int32_t priority, ShipNativeHookFn callback, void* user) {
+    const ShipNativeHookSpec spec{ sizeof(spec),
+                                   LINKSPAN_OOT_HOOK_AUDIO_MIX,
+                                   LINKSPAN_OOT_HOOK_AUDIO_MIX_VERSION,
+                                   sizeof(ShipOotAudioMixHookV1),
+                                   mode,
+                                   phase,
+                                   priority,
+                                   callback,
+                                   user };
+    uint64_t handle = 0;
+    return ShipLuaHost::GetOotHookRegistry()->Register("audio.test", spec, &handle) == SHIP_NATIVE_OK ? handle : 0;
+}
+} // namespace HostSlimAudio
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -826,6 +875,84 @@ int main(int argc, char** argv) {
         Check(ShipLuaHost::FindOotPublicSymbol(sorted, 3, "_c") == &sorted[2] &&
                   ShipLuaHost::FindOotPublicSymbol(sorted, 3, "A") == &sorted[0],
               "busca binária na ordem de strcmp");
+    }
+    {
+        using namespace HostSlimAudio;
+        auto* registry = ShipLuaHost::GetOotHookRegistry();
+        int16_t pcm[4] = { 100, -100, 32000, -32000 }; // 2 quadros estéreo
+        Check(!ShipLuaHost::OotAudioMixActive() && !ShipLuaHost::MixOotAudio(pcm, 2) && pcm[0] == 100,
+              "sem hook nada é publicado e o buffer fica intacto");
+        Check(!Hook(SHIP_NATIVE_HOOK_REPLACE, 0, 0, Transform, nullptr), "oot.audio.mix não aceita REPLACE");
+        Add big{ 1000 }, small{ 10 };
+        const auto bigHandle = Hook(SHIP_NATIVE_HOOK_TRANSFORM, 0, 5, Transform, &big);
+        Hook(SHIP_NATIVE_HOOK_TRANSFORM, 0, 1, Transform, &small);
+        Hook(SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE, 0, Observe, nullptr);
+        Hook(SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_AFTER, 0, Observe, nullptr);
+        Check(ShipLuaHost::OotAudioMixActive(), "o registro publica a lista");
+        seen.clear();
+        Check(ShipLuaHost::MixOotAudio(pcm, 2) && pcm[0] == 1110 && pcm[1] == 910 && pcm[2] == 32767 &&
+                  pcm[3] == -30990,
+              "transforms por prioridade, com saturação");
+        Check(seen.size() == 2 && seen[0] == std::vector<int16_t>{ 100, -100, 32000, -32000 } &&
+                  seen[1] == std::vector<int16_t>{ 1110, 910, 32767, -30990 },
+              "BEFORE vê o jogo e AFTER vê a mistura");
+
+        big.status = SHIP_NATIVE_FAILURE;
+        int16_t again[4]{};
+        for (int round = 0; round < 2; ++round) {
+            std::fill(std::begin(again), std::end(again), int16_t{ 0 });
+            ShipLuaHost::MixOotAudio(again, 2);
+        }
+        // Reconstruir conserva as duas falhas. A próxima chamada é a terceira.
+        const auto extra = Hook(SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_AFTER, 0, Observe, nullptr);
+        std::fill(std::begin(again), std::end(again), int16_t{ 0 });
+        ShipLuaHost::MixOotAudio(again, 2);
+        Check(again[0] == 10 && again[3] == 10, "transform que falha é desfeito e o seguinte roda");
+        // Reconstruir antes da bomba conserva também disabled.
+        Check(registry->Unregister("audio.test", extra) == SHIP_NATIVE_OK, "reconstrução antes da bomba");
+        big.calls = 0;
+        ShipLuaHost::MixOotAudio(again, 2);
+        Check(big.calls == 0, "três falhas desligam o hook na thread de áudio");
+        ShipLuaHost::PumpOotAudioMix();
+        const auto described = registry->Describe();
+        Check(
+            std::any_of(described.begin(), described.end(),
+                        [&](const ShipLua::NativeHookInfo& info) { return info.handle == bigHandle && !info.enabled; }),
+            "a bomba desativa o hook no registro");
+        big.status = SHIP_NATIVE_OK;
+        ShipLuaHost::MixOotAudio(again, 2);
+        Check(big.calls == 0, "a lista nova não tem o hook desativado");
+
+        std::vector<int16_t> huge((LINKSPAN_OOT_AUDIO_MAX_FRAMES + 1) * LINKSPAN_OOT_AUDIO_CHANNELS);
+        Check(!ShipLuaHost::MixOotAudio(huge.data(), LINKSPAN_OOT_AUDIO_MAX_FRAMES + 1),
+              "acima de 1680 quadros é recusado");
+
+        const auto slow = Hook(SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_AFTER, 0, Slow, nullptr);
+        entered.store(false);
+        release.store(false);
+        exited.store(false);
+        unregisterStarted.store(false);
+        std::thread audio([] {
+            int16_t buffer[4]{};
+            ShipLuaHost::MixOotAudio(buffer, 2);
+        });
+        while (!entered.load())
+            std::this_thread::yield();
+        std::thread releaser([] {
+            while (!unregisterStarted.load())
+                std::this_thread::yield();
+            // Unregister já começou e tem de estar esperando: sem a espera, exited ainda seria falso no Check.
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            release.store(true);
+        });
+        unregisterStarted.store(true); // começo da tentativa, com Slow já dentro do callback
+        const auto status = registry->Unregister("audio.test", slow);
+        Check(status == SHIP_NATIVE_OK && exited.load(),
+              "unregister só volta depois que a thread de áudio saiu do callback");
+        audio.join();
+        releaser.join();
+        registry->RemoveOwner("audio.test");
+        Check(!ShipLuaHost::OotAudioMixActive(), "sem hooks, nada publicado");
     }
     {
         using namespace HostSlimHooks;

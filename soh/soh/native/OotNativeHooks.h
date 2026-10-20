@@ -37,6 +37,7 @@ struct OotHookPoints {
     uint64_t playerUpdateEnd = 0;
     uint64_t playerMaskDraw = 0;
     uint64_t playDestroy = 0;
+    uint64_t audioMix = 0;
 };
 void SetOotHookLogger(void (*logger)(const std::string& message));
 // Cria um registro novo com os pontos do host declarados. Chamar na thread do jogo.
