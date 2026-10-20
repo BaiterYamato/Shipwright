@@ -796,8 +796,6 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     context.resourceExists = [](const std::string& path) { return NativeHasResourceFile(path.c_str()) != 0; };
     context.hostVersion = GetHostVersion();
     context.capabilities = { "oot.player.jump",
-                             "oot.spawn_dog",
-                             "oot.player.bunny_hood",
                              "oot.player.mask",
                              "player.speed",
                              "player.fields",
@@ -815,7 +813,6 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
                              "input.actions",
                              "oot.env",
                              "save.events",
-                             "oot.audio",
                              "oot.cutscene" };
     context.hotkeys = gHotkeys;
     context.capabilityRegistry = gCapabilityRegistry;
@@ -856,21 +853,11 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
     registered = RegisterHostCapability("oot.env", "Read ambient world state: time of day, night flag and scene id.");
-    registered = RegisterHostCapability("oot.audio", "Redirect the player voice sfx block to another form's voices.");
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
     registered = RegisterHostCapability(
         "oot.cutscene", "Take over the camera with a dedicated sub-camera for a bounded number of frames.");
-    if (!registered.isOk()) {
-        return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
-    }
-    registered = RegisterHostCapability("oot.spawn_dog", "Spawn the legacy OoT dog demo actor.");
-    if (!registered.isOk()) {
-        return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
-    }
-    registered = RegisterHostCapability("oot.player.bunny_hood",
-                                        "Equip the OoT Bunny Hood with Majora's Mask speed and jump behaviour.");
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
