@@ -28,6 +28,7 @@ target_include_directories(soh PRIVATE "${native_sdk_dir}")
 file(GENERATE OUTPUT "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake" CONTENT
 "set(OOT_NATIVE_INCLUDE_DIRS [==[$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>;${CMAKE_SOURCE_DIR}/soh/soh/native]==])
 set(OOT_NATIVE_COMPILE_DEFINITIONS [==[$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS>]==])
+set(OOT_NATIVE_LAYOUT_ID [==[${layout_id}]==])
 ")
 
 add_executable(oot_native_engine_tests
