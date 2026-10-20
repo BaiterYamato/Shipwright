@@ -133,6 +133,10 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         COMMAND linkspan_symdump "$<TARGET_FILE:soh>" "$<TARGET_FILE_DIR:soh>/soh.symbols"
         DEPENDS soh linkspan_symdump
         VERBATIM)
+    add_test(NAME linkspan_public_symbols_pe COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tools/check-public-symbols.py"
+        --exe "$<TARGET_FILE:soh>" --symbols "$<TARGET_FILE_DIR:soh>/soh.symbols")
+    set_tests_properties(linkspan_public_symbols_pe PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # RFC 0029: gerador do catálogo público e da retenção; o sync falha quando functions.h/variables.h mudam sem
