@@ -30,6 +30,8 @@
 #include "OotNativeAnchor.h"
 #include "oot_resources.h"
 #include "OotNativeJsonTypes.h"
+#include "OotNativePublicSymbols.h"
+#include "oot_layout_id.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <algorithm>
 #include <array>
@@ -71,6 +73,16 @@ OcarinaSongButtons gOcarinaSongButtons[OCARINA_SONG_MAX]{};
 u32 gBitFlags[32]{};
 u16 gEquipMasks[4]{ 0x000F, 0x00F0, 0x0F00, 0xF000 };
 u8 gEquipShifts[4]{ 0, 4, 8, 12 };
+#include "OotNativePublicSymbols.h"
+static f32 PublicProbeSinS(s16 angle) {
+    return sinf(angle * (3.14159265358979323846f / 32768.0f));
+}
+static void* gPublicProbeIcons[1] = { &gPublicProbeIcons };
+const LinkSpanPublicSymbol LinkSpan_PublicSymbols[] = {
+    { "Math_SinS", (const void*)&PublicProbeSinS, LINKSPAN_PUBLIC_FUNCTION },
+    { "gItemIcons", (const void*)&gPublicProbeIcons, LINKSPAN_PUBLIC_VARIABLE },
+};
+const size_t LinkSpan_PublicSymbolCount = 2;
 u8 gEquipAgeReqs[4][4]{ { LINK_AGE_ADULT, LINK_AGE_CHILD, LINK_AGE_ADULT, LINK_AGE_ADULT },
                         { 9, LINK_AGE_CHILD, 9, LINK_AGE_ADULT },
                         { LINK_AGE_ADULT, 9, LINK_AGE_ADULT, LINK_AGE_ADULT },
@@ -727,6 +739,35 @@ int main(int argc, char** argv) {
                                               UnloadResource, MountArchive, UnmountArchive, GetGameVersions,
                                               ReadResourceFileLayers });
     auto policy = ShipLuaHost::CreateOotNativePolicy();
+    {
+        Check(policy.publicSymbols && policy.publicSymbols->layoutId == LINKSPAN_OOT_LAYOUT_ID,
+              "catálogo público com o layout do host");
+        uintptr_t address = 0xDEAD;
+        Check(policy.publicSymbols->resolve("Math_SinS", &address) == SHIP_NATIVE_OK &&
+                  address == reinterpret_cast<uintptr_t>(&PublicProbeSinS),
+              "função pública resolve pelo catálogo");
+        address = 0xDEAD;
+        Check(policy.publicSymbols->resolve("gItemIcons", &address) == SHIP_NATIVE_OK &&
+                  address == reinterpret_cast<uintptr_t>(&gPublicProbeIcons),
+              "variável pública dá o endereço do armazenamento");
+        for (const char* name : { "Math_Sin", "Math_SinSX", "", "z_lib.c!Math_SinS", "gitemicons" }) {
+            address = 0xDEAD;
+            Check(policy.publicSymbols->resolve(name, &address) == SHIP_NATIVE_UNSUPPORTED && address == 0,
+                  "nome fora do catálogo: UNSUPPORTED e saída zero");
+        }
+        address = 0xDEAD;
+        Check(policy.publicSymbols->resolve(nullptr, &address) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "nome nulo recusado");
+        Check(policy.publicSymbols->resolve("Math_SinS", nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+              "saída nula recusada");
+        static const LinkSpanPublicSymbol unsorted[] = { { "b", &failures, 1 }, { "a", &failures, 1 } };
+        Check(ShipLuaHost::FindOotPublicSymbol(unsorted, 2, "a") == nullptr,
+              "tabela fora de ordem não é usada");
+        static const LinkSpanPublicSymbol sorted[] = { { "A", &failures, 1 }, { "B", &failures, 1 }, { "_c", &failures, 1 } };
+        Check(ShipLuaHost::FindOotPublicSymbol(sorted, 3, "_c") == &sorted[2] &&
+                  ShipLuaHost::FindOotPublicSymbol(sorted, 3, "A") == &sorted[0],
+              "busca binária na ordem de strcmp");
+    }
     {
         const auto& query = ShipLuaHost::GetOotNativeRandomizerServiceV2();
         ShipOotRandomizerItemInfoV2 info{ sizeof(info) };
