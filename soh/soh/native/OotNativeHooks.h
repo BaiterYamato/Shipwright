@@ -30,6 +30,13 @@ struct OotHookPoints {
     uint64_t pointLightColor = 0;
     uint64_t anchorState = 0;
     uint64_t fairyLights = 0;
+    uint64_t playerVoiceSfx = 0;
+    uint64_t playerRollAllowed = 0;
+    uint64_t playerLedgeGrabAllowed = 0;
+    uint64_t playerAction = 0;
+    uint64_t playerUpdateEnd = 0;
+    uint64_t playerMaskDraw = 0;
+    uint64_t playDestroy = 0;
 };
 void SetOotHookLogger(void (*logger)(const std::string& message));
 // Cria um registro novo com os pontos do host declarados. Chamar na thread do jogo.
@@ -46,4 +53,18 @@ uint32_t DispatchOotRoomActors(void* play, int32_t sceneId, int32_t room, int32_
                                ShipOotActorEntryV2* entries, uint32_t count, uint32_t capacity);
 void DispatchOotPointLightColor(ShipOotPointLightColorHookV2* payload);
 bool HasOotPointLightColorHooks();
+// HOST-SLIM-001 (RFC 0029): despachos dos pontos do Link e do Play, sem tipos do jogo. Thread do jogo.
+bool HasOotHooks(uint64_t point);
+// 1 quando um hook consumiu a voz; senão *sfx recebe o som final.
+uint8_t DispatchOotPlayerVoice(void* play, void* player, uint16_t* sfx);
+// E entre `allowed` e o resultado dos hooks: um hook só veta.
+uint8_t DispatchOotPlayerGate(uint64_t point, void* play, void* player, uint8_t allowed);
+// Roda `action(context)` se `vanillaAllowed`, entre os observers; devolve 1 se rodou.
+uint8_t DispatchOotPlayerAction(void* play, void* player, void* input, uint8_t vanillaAllowed,
+                                void (*action)(void* context), void* context);
+void DispatchOotPlayerTick(uint64_t point, void* play, void* player);
+// REPLACE do hook ou `drawVanilla(context)`, este só se `vanillaAllowed`.
+void DispatchOotPlayerMaskDraw(void* play, void* player, int32_t mask, uint8_t vanillaAllowed,
+                               void (*drawVanilla)(void* context), void* context);
+void DispatchOotPlayDestroy(void* play);
 } // namespace ShipLuaHost

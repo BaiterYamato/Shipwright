@@ -730,6 +730,65 @@ void Draw(void*, void* instance) {
 }
 } // namespace FakeSkeletons
 
+namespace HostSlimHooks {
+std::vector<std::string> trace;
+void* seenPlay = nullptr;
+void* seenPlayer = nullptr;
+ShipNativeStatus SHIP_NATIVE_CALL Voice(void*, const ShipNativeHookCall* call) {
+    auto* payload = static_cast<ShipOotPlayerVoiceHookV1*>(call->payload);
+    if (payload->requested_sfx == 0x6800)
+        payload->sfx = 0x6810;
+    if (payload->requested_sfx == 0x6801)
+        payload->consumed = 1;
+    if (payload->requested_sfx == 0x6802) {
+        payload->sfx = 0x1234;
+        return SHIP_NATIVE_FAILURE; // o host restaura o payload
+    }
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Veto(void* user, const ShipNativeHookCall* call) {
+    static_cast<ShipOotPlayerGateHookV1*>(call->payload)->allowed = *static_cast<uint8_t*>(user);
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Action(void*, const ShipNativeHookCall* call) {
+    const auto* payload = static_cast<const ShipOotPlayerActionHookV1*>(call->payload);
+    trace.push_back(std::string(call->phase == SHIP_NATIVE_HOOK_BEFORE ? "before:" : "after:") +
+                    char('0' + payload->vanilla_allowed) + char('0' + payload->executed));
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Mask(void*, const ShipNativeHookCall* call) {
+    const auto* payload = static_cast<const ShipOotPlayerMaskDrawHookV1*>(call->payload);
+    if (payload->mask == 1)
+        return call->call_original(call);
+    trace.push_back("own:" + std::to_string(payload->mask));
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Seen(void*, const ShipNativeHookCall* call) {
+    if (std::strcmp(call->point, LINKSPAN_OOT_HOOK_PLAY_DESTROY) == 0) {
+        const auto* payload = static_cast<const ShipOotPlayHookV1*>(call->payload);
+        seenPlay = payload->play_state;
+        seenPlayer = nullptr;
+    } else if (std::strcmp(call->point, LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END) == 0) {
+        const auto* payload = static_cast<const ShipOotPlayerTickHookV1*>(call->payload);
+        seenPlay = payload->play_state;
+        seenPlayer = payload->player;
+    } else {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    trace.push_back(call->point);
+    return SHIP_NATIVE_OK;
+}
+void Run(void* context) {
+    trace.push_back(static_cast<const char*>(context));
+}
+uint64_t Hook(const char* point, uint32_t size, uint32_t mode, uint32_t phase, ShipNativeHookFn callback,
+              void* user = nullptr) {
+    const ShipNativeHookSpec spec{ sizeof(spec), point, 1, size, mode, phase, 0, callback, user };
+    uint64_t handle = 0;
+    return ShipLuaHost::GetOotHookRegistry()->Register("hooks.test", spec, &handle) == SHIP_NATIVE_OK ? handle : 0;
+}
+} // namespace HostSlimHooks
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -767,6 +826,93 @@ int main(int argc, char** argv) {
         Check(ShipLuaHost::FindOotPublicSymbol(sorted, 3, "_c") == &sorted[2] &&
                   ShipLuaHost::FindOotPublicSymbol(sorted, 3, "A") == &sorted[0],
               "busca binária na ordem de strcmp");
+    }
+    {
+        using namespace HostSlimHooks;
+        const auto& points = ShipLuaHost::GetOotHookPoints();
+        auto* registry = ShipLuaHost::GetOotHookRegistry();
+        Check(points.playerVoiceSfx && points.playerRollAllowed && points.playerLedgeGrabAllowed &&
+                  points.playerAction && points.playerUpdateEnd && points.playerMaskDraw && points.playDestroy,
+              "7 pontos novos declarados");
+        Check(registry->FindPoint(LINKSPAN_OOT_HOOK_PLAYER_ACTION, 1) == points.playerAction,
+              "oot.player.action v1 pelo nome");
+        Check(!Hook(LINKSPAN_OOT_HOOK_PLAYER_ACTION, sizeof(ShipOotPlayerActionHookV1), SHIP_NATIVE_HOOK_REPLACE, 0,
+                    Action) &&
+                  !Hook(LINKSPAN_OOT_HOOK_PLAYER_ROLL_ALLOWED, sizeof(ShipOotPlayerGateHookV1),
+                        SHIP_NATIVE_HOOK_REPLACE, 0, Veto) &&
+                  !Hook(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_TRANSFORM, 0,
+                        Seen),
+              "modos fora do contrato são recusados");
+
+        uint16_t sfx = 0x6800;
+        Check(ShipLuaHost::DispatchOotPlayerVoice(&play, &player, &sfx) == 0 && sfx == 0x6800,
+              "sem hook a voz passa intacta");
+        Hook(LINKSPAN_OOT_HOOK_PLAYER_VOICE_SFX, sizeof(ShipOotPlayerVoiceHookV1), SHIP_NATIVE_HOOK_TRANSFORM, 0,
+             Voice);
+        Check(ShipLuaHost::DispatchOotPlayerVoice(&play, &player, &sfx) == 0 && sfx == 0x6810, "voz trocada");
+        sfx = 0x6801;
+        Check(ShipLuaHost::DispatchOotPlayerVoice(&play, &player, &sfx) == 1, "voz consumida");
+        sfx = 0x6802;
+        Check(ShipLuaHost::DispatchOotPlayerVoice(&play, &player, &sfx) == 0 && sfx == 0x6802,
+              "transform que falha não troca a voz");
+
+        uint8_t answer = 0;
+        Check(ShipLuaHost::DispatchOotPlayerGate(points.playerRollAllowed, &play, &player, 1) == 1,
+              "sem hook o rolamento segue o jogo");
+        Hook(LINKSPAN_OOT_HOOK_PLAYER_ROLL_ALLOWED, sizeof(ShipOotPlayerGateHookV1), SHIP_NATIVE_HOOK_TRANSFORM, 0,
+             Veto, &answer);
+        Check(ShipLuaHost::DispatchOotPlayerGate(points.playerRollAllowed, &play, &player, 1) == 0, "hook veta");
+        answer = 1;
+        Check(ShipLuaHost::DispatchOotPlayerGate(points.playerRollAllowed, &play, &player, 0) == 0,
+              "hook não libera o que o jogo vetou");
+        Check(ShipLuaHost::DispatchOotPlayerGate(points.playerLedgeGrabAllowed, &play, &player, 1) == 1,
+              "o veto de um ponto não vaza para o outro");
+
+        trace.clear();
+        Check(ShipLuaHost::DispatchOotPlayerAction(&play, &player, nullptr, 1, Run, (void*)"action") == 1 &&
+                  trace == std::vector<std::string>{ "action" },
+              "sem hook a ação roda");
+        Hook(LINKSPAN_OOT_HOOK_PLAYER_ACTION, sizeof(ShipOotPlayerActionHookV1), SHIP_NATIVE_HOOK_OBSERVE,
+             SHIP_NATIVE_HOOK_BEFORE, Action);
+        Hook(LINKSPAN_OOT_HOOK_PLAYER_ACTION, sizeof(ShipOotPlayerActionHookV1), SHIP_NATIVE_HOOK_OBSERVE,
+             SHIP_NATIVE_HOOK_AFTER, Action);
+        trace.clear();
+        Check(ShipLuaHost::DispatchOotPlayerAction(&play, &player, nullptr, 1, Run, (void*)"action") == 1,
+              "ação roda com observers");
+        Check(ShipLuaHost::DispatchOotPlayerAction(&play, &player, nullptr, 0, Run, (void*)"action") == 0,
+              "PAUSE/GameInteractor segura a ação");
+        Check(trace == std::vector<std::string>{ "before:10", "action", "after:11", "before:00", "after:00" },
+              "BEFORE e AFTER em volta da ação, com executed");
+
+        trace.clear();
+        ShipLuaHost::DispatchOotPlayerMaskDraw(&play, &player, 2, 1, Run, (void*)"vanilla");
+        Check(trace == std::vector<std::string>{ "vanilla" }, "sem hook desenha a máscara do jogo");
+        Hook(LINKSPAN_OOT_HOOK_PLAYER_MASK_DRAW, sizeof(ShipOotPlayerMaskDrawHookV1), SHIP_NATIVE_HOOK_REPLACE, 0,
+             Mask);
+        Check(!Hook(LINKSPAN_OOT_HOOK_PLAYER_MASK_DRAW, sizeof(ShipOotPlayerMaskDrawHookV1), SHIP_NATIVE_HOOK_REPLACE,
+                    0, Mask),
+              "REPLACE da máscara é exclusivo");
+        trace.clear();
+        ShipLuaHost::DispatchOotPlayerMaskDraw(&play, &player, 2, 1, Run, (void*)"vanilla");
+        ShipLuaHost::DispatchOotPlayerMaskDraw(&play, &player, 1, 1, Run, (void*)"vanilla");
+        ShipLuaHost::DispatchOotPlayerMaskDraw(&play, &player, 1, 0, Run, (void*)"vanilla");
+        Check(trace == std::vector<std::string>{ "own:2", "vanilla" },
+              "REPLACE troca a máscara; call_original desenha só se o jogo permitir");
+
+        trace.clear();
+        Hook(LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END, sizeof(ShipOotPlayerTickHookV1), SHIP_NATIVE_HOOK_OBSERVE,
+             SHIP_NATIVE_HOOK_AFTER, Seen);
+        ShipLuaHost::DispatchOotPlayerTick(points.playerUpdateEnd, &play, &player);
+        Check(seenPlay == &play && seenPlayer == &player, "update_end leva PlayState e Player");
+        Hook(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE,
+             SHIP_NATIVE_HOOK_BEFORE, Seen);
+        ShipLuaHost::DispatchOotPlayDestroy(&play);
+        Check(trace == std::vector<std::string>{ LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END, LINKSPAN_OOT_HOOK_PLAY_DESTROY } &&
+                  seenPlay == &play && seenPlayer == nullptr,
+              "play.destroy com o PlayState");
+        registry->RemoveOwner("hooks.test");
+        Check(!ShipLuaHost::HasOotHooks(points.playerAction) && !ShipLuaHost::HasOotHooks(points.playerMaskDraw),
+              "hooks do dono saem");
     }
     {
         const auto& query = ShipLuaHost::GetOotNativeRandomizerServiceV2();
