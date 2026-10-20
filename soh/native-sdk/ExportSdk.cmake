@@ -93,6 +93,13 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         --example "${CMAKE_SOURCE_DIR}/soh/native-sdk/example"
         --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}"
         --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
+    add_test(NAME oot_native_public_probe COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/test_public_probe.py"
+        --probe $<TARGET_FILE:oot_native_engine_tests>
+        --sdk "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake"
+        --source "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/public-probe"
+        --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}"
+        --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
 endif()
 
 # Escape hatch (COREEXT-008, RFC 0023): MinHook v1.3.4 compilada direto das fontes, sem o

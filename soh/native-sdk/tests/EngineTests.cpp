@@ -2468,7 +2468,32 @@ int main(int argc, char** argv) {
     play.actorCtx.actorLists[ACTORCAT_PROP].head = &spawned;
     Check(engine->kill_actor(&spawned) == SHIP_NATIVE_OK && killed == &spawned, "kill do ator presente");
 
-    if (argc == 3) {
+    if (argc == 3 && std::string(argv[2]) == "public") {
+        const auto manifest =
+            ShipLua::ParseManifestFile((std::filesystem::path(argv[1]) / "manifest.toml").string());
+        if (!manifest.isOk()) {
+            std::cerr << manifest.message;
+            return 1;
+        }
+        auto report = [&](const ShipLua::Manifest& source) -> std::string {
+            auto loaded = ShipLua::NativeProvider::Load(source, argv[1], policy);
+            if (!loaded.isOk())
+                return "load: " + loaded.message;
+            std::array<char, 512> response{};
+            const auto called = (*loaded.value)->Call("report", "", 0, response.data(), uint32_t(response.size()));
+            return called.code == ShipLua::ErrorCode::Ok ? std::string(response.data(), called.size) : "call falhou";
+        }; // o provider descarrega no fim de cada chamada
+        const auto same = report(*manifest.value);
+        std::cout << same << '\n';
+        Check(same == "public-probe sin=ok:1.000 icons=ok:1 extra=unsupported:0 qual=unsupported:0 miss=unsupported:0",
+              "probe 1.4 com layout igual resolve só o catálogo");
+        auto other = *manifest.value;
+        other.provider->hostLayoutId = std::string(64, '0');
+        Check(report(other).starts_with("public-probe sin=unsupported"),
+              "layout diferente: carrega, mas o caminho público fica UNSUPPORTED");
+        return failures ? 1 : 0;
+    }
+    if (argc == 3 && std::string(argv[2]) != "public") {
         const auto manifest = ShipLua::ParseManifestFile((std::filesystem::path(argv[1]) / "manifest.toml").string());
         if (!manifest.isOk()) {
             std::cerr << manifest.message;
