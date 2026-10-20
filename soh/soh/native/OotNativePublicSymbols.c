@@ -7,6 +7,8 @@
 
 #pragma comment(linker, "/include:LinkSpan_PublicSymbols")
 #pragma comment(linker, "/include:LinkSpan_PublicSymbolCount")
+// Uma entrada por linha, para o diff do catálogo ler símbolo a símbolo.
+// clang-format off
 const LinkSpanPublicSymbol LinkSpan_PublicSymbols[] = {
     { "ActorShadow_DrawCircle", (const void*)&ActorShadow_DrawCircle, LINKSPAN_PUBLIC_FUNCTION },
     { "ActorShadow_DrawFeet", (const void*)&ActorShadow_DrawFeet, LINKSPAN_PUBLIC_FUNCTION },
@@ -2279,4 +2281,5 @@ const LinkSpanPublicSymbol LinkSpan_PublicSymbols[] = {
     { "sins", (const void*)&sins, LINKSPAN_PUBLIC_FUNCTION },
     { "triforcePieceScale", (const void*)&triforcePieceScale, LINKSPAN_PUBLIC_VARIABLE },
 };
+// clang-format on
 const size_t LinkSpan_PublicSymbolCount = sizeof(LinkSpan_PublicSymbols) / sizeof(LinkSpan_PublicSymbols[0]);

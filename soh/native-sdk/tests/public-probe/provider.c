@@ -50,9 +50,9 @@ static ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, 
     sQualified = Resolve(runtime, "z_lib.c!Math_SinS", &qualified);
     sMissing = Resolve(runtime, "LinkSpan_NoSuchSymbol", &missing);
     snprintf(state->report, sizeof(state->report),
-             "public-probe sin=%s:%.3f icons=%s:%d extra=%s:%d qual=%s:%d miss=%s:%d", Name(sSin), value,
-             Name(sIcons), sIcons == SHIP_NATIVE_OK && *(void* const*)icons != NULL, Name(sExtra), extra != 0,
-             Name(sQualified), qualified != 0, Name(sMissing), missing != 0);
+             "public-probe sin=%s:%.3f icons=%s:%d extra=%s:%d qual=%s:%d miss=%s:%d", Name(sSin), value, Name(sIcons),
+             sIcons == SHIP_NATIVE_OK && *(void* const*)icons != NULL, Name(sExtra), extra != 0, Name(sQualified),
+             qualified != 0, Name(sMissing), missing != 0);
     return runtime->register_function(runtime->context, "report", Report, state);
 }
 

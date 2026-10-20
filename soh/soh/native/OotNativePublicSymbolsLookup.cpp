@@ -39,7 +39,7 @@ const LinkSpanPublicSymbol* FindOotPublicSymbol(const LinkSpanPublicSymbol* tabl
 }
 
 std::shared_ptr<ShipLua::NativePublicSymbols> CreateOotPublicSymbols(std::string layoutId,
-                                                                    const LinkSpanPublicSymbol* table, size_t count) {
+                                                                     const LinkSpanPublicSymbol* table, size_t count) {
     auto symbols = std::make_shared<ShipLua::NativePublicSymbols>();
     symbols->layoutId = std::move(layoutId);
     // A ordem é conferida uma vez aqui; a busca confia nela depois.
