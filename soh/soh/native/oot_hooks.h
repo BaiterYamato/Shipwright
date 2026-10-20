@@ -202,7 +202,10 @@ typedef struct ShipOotRoomActorsHookV2 {
  * oot.player.voice_sfx: TRANSFORM ou OBSERVE, ShipOotPlayerVoiceHookV1. Player_PlayVoiceSfx vai tocar `sfx` (antes
  *   do ajuste de idade). O TRANSFORM troca `sfx` ou põe `consumed = 1` para o jogo não tocar nada.
  * oot.player.roll_allowed, oot.player.ledge_grab_allowed: TRANSFORM ou OBSERVE, ShipOotPlayerGateHookV1. O Link vai
- *   rolar ou agarrar a borda. `allowed = 0` veta; o host faz E com o valor que entrou, então um hook só veta.
+ *   rolar ou agarrar a borda. `allowed = 0` veta; o host faz E com o valor que entrou, então um hook só veta o jogo.
+ *   Cada TRANSFORM vê o resultado do anterior: escreva só 0, porque gravar 1 desfaz o veto de um hook anterior.
+ *   roll_allowed cobre a rolagem do A em movimento (Player_TryRoll), como o veto legado; a do Z-target e a da
+ *   aterrissagem chamam Player_SetupRoll direto e não passam pelo ponto.
  * oot.player.action: só OBSERVE, ShipOotPlayerActionHookV1, em volta da função de ação do Link no Player_Update.
  *   BEFORE vê `executed = 0`; AFTER vê se a ação rodou. Tomar a ação é do linkspan.oot.movement V3.
  * oot.player.update_end: só OBSERVE, ShipOotPlayerTickHookV1, no fim do Player_Update.
