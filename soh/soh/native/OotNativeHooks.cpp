@@ -1,6 +1,9 @@
 #include "OotNativeHooks.h"
 
 #include "oot_hooks.h"
+#include "OotNativeAudioMix.h"
+
+#include <stdexcept>
 
 namespace ShipLuaHost {
 namespace {
@@ -46,6 +49,7 @@ void SetOotHookLogger(void (*logger)(const std::string& message)) {
 }
 
 std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
+    ResetOotAudioMix();
     registry = std::make_shared<ShipLua::NativeHookRegistry>([](const std::string& message) {
         if (hookLogger)
             hookLogger(message);
@@ -97,6 +101,11 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
         Declare(LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END, sizeof(ShipOotPlayerTickHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.playerMaskDraw = Declare(LINKSPAN_OOT_HOOK_PLAYER_MASK_DRAW, sizeof(ShipOotPlayerMaskDrawHookV1));
     points.playDestroy = Declare(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.audioMix = InstallOotAudioMix(*registry);
+    if (!points.audioMix) {
+        ResetOotHooks();
+        throw std::runtime_error("não foi possível instalar oot.audio.mix");
+    }
     return registry;
 }
 
@@ -211,6 +220,7 @@ void DispatchOotPlayDestroy(void* play) {
 }
 
 void ResetOotHooks() {
+    ResetOotAudioMix();
     registry.reset();
     points = {};
 }

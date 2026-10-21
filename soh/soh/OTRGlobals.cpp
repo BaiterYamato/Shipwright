@@ -42,6 +42,8 @@
 #include "Enhancements/randomizer/static_data.h"
 #include "soh/mmaudio/MmSfxPlayer.h"
 #include "soh/mmaudio/mmseq/MmAudioEngine.h"
+#include "soh/native/OotNativeAudioMix.h"
+#include "soh/native/oot_audio.h"
 #include "soh/Enhancements/randomizer/settings.h"
 #include "soh/Enhancements/savestates.h"
 #include "soh/Enhancements/speedrun/Speedrun.h"
@@ -2326,13 +2328,21 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
     // funil único, logo antes de ir para o dispositivo. O formato dos dois lados
     // é o mesmo — 32 kHz, estéreo, s16 intercalado — então não há resample.
     // Ver coordination/handoffs/OOT-AUDIO-001-port-mm-sfx.md.
+    // HOST-SLIM-001: oot.audio.mix (oot_audio.h) roda por último, sobre a mistura completa.
     const bool hasSample = ShipLua::MmAudio_HasPending();
     const bool hasSequence = ShipLua::MmSeq_IsReady();
+    const bool hasMix = ShipLuaHost::OotAudioMixActive();
 
-    if (hasSample || hasSequence) {
-        static thread_local std::vector<uint8_t> mixed;
-        mixed.assign(buf, buf + len);
-        int16_t* pcm = reinterpret_cast<int16_t*>(mixed.data());
+    if (hasSample || hasSequence || hasMix) {
+        // Sem alocação na thread de áudio (revisão do Codex): o maior bloco do AudioMgr são 3 × SAMPLES_HIGH
+        // quadros estéreo s16, o LINKSPAN_OOT_AUDIO_MAX_FRAMES do oot.audio.mix.
+        alignas(int16_t) static thread_local uint8_t mixed[LINKSPAN_OOT_AUDIO_MAX_FRAMES * 2 * sizeof(int16_t)];
+        if (len > sizeof(mixed)) {
+            AudioPlayerPlayFrame(buf, len);
+            return;
+        }
+        memcpy(mixed, buf, len);
+        int16_t* pcm = reinterpret_cast<int16_t*>(mixed);
         const uint32_t frames = len / (2 * sizeof(int16_t));
 
         // Amostra crua (Fase 1) e interpretador de sequência (Fase 2) somam no
@@ -2344,8 +2354,11 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
         if (hasSequence) {
             ShipLua::MmSeq_RenderInto(pcm, frames);
         }
+        if (hasMix) {
+            ShipLuaHost::MixOotAudio(pcm, frames);
+        }
 
-        AudioPlayerPlayFrame(mixed.data(), len);
+        AudioPlayerPlayFrame(mixed, len);
         return;
     }
 
