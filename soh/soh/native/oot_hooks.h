@@ -265,4 +265,28 @@ typedef struct ShipOotPlayerMaskDrawHookV1 {
     uint8_t reserved[3];
 } ShipOotPlayerMaskDrawHookV1;
 
+/* HOST-SLIM-001 (RFC 0029), thread do jogo.
+ * oot.mods.archives: só OBSERVE, ShipOotModArchivesHookV1, uma vez no boot, depois da carga dos mods e antes do
+ *   game.ready. Lista, em ordem de prioridade crescente, os .o2r/.otr soltos em mods/ e os de mods/<pasta>/assets/
+ *   cujo id e pasta normalizada correspondem à origem efetivamente carregada em loadedDirectories. Os de pasta
+ *   rejeitada não entram, mesmo que outra origem com o mesmo id carregue. Quem quiser um deles na raiz do VFS chama
+ *   linkspan.oot.resources mount_archive no callback, guarda o handle e desmonta no shutdown, em ordem inversa.
+ *   Arquivos de .zip/.shipmod extraídos não entram (o mod monta os próprios assets). */
+#define LINKSPAN_OOT_HOOK_MODS_ARCHIVES "oot.mods.archives"
+
+typedef struct ShipOotModArchiveV1 {
+    uint32_t size;
+    uint32_t order;             /* posição na ordem estável (caminhos ordenados) */
+    const char* path;           /* absoluto, com '/' */
+    const char* owner;          /* id do manifesto da pasta; "" para arquivo solto em mods/ */
+    const char* private_prefix; /* "mod/<stem>/" onde o host montou o archive; "" se não montou */
+} ShipOotModArchiveV1;
+
+typedef struct ShipOotModArchivesHookV1 {
+    uint32_t size;
+    const ShipOotModArchiveV1* archives;
+    uint32_t count;
+    uint32_t archive_stride; /* sizeof de cada entrada: percorra por ele, as entradas podem crescer */
+} ShipOotModArchivesHookV1;
+
 #endif

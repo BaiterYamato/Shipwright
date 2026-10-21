@@ -101,6 +101,8 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
         Declare(LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END, sizeof(ShipOotPlayerTickHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.playerMaskDraw = Declare(LINKSPAN_OOT_HOOK_PLAYER_MASK_DRAW, sizeof(ShipOotPlayerMaskDrawHookV1));
     points.playDestroy = Declare(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.modsArchives =
+        Declare(LINKSPAN_OOT_HOOK_MODS_ARCHIVES, sizeof(ShipOotModArchivesHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     points.audioMix = InstallOotAudioMix(*registry);
     if (!points.audioMix) {
         ResetOotHooks();
@@ -217,6 +219,20 @@ void DispatchOotPlayDestroy(void* play) {
         return;
     ShipOotPlayHookV1 payload{ sizeof(payload), play };
     registry->Dispatch(points.playDestroy, &payload, sizeof(payload), nullptr, nullptr);
+}
+
+void DispatchOotModArchives(const std::vector<OotModArchive>& archives) {
+    if (!registry || !points.modsArchives || !registry->HasHooks(points.modsArchives))
+        return;
+    std::vector<ShipOotModArchiveV1> entries;
+    entries.reserve(archives.size());
+    for (const auto& archive : archives) {
+        entries.push_back({ sizeof(ShipOotModArchiveV1), uint32_t(entries.size()), archive.path.c_str(),
+                            archive.owner.c_str(), archive.privatePrefix.c_str() });
+    }
+    ShipOotModArchivesHookV1 payload{ sizeof(payload), entries.data(), uint32_t(entries.size()),
+                                      sizeof(ShipOotModArchiveV1) };
+    registry->Dispatch(points.modsArchives, &payload, sizeof(payload), nullptr, nullptr);
 }
 
 void ResetOotHooks() {
