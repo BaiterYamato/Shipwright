@@ -22,6 +22,7 @@
 #include "oot_skeletons.h"
 #include "OotNativeSkeletons.h"
 #include "OotNativeHooks.h"
+#include "OotNativePlayerAction.h"
 #include "oot_audio.h"
 #include "OotNativeAudioMix.h"
 #include "oot_text.h"
@@ -44,6 +45,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <string>
 #include <thread>
@@ -419,12 +421,20 @@ void Destroy(int16_t, void*) {
     ++destroyed;
     active = false;
 }
-void Apply(int16_t, void*, const ShipOotCameraViewV1& view) {
+int16_t lastRoll = 0;
+bool rollApplied = false;
+void Apply(int16_t, void*, const ShipOotCameraViewV2& view, bool roll) {
     ++applied;
-    lastApplied = view;
+    lastApplied = {
+        sizeof(lastApplied), { view.eye[0], view.eye[1], view.eye[2] }, { view.at[0], view.at[1], view.at[2] }, view.fov
+    };
+    rollApplied = roll;
+    if (roll)
+        lastRoll = view.roll;
 }
-ShipNativeStatus Read(ShipOotCameraViewV1* view) {
+ShipNativeStatus Read(ShipOotCameraViewV2* view) {
     view->fov = 60.0f;
+    view->roll = lastRoll;
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus Draw(void*, const char* path, uint8_t layer) {
@@ -860,6 +870,131 @@ ShipNativeStatus SHIP_NATIVE_CALL Observe(void*, const ShipNativeHookCall* call)
 }
 } // namespace HostSlimArchives
 
+namespace HostSlimMovement {
+int playTag = 0, playerTag = 0, inputTag = 0, idleTag = 0, walkTag = 0;
+int otherPlayTag = 0, otherPlayerTag = 0;
+void* snapshotPlay = &playTag;
+void* snapshotPlayer = &playerTag;
+bool gameplay = true, eligible = true, neutral = true;
+const void* action = &idleTag;
+uint64_t tick = 10;
+int restores = 0, idleRestores = 0, vanillaRuns = 0, revokes = 0;
+uint64_t lastRevoked = 0;
+
+bool Snapshot(ShipLuaHost::OotActionSnapshot* out) {
+    if (!gameplay)
+        return false;
+    out->play = snapshotPlay;
+    out->player = snapshotPlayer;
+    out->action = action;
+    out->tick = tick;
+    out->flags = action == &idleTag ? SHIP_OOT_ACTION_STATE_IDLE : 0;
+    out->eligible = eligible;
+    out->neutral = eligible && neutral;
+    return true;
+}
+ShipNativeStatus Restore(const ShipLuaHost::OotActionSnapshot&, bool releaseIdle) {
+    ++restores;
+    if (releaseIdle) {
+        ++idleRestores;
+        if (action != &idleTag) {
+            action = &idleTag;
+            ShipLuaHost::NotifyOotPlayerActionChanged(&playerTag);
+        }
+    }
+    return SHIP_NATIVE_OK;
+}
+const ShipOotMovementV3* revokeMovement = nullptr;
+ShipOotPlayerActionSpecV1 revokeSpec{};
+bool acquireOnRevoke = false, addOnRevoke = false;
+ShipNativeStatus acquireDuringRevoke = SHIP_NATIVE_OK;
+uint64_t tokenDuringRevoke = 0;
+int lateRevokes = 0;
+
+void LateRevoked(uint64_t) {
+    ++lateRevokes;
+}
+void Revoked(uint64_t token) {
+    ++revokes;
+    lastRevoked = token;
+    if (acquireOnRevoke) {
+        tokenDuringRevoke = 7;
+        acquireDuringRevoke = revokeMovement->acquire_action("move.listener", &revokeSpec, &tokenDuringRevoke);
+    }
+    if (addOnRevoke)
+        ShipLuaHost::AddOotActionRevokeListener(LateRevoked);
+}
+void Vanilla(void*) {
+    ++vanillaRuns;
+}
+
+struct Owner {
+    const ShipOotMovementV3* movement = nullptr;
+    uint64_t token = 0;
+    int calls = 0;
+    uint32_t disposition = SHIP_OOT_ACTION_PASS;
+    ShipNativeStatus status = SHIP_NATIVE_OK;
+    uint8_t expectedAllowed = 1;
+    bool releaseInside = false;
+    bool changeActionInside = false;
+    bool directActionInside = false;
+    bool loseContextInside = false;
+    bool changePlayInside = false;
+    bool changePlayerInside = false;
+    bool recreatePlayerInside = false;
+    bool throwInside = false;
+    bool ok = true;
+};
+ShipNativeStatus SHIP_NATIVE_CALL Tick(void* user, const ShipOotPlayerActionTickV1* tick, uint32_t* disposition) {
+    auto& owner = *static_cast<Owner*>(user);
+    ++owner.calls;
+    owner.ok = owner.ok && tick->size == sizeof(*tick) && tick->action_token == owner.token &&
+               tick->play_state == &playTag && tick->player == &playerTag && tick->input == &inputTag &&
+               tick->state.owned && tick->state.scene_epoch == ShipLuaHost::OotSceneEpoch() &&
+               tick->vanilla_allowed == owner.expectedAllowed;
+    *disposition = owner.disposition;
+    if (owner.releaseInside) {
+        const int before = restores;
+        const ShipOotPlayerActionSpecV1 spec{ sizeof(spec), 0, Tick, user };
+        uint64_t again = 7;
+        owner.ok = owner.ok && owner.movement->release_action(owner.token) == SHIP_NATIVE_OK && restores == before &&
+                   owner.movement->acquire_action("move.other", &spec, &again) == SHIP_NATIVE_LIMIT && again == 0;
+    }
+    if (owner.changeActionInside) {
+        action = &walkTag;
+        ShipLuaHost::NotifyOotPlayerActionChanged(&playerTag);
+    }
+    if (owner.directActionInside)
+        action = &walkTag; // escrita direta, sem notificação
+    if (owner.loseContextInside)
+        gameplay = false;
+    if (owner.changePlayInside)
+        snapshotPlay = &otherPlayTag;
+    if (owner.changePlayerInside)
+        snapshotPlayer = &otherPlayerTag;
+    if (owner.recreatePlayerInside)
+        ShipLuaHost::NotifyOotPlayerCreated(&playerTag);
+    if (owner.throwInside)
+        throw 7;
+    return owner.status;
+}
+uint8_t Dispatch(uint8_t allowed = 1) {
+    return ShipLuaHost::DispatchOotPlayerAction(&playTag, &playerTag, &inputTag, allowed, Vanilla, nullptr);
+}
+const ShipOotMovementV3* Find(const ShipLua::NativeProviderPolicy& policy) {
+    const ShipOotMovementV3* found = nullptr;
+    int matches = 0;
+    for (const auto& service : policy.services) {
+        if (service.name == LINKSPAN_OOT_MOVEMENT_SERVICE && service.version == LINKSPAN_OOT_MOVEMENT_VERSION_3) {
+            ++matches;
+            if (service.size == sizeof(ShipOotMovementV3))
+                found = static_cast<const ShipOotMovementV3*>(service.table);
+        }
+    }
+    return matches == 1 ? found : nullptr;
+}
+} // namespace HostSlimMovement
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -1114,6 +1249,264 @@ int main(int argc, char** argv) {
               "hooks do dono saem");
     }
     {
+        using namespace HostSlimMovement;
+        static_assert(offsetof(ShipOotMovementV3, get_action_state) == sizeof(ShipOotMovementV2));
+        static_assert(sizeof(ShipOotMovementV3) == sizeof(ShipOotMovementV2) + 4 * sizeof(void*));
+        static_assert(sizeof(ShipOotPlayerActionStateV1) == 40 && sizeof(ShipOotPlayerActionTickV1) == 88 &&
+                      sizeof(ShipOotPlayerActionSpecV1) == 24);
+        const auto* movement = Find(policy);
+        Check(movement && movement->size == sizeof(ShipOotMovementV3) && movement->layout_id &&
+                  std::strcmp(movement->layout_id, LINKSPAN_OOT_LAYOUT_ID) == 0,
+              "movement V3 publicado uma vez, com layout");
+        if (movement) {
+            ShipLuaHost::SetOotActionBridge({ Snapshot, Restore });
+            ShipLuaHost::AddOotActionRevokeListener(Revoked);
+            ShipLuaHost::NotifyOotPlayerCreated(&playerTag);
+            Owner owner;
+            owner.movement = movement;
+            const ShipOotPlayerActionSpecV1 spec{ sizeof(spec), 0, Tick, &owner };
+            auto shortSpec = spec;
+            shortSpec.size = sizeof(spec) - 1;
+            auto noCallback = spec;
+            noCallback.callback = nullptr;
+            const std::string longOwner(129, 'x');
+            uint64_t token = 7, other = 7;
+            ShipOotPlayerActionStateV1 state{};
+            state.size = sizeof(state) - 1;
+            Check(movement->get_action_state(nullptr) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      movement->get_action_state(&state) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "estado nulo ou curto");
+            Check(movement->acquire_action("move.a", &shortSpec, &token) == SHIP_NATIVE_INVALID_ARGUMENT && token == 0,
+                  "spec curta zera o token");
+            for (const char* bad : { "", longOwner.c_str(), "a\nb", "a\x7f" })
+                Check(movement->acquire_action(bad, &spec, &token) == SHIP_NATIVE_INVALID_ARGUMENT && token == 0,
+                      "dono inválido");
+            Check(movement->acquire_action(nullptr, &spec, &token) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      movement->acquire_action("move.a", nullptr, &token) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      movement->acquire_action("move.a", &noCallback, &token) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      movement->acquire_action("move.a", &spec, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "argumentos obrigatórios");
+            Check(movement->release_action(0) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      movement->release_action(1) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      movement->restore_player_animation(0) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "token zero ou de outro domínio");
+
+            state.size = sizeof(state);
+            gameplay = false;
+            Check(movement->get_action_state(&state) == SHIP_NATIVE_UNSUPPORTED &&
+                      (state.flags & SHIP_OOT_ACTION_STATE_BLOCKED) &&
+                      movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_UNSUPPORTED,
+                  "sem Player");
+            gameplay = true;
+            eligible = false;
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_UNSUPPORTED, "Link ocupado");
+            eligible = true;
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK && token, "primeiro dono");
+            owner.token = token;
+            Check(movement->acquire_action("move.b", &spec, &other) == SHIP_NATIVE_LIMIT && other == 0 &&
+                      movement->acquire_action("move.a", &spec, &other) == SHIP_NATIVE_LIMIT,
+                  "outro dono e o mesmo dono recebem LIMIT");
+            Check(movement->get_action_state(&state) == SHIP_NATIVE_OK && state.owned &&
+                      state.scene_epoch == ShipLuaHost::OotSceneEpoch() &&
+                      state.player_generation == ShipLuaHost::OotPlayerGeneration() && state.tick == 10 &&
+                      (state.flags & SHIP_OOT_ACTION_STATE_IDLE),
+                  "estado do lease");
+
+            Check(Dispatch() == 1 && owner.calls == 1 && vanillaRuns == 1, "PASS roda a ação do jogo");
+            owner.disposition = SHIP_OOT_ACTION_SUPPRESS;
+            Check(Dispatch() == 0 && owner.calls == 2 && vanillaRuns == 1, "SUPPRESS segura a ação do jogo");
+            owner.disposition = SHIP_OOT_ACTION_PASS;
+            owner.expectedAllowed = 0;
+            Check(Dispatch(0) == 0 && owner.calls == 3 && vanillaRuns == 1, "PASS respeita o gate do jogo");
+            owner.expectedAllowed = 1;
+
+            Check(movement->restore_player_animation(token) == SHIP_NATIVE_OK && restores == 1 && idleRestores == 0 &&
+                      movement->get_action_state(&state) == SHIP_NATIVE_OK && state.owned,
+                  "animação de Idle sem soltar o lease");
+            neutral = false;
+            Check(movement->restore_player_animation(token) == SHIP_NATIVE_UNSUPPORTED, "fora do chão não restaura");
+            neutral = true;
+            Check(movement->release_action(token) == SHIP_NATIVE_OK &&
+                      movement->release_action(token) == SHIP_NATIVE_OK && idleRestores == 1 && revokes == 1 &&
+                      lastRevoked == token,
+                  "release idempotente, Idle uma vez, dependentes avisados");
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK,
+                  "lease para release no callback");
+            owner.token = token;
+            owner.releaseInside = true;
+            owner.disposition = SHIP_OOT_ACTION_SUPPRESS;
+            Check(Dispatch() == 1 && idleRestores == 2 && vanillaRuns == 2,
+                  "release no callback: Idle depois do callback e a disposição velha não vale");
+            owner.releaseInside = false;
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK, "lease antes de troca de ação");
+            owner.token = token;
+            const int callsBefore = owner.calls;
+            action = &walkTag;
+            ShipLuaHost::NotifyOotPlayerActionChanged(&playerTag);
+            action = &idleTag;
+            ShipLuaHost::NotifyOotPlayerActionChanged(&playerTag);
+            Check(revokes == 3 && lastRevoked == token &&
+                      movement->restore_player_animation(token) == SHIP_NATIVE_UNSUPPORTED && Dispatch() == 1 &&
+                      owner.calls == callsBefore && idleRestores == 2,
+                  "troca de ação (A-B-A) derruba o lease sem impor Idle");
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK, "lease antes do Link ocupado");
+            owner.token = token;
+            eligible = false;
+            Check(Dispatch() == 1 && owner.calls == callsBefore && idleRestores == 2 && revokes == 4,
+                  "Link ocupado derruba o lease");
+            eligible = true;
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK, "lease para falha");
+            owner.token = token;
+            owner.status = SHIP_NATIVE_FAILURE;
+            const int idleAtFailure = idleRestores;
+            Check(Dispatch() == 1 && movement->restore_player_animation(token) == SHIP_NATIVE_UNSUPPORTED &&
+                      idleRestores == idleAtFailure,
+                  "callback que falha perde o lease sem Idle e o jogo segue");
+            owner.status = SHIP_NATIVE_OK;
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK, "lease para exceção");
+            owner.token = token;
+            owner.throwInside = true;
+            const int idleAtException = idleRestores;
+            Check(Dispatch() == 1 && movement->get_action_state(&state) == SHIP_NATIVE_OK && !state.owned &&
+                      idleRestores == idleAtException,
+                  "exceção do callback não cruza a fronteira, revoga o lease e mantém vanilla");
+            owner.throwInside = false;
+            owner.disposition = SHIP_OOT_ACTION_SUPPRESS;
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK,
+                  "nova aquisição depois da exceção");
+            owner.token = token;
+            Check(Dispatch() == 0 && movement->release_action(token) == SHIP_NATIVE_OK,
+                  "guard do callback recuperado depois da exceção");
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK, "lease para disposição ruim");
+            owner.token = token;
+            owner.disposition = 42;
+            const int idleAtBadDisposition = idleRestores;
+            Check(Dispatch() == 1 && movement->restore_player_animation(token) == SHIP_NATIVE_UNSUPPORTED &&
+                      idleRestores == idleAtBadDisposition,
+                  "disposição desconhecida perde o lease sem Idle");
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK, "lease para troca no callback");
+            owner.token = token;
+            owner.disposition = SHIP_OOT_ACTION_SUPPRESS;
+            owner.changeActionInside = true;
+            Check(Dispatch() == 1, "ação trocada no callback: vale a regra do jogo");
+            owner.changeActionInside = false;
+            action = &idleTag;
+            ShipLuaHost::NotifyOotPlayerActionChanged(&playerTag);
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK, "lease antes do fim da cena");
+            const uint64_t epoch = ShipLuaHost::OotSceneEpoch();
+            const int idleBefore = idleRestores;
+            ShipLuaHost::DispatchOotPlayDestroy(&playTag);
+            Check(ShipLuaHost::OotSceneEpoch() == epoch + 1 &&
+                      movement->restore_player_animation(token) == SHIP_NATIVE_UNSUPPORTED &&
+                      movement->release_action(token) == SHIP_NATIVE_OK && idleRestores == idleBefore,
+                  "Play_Destroy derruba o lease sem tocar no jogo");
+            ShipLuaHost::NotifyOotPlayerCreated(&playerTag);
+            Check(movement->acquire_action("move.a", &spec, &other) == SHIP_NATIVE_OK && other != token,
+                  "cena nova, mesmo endereço, token novo");
+            const uint64_t generation = ShipLuaHost::OotPlayerGeneration();
+            ShipLuaHost::NotifyOotPlayerCreated(&playerTag);
+            Check(ShipLuaHost::OotPlayerGeneration() != generation &&
+                      movement->restore_player_animation(other) == SHIP_NATIVE_UNSUPPORTED,
+                  "Player recriado no mesmo endereço não herda o lease");
+
+            owner.disposition = SHIP_OOT_ACTION_PASS;
+            Check(movement->acquire_action("move.unload", &spec, &token) == SHIP_NATIVE_OK, "lease do dono que sai");
+            owner.token = token;
+            const int callsAtUnload = owner.calls, idleAtUnload = idleRestores;
+            policy.onProviderUnload("move.unload");
+            Check(owner.calls == callsAtUnload && idleRestores == idleAtUnload + 1 && Dispatch() == 1 &&
+                      owner.calls == callsAtUnload,
+                  "unload solta o lease sem chamar a DLL");
+            Check(movement->acquire_action("move.unload", &spec, &other) == SHIP_NATIVE_UNSUPPORTED &&
+                      movement->release_action(token) == SHIP_NATIVE_OK,
+                  "dono descarregado não volta");
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK,
+                  "lease antes de perder o Player");
+            const int revokesBeforeMissing = revokes;
+            gameplay = false;
+            Check(movement->get_action_state(&state) == SHIP_NATIVE_UNSUPPORTED && state.owned == 0 &&
+                      (state.flags & SHIP_OOT_ACTION_STATE_BLOCKED) && revokes == revokesBeforeMissing + 1 &&
+                      lastRevoked == token,
+                  "snapshot sem Player derruba o lease e avisa uma vez");
+            Check(movement->get_action_state(&state) == SHIP_NATIVE_UNSUPPORTED && state.owned == 0 &&
+                      revokes == revokesBeforeMissing + 1,
+                  "consulta repetida sem Player não repete a revogação");
+            gameplay = true;
+
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK,
+                  "lease para ouvinte que tenta adquirir");
+            revokeMovement = movement;
+            revokeSpec = spec;
+            acquireOnRevoke = true;
+            addOnRevoke = true;
+            const int lateBefore = lateRevokes;
+            Check(movement->release_action(token) == SHIP_NATIVE_OK && acquireDuringRevoke == SHIP_NATIVE_LIMIT &&
+                      tokenDuringRevoke == 0 && lateRevokes == lateBefore,
+                  "aviso bloqueia aquisição e adia o ouvinte novo");
+            acquireOnRevoke = false;
+            addOnRevoke = false;
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK &&
+                      movement->release_action(token) == SHIP_NATIVE_OK && lateRevokes == lateBefore + 1,
+                  "ouvinte acrescentado recebe só a próxima revogação");
+
+            const int idleAtDirectChange = idleRestores;
+            Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK,
+                  "lease antes de escrita direta de outra ação elegível");
+            action = &walkTag;
+            Check(movement->release_action(token) == SHIP_NATIVE_OK && idleRestores == idleAtDirectChange &&
+                      action == &walkTag,
+                  "release não impõe Idle sobre outra ação");
+            action = &idleTag;
+            ShipLuaHost::NotifyOotPlayerActionChanged(&playerTag);
+
+            owner.disposition = SHIP_OOT_ACTION_SUPPRESS;
+            for (int mutation = 0; mutation < 6; ++mutation) {
+                Check(movement->acquire_action("move.a", &spec, &token) == SHIP_NATIVE_OK,
+                      "lease para revalidar o snapshot depois do callback");
+                owner.token = token;
+                owner.directActionInside = mutation == 0 || mutation == 5;
+                owner.loseContextInside = mutation == 1;
+                owner.changePlayInside = mutation == 2;
+                owner.changePlayerInside = mutation == 3;
+                owner.recreatePlayerInside = mutation == 4;
+                owner.releaseInside = mutation == 5;
+                const int idleAtMutation = idleRestores, revokesAtMutation = revokes;
+                Check(Dispatch() == 1 && idleRestores == idleAtMutation && revokes == revokesAtMutation + 1,
+                      "ação ou contexto mudou: sem SUPPRESS velho e sem Idle");
+                owner.directActionInside = false;
+                owner.loseContextInside = false;
+                owner.changePlayInside = false;
+                owner.changePlayerInside = false;
+                owner.recreatePlayerInside = false;
+                owner.releaseInside = false;
+                gameplay = true;
+                snapshotPlay = &playTag;
+                snapshotPlayer = &playerTag;
+                action = &idleTag;
+                ShipLuaHost::NotifyOotPlayerCreated(&playerTag);
+            }
+
+            ShipNativeStatus fromWorker = SHIP_NATIVE_OK;
+            std::thread worker([&] {
+                ShipOotPlayerActionStateV1 workerState{};
+                workerState.size = sizeof(workerState);
+                fromWorker = movement->get_action_state(&workerState);
+            });
+            worker.join();
+            Check(fromWorker == SHIP_NATIVE_INVALID_ARGUMENT, "fora da thread do jogo");
+            Check(owner.ok, "payload de cada tick completo");
+            ShipLuaHost::SetOotActionBridge({});
+        }
+    }
+    {
         const auto& query = ShipLuaHost::GetOotNativeRandomizerServiceV2();
         ShipOotRandomizerItemInfoV2 info{ sizeof(info) };
         ShipOotRandomizerHintV2 hint{ sizeof(hint) };
@@ -1152,7 +1545,7 @@ int main(int argc, char** argv) {
         Check(refused, "randomizer queries run only on the owner thread");
         ShipLuaHost::BindOotRandoQueryBackend({});
     }
-    Check(policy.services.size() == 30 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 32 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
               policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
               policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
               policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -1745,6 +2138,161 @@ int main(int argc, char** argv) {
         ShipLuaHost::ResetOotNativeView();
         Check(camera->is_owned(token) == 0 && destroyed == 3, "reset libera a câmera");
         ShipLuaHost::SetOotViewBridge({});
+    }
+    {
+        using namespace FakeView;
+        static_assert(offsetof(ShipOotCameraV2, layout_id) == sizeof(ShipOotCameraV1));
+        static_assert(offsetof(ShipOotCameraViewV2, roll) == sizeof(ShipOotCameraViewV1));
+        static_assert(sizeof(ShipOotCameraViewV2) == 36 && sizeof(ShipOotCameraLeaseV2) == 32);
+        const ShipOotCameraV1* v1 = nullptr;
+        const ShipOotCameraV2* v2 = nullptr;
+        for (const auto& service : policy.services) {
+            if (service.name != LINKSPAN_OOT_CAMERA_SERVICE)
+                continue;
+            if (service.version == LINKSPAN_OOT_CAMERA_VERSION && service.size == sizeof(ShipOotCameraV1))
+                v1 = static_cast<const ShipOotCameraV1*>(service.table);
+            if (service.version == LINKSPAN_OOT_CAMERA_VERSION_2 && service.size == sizeof(ShipOotCameraV2))
+                v2 = static_cast<const ShipOotCameraV2*>(service.table);
+        }
+        Check(v1 && v2 && v2->layout_id && std::strcmp(v2->layout_id, LINKSPAN_OOT_LAYOUT_ID) == 0 &&
+                  v2->acquire == v1->acquire && v2->set_view == v1->set_view,
+              "camera V2 publicada com o prefixo da V1");
+        if (v1 && v2) {
+            ShipLuaHost::OotViewBridge bridge;
+            bridge.cameraCreate = Create;
+            bridge.cameraValid = Valid;
+            bridge.cameraDestroy = Destroy;
+            bridge.cameraApply = Apply;
+            bridge.cameraRead = Read;
+            ShipLuaHost::SetOotViewBridge(bridge);
+            gameplay = true;
+            active = false;
+            lastRoll = 0;
+            uint64_t token = 7, other = 7;
+            ShipOotCameraLeaseV2 lease{};
+            lease.size = sizeof(lease);
+            ShipOotCameraLeaseV2 shortLease{};
+            shortLease.size = sizeof(shortLease) - 1;
+            ShipOotCameraViewV2 view{ sizeof(view), { 0.0f, 30.0f, -90.0f }, { 0.0f, 20.0f, 0.0f }, 70.0f, 0x4000, 0 };
+            Check(v2->acquire_ex("cam.v2", &token, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT && token == 0 &&
+                      v2->acquire_ex("cam.v2", &token, &shortLease) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      v2->set_view_ex(999999, &view) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      v2->get_lease(0, &lease) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "lease curto ou nulo, token inventado");
+
+            Check(v1->acquire("cam.v1", &other) == SHIP_NATIVE_OK &&
+                      v2->acquire_ex("cam.v2", &token, &lease) == SHIP_NATIVE_LIMIT && token == 0,
+                  "V1 segura a câmera contra a V2");
+            Check(v1->release(other) == SHIP_NATIVE_OK, "V1 solta");
+            const uint64_t epoch = ShipLuaHost::OotSceneEpoch();
+            Check(v2->acquire_ex("cam.v2", &token, &lease) == SHIP_NATIVE_OK && token && lease.owned &&
+                      lease.scene_epoch == epoch && lease.camera_generation != 0,
+                  "V2 com epoch e geração");
+            Check(v1->acquire("cam.v1", &other) == SHIP_NATIVE_LIMIT && other == 0, "V2 segura a câmera contra a V1");
+
+            Check(v2->set_view_ex(token, &view) == SHIP_NATIVE_OK && rollApplied && lastRoll == 0x4000,
+                  "roll aplicado");
+            int16_t roll = 0;
+            Check(ShipLuaHost::GetOotCameraRoll(nextCamera, &playTag, &roll) && roll == 0x4000,
+                  "roll para o Camera_Update");
+            const int destroyedAtRoll = destroyed;
+            active = false;
+            Check(!ShipLuaHost::GetOotCameraRoll(nextCamera, &playTag, &roll) && destroyed == destroyedAtRoll,
+                  "roll não usa câmera inválida nem a destrói no Camera_Update");
+            active = true;
+            bridge.cameraValid = nullptr;
+            ShipLuaHost::SetOotViewBridge(bridge);
+            Check(!ShipLuaHost::GetOotCameraRoll(nextCamera, &playTag, &roll) && destroyed == destroyedAtRoll,
+                  "roll exige a ponte de validade");
+            bridge.cameraValid = Valid;
+            ShipLuaHost::SetOotViewBridge(bridge);
+            ShipOotCameraViewV2 read{};
+            read.size = sizeof(read);
+            Check(v2->get_view_ex(&read) == SHIP_NATIVE_OK && read.roll == 0x4000 && read.fov == 60.0f,
+                  "roll ida e volta");
+            const ShipOotCameraViewV1 legacy{ sizeof(legacy), { 1.0f, 30.0f, -90.0f }, { 1.0f, 20.0f, 0.0f }, 65.0f };
+            Check(v1->set_view(token, &legacy) == SHIP_NATIVE_OK && rollApplied && lastRoll == 0x4000 &&
+                      lastApplied.fov == 65.0f,
+                  "set_view da V1 conserva o roll da V2");
+            auto bad = view;
+            bad.fov = std::numeric_limits<float>::quiet_NaN();
+            Check(v2->set_view_ex(token, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "fov NaN");
+            bad = view;
+            bad.size = sizeof(bad) - 1;
+            Check(v2->set_view_ex(token, &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "vista curta");
+            struct LegacyTail {
+                ShipOotCameraViewV1 view;
+                uint32_t tail;
+            } legacyTail{ {}, 0x12345678u };
+            legacyTail.view.size = sizeof(legacyTail.view);
+            Check(v1->get_view(&legacyTail.view) == SHIP_NATIVE_OK && legacyTail.tail == 0x12345678u,
+                  "get_view da V1 não escreve além da V1");
+
+            const int destroyedBefore = destroyed;
+            ShipLuaHost::DispatchOotPlayDestroy(&playTag);
+            Check(v2->get_lease(token, &lease) == SHIP_NATIVE_UNSUPPORTED && !lease.owned &&
+                      lease.scene_epoch == epoch && destroyed == destroyedBefore &&
+                      !ShipLuaHost::GetOotCameraRoll(nextCamera, &playTag, &roll) &&
+                      v2->set_view_ex(token, &view) == SHIP_NATIVE_UNSUPPORTED && v2->release(token) == SHIP_NATIVE_OK,
+                  "fim da cena derruba o lease sem tocar no jogo; release continua OK");
+            active = false;
+
+            Check(v2->acquire_ex("cam.release.after.destroy", &token, &lease) == SHIP_NATIVE_OK,
+                  "lease para release sem consulta depois de Play_Destroy");
+            const int destroyedAtDirectRelease = destroyed;
+            ShipLuaHost::DispatchOotPlayDestroy(&playTag);
+            Check(v2->release(token) == SHIP_NATIVE_OK && destroyed == destroyedAtDirectRelease,
+                  "release imediatamente após Play_Destroy não destrói câmera de outra epoch");
+            active = false;
+
+            Check(v2->acquire_ex("cam.cleared", &token, &lease) == SHIP_NATIVE_OK &&
+                      v2->set_view_ex(token, &view) == SHIP_NATIVE_OK,
+                  "lease antes de limpar e reutilizar o mesmo slot");
+            const uint64_t clearedGeneration = lease.camera_generation;
+            const int destroyedAtClear = destroyed;
+            ShipLuaHost::NotifyOotCameraCleared(nullptr, nextCamera);
+            ShipLuaHost::NotifyOotCameraCleared(&playTag, int16_t(nextCamera + 1));
+            Check(v2->get_lease(token, &lease) == SHIP_NATIVE_OK && lease.owned,
+                  "aviso de outro play ou slot conserva o lease");
+            ShipLuaHost::NotifyOotCameraCleared(&playTag, nextCamera);
+            active = false; // Play_ClearCamera terminou; Lua recria o slot antes da próxima consulta
+            int16_t reusedCamera = -1;
+            void* reusedPlay = nullptr;
+            Check(Create(&reusedCamera, &reusedPlay) == SHIP_NATIVE_OK && reusedCamera == nextCamera &&
+                      reusedPlay == &playTag,
+                  "câmera externa reutiliza o mesmo slot e endereço");
+            Check(v2->get_lease(token, &lease) == SHIP_NATIVE_UNSUPPORTED && !lease.owned &&
+                      lease.camera_generation == clearedGeneration &&
+                      !ShipLuaHost::GetOotCameraRoll(nextCamera, &playTag, &roll) &&
+                      v2->set_view_ex(token, &view) == SHIP_NATIVE_UNSUPPORTED &&
+                      v2->release(token) == SHIP_NATIVE_OK && active && destroyed == destroyedAtClear,
+                  "lease antigo não controla nem destrói a câmera recriada");
+            active = false;
+
+            Check(v2->acquire_ex("cam.unload", &token, &lease) == SHIP_NATIVE_OK &&
+                      lease.scene_epoch == ShipLuaHost::OotSceneEpoch() &&
+                      lease.camera_generation != clearedGeneration && v2->set_view_ex(token, &view) == SHIP_NATIVE_OK,
+                  "lease novo com outra geração");
+            const int destroyedAtUnload = destroyed;
+            ShipLuaHost::BlockOotServiceOwner("cam.unload");
+            Check(!ShipLuaHost::GetOotCameraRoll(nextCamera, &playTag, &roll) && destroyed == destroyedAtUnload,
+                  "dono bloqueado não fornece roll e a consulta não destrói");
+            policy.onProviderUnload("cam.unload");
+            Check(destroyed == destroyedAtUnload + 1 && v2->get_lease(token, &lease) == SHIP_NATIVE_UNSUPPORTED &&
+                      v2->acquire_ex("cam.unload", &other, &lease) == SHIP_NATIVE_UNSUPPORTED &&
+                      v1->acquire("cam.unload", &other) == SHIP_NATIVE_UNSUPPORTED,
+                  "unload devolve a câmera e bloqueia o dono");
+
+            ShipNativeStatus fromWorker = SHIP_NATIVE_OK;
+            std::thread worker([&] {
+                ShipOotCameraViewV2 workerView{};
+                workerView.size = sizeof(workerView);
+                fromWorker = v2->get_view_ex(&workerView);
+            });
+            worker.join();
+            Check(fromWorker == SHIP_NATIVE_INVALID_ARGUMENT, "câmera fora da thread do jogo");
+            ShipLuaHost::SetOotViewBridge({});
+        }
     }
     {
         // CEL-004: render V3.

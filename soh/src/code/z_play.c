@@ -7,6 +7,7 @@
 #include <string.h>
 extern void LinkSpan_PlayDrawEnd(PlayState* play);
 extern void LinkSpan_PlayDestroy(PlayState* play);
+extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 
 #include "soh/Enhancements/gameconsole.h"
 #include "soh/frame_interpolation.h"
@@ -1963,6 +1964,7 @@ void Play_ClearCamera(PlayState* play, s16 camId) {
     }
 
     if (play->cameraPtrs[camIdx] != NULL) {
+        LinkSpan_CameraCleared(play, camIdx); // antes de mudar o status e liberar o slot
         Camera_ChangeStatus(play->cameraPtrs[camIdx], CAM_STAT_UNK100);
         play->cameraPtrs[camIdx] = NULL;
         osSyncPrintf("camera control: " VT_BGCOL(CYAN) " " VT_COL(WHITE, BLUE) " clear sub camera [%d] " VT_BGCOL(

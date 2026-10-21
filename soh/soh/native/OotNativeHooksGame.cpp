@@ -1,5 +1,6 @@
 // Liga os pontos de hook do host (OotNativeHooks.cpp) às chamadas do jogo.
 #include "OotNativeHooks.h"
+#include "OotNativePlayerAction.h"
 #include "OotNativeView.h"
 
 #include <spdlog/spdlog.h>
@@ -343,4 +344,54 @@ extern "C" void LinkSpan_PlayerMaskDraw(PlayState* play, Player* player, s32 van
 
 extern "C" void LinkSpan_PlayDestroy(PlayState* play) {
     ShipLuaHost::DispatchOotPlayDestroy(play);
+}
+
+// HOST-SLIM-001 (RFC 0029): leitura e Idle do Link para linkspan.oot.movement V3; helpers em z_player.c.
+extern "C" {
+u32 LinkSpan_PlayerActionFlags(Player* player);
+s32 LinkSpan_PlayerActionEligible(Player* player, PlayState* play);
+s32 LinkSpan_PlayerRestoreIdle(Player* player, PlayState* play, s32 setupIdle);
+}
+
+namespace {
+bool SnapshotPlayerAction(ShipLuaHost::OotActionSnapshot* out) {
+    PlayState* play = gPlayState;
+    Player* player = play ? GET_PLAYER(play) : nullptr;
+    if (!player) {
+        return false;
+    }
+    out->play = play;
+    out->player = player;
+    out->action = reinterpret_cast<const void*>(player->actionFunc);
+    out->tick = play->gameplayFrames;
+    out->flags = LinkSpan_PlayerActionFlags(player);
+    out->eligible = LinkSpan_PlayerActionEligible(player, play) != 0;
+    out->neutral = out->eligible && (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND);
+    return true;
+}
+
+ShipNativeStatus RestorePlayerAction(const ShipLuaHost::OotActionSnapshot& at, bool releaseIdle) {
+    auto* play = static_cast<PlayState*>(at.play);
+    auto* player = static_cast<Player*>(at.player);
+    if (play != gPlayState || GET_PLAYER(play) != player) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    return LinkSpan_PlayerRestoreIdle(player, play, releaseIdle) ? SHIP_NATIVE_OK : SHIP_NATIVE_UNSUPPORTED;
+}
+} // namespace
+
+void ShipLuaHost::RegisterOotPlayerActionGame() {
+    SetOotActionBridge({ SnapshotPlayerAction, RestorePlayerAction });
+}
+
+extern "C" void LinkSpan_PlayerCreated(Player* player) {
+    ShipLuaHost::NotifyOotPlayerCreated(player);
+}
+
+extern "C" void LinkSpan_PlayerDestroyed(Player* player) {
+    ShipLuaHost::NotifyOotPlayerDestroyed(player);
+}
+
+extern "C" void LinkSpan_PlayerActionChanged(Player* player) {
+    ShipLuaHost::NotifyOotPlayerActionChanged(player);
 }

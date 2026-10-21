@@ -18,8 +18,9 @@ struct OotViewBridge {
     bool (*cameraValid)(int16_t camera, void* play) = nullptr;
     // Remove a subcâmera se ela ainda existir e devolve a principal.
     void (*cameraDestroy)(int16_t camera, void* play) = nullptr;
-    void (*cameraApply)(int16_t camera, void* play, const ShipOotCameraViewV1& view) = nullptr;
-    ShipNativeStatus (*cameraRead)(ShipOotCameraViewV1* view) = nullptr;
+    // roll: aplicar view.roll (só depois de um set_view_ex do dono).
+    void (*cameraApply)(int16_t camera, void* play, const ShipOotCameraViewV2& view, bool roll) = nullptr;
+    ShipNativeStatus (*cameraRead)(ShipOotCameraViewV2* view) = nullptr;
     // path já com "__OTR__" e válido até o fim do processo.
     ShipNativeStatus (*drawDisplayList)(void* play, const char* path, uint8_t layer) = nullptr;
     void (*matrixPush)() = nullptr;
@@ -55,6 +56,13 @@ void InitializeOotNativeView(std::thread::id ownerThread = std::this_thread::get
 // Libera a câmera (se ainda existir) e zera os escopos.
 void ResetOotNativeView();
 const ShipOotCameraV1& GetOotNativeCameraService();
+// HOST-SLIM-001 (RFC 0029): camera V2 no mesmo árbitro da V1.
+const ShipOotCameraV2& GetOotNativeCameraServiceV2();
+void ReleaseOotCameraOwner(std::string_view owner);
+// Roll pedido pelo dono da câmera `camera` da cena `play`; false sem lease vivo ou sem set_view_ex.
+bool GetOotCameraRoll(int16_t camera, void* play, int16_t* roll);
+// Antes de liberar o slot: perde a posse sem destruir a câmera. Testável sem tipos do jogo.
+void NotifyOotCameraCleared(void* play, int16_t camera);
 const ShipOotRenderV1& GetOotNativeRenderService();
 const ShipOotRenderV2& GetOotNativeRenderServiceV2();
 const ShipOotRenderV3& GetOotNativeRenderServiceV3();

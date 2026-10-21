@@ -69,15 +69,18 @@ void CameraDestroy(int16_t camera, void* play) {
     }
 }
 
-void CameraApply(int16_t camera, void* play, const ShipOotCameraViewV1& view) {
+void CameraApply(int16_t camera, void* play, const ShipOotCameraViewV2& view, bool roll) {
     auto* state = static_cast<PlayState*>(play);
     Vec3f eye{ view.eye[0], view.eye[1], view.eye[2] };
     Vec3f at{ view.at[0], view.at[1], view.at[2] };
     Play_CameraSetAtEye(state, camera, &at, &eye);
     Play_CameraSetFov(state, camera, view.fov);
+    if (roll) {
+        Play_GetCamera(state, camera)->roll = view.roll;
+    }
 }
 
-ShipNativeStatus CameraRead(ShipOotCameraViewV1* view) {
+ShipNativeStatus CameraRead(ShipOotCameraViewV2* view) {
     PlayState* state = gPlayState;
     if (!state) {
         return SHIP_NATIVE_UNSUPPORTED;
@@ -86,7 +89,7 @@ ShipNativeStatus CameraRead(ShipOotCameraViewV1* view) {
     if (!camera) {
         return SHIP_NATIVE_UNSUPPORTED;
     }
-    view->size = sizeof(ShipOotCameraViewV1);
+    view->size = sizeof(ShipOotCameraViewV2);
     view->eye[0] = camera->eye.x;
     view->eye[1] = camera->eye.y;
     view->eye[2] = camera->eye.z;
@@ -94,9 +97,10 @@ ShipNativeStatus CameraRead(ShipOotCameraViewV1* view) {
     view->at[1] = camera->at.y;
     view->at[2] = camera->at.z;
     view->fov = camera->fov;
+    view->roll = camera->roll;
+    view->reserved = 0;
     return SHIP_NATIVE_OK;
 }
-
 ShipNativeStatus DrawDisplayList(void* play, const char* path, uint8_t layer) {
     if (!ResourceMgr_FileExists(path + kOtrPrefixLength)) {
         return SHIP_NATIVE_FAILURE;
@@ -299,4 +303,23 @@ extern "C" void LinkSpan_PlayerLimbDraw(PlayState* play, s32 limbIndex, Actor* a
     ShipLuaHost::GetOotHookRegistry()->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
     ShipLuaHost::LeaveOotRenderScope();
     Matrix_Pop();
+}
+
+// HOST-SLIM-001 (RFC 0029): Play_ClearCamera avisa antes de liberar o slot.
+extern "C" void LinkSpan_CameraCleared(PlayState* play, s16 camId) {
+    ShipLuaHost::NotifyOotCameraCleared(play, camId);
+}
+
+// O roll do lease V2 entra depois da função de câmera do jogo e antes do vetor up
+// (z_camera.c, Camera_Update), que é onde o jogo o lê.
+extern "C" void LinkSpan_CameraView(Camera* camera) {
+    PlayState* play = gPlayState;
+    if (!play || !camera || play->activeCamera <= CAM_ID_MAIN || play->activeCamera >= NUM_CAMS ||
+        play->cameraPtrs[play->activeCamera] != camera) {
+        return;
+    }
+    int16_t roll = 0;
+    if (ShipLuaHost::GetOotCameraRoll(play->activeCamera, play, &roll)) {
+        camera->roll = roll;
+    }
 }

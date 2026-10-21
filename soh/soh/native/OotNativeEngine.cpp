@@ -1,6 +1,7 @@
 #include "OotNativeEngine.h"
 #include "OotNativeEscape.h"
 #include "OotNativeHooks.h"
+#include "OotNativePlayerAction.h"
 #include "OotNativeItems.h"
 #include "OotNativeJsonTypes.h"
 #include "OotNativeLights.h"
@@ -628,6 +629,35 @@ const ShipOotMovementV2 movementV2{ sizeof(ShipOotMovementV2),
                                     BindGamepadAxis,
                                     UseItemShortcut,
                                     ItemButtonRect };
+const ShipOotMovementV3 movementV3{ sizeof(ShipOotMovementV3),
+                                    LINKSPAN_OOT_LAYOUT_ID,
+                                    InputCurrent,
+                                    InputPressed,
+                                    InputReleased,
+                                    StickX,
+                                    StickY,
+                                    RightStickX,
+                                    RightStickY,
+                                    HasGamepad,
+                                    GamepadButtons,
+                                    ClearGamepadButtonBindings,
+                                    BindGamepadButton,
+                                    ReloadGamepadMappings,
+                                    GetSettingInt,
+                                    SetSettingInt,
+                                    Grounded,
+                                    Rolling,
+                                    Jump,
+                                    Roll,
+                                    GamepadAxis,
+                                    BindGamepadAxis,
+                                    UseItemShortcut,
+                                    ItemButtonRect,
+                                    GetOotActionState,
+                                    AcquireOotAction,
+                                    ReleaseOotAction,
+                                    RestoreOotPlayerAnimation };
+static_assert(offsetof(ShipOotMovementV3, get_action_state) == sizeof(ShipOotMovementV2), "V3 conserva a V2");
 const ShipOotResourcesV1 resourcesV1{ sizeof(ShipOotResourcesV1),
                                       HasFile,
                                       ReadFile,
@@ -684,6 +714,7 @@ void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
 
 ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
+    InitializeOotPlayerAction(gameThread);
     lensKeptWithoutButton = false;
     itemButtons = {};
     dpadBackground = {};
@@ -781,6 +812,10 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     policy.services.push_back(
         { LINKSPAN_OOT_ACTOR_MODELS_SERVICE, LINKSPAN_OOT_ACTOR_MODELS_VERSION, sizeof(actorModels), &actorModels });
     policy.onProviderUnload = [](std::string_view owner) {
+        // HOST-SLIM-001: bloqueio primeiro, para nenhum serviço da F2 voltar a aceitar o dono no meio do cleanup.
+        BlockOotServiceOwner(owner);
+        ReleaseOotActionOwner(owner);
+        ReleaseOotCameraOwner(owner);
         ReleaseOotActorModelOwner(owner);
         ReleaseOotRegistryOwner(owner);
         ReleaseOotRenderOwner(owner);
@@ -789,6 +824,12 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& randomizerV2 = GetOotNativeRandomizerServiceV2();
     policy.services.push_back(
         { LINKSPAN_OOT_RANDOMIZER_SERVICE, LINKSPAN_OOT_RANDOMIZER_VERSION_2, sizeof(randomizerV2), &randomizerV2 });
+    // HOST-SLIM-001 (RFC 0029).
+    policy.services.push_back(
+        { LINKSPAN_OOT_MOVEMENT_SERVICE, LINKSPAN_OOT_MOVEMENT_VERSION_3, sizeof(movementV3), &movementV3 });
+    const auto& cameraV2 = GetOotNativeCameraServiceV2();
+    policy.services.push_back(
+        { LINKSPAN_OOT_CAMERA_SERVICE, LINKSPAN_OOT_CAMERA_VERSION_2, sizeof(cameraV2), &cameraV2 });
     // RFC 0029 (ABI 1.4): nome → endereço de functions.h/variables.h, preso ao layout id.
     policy.publicSymbols = CreateOotPublicSymbols();
     policy.escapeHatch = CreateOotEscapeHatch();

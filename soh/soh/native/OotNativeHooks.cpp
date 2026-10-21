@@ -1,4 +1,5 @@
 #include "OotNativeHooks.h"
+#include "OotNativePlayerAction.h"
 
 #include "oot_hooks.h"
 #include "OotNativeAudioMix.h"
@@ -27,12 +28,26 @@ struct GameOperation {
     uint8_t allowed;
 };
 
+struct ActionOperation {
+    GameOperation game;
+    void* play;
+    void* player;
+    void* input;
+};
+
+// O dono do movement V3 decide primeiro: SUPPRESS segura a ação do jogo; PASS segue o gate do jogo.
+uint8_t RunGameAction(const ActionOperation& operation) {
+    if (RunOotOwnedAction(operation.play, operation.player, operation.input, operation.game.allowed))
+        return 0;
+    if (!operation.game.allowed || !operation.game.run)
+        return 0;
+    operation.game.run(operation.game.context);
+    return 1;
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL RunAction(const ShipNativeHookCall* call) {
-    const auto* operation = static_cast<const GameOperation*>(call->original_context);
-    if (operation->allowed && operation->run) {
-        operation->run(operation->context);
-        static_cast<ShipOotPlayerActionHookV1*>(call->payload)->executed = 1;
-    }
+    const auto* operation = static_cast<const ActionOperation*>(call->original_context);
+    static_cast<ShipOotPlayerActionHookV1*>(call->payload)->executed = RunGameAction(*operation);
     return SHIP_NATIVE_OK;
 }
 
@@ -181,16 +196,12 @@ uint8_t DispatchOotPlayerGate(uint64_t point, void* play, void* player, uint8_t 
 
 uint8_t DispatchOotPlayerAction(void* play, void* player, void* input, uint8_t vanillaAllowed,
                                 void (*action)(void* context), void* context) {
-    const GameOperation operation{ action, context, uint8_t(vanillaAllowed != 0) };
-    if (!HasOotHooks(points.playerAction)) {
-        if (!operation.allowed || !action)
-            return 0;
-        action(context);
-        return 1;
-    }
-    ShipOotPlayerActionHookV1 payload{ sizeof(payload), play, player, input, operation.allowed, 0, {} };
+    const ActionOperation operation{ { action, context, uint8_t(vanillaAllowed != 0) }, play, player, input };
+    if (!HasOotHooks(points.playerAction))
+        return RunGameAction(operation);
+    ShipOotPlayerActionHookV1 payload{ sizeof(payload), play, player, input, operation.game.allowed, 0, {} };
     registry->Dispatch(points.playerAction, &payload, sizeof(payload), RunAction,
-                       const_cast<GameOperation*>(&operation));
+                       const_cast<ActionOperation*>(&operation));
     return payload.executed;
 }
 
@@ -215,6 +226,8 @@ void DispatchOotPlayerMaskDraw(void* play, void* player, int32_t mask, uint8_t v
 }
 
 void DispatchOotPlayDestroy(void* play) {
+    // Leases da cena que acaba caem antes dos observers, sem tocar no jogo.
+    AdvanceOotSceneEpoch();
     if (!HasOotHooks(points.playDestroy))
         return;
     ShipOotPlayHookV1 payload{ sizeof(payload), play };
