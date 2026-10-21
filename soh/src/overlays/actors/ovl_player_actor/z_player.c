@@ -46,6 +46,15 @@ extern u8 ShipLua_ShouldBlockLedgeGrabs(void);
 // returns 0 unless a mod asked for it.
 extern u8 ShipLua_ShouldBlockRoll(void);
 
+// HOST-SLIM-001 (RFC 0029): hooks genéricos do Link, pontes em soh/soh/native/OotNativeHooksGame.cpp.
+extern u8 LinkSpan_PlayerVoiceSfx(Player* player, u16* sfxId);
+extern s32 LinkSpan_PlayerRollAllowed(Player* player, PlayState* play);
+extern s32 LinkSpan_PlayerLedgeGrabAllowed(Player* player, PlayState* play);
+extern void LinkSpan_PlayerAction(Player* player, PlayState* play, Input* input, s32 vanillaAllowed);
+extern void LinkSpan_PlayerUpdateEnd(Player* player, PlayState* play);
+extern void LinkSpan_PlayerMaskDraw(PlayState* play, Player* player, s32 vanillaAllowed,
+                                    void (*drawVanilla)(PlayState*, Player*));
+
 // Link-Span (OOT-MOVE-006): com o escudo no gatilho da mira, providers nativos podem dar
 // prioridade à espada sobre o escudo (OotNativeEngine.cpp).
 void LinkSpan_FilterPlayerInput(Input* input);
@@ -1743,6 +1752,9 @@ extern u8 ShipLua_TransformVoiceSfx(u16* sfxId);
 
 void Player_PlayVoiceSfx(Player* this, u16 sfxId) {
     if (ShipLua_TransformVoiceSfx(&sfxId) != 0) {
+        return;
+    }
+    if (LinkSpan_PlayerVoiceSfx(this, &sfxId) != 0) {
         return;
     }
     if (this->actor.category == ACTORCAT_PLAYER) {
@@ -6330,13 +6342,8 @@ void Player_SetupRoll(Player* this, PlayState* play) {
 }
 
 s32 Player_TryRoll(Player* this, PlayState* play) {
-    // ShipLua: um mod pode vetar o rolamento (por exemplo, sem stamina).
-    // Opt-in — sem mod pedindo, retorna 0 e nada muda.
-    if (ShipLua_ShouldBlockRoll()) {
-        return false;
-    }
-
-    if ((this->controlStickDirections[this->controlStickDataIndex] == 0) && (sFloorType != 7)) {
+    if ((this->controlStickDirections[this->controlStickDataIndex] == 0) && (sFloorType != 7) &&
+        LinkSpan_PlayerRollAllowed(this, play)) {
         Player_SetupRoll(this, play);
 
         return true;
@@ -9717,11 +9724,11 @@ void Player_Action_8084411C(Player* this, PlayState* play) {
                         func_80843E14(this, NA_SE_VO_LI_FALL_L);
                     }
 
-                    if (!GameInteractor_GetDisableLedgeGrabsActive() && !ShipLua_ShouldBlockLedgeGrabs() &&
+                    if (!GameInteractor_GetDisableLedgeGrabsActive() &&
                         (this->actor.bgCheckFlags & BGCHECKFLAG_PLAYER_WALL_INTERACT) &&
                         !(this->stateFlags2 & PLAYER_STATE2_HOPPING) &&
                         !(this->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_WATER)) &&
-                        (this->linearVelocity > 0.0f)) {
+                        (this->linearVelocity > 0.0f) && LinkSpan_PlayerLedgeGrabAllowed(this, play)) {
                         if ((this->yDistToLedge >= 150.0f) &&
                             (this->controlStickDirections[this->controlStickDataIndex] == 0)) {
                             func_8083EC18(this, play, sTouchedWallFlags);
@@ -12110,10 +12117,10 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
         sUseHeldItem = sHeldItemButtonIsHeldDown = 0;
         sSavedCurrentMask = this->currentMask;
 
-        if (GameInteractor_Should(VB_EXECUTE_PLAYER_ACTION_FUNC, !(this->stateFlags3 & PLAYER_STATE3_PAUSE_ACTION_FUNC),
-                                  this, input)) {
-            this->actionFunc(this, play);
-        }
+        LinkSpan_PlayerAction(this, play, input,
+                              GameInteractor_Should(VB_EXECUTE_PLAYER_ACTION_FUNC,
+                                                    !(this->stateFlags3 & PLAYER_STATE3_PAUSE_ACTION_FUNC), this,
+                                                    input));
 
         Player_UpdateCamAndSeqModes(play, this);
 
@@ -12350,6 +12357,7 @@ void Player_Update(Actor* thisx, PlayState* play) {
         // Actor_PlaySfx_Flagged(&player->actor, NA_SE_EV_WIND_TRAP - SFX_FLAG);
     }
 
+    LinkSpan_PlayerUpdateEnd(this, play);
     GameInteractor_ExecuteOnPlayerUpdate();
 }
 
@@ -12364,6 +12372,16 @@ static Gfx* sMaskDlists[PLAYER_MASK_MAX - 1] = {
     gLinkChildKeatonMaskDL, gLinkChildSkullMaskDL, gLinkChildSpookyMaskDL, gLinkChildBunnyHoodDL,
     gLinkChildGoronMaskDL,  gLinkChildZoraMaskDL,  gLinkChildGerudoMaskDL, gLinkChildMaskOfTruthDL,
 };
+
+static void Player_DrawVanillaMask(PlayState* play, Player* this) {
+    OPEN_DISPS(play->state.gfxCtx);
+
+    if (this->currentMask != PLAYER_MASK_BUNNY || !CVarGetInteger(CVAR_ENHANCEMENT("HideBunnyHood"), 0)) {
+        gSPDisplayList(POLY_OPA_DISP++, sMaskDlists[this->currentMask - 1]);
+    }
+
+    CLOSE_DISPS(play->state.gfxCtx);
+}
 
 static Vec3s D_80854864 = { 0, 0, 0 };
 
@@ -12408,11 +12426,10 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
             MATRIX_TOMTX(bunnyEarMtx);
         }
 
-        if (!GameInteractor_InvisibleLinkActive() &&
-            GameInteractor_Should(VB_DRAW_PLAYER_MASK, true, this->currentMask, play)) {
-            if (this->currentMask != PLAYER_MASK_BUNNY || !CVarGetInteger(CVAR_ENHANCEMENT("HideBunnyHood"), 0)) {
-                gSPDisplayList(POLY_OPA_DISP++, sMaskDlists[this->currentMask - 1]);
-            }
+        if (!GameInteractor_InvisibleLinkActive()) {
+            LinkSpan_PlayerMaskDraw(play, this,
+                                    GameInteractor_Should(VB_DRAW_PLAYER_MASK, true, this->currentMask, play),
+                                    Player_DrawVanillaMask);
         }
 
         if (CVarGetInteger(CVAR_GENERAL("FixIceTrapWithBunnyHood"), 1))

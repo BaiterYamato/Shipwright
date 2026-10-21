@@ -197,4 +197,72 @@ typedef struct ShipOotRoomActorsHookV2 {
     uint32_t capacity;
 } ShipOotRoomActorsHookV2;
 
+/* HOST-SLIM-001 (RFC 0029). Versão 1 (LINKSPAN_OOT_HOOKS_VERSION), thread do jogo.
+ *
+ * oot.player.voice_sfx: TRANSFORM ou OBSERVE, ShipOotPlayerVoiceHookV1. Player_PlayVoiceSfx vai tocar `sfx` (antes
+ *   do ajuste de idade). O TRANSFORM troca `sfx` ou põe `consumed = 1` para o jogo não tocar nada.
+ * oot.player.roll_allowed, oot.player.ledge_grab_allowed: TRANSFORM ou OBSERVE, ShipOotPlayerGateHookV1. O Link vai
+ *   rolar ou agarrar a borda. `allowed = 0` veta; o host faz E com o valor que entrou, então um hook só veta o jogo.
+ *   Cada TRANSFORM vê o resultado do anterior: escreva só 0, porque gravar 1 desfaz o veto de um hook anterior.
+ *   roll_allowed cobre a rolagem do A em movimento (Player_TryRoll), como o veto legado; a do Z-target e a da
+ *   aterrissagem chamam Player_SetupRoll direto e não passam pelo ponto.
+ * oot.player.action: só OBSERVE, ShipOotPlayerActionHookV1, em volta da função de ação do Link no Player_Update.
+ *   BEFORE vê `executed = 0`; AFTER vê se a ação rodou. Tomar a ação é do linkspan.oot.movement V3.
+ * oot.player.update_end: só OBSERVE, ShipOotPlayerTickHookV1, no fim do Player_Update.
+ * oot.player.mask_draw: REPLACE ou OBSERVE, ShipOotPlayerMaskDrawHookV1, no lugar do desenho da máscara, com a
+ *   matriz e os segmentos do desenho do jogo e no escopo de render de linkspan.oot.render. call_original desenha a
+ *   máscara do jogo (só se `vanilla_allowed`); um REPLACE que não chama omite a máscara ou desenha outra.
+ * oot.play.destroy: só OBSERVE, ShipOotPlayHookV1, no começo do Play_Destroy, com o PlayState ainda válido. */
+
+#define LINKSPAN_OOT_HOOK_PLAYER_VOICE_SFX "oot.player.voice_sfx"
+#define LINKSPAN_OOT_HOOK_PLAYER_ROLL_ALLOWED "oot.player.roll_allowed"
+#define LINKSPAN_OOT_HOOK_PLAYER_LEDGE_GRAB_ALLOWED "oot.player.ledge_grab_allowed"
+#define LINKSPAN_OOT_HOOK_PLAYER_ACTION "oot.player.action"
+#define LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END "oot.player.update_end"
+#define LINKSPAN_OOT_HOOK_PLAYER_MASK_DRAW "oot.player.mask_draw"
+#define LINKSPAN_OOT_HOOK_PLAY_DESTROY "oot.play.destroy"
+
+typedef struct ShipOotPlayerVoiceHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* player;
+    uint16_t requested_sfx; /* o que o jogo pediu; só leitura */
+    uint16_t sfx;           /* o que vai tocar */
+    uint8_t consumed;       /* 1 = o mod tratou; o jogo não toca */
+    uint8_t reserved[3];
+} ShipOotPlayerVoiceHookV1;
+
+typedef struct ShipOotPlayerGateHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* player;
+    uint8_t allowed;
+    uint8_t reserved[3];
+} ShipOotPlayerGateHookV1;
+
+typedef struct ShipOotPlayerActionHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* player;
+    void* input;
+    uint8_t vanilla_allowed; /* o jogo ia rodar a ação (sem PAUSE_ACTION_FUNC e sem veto do GameInteractor) */
+    uint8_t executed;        /* AFTER: a função de ação rodou */
+    uint8_t reserved[2];
+} ShipOotPlayerActionHookV1;
+
+typedef struct ShipOotPlayerTickHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* player;
+} ShipOotPlayerTickHookV1;
+
+typedef struct ShipOotPlayerMaskDrawHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* player;
+    int32_t mask;            /* PLAYER_MASK_* de z64player.h */
+    uint8_t vanilla_allowed; /* VB_DRAW_PLAYER_MASK do GameInteractor */
+    uint8_t reserved[3];
+} ShipOotPlayerMaskDrawHookV1;
+
 #endif

@@ -15,6 +15,30 @@ uint64_t Declare(const char* name, uint32_t payloadSize,
     uint64_t id = 0;
     return registry->DeclarePoint("", spec, &id) == SHIP_NATIVE_OK ? id : 0;
 }
+
+// Operação do jogo para call_original. `allowed` é o valor do jogo, não o do payload: um OBSERVE que escreva no
+// payload não liga a ação nem a máscara.
+struct GameOperation {
+    void (*run)(void* context);
+    void* context;
+    uint8_t allowed;
+};
+
+ShipNativeStatus SHIP_NATIVE_CALL RunAction(const ShipNativeHookCall* call) {
+    const auto* operation = static_cast<const GameOperation*>(call->original_context);
+    if (operation->allowed && operation->run) {
+        operation->run(operation->context);
+        static_cast<ShipOotPlayerActionHookV1*>(call->payload)->executed = 1;
+    }
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL RunMaskDraw(const ShipNativeHookCall* call) {
+    const auto* operation = static_cast<const GameOperation*>(call->original_context);
+    if (operation->allowed && operation->run)
+        operation->run(operation->context);
+    return SHIP_NATIVE_OK;
+}
 } // namespace
 
 void SetOotHookLogger(void (*logger)(const std::string& message)) {
@@ -59,6 +83,20 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
     points.fairyLights =
         Declare(LINKSPAN_OOT_HOOK_LIGHT_FAIRY, sizeof(ShipOotFairyLightHookV1),
                 SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM, LINKSPAN_OOT_HOOK_LIGHT_FAIRY_VERSION);
+    // HOST-SLIM-001 (RFC 0029).
+    constexpr uint32_t kObserveTransform = SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM;
+    points.playerVoiceSfx =
+        Declare(LINKSPAN_OOT_HOOK_PLAYER_VOICE_SFX, sizeof(ShipOotPlayerVoiceHookV1), kObserveTransform);
+    points.playerRollAllowed =
+        Declare(LINKSPAN_OOT_HOOK_PLAYER_ROLL_ALLOWED, sizeof(ShipOotPlayerGateHookV1), kObserveTransform);
+    points.playerLedgeGrabAllowed =
+        Declare(LINKSPAN_OOT_HOOK_PLAYER_LEDGE_GRAB_ALLOWED, sizeof(ShipOotPlayerGateHookV1), kObserveTransform);
+    points.playerAction =
+        Declare(LINKSPAN_OOT_HOOK_PLAYER_ACTION, sizeof(ShipOotPlayerActionHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.playerUpdateEnd =
+        Declare(LINKSPAN_OOT_HOOK_PLAYER_UPDATE_END, sizeof(ShipOotPlayerTickHookV1), SHIP_NATIVE_HOOK_OBSERVE);
+    points.playerMaskDraw = Declare(LINKSPAN_OOT_HOOK_PLAYER_MASK_DRAW, sizeof(ShipOotPlayerMaskDrawHookV1));
+    points.playDestroy = Declare(LINKSPAN_OOT_HOOK_PLAY_DESTROY, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE);
     return registry;
 }
 
@@ -104,6 +142,72 @@ void DispatchOotPointLightColor(ShipOotPointLightColorHookV2* payload) {
 
 bool HasOotPointLightColorHooks() {
     return registry && registry->HasHooks(points.pointLightColor);
+}
+
+bool HasOotHooks(uint64_t point) {
+    return registry && point && registry->HasHooks(point);
+}
+
+uint8_t DispatchOotPlayerVoice(void* play, void* player, uint16_t* sfx) {
+    if (!sfx || !HasOotHooks(points.playerVoiceSfx))
+        return 0;
+    ShipOotPlayerVoiceHookV1 payload{ sizeof(payload), play, player, *sfx, *sfx, 0, {} };
+    registry->Dispatch(points.playerVoiceSfx, &payload, sizeof(payload), nullptr, nullptr);
+    if (payload.consumed)
+        return 1;
+    *sfx = payload.sfx;
+    return 0;
+}
+
+uint8_t DispatchOotPlayerGate(uint64_t point, void* play, void* player, uint8_t allowed) {
+    const uint8_t input = allowed != 0;
+    if (!HasOotHooks(point))
+        return input;
+    ShipOotPlayerGateHookV1 payload{ sizeof(payload), play, player, input, {} };
+    registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
+    return input && payload.allowed != 0;
+}
+
+uint8_t DispatchOotPlayerAction(void* play, void* player, void* input, uint8_t vanillaAllowed,
+                                void (*action)(void* context), void* context) {
+    const GameOperation operation{ action, context, uint8_t(vanillaAllowed != 0) };
+    if (!HasOotHooks(points.playerAction)) {
+        if (!operation.allowed || !action)
+            return 0;
+        action(context);
+        return 1;
+    }
+    ShipOotPlayerActionHookV1 payload{ sizeof(payload), play, player, input, operation.allowed, 0, {} };
+    registry->Dispatch(points.playerAction, &payload, sizeof(payload), RunAction,
+                       const_cast<GameOperation*>(&operation));
+    return payload.executed;
+}
+
+void DispatchOotPlayerTick(uint64_t point, void* play, void* player) {
+    if (!HasOotHooks(point))
+        return;
+    ShipOotPlayerTickHookV1 payload{ sizeof(payload), play, player };
+    registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
+}
+
+void DispatchOotPlayerMaskDraw(void* play, void* player, int32_t mask, uint8_t vanillaAllowed,
+                               void (*drawVanilla)(void* context), void* context) {
+    const GameOperation operation{ drawVanilla, context, uint8_t(vanillaAllowed != 0) };
+    if (!HasOotHooks(points.playerMaskDraw)) {
+        if (operation.allowed && drawVanilla)
+            drawVanilla(context);
+        return;
+    }
+    ShipOotPlayerMaskDrawHookV1 payload{ sizeof(payload), play, player, mask, operation.allowed, {} };
+    registry->Dispatch(points.playerMaskDraw, &payload, sizeof(payload), RunMaskDraw,
+                       const_cast<GameOperation*>(&operation));
+}
+
+void DispatchOotPlayDestroy(void* play) {
+    if (!HasOotHooks(points.playDestroy))
+        return;
+    ShipOotPlayHookV1 payload{ sizeof(payload), play };
+    registry->Dispatch(points.playDestroy, &payload, sizeof(payload), nullptr, nullptr);
 }
 
 void ResetOotHooks() {

@@ -6,6 +6,7 @@
 
 #include <string.h>
 extern void LinkSpan_PlayDrawEnd(PlayState* play);
+extern void LinkSpan_PlayDestroy(PlayState* play);
 
 #include "soh/Enhancements/gameconsole.h"
 #include "soh/frame_interpolation.h"
@@ -236,6 +237,7 @@ void Play_Destroy(GameState* thisx) {
     PlayState* play = (PlayState*)thisx;
     Player* player = GET_PLAYER(play);
 
+    LinkSpan_PlayDestroy(play);
     GameInteractor_ExecuteOnPlayDestroy();
 
     play->state.gfxCtx->callback = NULL;
