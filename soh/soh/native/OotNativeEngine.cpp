@@ -2,6 +2,7 @@
 #include "OotNativeEscape.h"
 #include "OotNativeHooks.h"
 #include "OotNativePlayerAction.h"
+#include "OotNativePlayerBody.h"
 #include "OotNativeItems.h"
 #include "OotNativeJsonTypes.h"
 #include "OotNativeLights.h"
@@ -715,6 +716,7 @@ void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
 ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
     InitializeOotPlayerAction(gameThread);
+    InitializeOotPlayerBody(gameThread);
     lensKeptWithoutButton = false;
     itemButtons = {};
     dpadBackground = {};
@@ -814,8 +816,10 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     policy.onProviderUnload = [](std::string_view owner) {
         // HOST-SLIM-001: bloqueio primeiro, para nenhum serviço da F2 voltar a aceitar o dono no meio do cleanup.
         BlockOotServiceOwner(owner);
+        ReleaseOotPlayerBodyOwner(owner);
         ReleaseOotActionOwner(owner);
         ReleaseOotCameraOwner(owner);
+        ReleaseOotSkeletonOwner(owner);
         ReleaseOotActorModelOwner(owner);
         ReleaseOotRegistryOwner(owner);
         ReleaseOotRenderOwner(owner);
@@ -830,6 +834,12 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& cameraV2 = GetOotNativeCameraServiceV2();
     policy.services.push_back(
         { LINKSPAN_OOT_CAMERA_SERVICE, LINKSPAN_OOT_CAMERA_VERSION_2, sizeof(cameraV2), &cameraV2 });
+    const auto& skeletonsV2 = GetOotNativeSkeletonsServiceV2();
+    policy.services.push_back(
+        { LINKSPAN_OOT_SKELETONS_SERVICE, LINKSPAN_OOT_SKELETONS_VERSION_2, sizeof(skeletonsV2), &skeletonsV2 });
+    const auto& playerBody = GetOotNativePlayerBodyService();
+    policy.services.push_back(
+        { LINKSPAN_OOT_PLAYER_BODY_SERVICE, LINKSPAN_OOT_PLAYER_BODY_VERSION, sizeof(playerBody), &playerBody });
     // RFC 0029 (ABI 1.4): nome → endereço de functions.h/variables.h, preso ao layout id.
     policy.publicSymbols = CreateOotPublicSymbols();
     policy.escapeHatch = CreateOotEscapeHatch();

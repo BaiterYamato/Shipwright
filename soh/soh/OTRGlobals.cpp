@@ -127,6 +127,7 @@
 #include "soh/native/OotNativeItems.h"
 #include "soh/native/OotNativeView.h"
 #include "soh/native/OotNativePlayerAction.h"
+#include "soh/native/OotNativePlayerBody.h"
 #include "soh/native/OotNativeLights.h"
 #include "soh/native/OotNativeWorld.h"
 #include "soh/native/OotNativeSkeletons.h"
@@ -1557,6 +1558,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     ShipLuaHost::RegisterOotItemGameHooks();
     ShipLuaHost::RegisterOotViewGameHooks();
     ShipLuaHost::RegisterOotPlayerActionGame();
+    ShipLuaHost::RegisterOotPlayerBodyGameBridge();
     ShipLuaHost::RegisterOotLightsGameHooks();
     ShipLuaHost::RegisterOotWorldGameHooks();
     ShipLuaHost::RegisterOotSkeletonsGameBridge();

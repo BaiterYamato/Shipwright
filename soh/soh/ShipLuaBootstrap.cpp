@@ -9,6 +9,7 @@
 #include "native/OotNativeLights.h"
 #include "native/OotNativeWorld.h"
 #include "native/OotNativeSkeletons.h"
+#include "native/OotNativePlayerBody.h"
 #include "native/OotNativeJsonTypes.h"
 #include "native/OotNativeText.h"
 #include "native/OotNativeSave.h"
@@ -2166,6 +2167,11 @@ void MaskTransitionClearForcedMask(Player* player);
 // nova, usando a spec já guardada em gCustomBodySpec (nunca limpa por troca
 // de cena, só pelo toggle manual).
 bool gCustomBodyPendingRestore = false;
+
+// HOST-SLIM-001: corpo Lua definido (ativo ou à espera da cena nova); o player-body nativo não entra por cima.
+extern "C" u8 ShipLua_CustomBodyInUse(void) {
+    return gCustomBodyActive || gCustomBodyPendingRestore;
+}
 
 void CustomBodyFreeSkelBuffers(SkelAnime& skelAnime) {
     if (skelAnime.jointTable != nullptr) {
@@ -4581,6 +4587,11 @@ int LuaSetPlayerBody(lua_State* state) {
         return 1;
     }
     luaL_checktype(state, 1, LUA_TTABLE);
+    if (ShipLuaHost::OotPlayerBodyInUse()) {
+        SPDLOG_WARN("ShipLua set_body: um mod nativo controla o corpo do Link");
+        lua_pushboolean(state, 0);
+        return 1;
+    }
 
     lua_getfield(state, 1, "skeleton");
     const char* skeleton = luaL_optstring(state, -1, nullptr);
