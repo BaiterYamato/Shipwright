@@ -1,7 +1,10 @@
 #include "OotNativeWorld.h"
+#include "OotNativePlayerQuads.h"
 
 #include <cmath>
+#include <cstddef>
 #include <map>
+#include "oot_layout_id.h"
 
 namespace ShipLuaHost {
 namespace {
@@ -198,6 +201,20 @@ const ShipOotCollidersV1 collidersV1{
     sizeof(ShipOotCollidersV1), CreateCylinder, Destroy, Submit, ReadHits, KnockbackPlayer
 };
 
+const ShipOotCollidersV2 collidersV2{ sizeof(ShipOotCollidersV2),
+                                      CreateCylinder,
+                                      Destroy,
+                                      Submit,
+                                      ReadHits,
+                                      KnockbackPlayer,
+                                      LINKSPAN_OOT_LAYOUT_ID,
+                                      AcquireOotPlayerQuads,
+                                      SubmitOotPlayerQuad,
+                                      DisableOotPlayerQuad,
+                                      ReadOotPlayerQuadHits,
+                                      ReleaseOotPlayerQuads };
+static_assert(offsetof(ShipOotCollidersV2, layout_id) == sizeof(ShipOotCollidersV1), "V2 conserva a V1");
+
 void FreeRecord(const ColliderRecord& record, void* currentPlay) {
     const auto& bridge = State().bridge;
     if (bridge.colliderFree) {
@@ -231,6 +248,10 @@ const ShipOotWorldV1& GetOotNativeWorldService() {
 
 const ShipOotCollidersV1& GetOotNativeCollidersService() {
     return collidersV1;
+}
+
+const ShipOotCollidersV2& GetOotNativeCollidersServiceV2() {
+    return collidersV2;
 }
 
 void FlushOotColliders() {

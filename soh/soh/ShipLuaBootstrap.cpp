@@ -8,6 +8,7 @@
 #include "native/OotNativeView.h"
 #include "native/OotNativeLights.h"
 #include "native/OotNativeWorld.h"
+#include "native/OotNativePlayerQuads.h"
 #include "native/OotNativeSkeletons.h"
 #include "native/OotNativePlayerBody.h"
 #include "native/OotNativeJsonTypes.h"
@@ -4589,6 +4590,12 @@ int LuaSetPlayerBody(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     if (ShipLuaHost::OotPlayerBodyInUse()) {
         SPDLOG_WARN("ShipLua set_body: um mod nativo controla o corpo do Link");
+        lua_pushboolean(state, 0);
+        return 1;
+    }
+
+    if (ShipLuaHost::OotPlayerQuadsInUse()) {
+        SPDLOG_WARN("ShipLua set_body: um mod nativo arrendou os quads do Link");
         lua_pushboolean(state, 0);
         return 1;
     }

@@ -14,6 +14,7 @@
 #include "OotNativeScenes.h"
 #include "OotNativeView.h"
 #include "OotNativeWorld.h"
+#include "OotNativePlayerQuads.h"
 #include "OotNativeSkeletons.h"
 #include "OotNativeText.h"
 #include "OotNativePublicSymbols.h"
@@ -717,6 +718,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
     InitializeOotPlayerAction(gameThread);
     InitializeOotPlayerBody(gameThread);
+    InitializeOotPlayerQuads(gameThread);
     lensKeptWithoutButton = false;
     itemButtons = {};
     dpadBackground = {};
@@ -816,6 +818,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     policy.onProviderUnload = [](std::string_view owner) {
         // HOST-SLIM-001: bloqueio primeiro, para nenhum serviço da F2 voltar a aceitar o dono no meio do cleanup.
         BlockOotServiceOwner(owner);
+        ReleaseOotPlayerQuadOwner(owner);
         ReleaseOotPlayerBodyOwner(owner);
         ReleaseOotActionOwner(owner);
         ReleaseOotCameraOwner(owner);
@@ -843,6 +846,9 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     // RFC 0029 (ABI 1.4): nome → endereço de functions.h/variables.h, preso ao layout id.
     policy.publicSymbols = CreateOotPublicSymbols();
     policy.escapeHatch = CreateOotEscapeHatch();
+    const auto& collidersV2 = GetOotNativeCollidersServiceV2();
+    policy.services.push_back(
+        { LINKSPAN_OOT_COLLIDERS_SERVICE, LINKSPAN_OOT_COLLIDERS_VERSION_2, sizeof(collidersV2), &collidersV2 });
     return policy;
 }
 } // namespace ShipLuaHost

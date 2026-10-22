@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <libultraship/bridge/consolevariablebridge.h>
 
+// HOST-SLIM-001 (RFC 0029): quad do Link arrendado por mod nativo (OotNativeWorldGame.cpp).
+extern u8 LinkSpan_PlayerQuadOwned(void* collider);
+
 // Desenha a máscara de transformação do ShipLua enquanto as matrizes dos
 // membros ainda estão ativas. No MM ela sai do bolso na mão esquerda e só
 // depois passa ao rosto; emitir depois de Player_DrawImpl perde ambas.
@@ -1513,6 +1516,9 @@ s32 Player_OverrideLimbDrawGameplayCrawling(PlayState* play, s32 limbIndex, Gfx*
 }
 
 u8 func_80090480(PlayState* play, ColliderQuad* collider, WeaponInfo* weaponInfo, Vec3f* newTip, Vec3f* newBase) {
+    if ((collider != NULL) && LinkSpan_PlayerQuadOwned(collider)) {
+        collider = NULL; // o mod escreve o quad; o WeaponInfo segue andando
+    }
     if (weaponInfo->active == 0) {
         if (collider != NULL) {
             Collider_ResetQuadAT(play, &collider->base);
@@ -1547,6 +1553,9 @@ void Player_UpdateShieldCollider(PlayState* play, Player* this, ColliderQuad* co
         COLTYPE_METAL,
         COLTYPE_METAL,
     };
+    if (LinkSpan_PlayerQuadOwned(collider)) {
+        return;
+    }
 
     if (this->stateFlags1 & PLAYER_STATE1_SHIELDING) {
         Vec3f quadDest[4];
@@ -1891,7 +1900,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
         Actor* heldActor = this->heldActor;
 
         if (this->rightHandType == PLAYER_MODELTYPE_RH_FF) {
-            Matrix_Get(&this->shieldMf);
+            if (!LinkSpan_PlayerQuadOwned(&this->shieldQuad)) {
+                Matrix_Get(&this->shieldMf);
+            }
         } else if ((this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT) ||
                    (this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT_2)) {
             s32 stringModelToUse = gSaveContext.linkAge;
@@ -1939,7 +1950,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
             CLOSE_DISPS(play->state.gfxCtx);
         } else if ((this->actor.scale.y >= 0.0f) && (this->rightHandType == PLAYER_MODELTYPE_RH_SHIELD)) {
-            Matrix_Get(&this->shieldMf);
+            if (!LinkSpan_PlayerQuadOwned(&this->shieldQuad)) {
+                Matrix_Get(&this->shieldMf);
+            }
             Player_UpdateShieldCollider(play, this, &this->shieldQuad, sRightHandLimbModelShieldQuadVertices);
         }
 
@@ -1994,7 +2007,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                 }
 
                 Matrix_TranslateRotateZYX(&sSheathLimbModelShieldOnBackPos, &sSheathLimbModelShieldOnBackZyxRot);
-                Matrix_Get(&this->shieldMf);
+                if (!LinkSpan_PlayerQuadOwned(&this->shieldQuad)) {
+                    Matrix_Get(&this->shieldMf);
+                }
             }
         } else if (limbIndex == PLAYER_LIMB_HEAD) {
             Matrix_MultVec3f(&sPlayerFocusOffsetFromHead, &this->actor.focus.pos);

@@ -19,6 +19,8 @@
 #include "oot_world.h"
 #include "oot_colliders.h"
 #include "OotNativeWorld.h"
+#include "OotNativePlayerQuads.h"
+#include "OotNativeQuadLists.h"
 #include "oot_skeletons.h"
 #include "OotNativeSkeletons.h"
 #include "OotNativeHooks.h"
@@ -1229,6 +1231,126 @@ const ShipOotPlayerBodyV1* Find(const ShipLua::NativeProviderPolicy& policy) {
 }
 } // namespace HostSlimBody
 
+namespace HostSlimQuads {
+int otherPlayerTag = 0, victimTag = 0;
+void* currentPlayer = &HostSlimMovement::playerTag;
+bool luaBody = false;
+ShipNativeStatus readyStatus = SHIP_NATIVE_OK, applyStatus = SHIP_NATIVE_OK;
+int reserves = 0, applies = 0, withdraws = 0, restores = 0;
+uint32_t lastSlot = 99;
+ShipOotPlayerQuadSpecV2 lastSpec{};
+ShipOotColliderHitsV1 nextHits{};
+uint64_t tick = 40;
+
+// Nome sem colisão com o tipo Player do jogo, que o teste inclui.
+void* CurrentPlayer() {
+    return currentPlayer;
+}
+bool LuaBody() {
+    return luaBody;
+}
+void Reserve(void*, uint32_t) {
+    ++reserves;
+}
+ShipNativeStatus Ready() {
+    return readyStatus;
+}
+ShipNativeStatus Apply(void*, uint32_t slot, const ShipOotPlayerQuadSpecV2& spec) {
+    if (applyStatus != SHIP_NATIVE_OK) {
+        return applyStatus;
+    }
+    ++applies;
+    lastSlot = slot;
+    lastSpec = spec;
+    return SHIP_NATIVE_OK;
+}
+void Withdraw(void*, uint32_t) {
+    ++withdraws;
+}
+void Restore(void*, uint32_t) {
+    ++restores;
+}
+void Read(void*, uint32_t, ShipOotColliderHitsV1* hits) {
+    *hits = nextHits;
+}
+uint64_t Tick() {
+    return tick;
+}
+void Install() {
+    ShipLuaHost::SetOotPlayerQuadBridge(
+        { CurrentPlayer, LuaBody, Reserve, Apply, Withdraw, Restore, Read, Tick, Ready });
+}
+// Quad de ataque à frente do Link, material do D_80854650 (z_player.c:10623).
+ShipOotPlayerQuadSpecV2 Quad() {
+    ShipOotPlayerQuadSpecV2 spec{};
+    spec.size = sizeof(spec);
+    // Ordem do Collider_SetQuadVertices: c abaixo de a, d abaixo de b.
+    const float vertices[4][3] = { { -20, 60, 50 }, { 20, 60, 50 }, { -20, 10, 15 }, { 20, 10, 15 } };
+    std::memcpy(spec.vertices, vertices, sizeof(vertices));
+    spec.at_flags = 0x09; // AT_ON | AT_TYPE_PLAYER
+    spec.elem_type = 2;   // ELEMTYPE_UNK2
+    spec.touch_dmg_flags = 0x00000100;
+    spec.touch_damage = 2;
+    spec.bump_dmg_flags = 0xFFCFFFFF;
+    spec.touch_flags = 0x01; // TOUCH_ON
+    for (int i = 0; i < 16; i += 5)
+        spec.defense_matrix[i] = 1.0f; // identidade, m[coluna][linha]
+    return spec;
+}
+const ShipOotCollidersV2* Find(const ShipLua::NativeProviderPolicy& policy) {
+    for (const auto& service : policy.services) {
+        if (service.name == LINKSPAN_OOT_COLLIDERS_SERVICE && service.version == LINKSPAN_OOT_COLLIDERS_VERSION_2 &&
+            service.size == sizeof(ShipOotCollidersV2))
+            return static_cast<const ShipOotCollidersV2*>(service.table);
+    }
+    return nullptr;
+}
+void RunListChecks() {
+    using namespace ShipLuaHost::Detail;
+    int a = 0, b = 0, c = 0;
+    int* list[] = { &a, &b, &a, &c };
+    int count = 4;
+    Check(!QuadListHasCapacity(list, count, 4, &victimTag) && QuadListHasCapacity(list, count, 4, &a),
+          "lista cheia recusa novo quad, mas aceita resubmit do proprio quad");
+    EraseQuadFromList(list, count, &a, true);
+    Check(count == 4 && !list[0] && list[1] == &b && !list[2] && list[3] == &c,
+          "cleanup SAC retira todas as ocorrencias sem mudar indices/count");
+    EraseQuadFromList(list, count, &a, true);
+    Check(count == 4 && list[1] == &b && list[3] == &c, "cleanup SAC repetido e idempotente");
+    int* normal[] = { &a, &b, &a, &c };
+    count = 4;
+    EraseQuadFromList(normal, count, &a, false);
+    Check(count == 2 && normal[0] == &b && normal[1] == &c && !normal[2] && !normal[3],
+          "cleanup normal compacta somente fora de SAC");
+    for (int failure = 0; failure <= 2; ++failure) {
+        int material = 7, at = 1, ac = 1, atCalls = 0, acCalls = 0;
+        const auto status = RegisterQuadTransaction(
+            true, true,
+            [&] {
+                material = 9;
+                at = ac = 0;
+            },
+            [&] {
+                material = 7;
+                at = ac = 1;
+            },
+            [&] {
+                ++atCalls;
+                ++at;
+                return failure == 1 ? -1 : 0;
+            },
+            [&] {
+                ++acCalls;
+                ++ac;
+                return failure == 2 ? -1 : 0;
+            });
+        Check(status == (failure ? SHIP_NATIVE_FAILURE : SHIP_NATIVE_OK) && atCalls == 1 &&
+                  acCalls == (failure == 1 ? 0 : 1) && material == (failure ? 7 : 9) && at == 1 && ac == 1,
+              "AT/AC parcial reverte material e listas; nao chama AC depois de falhar AT");
+    }
+}
+} // namespace HostSlimQuads
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -1779,7 +1901,7 @@ int main(int argc, char** argv) {
         Check(refused, "randomizer queries run only on the owner thread");
         ShipLuaHost::BindOotRandoQueryBackend({});
     }
-    Check(policy.services.size() == 34 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 35 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
               policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
               policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
               policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -4501,6 +4623,194 @@ int main(int argc, char** argv) {
         policy.services[0].table = &incompatible;
         Check(!ShipLua::NativeProvider::Load(*manifest.value, argv[1], policy).isOk(),
               "layout divergente deve ser recusado");
+    }
+    {
+        using namespace HostSlimQuads;
+        RunListChecks();
+        static_assert(offsetof(ShipOotCollidersV2, layout_id) == sizeof(ShipOotCollidersV1));
+        static_assert(offsetof(ShipOotCollidersV2, acquire_player_quads) == sizeof(ShipOotCollidersV1) + sizeof(void*));
+        const auto* colliders = Find(policy);
+        const auto* movement = HostSlimMovement::Find(policy);
+        Check(colliders && movement && colliders->layout_id &&
+                  std::strcmp(colliders->layout_id, LINKSPAN_OOT_LAYOUT_ID) == 0,
+              "colliders V2 publicado");
+        if (colliders && movement) {
+            Install();
+            HostSlimMovement::gameplay = HostSlimMovement::eligible = HostSlimMovement::neutral = true;
+            HostSlimMovement::action = &HostSlimMovement::idleTag;
+            ShipLuaHost::SetOotActionBridge({ HostSlimMovement::Snapshot, HostSlimMovement::Restore });
+            ShipLuaHost::NotifyOotPlayerCreated(&HostSlimMovement::playerTag);
+            HostSlimMovement::Owner actionOwner;
+            const ShipOotPlayerActionSpecV1 actionSpec{ sizeof(actionSpec), 0, HostSlimMovement::Tick, &actionOwner };
+            uint64_t action = 0, lease = 7, defense = 0, second = 0;
+
+            Check(colliders->acquire_player_quads("quad.mod", 0, SHIP_OOT_QUAD_MASK_ATTACK, &lease) ==
+                          SHIP_NATIVE_UNSUPPORTED &&
+                      lease == 0,
+                  "quads sem ação");
+            Check(movement->acquire_action("quad.mod", &actionSpec, &action) == SHIP_NATIVE_OK, "ação do dono");
+            Check(colliders->acquire_player_quads("outro.mod", action, SHIP_OOT_QUAD_MASK_ATTACK, &lease) ==
+                      SHIP_NATIVE_UNSUPPORTED,
+                  "ação de outro dono");
+            Check(colliders->acquire_player_quads("quad.mod", action, 0x01, &lease) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "ATTACK pede os dois slots");
+            Check(colliders->acquire_player_quads("quad.mod", action, 0x08, &lease) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "slot desconhecido");
+            readyStatus = SHIP_NATIVE_UNSUPPORTED;
+            Check(colliders->acquire_player_quads("quad.mod", action, SHIP_OOT_QUAD_MASK_ATTACK, &lease) ==
+                          SHIP_NATIVE_UNSUPPORTED &&
+                      lease == 0 && reserves == 0 && !ShipLuaHost::OotPlayerQuadsInUse(),
+                  "SAC recusa acquire antes de reserve/Unlist");
+            readyStatus = SHIP_NATIVE_OK;
+            luaBody = true;
+            Check(colliders->acquire_player_quads("quad.mod", action, SHIP_OOT_QUAD_MASK_ATTACK, &lease) ==
+                      SHIP_NATIVE_LIMIT,
+                  "corpo Lua usa os quads");
+            luaBody = false;
+            Check(colliders->acquire_player_quads("quad.mod", action, SHIP_OOT_QUAD_MASK_ATTACK, &lease) ==
+                          SHIP_NATIVE_OK &&
+                      reserves == 2 && ShipLuaHost::OotPlayerQuadsInUse(),
+                  "ATTACK arrendado");
+            Check(colliders->acquire_player_quads("quad.mod", action, SHIP_OOT_QUAD_MASK_ATTACK, &second) ==
+                      SHIP_NATIVE_LIMIT,
+                  "slot ocupado");
+            Check(colliders->acquire_player_quads("quad.mod", action, SHIP_OOT_QUAD_MASK_DEFENSE, &defense) ==
+                          SHIP_NATIVE_OK &&
+                      reserves == 3,
+                  "DEFENSE noutro lease");
+            Check(ShipLuaHost::OotPlayerQuadSlotOwned(&HostSlimMovement::playerTag, SHIP_OOT_QUAD_ATTACK_1) &&
+                      !ShipLuaHost::OotPlayerQuadSlotOwned(&otherPlayerTag, SHIP_OOT_QUAD_ATTACK_1),
+                  "guard só no Player do lease");
+
+            auto quad = Quad();
+            auto bad = quad;
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_DEFENSE, &quad) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "slot fora do lease");
+            bad.vertices[2][1] = std::nanf("");
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &bad) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "vértice não finito");
+            bad = quad;
+            bad.defending = 1;
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &bad) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "defending só no DEFENSE");
+            bad = quad;
+            bad.defense_matrix[3] = 0.5f;
+            Check(colliders->submit_player_quad(defense, SHIP_OOT_QUAD_DEFENSE, &bad) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "matriz com perspectiva");
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &quad) == SHIP_NATIVE_OK &&
+                      applies == 1 && lastSlot == SHIP_OOT_QUAD_ATTACK_0 && lastSpec.touch_damage == 2,
+                  "quad inscrito");
+
+            ShipOotPlayerQuadHitsV2 hits{};
+            hits.size = sizeof(hits);
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_0, &hits) == SHIP_NATIVE_OK &&
+                      hits.resolved_tick == 0 && !hits.hits.at_hit,
+                  "nada resolvido antes do frame seguinte");
+            nextHits = {};
+            nextHits.size = sizeof(nextHits);
+            nextHits.at_hit = 1;
+            nextHits.at_actor = &victimTag;
+            nextHits.oc_hit = 1;
+            ShipLuaHost::OotPlayerQuadsResolved(&otherPlayerTag);
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_0, &hits) == SHIP_NATIVE_OK &&
+                      hits.resolved_tick == 0,
+                  "snapshot de outro Player não conta");
+            ShipLuaHost::OotPlayerQuadsResolved(&HostSlimMovement::playerTag);
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_0, &hits) == SHIP_NATIVE_OK &&
+                      hits.size == sizeof(hits) && hits.resolved_tick == 40 && hits.hits.at_hit &&
+                      hits.hits.at_actor == &victimTag && !hits.hits.oc_hit &&
+                      hits.scene_epoch == ShipLuaHost::OotSceneEpoch(),
+                  "acerto resolvido no frame seguinte");
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_1, &hits) == SHIP_NATIVE_OK &&
+                      !hits.hits.at_hit && hits.resolved_tick == 40,
+                  "slot sem inscrição lê zero");
+            tick = 41;
+            ShipLuaHost::OotPlayerQuadsResolved(&HostSlimMovement::playerTag);
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_0, &hits) == SHIP_NATIVE_OK &&
+                      !hits.hits.at_hit && hits.resolved_tick == 41,
+                  "acerto vale um snapshot");
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &quad) == SHIP_NATIVE_OK &&
+                      colliders->disable_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0) == SHIP_NATIVE_OK && withdraws == 1,
+                  "disable tira o slot das listas");
+            tick = 42;
+            ShipLuaHost::OotPlayerQuadsResolved(&HostSlimMovement::playerTag);
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_0, &hits) == SHIP_NATIVE_OK &&
+                      !hits.hits.at_hit,
+                  "slot desligado não acerta");
+            const int appliesBeforeFailure = applies;
+            for (const auto failure : { SHIP_NATIVE_LIMIT, SHIP_NATIVE_FAILURE }) {
+                applyStatus = failure;
+                Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &quad) == failure &&
+                          applies == appliesBeforeFailure,
+                      "submit propaga falta de capacidade/rejeicao");
+            }
+            applyStatus = SHIP_NATIVE_OK;
+            readyStatus = SHIP_NATIVE_UNSUPPORTED;
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &quad) == SHIP_NATIVE_UNSUPPORTED &&
+                      applies == appliesBeforeFailure,
+                  "SAC durante lease recusa submit antes de apply");
+            readyStatus = SHIP_NATIVE_OK;
+            tick = 43;
+            ShipLuaHost::OotPlayerQuadsResolved(&HostSlimMovement::playerTag);
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_0, &hits) == SHIP_NATIVE_OK &&
+                      !hits.hits.at_hit && hits.resolved_tick == 43,
+                  "falha nao cria snapshot de inscricao");
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &quad) == SHIP_NATIVE_OK,
+                  "retry depois da falha continua usando mesmo lease");
+            applyStatus = SHIP_NATIVE_FAILURE;
+            Check(colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &quad) == SHIP_NATIVE_FAILURE,
+                  "resubmit rejeitado propaga FAILURE");
+            applyStatus = SHIP_NATIVE_OK;
+            tick = 44;
+            ShipLuaHost::OotPlayerQuadsResolved(&HostSlimMovement::playerTag);
+            Check(colliders->read_player_quad_hits(lease, SHIP_OOT_QUAD_ATTACK_0, &hits) == SHIP_NATIVE_OK &&
+                      hits.hits.at_hit && hits.resolved_tick == 44,
+                  "falha de resubmit preserva pendencia do submit anterior");
+            auto shield = quad;
+            shield.defending = 1;
+            Check(colliders->submit_player_quad(defense, SHIP_OOT_QUAD_DEFENSE, &shield) == SHIP_NATIVE_OK &&
+                      lastSlot == SHIP_OOT_QUAD_DEFENSE && lastSpec.defending == 1,
+                  "DEFENSE com defesa");
+
+            const int restoresBefore = restores;
+            readyStatus = SHIP_NATIVE_UNSUPPORTED; // SAC nao pode bloquear revogacao/cleanup.
+            HostSlimMovement::action = &HostSlimMovement::walkTag;
+            ShipLuaHost::NotifyOotPlayerActionChanged(&HostSlimMovement::playerTag);
+            Check(restores == restoresBefore + 3 && !ShipLuaHost::OotPlayerQuadsInUse() &&
+                      colliders->submit_player_quad(lease, SHIP_OOT_QUAD_ATTACK_0, &quad) == SHIP_NATIVE_UNSUPPORTED &&
+                      colliders->read_player_quad_hits(defense, SHIP_OOT_QUAD_DEFENSE, &hits) ==
+                          SHIP_NATIVE_UNSUPPORTED,
+                  "ação trocada devolve os quads");
+            readyStatus = SHIP_NATIVE_OK;
+            Check(colliders->release_player_quads(lease) == SHIP_NATIVE_OK &&
+                      colliders->release_player_quads(UINT64_C(0x1234)) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "release idempotente, token inventado recusado");
+
+            HostSlimMovement::action = &HostSlimMovement::idleTag;
+            Check(movement->acquire_action("quad.unload", &actionSpec, &action) == SHIP_NATIVE_OK &&
+                      colliders->acquire_player_quads("quad.unload", action,
+                                                      SHIP_OOT_QUAD_MASK_ATTACK | SHIP_OOT_QUAD_MASK_DEFENSE,
+                                                      &lease) == SHIP_NATIVE_OK,
+                  "lease antes do unload");
+            const int restoresAtUnload = restores;
+            readyStatus = SHIP_NATIVE_UNSUPPORTED;
+            policy.onProviderUnload("quad.unload");
+            Check(restores == restoresAtUnload + 3 && !ShipLuaHost::OotPlayerQuadsInUse() &&
+                      colliders->acquire_player_quads("quad.unload", action, SHIP_OOT_QUAD_MASK_ATTACK, &lease) ==
+                          SHIP_NATIVE_UNSUPPORTED,
+                  "unload devolve os quads e bloqueia o dono");
+            readyStatus = SHIP_NATIVE_OK;
+
+            ShipNativeStatus fromWorker = SHIP_NATIVE_OK;
+            std::thread worker([&] {
+                uint64_t ignored = 0;
+                fromWorker = colliders->acquire_player_quads("quad.mod", action, SHIP_OOT_QUAD_MASK_ATTACK, &ignored);
+            });
+            worker.join();
+            Check(fromWorker == SHIP_NATIVE_INVALID_ARGUMENT, "quads fora da thread do jogo");
+            ShipLuaHost::SetOotPlayerQuadBridge({});
+            ShipLuaHost::SetOotActionBridge({});
+        }
     }
     gPlayState = nullptr;
     Check(!engine->get_player(), "troca de cena invalida acesso ao Player");

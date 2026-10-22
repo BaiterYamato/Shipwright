@@ -45,6 +45,7 @@ extern u8 ShipLua_ShouldBlockLedgeGrabs(void);
 // A mod may veto rolling (e.g. a stamina system with an empty meter). Opt-in:
 // returns 0 unless a mod asked for it.
 extern u8 ShipLua_ShouldBlockRoll(void);
+extern u8 LinkSpan_PlayerQuadOwned(void* collider);
 
 // HOST-SLIM-001 (RFC 0029): hooks genéricos do Link, pontes em soh/soh/native/OotNativeHooksGame.cpp.
 extern u8 LinkSpan_PlayerVoiceSfx(Player* player, u16* sfxId);
@@ -4485,6 +4486,9 @@ s32 func_80837818(Player* this) {
 }
 
 void func_80837918(Player* this, s32 quadIndex, u32 dmgFlags) {
+    if (LinkSpan_PlayerQuadOwned(&this->meleeWeaponQuads[quadIndex])) {
+        return;
+    }
     this->meleeWeaponQuads[quadIndex].info.toucher.dmgFlags = dmgFlags;
 
     if (dmgFlags == 2) {
