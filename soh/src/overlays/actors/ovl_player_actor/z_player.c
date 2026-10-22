@@ -54,6 +54,9 @@ extern void LinkSpan_PlayerAction(Player* player, PlayState* play, Input* input,
 extern void LinkSpan_PlayerUpdateEnd(Player* player, PlayState* play);
 extern void LinkSpan_PlayerMaskDraw(PlayState* play, Player* player, s32 vanillaAllowed,
                                     void (*drawVanilla)(PlayState*, Player*));
+extern void LinkSpan_PlayerCreated(Player* player);
+extern void LinkSpan_PlayerDestroyed(Player* player);
+extern void LinkSpan_PlayerActionChanged(Player* player);
 
 // Link-Span (OOT-MOVE-006): com o escudo no gatilho da mira, providers nativos podem dar
 // prioridade à espada sobre o escudo (OotNativeEngine.cpp).
@@ -3348,6 +3351,7 @@ s32 Player_SetupAction(PlayState* play, Player* this, PlayerActionFunc actionFun
     }
 
     this->actionFunc = actionFunc;
+    LinkSpan_PlayerActionChanged(this);
 
     if ((this->itemAction != this->heldItemAction) &&
         (!(flags & 1) || !(this->stateFlags1 & PLAYER_STATE1_SHIELDING))) {
@@ -3375,6 +3379,63 @@ s32 Player_SetupAction(PlayState* play, Player* this, PlayerActionFunc actionFun
     func_808326F0(this);
 
     return 1;
+}
+
+// HOST-SLIM-001 (RFC 0029): leitura e Idle do Link para linkspan.oot.movement V3 (OotNativeHooksGame.cpp).
+// Idle, Roll, locomoção normal (80842180) e TurnInPlace.
+// Combate, mira (80840DE4 e 8084227C) e item ficam de fora.
+u32 LinkSpan_PlayerActionFlags(Player* this) {
+    u32 flags = 0;
+
+    if (this->actionFunc == Player_Action_Idle) {
+        flags |= 0x01; // SHIP_OOT_ACTION_STATE_IDLE
+    }
+    if (this->actionFunc == Player_Action_Roll) {
+        flags |= 0x02; // SHIP_OOT_ACTION_STATE_ROLL
+    }
+    if ((this->actionFunc == Player_Action_80845EF8) || (this->actionFunc == Player_Action_80845CA4)) {
+        flags |= 0x04; // SHIP_OOT_ACTION_STATE_DOOR
+    }
+    return flags;
+}
+
+s32 LinkSpan_PlayerActionEligible(Player* this, PlayState* play) {
+    const u32 blocked1 = PLAYER_STATE1_LOADING | PLAYER_STATE1_INPUT_DISABLED | PLAYER_STATE1_TALKING |
+                         PLAYER_STATE1_DEAD | PLAYER_STATE1_GETTING_ITEM | PLAYER_STATE1_CARRYING_ACTOR |
+                         PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE |
+                         PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_DAMAGED |
+                         PLAYER_STATE1_IN_WATER | PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_IN_CUTSCENE;
+    const u32 blocked2 = PLAYER_STATE2_GRABBED_BY_ENEMY | PLAYER_STATE2_UNDERWATER | PLAYER_STATE2_DIVING |
+                         PLAYER_STATE2_FROZEN | PLAYER_STATE2_PAUSE_MOST_UPDATING | PLAYER_STATE2_CRAWLING |
+                         PLAYER_STATE2_OCARINA_PLAYING | PLAYER_STATE2_FORCED_VOID_OUT;
+
+    if ((this != GET_PLAYER(play)) || (gSaveContext.gameMode != GAMEMODE_NORMAL) || (gSaveContext.health <= 0) ||
+        (play->pauseCtx.state != 0) || (play->msgCtx.msgMode != MSGMODE_NONE) || (play->csCtx.state != CS_STATE_IDLE) ||
+        (play->transitionTrigger != TRANS_TRIGGER_OFF) || (this->csAction != 0) || (this->stateFlags1 & blocked1) ||
+        (this->stateFlags2 & blocked2) || (this->stateFlags3 & PLAYER_STATE3_PAUSE_ACTION_FUNC)) {
+        return false;
+    }
+    return (this->actionFunc == Player_Action_Idle) || (this->actionFunc == Player_Action_Roll) ||
+           (this->actionFunc == Player_Action_80842180) || (this->actionFunc == Player_Action_TurnInPlace);
+}
+
+// setupIdle: troca a ação para Idle antes (como func_8083C0E8); senão só reinicia a animação de Idle.
+s32 LinkSpan_PlayerRestoreIdle(Player* this, PlayState* play, s32 setupIdle) {
+    LinkAnimationHeader* idle;
+
+    if (!LinkSpan_PlayerActionEligible(this, play) || !(this->actor.bgCheckFlags & BGCHECKFLAG_GROUND)) {
+        return false;
+    }
+    if (!setupIdle && (this->actionFunc != Player_Action_Idle)) {
+        return false;
+    }
+    Player_FinishAnimMovement(this);
+    if (setupIdle) {
+        Player_SetupAction(play, this, Player_Action_Idle, 1);
+    }
+    idle = Player_GetIdleAnim(this);
+    LinkAnimation_Change(play, &this->skelAnime, idle, 1.0f, 0.0f, Animation_GetLastFrame(idle), ANIMMODE_ONCE, 0.0f);
+    return true;
 }
 
 /**
@@ -10827,6 +10888,7 @@ static Vec3f D_80854778 = { 0.0f, 50.0f, 0.0f };
 void Player_Init(Actor* thisx, PlayState* play2) {
     Player* this = (Player*)thisx;
     PlayState* play = play2;
+    LinkSpan_PlayerCreated(this);
     s32 startMode;
     s32 respawnFlag;
     s32 respawnMode;
@@ -12599,6 +12661,7 @@ void Player_Draw(Actor* thisx, PlayState* play2) {
 
 void Player_Destroy(Actor* thisx, PlayState* play) {
     Player* this = (Player*)thisx;
+    LinkSpan_PlayerDestroyed(this);
 
     Effect_Delete(play, this->meleeWeaponEffectIndex);
 

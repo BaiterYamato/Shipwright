@@ -101,4 +101,82 @@ typedef struct ShipOotMovementV2 {
     ShipNativeStatus(SHIP_NATIVE_CALL* get_item_button_rect)(uint8_t button, int16_t* x, int16_t* y, int16_t* size,
                                                              uint8_t* alpha);
 } ShipOotMovementV2;
+
+/* Ação exclusiva por owner/Player/epoch; prefixo V2 literal, com layout_id.
+ * PASS respeita o gate vanilla; SUPPRESS não substitui funções privadas. */
+#define LINKSPAN_OOT_MOVEMENT_VERSION_3 3u
+#define SHIP_OOT_ACTION_PASS 0u
+#define SHIP_OOT_ACTION_SUPPRESS 1u
+#define SHIP_OOT_ACTION_STATE_IDLE 0x01u
+#define SHIP_OOT_ACTION_STATE_ROLL 0x02u
+#define SHIP_OOT_ACTION_STATE_DOOR 0x04u
+#define SHIP_OOT_ACTION_STATE_BLOCKED 0x08u
+
+typedef struct ShipOotPlayerActionStateV1 {
+    uint32_t size;
+    uint32_t reserved_align;
+    uint64_t scene_epoch;
+    uint64_t player_generation;
+    uint64_t tick;
+    uint32_t flags; /* estados semânticos, não endereços privados */
+    uint8_t owned;
+    uint8_t reserved[3];
+} ShipOotPlayerActionStateV1;
+
+typedef struct ShipOotPlayerActionTickV1 {
+    uint32_t size;
+    uint32_t reserved_align;
+    uint64_t action_token;
+    void* play_state;
+    void* player;
+    void* input;
+    ShipOotPlayerActionStateV1 state;
+    uint8_t vanilla_allowed;
+    uint8_t reserved[7];
+} ShipOotPlayerActionTickV1;
+
+typedef ShipNativeStatus(SHIP_NATIVE_CALL* ShipOotPlayerActionFnV1)(void* user, const ShipOotPlayerActionTickV1* tick,
+                                                                    uint32_t* disposition);
+
+typedef struct ShipOotPlayerActionSpecV1 {
+    uint32_t size;
+    uint32_t reserved_align;
+    ShipOotPlayerActionFnV1 callback;
+    void* user;
+} ShipOotPlayerActionSpecV1;
+
+typedef struct ShipOotMovementV3 {
+    uint32_t size;
+    const char* layout_id;
+    uint16_t(SHIP_NATIVE_CALL* get_input_current)(uint8_t port);
+    uint16_t(SHIP_NATIVE_CALL* get_input_pressed)(uint8_t port);
+    uint16_t(SHIP_NATIVE_CALL* get_input_released)(uint8_t port);
+    int8_t(SHIP_NATIVE_CALL* get_stick_x)(uint8_t port);
+    int8_t(SHIP_NATIVE_CALL* get_stick_y)(uint8_t port);
+    int8_t(SHIP_NATIVE_CALL* get_right_stick_x)(uint8_t port);
+    int8_t(SHIP_NATIVE_CALL* get_right_stick_y)(uint8_t port);
+    uint8_t(SHIP_NATIVE_CALL* has_gamepad)(uint8_t port);
+    uint32_t(SHIP_NATIVE_CALL* get_gamepad_buttons)(uint8_t port);
+    ShipNativeStatus(SHIP_NATIVE_CALL* clear_gamepad_button_bindings)(uint8_t port, uint16_t virtual_button);
+    ShipNativeStatus(SHIP_NATIVE_CALL* bind_gamepad_button)(uint8_t port, uint16_t virtual_button, uint8_t sdl_button);
+    ShipNativeStatus(SHIP_NATIVE_CALL* reload_gamepad_mappings)(uint8_t port);
+    int32_t(SHIP_NATIVE_CALL* get_setting_int)(const char* name, int32_t fallback);
+    ShipNativeStatus(SHIP_NATIVE_CALL* set_setting_int)(const char* name, int32_t value);
+    uint8_t(SHIP_NATIVE_CALL* is_player_grounded)(void);
+    uint8_t(SHIP_NATIVE_CALL* is_player_rolling)(void);
+    ShipNativeStatus(SHIP_NATIVE_CALL* player_jump)(float vertical_velocity);
+    ShipNativeStatus(SHIP_NATIVE_CALL* player_roll)(void);
+    int16_t(SHIP_NATIVE_CALL* get_gamepad_axis)(uint8_t port, uint8_t sdl_axis);
+    ShipNativeStatus(SHIP_NATIVE_CALL* bind_gamepad_axis)(uint8_t port, uint16_t virtual_button, uint8_t sdl_axis,
+                                                          int8_t direction);
+    ShipNativeStatus(SHIP_NATIVE_CALL* player_use_item_shortcut)(uint8_t item);
+    ShipNativeStatus(SHIP_NATIVE_CALL* get_item_button_rect)(uint8_t button, int16_t* x, int16_t* y, int16_t* size,
+                                                             uint8_t* alpha);
+    ShipNativeStatus(SHIP_NATIVE_CALL* get_action_state)(ShipOotPlayerActionStateV1* state);
+    /* SHIP_NATIVE_LIMIT enquanto houver lease, callback, restauração ou aviso de revogação em curso. */
+    ShipNativeStatus(SHIP_NATIVE_CALL* acquire_action)(const char* owner, const ShipOotPlayerActionSpecV1* spec,
+                                                       uint64_t* action_token);
+    ShipNativeStatus(SHIP_NATIVE_CALL* release_action)(uint64_t action_token);
+    ShipNativeStatus(SHIP_NATIVE_CALL* restore_player_animation)(uint64_t action_token);
+} ShipOotMovementV3;
 #endif

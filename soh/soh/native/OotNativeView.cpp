@@ -1,4 +1,6 @@
 #include "OotNativeView.h"
+#include "OotNativePlayerAction.h"
+#include "oot_layout_id.h"
 
 #include <algorithm>
 #include <cmath>
@@ -23,7 +25,15 @@ struct ViewState {
     int16_t camera = -1;
     void* play = nullptr;
     bool hasView = false;
-    ShipOotCameraViewV1 view{};
+    ShipOotCameraViewV2 view{};
+    bool hasRoll = false;
+    uint64_t epoch = 0;
+    // epoch e geração de cada token já dado, índice = token - 1 (get_lease de token que caiu).
+    struct LeaseRecord {
+        uint64_t epoch;
+        uint64_t generation;
+    };
+    std::vector<LeaseRecord> leases;
     struct Scope {
         // Push e filhos de interpolação abertos pelo mod neste escopo.
         uint32_t pushed = 0;
@@ -60,7 +70,7 @@ bool OnOwnerThread() {
 
 void DropCamera(bool destroy) {
     auto& state = State();
-    if (destroy && state.bridge.cameraDestroy && state.camera >= 0) {
+    if (destroy && state.epoch == OotSceneEpoch() && state.bridge.cameraDestroy && state.camera >= 0) {
         state.bridge.cameraDestroy(state.camera, state.play);
     }
     state.token = 0;
@@ -68,12 +78,21 @@ void DropCamera(bool destroy) {
     state.camera = -1;
     state.play = nullptr;
     state.hasView = false;
+    state.hasRoll = false;
 }
 
 // Dono atual com a câmera ainda ativa; senão a posse cai aqui mesmo.
 bool Holds(uint64_t token) {
     auto& state = State();
     if (!token || token != state.token) {
+        return false;
+    }
+    if (state.epoch != OotSceneEpoch()) {
+        DropCamera(false); // a cena acabou e levou a subcâmera
+        return false;
+    }
+    if (OotServiceOwnerBlocked(state.owner)) {
+        DropCamera(true);
         return false;
     }
     if (!state.bridge.cameraValid || !state.bridge.cameraValid(state.camera, state.play)) {
@@ -143,12 +162,38 @@ ViewState::RenderState* FindRenderState(uint64_t token) {
     return it == states.end() ? nullptr : &*it;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL Acquire(const char* owner, uint64_t* token) {
+ShipOotCameraViewV1 Prefix(const ShipOotCameraViewV2& view) {
+    ShipOotCameraViewV1 prefix{};
+    prefix.size = sizeof(prefix);
+    std::copy_n(view.eye, 3, prefix.eye);
+    std::copy_n(view.at, 3, prefix.at);
+    prefix.fov = view.fov;
+    return prefix;
+}
+
+bool KnownToken(uint64_t token) {
+    return token && token < State().nextToken;
+}
+
+void FillLease(uint64_t token, bool owned, ShipOotCameraLeaseV2* out) {
+    const auto& record = State().leases[static_cast<size_t>(token - 1)];
+    ShipOotCameraLeaseV2 lease{};
+    lease.size = sizeof(lease);
+    lease.scene_epoch = record.epoch;
+    lease.camera_generation = record.generation;
+    lease.owned = owned;
+    *out = lease;
+}
+
+ShipNativeStatus AcquireCamera(const char* owner, uint64_t* token, ShipOotCameraLeaseV2* lease) {
     if (!OnOwnerThread() || !ValidOwner(owner) || !token) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
     *token = 0;
     auto& state = State();
+    if (OotServiceOwnerBlocked(owner)) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
     if (state.token && Holds(state.token)) {
         return SHIP_NATIVE_LIMIT;
     }
@@ -157,6 +202,7 @@ ShipNativeStatus SHIP_NATIVE_CALL Acquire(const char* owner, uint64_t* token) {
     }
     try {
         std::string name(owner);
+        state.leases.reserve(state.leases.size() + 1);
         int16_t camera = -1;
         void* play = nullptr;
         const ShipNativeStatus created = state.bridge.cameraCreate(&camera, &play);
@@ -168,9 +214,20 @@ ShipNativeStatus SHIP_NATIVE_CALL Acquire(const char* owner, uint64_t* token) {
         state.camera = camera;
         state.play = play;
         state.hasView = false;
+        state.hasRoll = false;
+        state.epoch = OotSceneEpoch();
+        // Geração = número da subcâmera criada pelo árbitro (um por token).
+        state.leases.push_back({ state.epoch, state.token });
         *token = state.token;
+        if (lease) {
+            FillLease(state.token, true, lease);
+        }
         return SHIP_NATIVE_OK;
     } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Acquire(const char* owner, uint64_t* token) {
+    return AcquireCamera(owner, token, nullptr);
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Release(uint64_t token) {
@@ -186,6 +243,23 @@ ShipNativeStatus SHIP_NATIVE_CALL Release(uint64_t token) {
     return token < state.nextToken ? SHIP_NATIVE_OK : SHIP_NATIVE_INVALID_ARGUMENT;
 }
 
+ShipNativeStatus SHIP_NATIVE_CALL AcquireEx(const char* owner, uint64_t* token, ShipOotCameraLeaseV2* lease) {
+    if (token) {
+        *token = 0;
+    }
+    if (!lease || lease->size < sizeof(ShipOotCameraLeaseV2)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    return AcquireCamera(owner, token, lease);
+}
+
+void ApplyView() {
+    auto& state = State();
+    if (state.bridge.cameraApply) {
+        state.bridge.cameraApply(state.camera, state.play, state.view, state.hasRoll);
+    }
+}
+
 ShipNativeStatus SHIP_NATIVE_CALL SetView(uint64_t token, const ShipOotCameraViewV1* view) {
     if (!OnOwnerThread() || !ValidView(view)) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
@@ -194,23 +268,76 @@ ShipNativeStatus SHIP_NATIVE_CALL SetView(uint64_t token, const ShipOotCameraVie
         return SHIP_NATIVE_UNSUPPORTED;
     }
     auto& state = State();
-    state.view = *view;
-    state.view.size = sizeof(ShipOotCameraViewV1);
+    std::copy_n(view->eye, 3, state.view.eye);
+    std::copy_n(view->at, 3, state.view.at);
+    state.view.fov = view->fov;
+    state.view.size = sizeof(ShipOotCameraViewV2);
     state.hasView = true;
-    if (state.bridge.cameraApply) {
-        state.bridge.cameraApply(state.camera, state.play, state.view);
-    }
+    ApplyView(); // o roll de um set_view_ex anterior continua
     return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SetViewEx(uint64_t token, const ShipOotCameraViewV2* view) {
+    if (!OnOwnerThread() || !view || view->size < sizeof(ShipOotCameraViewV2) || !KnownToken(token)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const ShipOotCameraViewV1 prefix = Prefix(*view);
+    if (!ValidView(&prefix)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    if (!Holds(token)) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    auto& state = State();
+    state.view = *view;
+    state.view.size = sizeof(ShipOotCameraViewV2);
+    state.view.reserved = 0;
+    state.hasView = true;
+    state.hasRoll = true;
+    ApplyView();
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus ReadView(ShipOotCameraViewV2* view) {
+    const auto& bridge = State().bridge;
+    ShipOotCameraViewV2 full{};
+    full.size = sizeof(full);
+    const ShipNativeStatus status = bridge.cameraRead ? bridge.cameraRead(&full) : SHIP_NATIVE_UNSUPPORTED;
+    if (status == SHIP_NATIVE_OK) {
+        full.size = sizeof(full);
+        full.reserved = 0;
+        *view = full;
+    }
+    return status;
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL GetView(ShipOotCameraViewV1* view) {
     if (!OnOwnerThread() || !view || view->size < sizeof(ShipOotCameraViewV1)) {
         return SHIP_NATIVE_INVALID_ARGUMENT;
     }
-    const auto& bridge = State().bridge;
-    return bridge.cameraRead ? bridge.cameraRead(view) : SHIP_NATIVE_UNSUPPORTED;
+    ShipOotCameraViewV2 full{};
+    const ShipNativeStatus status = ReadView(&full);
+    if (status == SHIP_NATIVE_OK) {
+        *view = Prefix(full);
+    }
+    return status;
 }
 
+ShipNativeStatus SHIP_NATIVE_CALL GetViewEx(ShipOotCameraViewV2* view) {
+    if (!OnOwnerThread() || !view || view->size < sizeof(ShipOotCameraViewV2)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    return ReadView(view);
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL GetLease(uint64_t token, ShipOotCameraLeaseV2* lease) {
+    if (!OnOwnerThread() || !lease || lease->size < sizeof(ShipOotCameraLeaseV2) || !KnownToken(token)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    const bool owned = Holds(token);
+    FillLease(token, owned, lease); // token que caiu conserva epoch e geração, owned = 0
+    return owned ? SHIP_NATIVE_OK : SHIP_NATIVE_UNSUPPORTED;
+}
 uint8_t SHIP_NATIVE_CALL IsOwned(uint64_t token) {
     return OnOwnerThread() && Holds(token) ? 1 : 0;
 }
@@ -503,6 +630,9 @@ ShipNativeStatus SHIP_NATIVE_CALL InterpolationEnd() {
 }
 
 const ShipOotCameraV1 cameraV1{ sizeof(ShipOotCameraV1), Acquire, Release, SetView, GetView, IsOwned };
+const ShipOotCameraV2 cameraV2{ sizeof(ShipOotCameraV2), Acquire,   Release,   SetView,   GetView, IsOwned,
+                                LINKSPAN_OOT_LAYOUT_ID,  AcquireEx, SetViewEx, GetViewEx, GetLease };
+static_assert(offsetof(ShipOotCameraV2, layout_id) == sizeof(ShipOotCameraV1), "V2 conserva a V1");
 const ShipOotRenderV1 renderV1{ sizeof(ShipOotRenderV1), DrawDisplayList, MatrixPush,     MatrixPop,
                                 MatrixTranslate,         MatrixScale,     MatrixRotateZYX };
 const ShipOotRenderV2 renderV2{ sizeof(ShipOotRenderV2), DrawDisplayList,  MatrixPush,      MatrixPop,
@@ -547,6 +677,37 @@ const ShipOotCameraV1& GetOotNativeCameraService() {
     return cameraV1;
 }
 
+const ShipOotCameraV2& GetOotNativeCameraServiceV2() {
+    return cameraV2;
+}
+
+void ReleaseOotCameraOwner(std::string_view owner) {
+    BlockOotServiceOwner(owner);
+    auto& state = State();
+    if (state.token && state.owner == owner) {
+        // Na cena em que foi criada, a subcâmera sai e a principal volta; noutra, só o registro.
+        DropCamera(state.epoch == OotSceneEpoch());
+    }
+}
+
+bool GetOotCameraRoll(int16_t camera, void* play, int16_t* roll) {
+    const auto& state = State();
+    if (!OnOwnerThread() || !roll || !state.token || !state.hasRoll || state.camera != camera || state.play != play ||
+        state.epoch != OotSceneEpoch() || OotServiceOwnerBlocked(state.owner) || !state.bridge.cameraValid ||
+        !state.bridge.cameraValid(state.camera, state.play)) {
+        return false;
+    }
+    *roll = state.view.roll;
+    return true;
+}
+
+void NotifyOotCameraCleared(void* play, int16_t camera) {
+    const auto& state = State();
+    if (OnOwnerThread() && state.token && state.play == play && state.camera == camera) {
+        DropCamera(false); // o chamador vai liberar o slot; nunca destruir de novo
+    }
+}
+
 const ShipOotRenderV1& GetOotNativeRenderService() {
     return renderV1;
 }
@@ -570,8 +731,8 @@ void UpdateOotCamera() {
     if (!state.token || !Holds(state.token)) {
         return;
     }
-    if (state.hasView && state.bridge.cameraApply) {
-        state.bridge.cameraApply(state.camera, state.play, state.view);
+    if (state.hasView) {
+        ApplyView();
     }
 }
 

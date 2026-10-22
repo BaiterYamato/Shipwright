@@ -37,6 +37,7 @@ add_executable(oot_native_engine_tests
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeRegistry.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeHooks.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativePlayerAction.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeSave.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeItems.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeRando.cpp"

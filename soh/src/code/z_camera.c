@@ -15,6 +15,7 @@ s16 Camera_ChangeSettingFlags(Camera* camera, s16 setting, s16 flags);
 s32 Camera_RequestModeImpl(Camera* camera, s16 requestedMode, u8 forceModeChange);
 s32 Camera_QRegInit(void);
 s32 Camera_UpdateWater(Camera* camera);
+extern void LinkSpan_CameraView(Camera* camera);
 
 #define RELOAD_PARAMS \
     (camera->animState == 0 || camera->animState == 0xA || camera->animState == 0x14 || R_RELOAD_CAM_PARAMS)
@@ -7685,6 +7686,7 @@ Vec3s Camera_Update(Camera* camera) {
     }
 
     OREG(0) &= ~8;
+    LinkSpan_CameraView(camera);
 
     if (camera->status == 3) {
         return camera->inputDir;
