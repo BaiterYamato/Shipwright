@@ -2059,6 +2059,55 @@ extern "C" void ShipLua_TransformGivenItem(GetItemEntry* entry) {
         *entry = replaced;
     }
 }
+
+// hook.oot.actor.damage: depois dos hooks nativos e antes de somar o dano ao alvo.
+// Só um resultado numérico finito substitui damage; bool e string não são números.
+extern "C" float ShipLua_TransformActorDamage(Actor* target, Actor* attacker, uint32_t dmgFlags, uint8_t damageEffect,
+                                              uint8_t attackerIsPlayer, float baseDamage, float damage) {
+    if (gModHost == nullptr || target == nullptr) {
+        return damage;
+    }
+    // O core expõe apenas a contagem global, não uma consulta por nome de evento.
+    if (gModHost->SubscriptionCount() == 0) {
+        return damage;
+    }
+    try {
+        const auto result = DispatchHookTransform(
+            "hook.oot.actor.damage",
+            ShipLua::EventPayload{
+                { "target_id", static_cast<std::int64_t>(target->id) },
+                { "target_category", static_cast<std::int64_t>(target->category) },
+                { "attacker_id", attacker != nullptr ? static_cast<std::int64_t>(attacker->id) : std::int64_t{ -1 } },
+                { "attacker_category",
+                  attacker != nullptr ? static_cast<std::int64_t>(attacker->category) : std::int64_t{ -1 } },
+                { "attacker_is_player", attackerIsPlayer != 0 },
+                { "dmg_flags", static_cast<std::int64_t>(dmgFlags) },
+                { "damage_effect", static_cast<std::int64_t>(damageEffect) },
+                { "base_damage", static_cast<double>(baseDamage) },
+                { "damage", static_cast<double>(damage) },
+            });
+        if (!result.has_value()) {
+            return damage;
+        }
+        double replacement = 0.0;
+        if (const auto* integer = std::get_if<std::int64_t>(&result->value)) {
+            replacement = static_cast<double>(*integer);
+        } else if (const auto* number = std::get_if<double>(&result->value)) {
+            replacement = *number;
+        } else {
+            return damage;
+        }
+        if (!std::isfinite(replacement)) {
+            return damage;
+        }
+        // Limitar antes de converter evita overflow para float com doubles finitos grandes.
+        return static_cast<float>(std::clamp(replacement, 0.0, 255.0));
+    } catch (...) {
+        // Falha de alocação ou outra exceção C++ não atravessa a fronteira C.
+        return damage;
+    }
+}
+
 std::optional<std::string> gCustomBodyOverrideAnim;
 bool gCustomBodyOverrideOnce = false;
 int gCustomBodyRollCharge = 0;

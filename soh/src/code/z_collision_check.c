@@ -6,6 +6,8 @@
 #include "linkspan_vanilla.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
+extern f32 LinkSpan_ActorDamage(PlayState* play, Collider* collider, ColliderInfo* info, f32 damage);
+
 typedef s32 (*ColChkResetFunc)(PlayState*, Collider*);
 typedef void (*ColChkBloodFunc)(PlayState*, Collider*, Vec3f*);
 typedef void (*ColChkApplyFunc)(PlayState*, CollisionCheckContext*, Collider*);
@@ -3026,7 +3028,8 @@ void CollisionCheck_ApplyDamage(PlayState* play, CollisionCheckContext* colChkCt
         collider->actor->colChkInfo.damageEffect = tbl->table[i] >> 4 & 0xF;
     }
     if (!(collider->acFlags & AC_HARD)) {
-        collider->actor->colChkInfo.damage += damage;
+        // HOST-SLIM-001 (RFC 0029): oot.actor.damage e hook.oot.actor.damage trocam o dano; sem hook, volta `damage`.
+        collider->actor->colChkInfo.damage += LinkSpan_ActorDamage(play, collider, info, damage);
     }
 
     if (CVarGetInteger(CVAR_ENHANCEMENT("IvanCoopModeEnabled"), 0)) {

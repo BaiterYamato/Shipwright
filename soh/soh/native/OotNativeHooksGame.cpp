@@ -400,3 +400,24 @@ extern "C" void LinkSpan_PlayerDestroyed(Player* player) {
 extern "C" void LinkSpan_PlayerActionChanged(Player* player) {
     ShipLuaHost::NotifyOotPlayerActionChanged(player);
 }
+
+// HOST-SLIM-001 (RFC 0029). Definida em ShipLuaBootstrap.cpp (passo 6).
+extern "C" float ShipLua_TransformActorDamage(Actor* target, Actor* attacker, uint32_t dmgFlags, uint8_t damageEffect,
+                                              uint8_t attackerIsPlayer, float baseDamage, float damage);
+
+extern "C" float LinkSpan_ActorDamage(PlayState* play, Collider* collider, ColliderInfo* info, float damage) {
+    if (!collider || !collider->actor || !info || !info->acHitInfo)
+        return damage;
+    Actor* target = collider->actor;
+    // Atacante do elemento; collider->ac guarda só o último AT que acertou o collider e não serve de reserva.
+    Actor* attacker = info->acHit ? info->acHit->actor : nullptr;
+    const uint32_t dmgFlags = info->acHitInfo->toucher.dmgFlags;
+    const uint8_t damageEffect = target->colChkInfo.damageEffect;
+    const uint8_t attackerIsPlayer = info->acHit && (info->acHit->atFlags & AT_TYPE_PLAYER) ? 1 : 0;
+    ShipOotActorDamageHookV1 payload{ sizeof(payload),  play, target, attacker, dmgFlags, damageEffect,
+                                      attackerIsPlayer, {},   damage, damage };
+    const float nativeDamage = ShipLuaHost::DispatchOotActorDamage(&payload);
+    const float finalDamage =
+        ShipLua_TransformActorDamage(target, attacker, dmgFlags, damageEffect, attackerIsPlayer, damage, nativeDamage);
+    return ShipLuaHost::FinalizeOotActorDamage(damage, finalDamage, target->colChkInfo.damage, nativeDamage != damage);
+}

@@ -40,6 +40,7 @@
 #include "OotNativePublicSymbols.h"
 #include "oot_layout_id.h"
 #include <shiplua/manifest/ManifestParser.h>
+#include <shiplua/host/ModHost.h>
 #include <algorithm>
 #include <atomic>
 #include <array>
@@ -1385,7 +1386,220 @@ const ShipOotResourcesV4* Find(const ShipLua::NativeProviderPolicy& policy) {
 }
 } // namespace HostSlimResources
 
+namespace HostSlimDamage {
+struct State {
+    float output = 0.0f;
+    float before = 0.0f;
+    float after = 0.0f;
+    unsigned beforeCalls = 0;
+    unsigned afterCalls = 0;
+    unsigned transformCalls = 0;
+    bool fail = false;
+    ShipOotActorDamageHookV1 seen{};
+};
+
+ShipNativeStatus SHIP_NATIVE_CALL Transform(void* user, const ShipNativeHookCall* call) {
+    auto* state = static_cast<State*>(user);
+    auto* payload = static_cast<ShipOotActorDamageHookV1*>(call->payload);
+    ++state->transformCalls;
+    payload->damage = state->output;
+    return state->fail ? SHIP_NATIVE_FAILURE : SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Observe(void* user, const ShipNativeHookCall* call) {
+    auto* state = static_cast<State*>(user);
+    const auto* payload = static_cast<const ShipOotActorDamageHookV1*>(call->payload);
+    if (call->phase == SHIP_NATIVE_HOOK_BEFORE) {
+        state->before = payload->damage;
+        ++state->beforeCalls;
+    } else {
+        state->after = payload->damage;
+        state->seen = *payload;
+        ++state->afterCalls;
+    }
+    return SHIP_NATIVE_OK;
+}
+
+uint64_t Hook(State& state, uint32_t mode, uint32_t phase, ShipNativeHookFn callback) {
+    const ShipNativeHookSpec spec{ sizeof(spec),
+                                   LINKSPAN_OOT_HOOK_ACTOR_DAMAGE,
+                                   LINKSPAN_OOT_HOOKS_VERSION,
+                                   sizeof(ShipOotActorDamageHookV1),
+                                   mode,
+                                   phase,
+                                   0,
+                                   callback,
+                                   &state };
+    uint64_t handle = 0;
+    const auto status = ShipLuaHost::GetOotHookRegistry()->Register("damage.test", spec, &handle);
+    Check(status == SHIP_NATIVE_OK && handle != 0, "registra hook de dano");
+    return handle;
+}
+
+void Run() {
+    auto* registry = ShipLuaHost::GetOotHookRegistry();
+    const auto point = ShipLuaHost::GetOotHookPoints().actorDamage;
+    Check(point && registry->FindPoint(LINKSPAN_OOT_HOOK_ACTOR_DAMAGE, LINKSPAN_OOT_HOOKS_VERSION) == point,
+          "oot.actor.damage v1 declarado");
+    State state{};
+    ShipNativeHookSpec replace{ sizeof(replace),
+                                LINKSPAN_OOT_HOOK_ACTOR_DAMAGE,
+                                LINKSPAN_OOT_HOOKS_VERSION,
+                                sizeof(ShipOotActorDamageHookV1),
+                                SHIP_NATIVE_HOOK_REPLACE,
+                                0,
+                                0,
+                                Transform,
+                                &state };
+    uint64_t refused = 0;
+    Check(registry->Register("damage.test", replace, &refused) == SHIP_NATIVE_UNSUPPORTED, "dano recusa REPLACE");
+
+    const ShipOotActorDamageHookV1 input{ sizeof(input), &play, &player, &spawned, 0x12345678u, 3, 1, {}, 4.0f, 4.0f };
+    auto payload = input;
+    Check(ShipLuaHost::DispatchOotActorDamage(&payload) == 4.0f, "sem hook devolve o dano do jogo");
+    for (const float value : { -0.0f, -1.0f, 300.0f }) {
+        payload = input;
+        payload.damage = value;
+        const float result = ShipLuaHost::DispatchOotActorDamage(&payload);
+        Check(std::memcmp(&result, &value, sizeof(value)) == 0, "sem hook não normaliza nem perde bits");
+    }
+
+    Hook(state, SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_BEFORE, Observe);
+    Hook(state, SHIP_NATIVE_HOOK_TRANSFORM, 0, Transform);
+    Hook(state, SHIP_NATIVE_HOOK_OBSERVE, SHIP_NATIVE_HOOK_AFTER, Observe);
+    state.output = 8.0f;
+    payload = input;
+    Check(ShipLuaHost::DispatchOotActorDamage(&payload) == 8.0f && state.before == 4.0f && state.after == 8.0f &&
+              state.beforeCalls == 1 && state.afterCalls == 1 && state.transformCalls == 1,
+          "TRANSFORM troca; OBSERVE BEFORE e AFTER veem entrada e saída");
+    Check(state.seen.size == sizeof(input) && state.seen.play_state == &play && state.seen.target == &player &&
+              state.seen.attacker == &spawned && state.seen.dmg_flags == 0x12345678u && state.seen.damage_effect == 3 &&
+              state.seen.attacker_is_player == 1 && state.seen.reserved[0] == 0 && state.seen.reserved[1] == 0 &&
+              state.seen.base_damage == 4.0f,
+          "payload preserva contexto e base_damage");
+
+    const auto expect = [&](float output, float expected) {
+        state.output = output;
+        payload = input;
+        Check(ShipLuaHost::DispatchOotActorDamage(&payload) == expected && state.after == expected,
+              "host limita o resultado antes do OBSERVE AFTER");
+    };
+    expect(-2.0f, 0.0f);
+    expect(999.0f, 255.0f);
+    expect(std::numeric_limits<float>::infinity(), 255.0f);
+    expect(-std::numeric_limits<float>::infinity(), 0.0f);
+    expect(std::numeric_limits<float>::quiet_NaN(), 4.0f);
+    expect(2.5f, 2.5f);
+    registry->RemoveOwner("damage.test");
+    Check(!registry->HasHooks(point), "remove os hooks de dano do dono");
+
+    state = {};
+    state.fail = true;
+    state.output = 200.0f;
+    const auto failing = Hook(state, SHIP_NATIVE_HOOK_TRANSFORM, 0, Transform);
+    for (unsigned attempt = 1; attempt <= 3; ++attempt) {
+        payload = input;
+        Check(ShipLuaHost::DispatchOotActorDamage(&payload) == 4.0f && state.transformCalls == attempt,
+              "falha restaura o dano da entrada");
+        Check(registry->HasHooks(point) == (attempt < 3), "terceira falha desativa o hook");
+    }
+    const auto hooks = registry->Describe();
+    Check(std::any_of(hooks.begin(), hooks.end(),
+                      [&](const ShipLua::NativeHookInfo& hook) {
+                          return hook.handle == failing && !hook.enabled && hook.failures == 3;
+                      }),
+          "diagnóstico marca três falhas e hook desativado");
+    payload = input;
+    Check(ShipLuaHost::DispatchOotActorDamage(&payload) == 4.0f && state.transformCalls == 3,
+          "quarto acerto não chama o hook desativado");
+    registry->RemoveOwner("damage.test");
+
+    // Corte final, depois do Lua: só quando algum hook trocou o valor, e no que falta para 255 no acumulador u8.
+    uint8_t accumulated = 250;
+    accumulated += ShipLuaHost::FinalizeOotActorDamage(1.0f, 255.0f, accumulated);
+    Check(accumulated == 255, "elemento trocado usa só o que falta no acumulador");
+    accumulated += ShipLuaHost::FinalizeOotActorDamage(1.0f, 255.0f, accumulated);
+    Check(accumulated == 255, "segundo elemento trocado não passa de 255");
+    Check(ShipLuaHost::FinalizeOotActorDamage(1.0f, 2.5f, 254) == 1.0f, "fração trocada respeita o que falta");
+    Check(ShipLuaHost::FinalizeOotActorDamage(1.0f, 0.0f, 10) == 0.0f, "zerar continua zerando");
+    Check(ShipLuaHost::FinalizeOotActorDamage(4.0f, 4.0f, 254, true) == 1.0f,
+          "Lua que devolve o original não apaga a troca nativa");
+    Check(ShipLuaHost::FinalizeOotActorDamage(4.0f, 4.0f, 254) == 4.0f, "sem troca em nenhum estágio, vanilla");
+    for (const float original : { -0.0f, -1.0f, 300.0f }) {
+        const float result = ShipLuaHost::FinalizeOotActorDamage(original, original, 250);
+        Check(std::memcmp(&result, &original, sizeof(original)) == 0, "valor sem troca passa intacto");
+    }
+}
+} // namespace HostSlimDamage
+
+static void TestActorDamageLuaHostContract() {
+    ShipLua::LuaApiHostContext context{ "oot", "test-host", "0.5.0", { "hooks.bridge" } };
+    ShipLua::ModHost host(context);
+    ShipLua::Manifest manifest;
+    manifest.id = "test.f2i_actor_damage";
+    manifest.name = "Contrato Lua de dano no host";
+    manifest.version = "0.1.0";
+    manifest.apiRange = ">=0.4 <0.6";
+    manifest.entrypoint = "main.lua";
+    manifest.loadPriority = 50;
+    const auto loaded = host.LoadModFromManifestAndSource(manifest, R"lua(
+local ship = require("ship")
+assert(not pcall(ship.hooks.result, 1))
+calls = 0
+damage_subscription = ship.events.on("hook.oot.actor.damage", function(event)
+    calls = calls + 1
+    local count = 0
+    for _ in pairs(event) do count = count + 1 end
+    assert(count == 9)
+    assert(event.target_id == 7 and event.target_category == 5)
+    assert(event.attacker_id == 0 and event.attacker_category == 2)
+    assert(event.attacker_is_player == true)
+    assert(event.dmg_flags == 4294967295 and event.damage_effect == 15)
+    assert(event.base_damage == 4.5 and event.damage == 6.25)
+    assert(ship.hooks.result(12.5))
+    assert(not pcall(ship.hooks.result, 0/0))
+    assert(not pcall(ship.hooks.result, math.huge))
+    assert(not pcall(ship.hooks.result, -math.huge))
+end)
+)lua");
+    Check(loaded.isOk(), "F2i: inscricao Lua no evento de dano deve carregar");
+    if (!loaded.isOk())
+        return;
+    ShipLua::EventPayload payload{
+        { "target_id", std::int64_t{ 7 } },
+        { "target_category", std::int64_t{ 5 } },
+        { "attacker_id", std::int64_t{ 0 } },
+        { "attacker_category", std::int64_t{ 2 } },
+        { "attacker_is_player", true },
+        { "dmg_flags", std::int64_t{ 4294967295LL } },
+        { "damage_effect", std::int64_t{ 15 } },
+        { "base_damage", 4.5 },
+        { "damage", 6.25 },
+    };
+    const auto dispatched = host.DispatchEvent("hook.oot.actor.damage", payload);
+    Check(dispatched.isOk() && dispatched.value->callbacksInvoked == 1 && dispatched.value->failures.empty(),
+          "F2i: callback Lua deve receber o payload de dano");
+    const auto found = payload.find("__hook_result");
+    Check(found != payload.end() && std::holds_alternative<double>(found->second.value) &&
+              std::get<double>(found->second.value) == 12.5,
+          "F2i: rejeitar nao finitos preserva o ultimo resultado valido");
+    Check(host.GetRuntime(manifest.id)
+              ->DoString(R"lua(
+assert(calls == 1)
+assert(not pcall(require("ship").hooks.result, 1))
+assert(require("ship").events.off(damage_subscription))
+)lua")
+              .isOk(),
+          "F2i: contrato de escopo e off deve passar");
+    payload.erase("__hook_result");
+    const auto empty = host.DispatchEvent("hook.oot.actor.damage", payload);
+    Check(empty.isOk() && empty.value->callbacksInvoked == 0 && empty.value->failures.empty() &&
+              !payload.contains("__hook_result"),
+          "F2i: evento sem ouvinte deve preservar a ausencia de resultado");
+}
+
 int main(int argc, char** argv) {
+    TestActorDamageLuaHostContract();
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
     ShipLuaHost::SetOotNativeGamepadBridge({ HasGamepad, GetGamepadButtons, ClearButton, BindButton, ReloadMappings,
@@ -1638,6 +1852,7 @@ int main(int argc, char** argv) {
         Check(!ShipLuaHost::HasOotHooks(points.playerAction) && !ShipLuaHost::HasOotHooks(points.playerMaskDraw),
               "hooks do dono saem");
     }
+    HostSlimDamage::Run();
     {
         using namespace HostSlimMovement;
         static_assert(offsetof(ShipOotMovementV3, get_action_state) == sizeof(ShipOotMovementV2));
