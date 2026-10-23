@@ -46,8 +46,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Read(const char* path, uint8_t* output, uint32
         if (live.empty())
             return SHIP_NATIVE_FAILURE;
         const auto record = live.begin()->second;
-        const auto status = record.transform(record.user, "textures/res_probe/a",
-                                             reinterpret_cast<const uint8_t*>("LINKSPAN-RES-A"), 13, Write, &value);
+        const char payload[] = "LINKSPAN-RES-A";
+        const auto status =
+            record.transform(record.user, "textures/res_probe/a", reinterpret_cast<const uint8_t*>(payload),
+                             sizeof(payload) - 1, Write, &value);
         if (status != SHIP_NATIVE_OK)
             return status;
         if (fault == Fault::Bytes)
