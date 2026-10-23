@@ -1,5 +1,6 @@
 #include "ShipLuaBootstrap.h"
 #include "native/OotNativeEngine.h"
+#include "native/OotPrefixedArchive.h"
 #include "native/OotNativeRegistry.h"
 #include "native/OotNativeScenes.h"
 #include "native/OotNativeHooks.h"
@@ -61,6 +62,7 @@
 #include <ship/resource/archive/Archive.h>
 #include <ship/resource/archive/ArchiveManager.h>
 #include <ship/resource/archive/O2rArchive.h>
+#include <ship/utils/StringHelper.h>
 #include <shiplua/generated/ApiBindings.h>
 #include <shiplua/host/ModHost.h>
 #include <shiplua/manifest/ManifestParser.h>
@@ -240,20 +242,79 @@ ShipNativeStatus NativeMountResourceArchive(const char* archivePath, uint64_t* h
     return SHIP_NATIVE_OK;
 }
 
-ShipNativeStatus NativeUnmountResourceArchive(uint64_t handle) {
-    const auto entry = gNativeResourceArchives.find(handle);
+// HOST-SLIM-001 (RFC 0029): linkspan.oot.resources V4. O handle é do mesmo mapa do mount_archive.
+ShipNativeStatus NativeMountPrefixedResourceArchive(const ShipLuaHost::OotPrefixedMountRequest& request,
+                                                    uint64_t* handle, ShipOotMountInfoV1* info) {
+    *handle = 0;
     const auto manager = NativeResourceManager();
     const auto archives = manager ? manager->GetArchiveManager() : nullptr;
-    if (entry == gNativeResourceArchives.end())
-        return SHIP_NATIVE_INVALID_ARGUMENT;
     if (!archives)
         return SHIP_NATIVE_UNSUPPORTED;
-    for (const auto& [hash, path] : *entry->second->ListFiles()) {
+    std::error_code error;
+    const auto absolute = std::filesystem::absolute(request.archivePath, error).lexically_normal();
+    if (error || !std::filesystem::is_regular_file(absolute, error) ||
+        !StringHelper::IEquals(absolute.extension().string(), ".o2r"))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    const uint64_t next = gNextNativeResourceArchive;
+    if (!next)
+        return SHIP_NATIVE_LIMIT;
+    const auto mounted =
+        std::make_shared<ShipLuaHost::OotPrefixedArchive>(request, absolute.generic_string(), next, archives.get());
+    mounted->Load();
+    if (!mounted->IsLoaded())
+        return mounted->Refusal() == SHIP_NATIVE_OK ? SHIP_NATIVE_FAILURE : mounted->Refusal();
+    // AddArchive pode lançar depois de publicar parte do índice. A limpeza cobre também essa chamada.
+    const auto rollback = [&] {
+        try {
+            mounted->Retire();
+        } catch (...) {}
+        try {
+            archives->RemoveArchive(mounted);
+        } catch (...) {}
+    };
+    try {
+        if (!archives->AddArchive(mounted)) {
+            rollback();
+            return SHIP_NATIVE_FAILURE;
+        }
+        for (const auto& [hash, path] : *mounted->ListFiles()) {
+            (void)hash;
+            manager->UnloadResource(path);
+        }
+        if (!gNativeResourceArchives.emplace(next, mounted).second) {
+            rollback();
+            return SHIP_NATIVE_FAILURE;
+        }
+    } catch (...) {
+        rollback();
+        return SHIP_NATIVE_FAILURE;
+    }
+    ++gNextNativeResourceArchive;
+    *handle = next;
+    *info = mounted->Info();
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus NativeUnmountResourceArchive(uint64_t handle) {
+    const auto entry = gNativeResourceArchives.find(handle);
+    if (entry == gNativeResourceArchives.end())
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    const auto mounted = entry->second;
+    // HOST-SLIM-001: aposenta antes de consultar o manager. Falha posterior não reativa o transform.
+    if (const auto prefixed = std::dynamic_pointer_cast<ShipLuaHost::OotPrefixedArchive>(mounted))
+        prefixed->Retire();
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    if (!archives)
+        return SHIP_NATIVE_UNSUPPORTED;
+    const auto files = *mounted->ListFiles();
+    if (archives->RemoveArchive(mounted) != 1)
+        return SHIP_NATIVE_FAILURE;
+    for (const auto& [hash, path] : files) {
         (void)hash;
         manager->UnloadResource(path);
     }
-    if (archives->RemoveArchive(entry->second) != 1)
-        return SHIP_NATIVE_FAILURE;
+    SPDLOG_INFO("Link-Span desmontou archive {} de '{}'", handle, mounted->GetPath());
     gNativeResourceArchives.erase(entry);
     return SHIP_NATIVE_OK;
 }
@@ -7201,7 +7262,7 @@ void Initialize() {
     SetOotNativeResourceBridge({ NativeHasResourceFile, NativeReadResourceFile, NativeListResourceFiles,
                                  NativeDirtyResources, NativeUnloadResource, NativeMountResourceArchive,
                                  NativeUnmountResourceArchive, NativeGetResourceGameVersions,
-                                 NativeReadResourceFileLayers });
+                                 NativeReadResourceFileLayers, NativeMountPrefixedResourceArchive });
     gModHost = std::make_unique<ShipLua::ModHost>(context, CreateLogger(), CreateOotNativePolicy());
     SPDLOG_INFO("Link-Span: providers nativos (ABI {}.{}) e core extensions ativos; serviços linkspan.oot.*; "
                 "pacotes ZIP/SHIPMOD",

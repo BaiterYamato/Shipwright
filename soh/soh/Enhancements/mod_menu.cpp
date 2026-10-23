@@ -234,7 +234,13 @@ void UpdateModFiles(bool init = false, bool reset = false) {
                     // .o2r de cada um pelo provider e os solta no unload. Montados aqui também, ficavam abertos
                     // até o fim e o modloader não apagava a pasta extraída (NEI-BUNDLE-001). O .shiplua-disabled
                     // guarda mods que o boot guard desligou.
-                    if (p.path().filename().generic_string().rfind(".shiplua-", 0) == 0) {
+                    // HOST-SLIM-001 (RFC 0029): pasta com manifest.toml é mod do Link-Span, e os .o2r dela são do
+                    // modloader (assets/ com prefixo pelo bootstrap, archives do provider pelo resources V4).
+                    // Montados aqui também, caíam na raiz do VFS por cima da montagem privada. O mesmo mod em
+                    // .shipmod/ZIP já ficava de fora, extraído em .shiplua-cache.
+                    std::error_code manifestError;
+                    if (p.path().filename().generic_string().rfind(".shiplua-", 0) == 0 ||
+                        std::filesystem::is_regular_file(p.path() / "manifest.toml", manifestError)) {
                         it.disable_recursion_pending();
                     }
                     continue;
