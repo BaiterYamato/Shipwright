@@ -2072,27 +2072,38 @@ extern "C" float ShipLua_TransformActorDamage(Actor* target, Actor* attacker, ui
         return damage;
     }
     try {
-        const auto result = DispatchHookTransform(
-            "hook.oot.actor.damage",
-            ShipLua::EventPayload{
-                { "target_id", static_cast<std::int64_t>(target->id) },
-                { "target_category", static_cast<std::int64_t>(target->category) },
-                { "attacker_id", attacker != nullptr ? static_cast<std::int64_t>(attacker->id) : std::int64_t{ -1 } },
-                { "attacker_category",
-                  attacker != nullptr ? static_cast<std::int64_t>(attacker->category) : std::int64_t{ -1 } },
-                { "attacker_is_player", attackerIsPlayer != 0 },
-                { "dmg_flags", static_cast<std::int64_t>(dmgFlags) },
-                { "damage_effect", static_cast<std::int64_t>(damageEffect) },
-                { "base_damage", static_cast<double>(baseDamage) },
-                { "damage", static_cast<double>(damage) },
-            });
-        if (!result.has_value()) {
+        ShipLua::EventPayload payload{
+            { "target_id", static_cast<std::int64_t>(target->id) },
+            { "target_category", static_cast<std::int64_t>(target->category) },
+            { "attacker_id", attacker != nullptr ? static_cast<std::int64_t>(attacker->id) : std::int64_t{ -1 } },
+            { "attacker_category",
+              attacker != nullptr ? static_cast<std::int64_t>(attacker->category) : std::int64_t{ -1 } },
+            { "attacker_is_player", attackerIsPlayer != 0 },
+            { "dmg_flags", static_cast<std::int64_t>(dmgFlags) },
+            { "damage_effect", static_cast<std::int64_t>(damageEffect) },
+            { "base_damage", static_cast<double>(baseDamage) },
+            { "damage", static_cast<double>(damage) },
+        };
+        const auto outcome = gModHost->DispatchEvent("hook.oot.actor.damage", payload);
+        if (!outcome.isOk()) {
+            return damage;
+        }
+        // Um callback que gravou o resultado e depois falhou deixa o valor parcial no payload, e o core
+        // só anota a falha. Nesse caso o dano de entrada passa intacto.
+        if (!outcome.value->failures.empty()) {
+            for (const ShipLua::CallbackFailure& failure : outcome.value->failures) {
+                SPDLOG_ERROR("ShipLua [{}] falhou em hook.oot.actor.damage: {}", failure.modId, failure.message);
+            }
+            return damage;
+        }
+        const auto result = payload.find("__hook_result");
+        if (result == payload.end()) {
             return damage;
         }
         double replacement = 0.0;
-        if (const auto* integer = std::get_if<std::int64_t>(&result->value)) {
+        if (const auto* integer = std::get_if<std::int64_t>(&result->second.value)) {
             replacement = static_cast<double>(*integer);
-        } else if (const auto* number = std::get_if<double>(&result->value)) {
+        } else if (const auto* number = std::get_if<double>(&result->second.value)) {
             replacement = *number;
         } else {
             return damage;
