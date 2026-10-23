@@ -40,6 +40,7 @@ struct OotHookPoints {
     uint64_t playDestroy = 0;
     uint64_t audioMix = 0;
     uint64_t modsArchives = 0;
+    uint64_t actorDamage = 0;
 };
 void SetOotHookLogger(void (*logger)(const std::string& message));
 // Cria um registro novo com os pontos do host declarados. Chamar na thread do jogo.
@@ -78,4 +79,11 @@ struct OotModArchive {
 };
 // Dispara oot.mods.archives (OBSERVE) com as entradas; thread do jogo, uma vez no boot.
 void DispatchOotModArchives(const std::vector<OotModArchive>& archives);
+// Thread do jogo. Sem hooks, devolve damage intacto. Payload válido durante esta chamada.
+float DispatchOotActorDamage(ShipOotActorDamageHookV1* payload);
+// Parcela aplicada depois do Lua. Se algum estágio trocou o valor (nativeChanged guarda a troca nativa mesmo que
+// o Lua devolva o original), cabe no que falta para 255 no acumulador u8 do alvo; sem troca, fica o vanilla.
+float FinalizeOotActorDamage(float originalDamage, float transformedDamage, uint8_t accumulatedDamage,
+                             bool nativeChanged = false);
+
 } // namespace ShipLuaHost

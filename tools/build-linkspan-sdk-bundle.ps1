@@ -154,6 +154,16 @@ try {
         }
     }
 
+    # ABI do próprio header distribuído; não confundir com a ABI mínima dos exemplos.
+    $abiHeader = Require-File (Join-Path $stage 'include/shiplua/native/ship_native_abi.h')
+    $abiText = [IO.File]::ReadAllText($abiHeader)
+    $abiParts = foreach ($part in @('MAJOR', 'MINOR')) {
+        $abiMatches = [regex]::Matches($abiText, '(?m)^[ \t]*#[ \t]*define[ \t]+SHIP_NATIVE_ABI_' + $part + '[ \t]+([0-9]+)[uU]?[ \t]*\r?$')
+        if ($abiMatches.Count -ne 1) { throw "Definição numérica única de SHIP_NATIVE_ABI_$part obrigatória: $abiHeader" }
+        $abiMatches[0].Groups[1].Value
+    }
+    $nativeProviderAbi = $abiParts -join '.'
+
     $configTemplate = @'
 # Configuração Release portátil. Nenhuma dependência de link com o host.
 set(LinkSpanOotSdk_VERSION "@VERSION@")
@@ -309,7 +319,7 @@ configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
     }
     $metadata = [ordered]@{
         schemaVersion = 1; packageType = 'linkspan.oot.sdk'; version = $Version; game = 'oot'; platform = 'windows-x64'
-        configuration = 'Release'; nativeProviderAbi = '1.3'; ootLayoutId = $layoutId
+        configuration = 'Release'; nativeProviderAbi = $nativeProviderAbi; ootLayoutId = $layoutId
         hostSha256 = $hostHash; hostRequired = 'Shipwright 9.3.0 with the matching Link-Span overlay'
         compiler = [ordered]@{ id = $compilerId; version = $compilerVersion; pointerSize = 8; runtime = 'MultiThreaded'; layoutHashFlags = $flags; layoutHashReleaseFlags = $releaseFlags }
         importLibraries = @(); headerCount = $seen.Count; heartSeedsPresent = [bool]$heartPresent

@@ -289,4 +289,28 @@ typedef struct ShipOotModArchivesHookV1 {
     uint32_t archive_stride; /* sizeof de cada entrada: percorra por ele, as entradas podem crescer */
 } ShipOotModArchivesHookV1;
 
+/* oot.actor.damage: TRANSFORM ou OBSERVE, ShipOotActorDamageHookV1, thread do jogo. CollisionCheck_ApplyDamage
+ *   (z_collision_check.c) vai somar `damage` em colChkInfo.damage de `target`: um AT acertou o AC dele, sem AC_HARD,
+ *   antes do multiplicador do modo cooperativo. Roda uma vez por elemento acertado. `base_damage` é o que o jogo
+ *   calculou (tabela de dano, ou dano do AT menos a defesa); o TRANSFORM troca `damage`. O host corta o resultado em
+ *   0..255 e trata NaN como `base_damage`; se algum hook (nativo ou Lua) trocou o valor, corta também no que falta
+ *   para 255 em colChkInfo.damage (u8: a soma trunca frações), antes do multiplicador cooperativo, que pode passar
+ *   disso como hoje. Dano que não passa por aqui (débitos de chefes que não usam o dano central, play->damagePlayer
+ *   de agarrões, empurrões com dano, queda, fogo, armadilhas) fica fora. Depois dos hooks nativos, o host emite o
+ *   evento Lua hook.oot.actor.damage com o valor já trocado. */
+#define LINKSPAN_OOT_HOOK_ACTOR_DAMAGE "oot.actor.damage"
+
+typedef struct ShipOotActorDamageHookV1 {
+    uint32_t size;
+    void* play_state;
+    void* target;               /* Actor* que recebe o dano (dono do AC) */
+    void* attacker;             /* Actor* dono do collider AT que acertou o elemento; pode ser NULL */
+    uint32_t dmg_flags;         /* toucher.dmgFlags do elemento AT */
+    uint8_t damage_effect;      /* colChkInfo.damageEffect do alvo (a tabela de dano recalcula, 0..15) */
+    uint8_t attacker_is_player; /* 1 se o AT tem AT_TYPE_PLAYER (espada, flechas, bombas, o que o Link arremessa) */
+    uint8_t reserved[2];
+    float base_damage; /* calculado pelo jogo; só leitura */
+    float damage;      /* o que vai somar; o TRANSFORM troca */
+} ShipOotActorDamageHookV1;
+
 #endif

@@ -3,6 +3,8 @@
 #include "OotNativePlayerBody.h"
 
 #include "oot_hooks.h"
+#include <algorithm>
+#include <cmath>
 #include "OotNativeAudioMix.h"
 
 #include <stdexcept>
@@ -19,6 +21,13 @@ uint64_t Declare(const char* name, uint32_t payloadSize,
     const ShipNativeHookPointSpec spec{ sizeof(ShipNativeHookPointSpec), name, version, payloadSize, modes };
     uint64_t id = 0;
     return registry->DeclarePoint("", spec, &id) == SHIP_NATIVE_OK ? id : 0;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL NormalizeActorDamage(const ShipNativeHookCall* call) {
+    auto* payload = static_cast<ShipOotActorDamageHookV1*>(call->payload);
+    const float baseDamage = *static_cast<const float*>(call->original_context);
+    payload->damage = std::clamp(std::isnan(payload->damage) ? baseDamage : payload->damage, 0.0f, 255.0f);
+    return SHIP_NATIVE_OK;
 }
 
 // Operação do jogo para call_original. `allowed` é o valor do jogo, não o do payload: um OBSERVE que escreva no
@@ -124,6 +133,8 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
         ResetOotHooks();
         throw std::runtime_error("não foi possível instalar oot.audio.mix");
     }
+    points.actorDamage = Declare(LINKSPAN_OOT_HOOK_ACTOR_DAMAGE, sizeof(ShipOotActorDamageHookV1),
+                                 SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM, LINKSPAN_OOT_HOOKS_VERSION);
     return registry;
 }
 
@@ -248,6 +259,25 @@ void DispatchOotModArchives(const std::vector<OotModArchive>& archives) {
     ShipOotModArchivesHookV1 payload{ sizeof(payload), entries.data(), uint32_t(entries.size()),
                                       sizeof(ShipOotModArchiveV1) };
     registry->Dispatch(points.modsArchives, &payload, sizeof(payload), nullptr, nullptr);
+}
+
+float DispatchOotActorDamage(ShipOotActorDamageHookV1* payload) {
+    if (!payload)
+        return 0.0f;
+    if (!registry || !registry->HasHooks(points.actorDamage))
+        return payload->damage;
+    float baseDamage = payload->base_damage;
+    registry->Dispatch(points.actorDamage, payload, sizeof(*payload), NormalizeActorDamage, &baseDamage);
+    return payload->damage;
+}
+
+float FinalizeOotActorDamage(float originalDamage, float transformedDamage, uint8_t accumulatedDamage,
+                             bool nativeChanged) {
+    if (!nativeChanged && transformedDamage == originalDamage)
+        return transformedDamage;
+    // Os estágios anteriores já devolvem número finito em 0..255 quando trocam o dano.
+    const float remaining = 255.0f - static_cast<float>(accumulatedDamage);
+    return std::clamp(transformedDamage, 0.0f, remaining);
 }
 
 void ResetOotHooks() {
