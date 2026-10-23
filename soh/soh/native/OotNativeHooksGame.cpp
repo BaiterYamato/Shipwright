@@ -1,6 +1,8 @@
 // Liga os pontos de hook do host (OotNativeHooks.cpp) às chamadas do jogo.
 #include "OotNativeHooks.h"
+#include "OotNativeSkeletons.h"
 #include "OotNativePlayerAction.h"
+#include "OotNativePlayerBody.h"
 #include "OotNativeView.h"
 
 #include <spdlog/spdlog.h>
@@ -77,6 +79,8 @@ void DispatchRenderPlay(uint64_t point, PlayState* play) {
 
 // Chamadas pelo código C do jogo, sempre na thread do jogo.
 extern "C" void LinkSpan_PlayUpdate(PlayState* play) {
+    // HOST-SLIM-001: esqueletos V2 destruídos no frame anterior; a fila de animação deles já foi zerada ou rodada.
+    ShipLuaHost::ReleaseRetiredOotSkeletons();
     const auto* registry = ShipLuaHost::GetOotHookRegistry();
     const auto point = ShipLuaHost::GetOotHookPoints().playUpdate;
     if (!registry || !registry->HasHooks(point)) {
@@ -327,6 +331,7 @@ extern "C" void LinkSpan_PlayerAction(Player* player, PlayState* play, Input* in
 }
 
 extern "C" void LinkSpan_PlayerUpdateEnd(Player* player, PlayState* play) {
+    ShipLuaHost::OotPlayerBodyPlayerUpdate(play, player);
     ShipLuaHost::DispatchOotPlayerTick(ShipLuaHost::GetOotHookPoints().playerUpdateEnd, play, player);
 }
 

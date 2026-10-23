@@ -1,5 +1,6 @@
 #include "OotNativeHooks.h"
 #include "OotNativePlayerAction.h"
+#include "OotNativePlayerBody.h"
 
 #include "oot_hooks.h"
 #include "OotNativeAudioMix.h"
@@ -227,6 +228,7 @@ void DispatchOotPlayerMaskDraw(void* play, void* player, int32_t mask, uint8_t v
 
 void DispatchOotPlayDestroy(void* play) {
     // Leases da cena que acaba caem antes dos observers, sem tocar no jogo.
+    OotPlayerBodySceneEnded();
     AdvanceOotSceneEpoch();
     if (!HasOotHooks(points.playDestroy))
         return;

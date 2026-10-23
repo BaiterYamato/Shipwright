@@ -23,6 +23,8 @@
 #include "OotNativeSkeletons.h"
 #include "OotNativeHooks.h"
 #include "OotNativePlayerAction.h"
+#include "OotNativePlayerBody.h"
+#include "oot_player_body.h"
 #include "oot_audio.h"
 #include "OotNativeAudioMix.h"
 #include "oot_text.h"
@@ -43,10 +45,12 @@
 #include <cmath>
 #include <chrono>
 #include <cstdlib>
+#include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <set>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -995,6 +999,236 @@ const ShipOotMovementV3* Find(const ShipLua::NativeProviderPolicy& policy) {
 }
 } // namespace HostSlimMovement
 
+namespace HostSlimSkeletons {
+struct Instance {
+    uint32_t format = SHIP_OOT_SKELETON_STANDARD;
+    std::string animation;
+    float frame = 0.0f;
+    float speed = 1.0f;
+    uint8_t mode = LINKSPAN_OOT_ANIM_LOOP;
+    bool reverse = false;
+};
+int created = 0, destroyed = 0, plays = 0, draws = 0;
+std::vector<std::string> playLog;
+std::set<std::string> notLoaded; // caminhos "__OTR__..." que não são animação do formato
+bool failCreate = false;
+
+ShipNativeStatus CreateEx(uint32_t format, const char*, const char* animation, const int16_t*, void** out,
+                          float* assetLastFrame) {
+    if (failCreate)
+        return SHIP_NATIVE_FAILURE;
+    auto* instance = new Instance;
+    instance->format = format;
+    instance->animation = animation;
+    ++created;
+    *out = instance;
+    *assetLastFrame = 9.0f;
+    return SHIP_NATIVE_OK;
+}
+void Destroy(void* instance) {
+    ++destroyed;
+    delete static_cast<Instance*>(instance);
+}
+ShipNativeStatus PlayEx(void* raw, const char* animation, float speed, uint8_t mode, float, bool reverse,
+                        float* assetLastFrame) {
+    auto* instance = static_cast<Instance*>(raw);
+    instance->animation = animation;
+    instance->speed = reverse ? -speed : speed;
+    instance->mode = mode;
+    instance->reverse = reverse;
+    instance->frame = reverse ? 9.0f : 0.0f;
+    ++plays;
+    playLog.push_back(animation);
+    *assetLastFrame = 9.0f;
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus Info(void*, const char* animation, ShipOotAnimationInfoV2* info) {
+    info->present = 1;
+    info->loaded = notLoaded.count(animation) ? 0 : 1;
+    info->asset_last_frame = 9.0f;
+    return SHIP_NATIVE_OK;
+}
+uint8_t Update(void* raw) {
+    auto* instance = static_cast<Instance*>(raw);
+    instance->frame += instance->speed;
+    const bool done = instance->mode == LINKSPAN_OOT_ANIM_ONCE &&
+                      (instance->reverse ? instance->frame <= 0.0f : instance->frame >= 9.0f);
+    return done ? 1 : 0;
+}
+void Frame(void* raw, float* frame, float* lastFrame) {
+    *frame = static_cast<Instance*>(raw)->frame;
+    *lastFrame = 9.0f;
+}
+void State(void* raw, float* frame, float* endFrame, float* speed) {
+    const auto* instance = static_cast<Instance*>(raw);
+    *frame = instance->frame;
+    *endFrame = instance->reverse ? 0.0f : 9.0f;
+    *speed = instance->speed;
+}
+void DrawEx(void*, void*, void*, void (*limb)(void* context, int32_t limb), void* context) {
+    ++draws;
+    for (int32_t index = 0; index < 3; ++index)
+        limb(context, index);
+}
+uint64_t Tick() {
+    return 77;
+}
+void Install() {
+    ShipLuaHost::OotSkeletonsBridge bridge;
+    bridge.destroy = Destroy;
+    bridge.update = Update;
+    bridge.frame = Frame;
+    bridge.createEx = CreateEx;
+    bridge.playEx = PlayEx;
+    bridge.animationInfo = Info;
+    bridge.state = State;
+    bridge.drawEx = DrawEx;
+    bridge.tick = Tick;
+    ShipLuaHost::SetOotSkeletonsBridge(bridge);
+}
+
+struct Limbs {
+    const ShipOotSkeletonsV2* skeletons = nullptr;
+    uint64_t skeleton = 0;
+    std::vector<int32_t> seen;
+    ShipNativeStatus status = SHIP_NATIVE_OK;
+    bool destroyInside = false;
+    bool throwInside = false;
+    bool replaceInside = false;
+    bool reenterInside = false;
+    std::vector<int32_t> recovered;
+    bool ok = true;
+};
+int playTag = 0, actorTag = 0;
+ShipNativeStatus SHIP_NATIVE_CALL RecoveredLimb(void* user, const ShipOotSkeletonLimbV2* limb) {
+    static_cast<Limbs*>(user)->recovered.push_back(limb->limb);
+    return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL Limb(void* user, const ShipOotSkeletonLimbV2* limb) {
+    auto& limbs = *static_cast<Limbs*>(user);
+    limbs.ok = limbs.ok && limb->size == sizeof(*limb) && limb->skeleton == limbs.skeleton &&
+               limb->play_state == &playTag && limb->actor == &actorTag &&
+               limb->scene_epoch == ShipLuaHost::OotSceneEpoch();
+    limbs.seen.push_back(limb->limb);
+    if (limbs.destroyInside)
+        limbs.ok = limbs.ok && limbs.skeletons->destroy(limbs.skeleton) == SHIP_NATIVE_OK;
+    if (limbs.replaceInside) {
+        limbs.replaceInside = false;
+        limbs.ok = limbs.ok && limbs.skeletons->set_post_limb(limbs.skeleton, RecoveredLimb, &limbs) == SHIP_NATIVE_OK;
+        if (limbs.reenterInside)
+            limbs.ok =
+                limbs.ok && limbs.skeletons->draw_ex(limb->play_state, limb->actor, limbs.skeleton) == SHIP_NATIVE_OK;
+    }
+    if (limbs.throwInside)
+        throw 7;
+    return limbs.status;
+}
+const ShipOotSkeletonsV2* Find(const ShipLua::NativeProviderPolicy& policy) {
+    for (const auto& service : policy.services) {
+        if (service.name == LINKSPAN_OOT_SKELETONS_SERVICE && service.version == LINKSPAN_OOT_SKELETONS_VERSION_2 &&
+            service.size == sizeof(ShipOotSkeletonsV2))
+            return static_cast<const ShipOotSkeletonsV2*>(service.table);
+    }
+    return nullptr;
+}
+} // namespace HostSlimSkeletons
+
+namespace HostSlimBody {
+int playTag = 0, playerTag = 0, actorTag = 0, gameTag = 0;
+bool luaBody = false, failSegments = false;
+int activated = 0, deactivated = 0, shownLink = 0, roots = 0, rootMoves = 0, rootRestarts = 0, rootStops = 0;
+std::map<uint32_t, std::string> segments;
+
+bool LuaBody() {
+    return luaBody;
+}
+ShipNativeStatus Activate(uint64_t, float, void** out) {
+    ++activated;
+    *out = &gameTag;
+    return SHIP_NATIVE_OK;
+}
+void Deactivate(void*, bool inScene, bool showLink) {
+    ++deactivated;
+    if (inScene && showLink)
+        ++shownLink;
+}
+ShipNativeStatus Segments(void*, const std::map<uint32_t, std::string>& next) {
+    if (failSegments)
+        return SHIP_NATIVE_FAILURE;
+    segments = next;
+    return SHIP_NATIVE_OK;
+}
+void Root(void*, bool move, bool restart) {
+    ++roots;
+    rootMoves += move ? 1 : 0;
+    rootRestarts += restart ? 1 : 0;
+}
+void RootStop(void*) {
+    ++rootStops;
+}
+
+struct Controller {
+    const ShipOotPlayerBodyV1* body = nullptr;
+    uint64_t control = 0;
+    uint64_t action = 0;
+    uint32_t rootMode = SHIP_OOT_ROOT_DISABLED;
+    bool fallbackWalk = false;
+    int ticks = 0, posts = 0, draws = 0;
+    uint8_t drawDefault = 1;
+    ShipNativeStatus tickStatus = SHIP_NATIVE_OK;
+    ShipNativeStatus drawStatus = SHIP_NATIVE_OK;
+    bool throwTick = false, throwPost = false, throwDraw = false;
+    bool endSceneTick = false, endScenePost = false, endSceneDraw = false;
+    bool ok = true;
+};
+ShipNativeStatus SHIP_NATIVE_CALL Tick(void* user, const ShipOotBodyTickV1* tick) {
+    auto& c = *static_cast<Controller*>(user);
+    ++c.ticks;
+    c.ok = c.ok && tick->size == sizeof(*tick) && tick->control == c.control && tick->play_state == &playTag &&
+           tick->player == &playerTag && tick->state.active && tick->state.controlled;
+    if (c.rootMode != SHIP_OOT_ROOT_DISABLED)
+        c.ok = c.ok && c.body->set_root_motion(c.control, c.action, c.rootMode) == SHIP_NATIVE_OK;
+    if (c.fallbackWalk) {
+        const ShipOotAnimationPlayV2 play{ sizeof(play), 1.0f, 0.0f, LINKSPAN_OOT_ANIM_LOOP, 0, { 0, 0 } };
+        c.ok = c.ok && c.body->start_animation(c.control, "andar", &play, SHIP_OOT_ANIM_FALLBACK) == SHIP_NATIVE_OK;
+    }
+    if (c.endSceneTick)
+        ShipLuaHost::OotPlayerBodySceneEnded();
+    if (c.throwTick)
+        throw 7;
+    return c.tickStatus;
+}
+ShipNativeStatus SHIP_NATIVE_CALL PostLimb(void* user, const ShipOotSkeletonLimbV2*) {
+    auto& c = *static_cast<Controller*>(user);
+    ++c.posts;
+    if (c.endScenePost)
+        ShipLuaHost::OotPlayerBodySceneEnded();
+    if (c.throwPost)
+        throw 7;
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus SHIP_NATIVE_CALL Draw(void* user, const ShipOotBodyDrawV1* draw, uint8_t* drawDefault) {
+    auto& c = *static_cast<Controller*>(user);
+    ++c.draws;
+    c.ok = c.ok && draw->size == sizeof(*draw) && draw->actor == &actorTag && draw->state.active;
+    *drawDefault = c.drawDefault;
+    if (c.endSceneDraw)
+        ShipLuaHost::OotPlayerBodySceneEnded();
+    if (c.throwDraw)
+        throw 7;
+    return c.drawStatus;
+}
+const ShipOotPlayerBodyV1* Find(const ShipLua::NativeProviderPolicy& policy) {
+    for (const auto& service : policy.services) {
+        if (service.name == LINKSPAN_OOT_PLAYER_BODY_SERVICE && service.version == LINKSPAN_OOT_PLAYER_BODY_VERSION &&
+            service.size == sizeof(ShipOotPlayerBodyV1))
+            return static_cast<const ShipOotPlayerBodyV1*>(service.table);
+    }
+    return nullptr;
+}
+} // namespace HostSlimBody
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -1545,7 +1779,7 @@ int main(int argc, char** argv) {
         Check(refused, "randomizer queries run only on the owner thread");
         ShipLuaHost::BindOotRandoQueryBackend({});
     }
-    Check(policy.services.size() == 32 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 34 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
               policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
               policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
               policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -2292,6 +2526,572 @@ int main(int argc, char** argv) {
             worker.join();
             Check(fromWorker == SHIP_NATIVE_INVALID_ARGUMENT, "câmera fora da thread do jogo");
             ShipLuaHost::SetOotViewBridge({});
+        }
+    }
+    {
+        using namespace HostSlimSkeletons;
+        static_assert(offsetof(ShipOotSkeletonsV2, layout_id) == sizeof(ShipOotSkeletonsV1));
+        static_assert(offsetof(ShipOotSkeletonsV2, create_ex) == sizeof(ShipOotSkeletonsV1) + sizeof(void*));
+        const auto* skeletons = Find(policy);
+        Check(skeletons && skeletons->layout_id && std::strcmp(skeletons->layout_id, LINKSPAN_OOT_LAYOUT_ID) == 0,
+              "skeletons V2 publicado");
+        if (skeletons) {
+            Install();
+            const ShipOotSkeletonSpecV2 link{ sizeof(link),           SHIP_OOT_SKELETON_LINK, "objects/corpo/skel",
+                                              "objects/corpo/parado", { -57, 3377, 0 },       0 };
+            auto bad = link;
+            uint64_t handle = 7;
+            Check(skeletons->create_ex("skel.mod", nullptr, &handle) == SHIP_NATIVE_INVALID_ARGUMENT && handle == 0,
+                  "spec nula");
+            bad.size = sizeof(bad) - 1;
+            Check(skeletons->create_ex("skel.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "spec curta");
+            bad = link;
+            bad.format = 2;
+            Check(skeletons->create_ex("skel.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "formato");
+            bad = link;
+            bad.skeleton_path = "__OTR__objects/corpo/skel";
+            Check(skeletons->create_ex("skel.mod", &bad, &handle) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "caminho já prefixado");
+            Check(skeletons->create_ex("", &link, &handle) == SHIP_NATIVE_INVALID_ARGUMENT, "dono vazio");
+
+            Check(skeletons->create_ex("skel.mod", &link, &handle) == SHIP_NATIVE_OK && handle && created == 1,
+                  "esqueleto LINK com dono");
+            ShipOotAnimationStateV2 state{};
+            state.size = sizeof(state);
+            Check(skeletons->get_state(handle, &state) == SHIP_NATIVE_OK && state.asset_last_frame == 9.0f &&
+                      state.animation_serial == 1,
+                  "estado inicial");
+            const ShipOotAnimationPlayV2 reverse{ sizeof(reverse), 2.0f, 0.0f, LINKSPAN_OOT_ANIM_ONCE, 1, { 0, 0 } };
+            auto badPlay = reverse;
+            badPlay.speed = -1.0f;
+            Check(skeletons->play_ex(handle, "objects/corpo/soco", &badPlay) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "velocidade é magnitude");
+            badPlay = reverse;
+            badPlay.mode = 1;
+            Check(skeletons->play_ex(handle, "objects/corpo/soco", &badPlay) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "modo desconhecido");
+            Check(skeletons->play_ex(handle, "objects/corpo/soco", &reverse) == SHIP_NATIVE_OK &&
+                      playLog.back() == "__OTR__objects/corpo/soco",
+                  "play_ex com reverse");
+            uint8_t finished = 0;
+            Check(skeletons->update(handle, &finished) == SHIP_NATIVE_OK && finished == 0 &&
+                      skeletons->get_state(handle, &state) == SHIP_NATIVE_OK && state.tick == 77 &&
+                      state.animation_serial == 2 && state.speed == -2.0f && state.target_end_frame == 0.0f &&
+                      state.current_frame == 7.0f && state.scene_epoch == ShipLuaHost::OotSceneEpoch(),
+                  "estado depois do update");
+            for (int i = 0; i < 4; ++i)
+                skeletons->update(handle, &finished);
+            Check(skeletons->get_state(handle, &state) == SHIP_NATIVE_OK && state.finished_previous_update == 1,
+                  "ONCE terminou");
+
+            ShipOotAnimationInfoV2 info{};
+            info.size = sizeof(info);
+            notLoaded.insert("__OTR__objects/corpo/errada");
+            Check(skeletons->animation_info(handle, "objects/corpo/errada", &info) == SHIP_NATIVE_OK && info.present &&
+                      !info.loaded,
+                  "animação de outro formato");
+            Check(skeletons->animation_info(handle, "objects/corpo/soco", &info) == SHIP_NATIVE_OK && info.loaded &&
+                      info.asset_last_frame == 9.0f,
+                  "animation_info");
+
+            uint64_t legacy = 0;
+            Check(skeletons->create("objects/v1/skel", "objects/v1/anim", &legacy) == SHIP_NATIVE_UNSUPPORTED,
+                  "create V1 sem ponte V1 continua UNSUPPORTED");
+            Limbs limbs;
+            limbs.skeletons = skeletons;
+            limbs.skeleton = handle;
+            Check(skeletons->draw_ex(&playTag, &actorTag, handle) == SHIP_NATIVE_UNSUPPORTED, "fora do escopo de draw");
+            Check(skeletons->set_post_limb(handle, nullptr, &limbs) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "user sem callback");
+            Check(skeletons->set_post_limb(handle, Limb, &limbs) == SHIP_NATIVE_OK, "pós-membro");
+            ShipLuaHost::EnterOotRenderScope();
+            Check(skeletons->draw_ex(&playTag, &actorTag, handle) == SHIP_NATIVE_OK &&
+                      limbs.seen == std::vector<int32_t>{ 0, 1, 2 },
+                  "callback em cada membro");
+            limbs.seen.clear();
+            limbs.status = SHIP_NATIVE_FAILURE;
+            skeletons->draw_ex(&playTag, &actorTag, handle);
+            Check(limbs.seen.size() == 3, "três falhas no mesmo draw");
+            limbs.seen.clear();
+            skeletons->draw_ex(&playTag, &actorTag, handle);
+            Check(limbs.seen.empty(), "callback que falha três vezes sai");
+            // V-SKELETON-DIRECT-SAFETY: callback publico direto nao atravessa a ABI C com excecao.
+            const auto drawWithoutException = [&](uint64_t target, const char* message) {
+                ShipNativeStatus result = SHIP_NATIVE_OK;
+                bool escaped = false;
+                try {
+                    result = skeletons->draw_ex(&playTag, &actorTag, target);
+                } catch (...) { escaped = true; }
+                Check(!escaped, message);
+                return result;
+            };
+            limbs.status = SHIP_NATIVE_OK;
+            limbs.throwInside = true;
+            limbs.seen.clear();
+            Check(skeletons->set_post_limb(handle, Limb, &limbs) == SHIP_NATIVE_OK,
+                  "V-SKELETON-DIRECT-SAFETY: instala callback direto que lanca");
+            Check(drawWithoutException(handle, "V-SKELETON-DIRECT-SAFETY: excecao direta contida") ==
+                          SHIP_NATIVE_FAILURE &&
+                      limbs.seen == std::vector<int32_t>{ 0, 1, 2 } && ShipLuaHost::InOotRenderScope(),
+                  "V-SKELETON-DIRECT-SAFETY: falha observavel, draw continua e escopo externo permanece");
+            limbs.seen.clear();
+            Check(drawWithoutException(handle, "V-SKELETON-DIRECT-SAFETY: draw depois de tres throws") ==
+                          SHIP_NATIVE_OK &&
+                      limbs.seen.empty(),
+                  "V-SKELETON-DIRECT-SAFETY: tres excecoes desativam o callback");
+            limbs.throwInside = false;
+            Check(skeletons->set_post_limb(handle, Limb, &limbs) == SHIP_NATIVE_OK &&
+                      drawWithoutException(handle, "V-SKELETON-DIRECT-SAFETY: recuperacao saudavel") ==
+                          SHIP_NATIVE_OK &&
+                      limbs.seen == std::vector<int32_t>{ 0, 1, 2 },
+                  "V-SKELETON-DIRECT-SAFETY: reregistro restaura callback saudavel");
+
+            limbs.seen.clear();
+            limbs.recovered.clear();
+            limbs.replaceInside = limbs.reenterInside = limbs.throwInside = true;
+            Check(drawWithoutException(handle, "V-SKELETON-DIRECT-SAFETY: troca e draw reentrante antes do throw") ==
+                          SHIP_NATIVE_FAILURE &&
+                      limbs.seen.size() == 1 && limbs.recovered == std::vector<int32_t>{ 0, 1, 2, 1, 2 },
+                  "V-SKELETON-DIRECT-SAFETY: troca no callback revalida registro sem culpar o novo");
+            limbs.throwInside = limbs.reenterInside = false;
+            limbs.recovered.clear();
+            Check(drawWithoutException(handle, "V-SKELETON-DIRECT-SAFETY: draw com substituto") == SHIP_NATIVE_OK &&
+                      limbs.recovered == std::vector<int32_t>{ 0, 1, 2 },
+                  "V-SKELETON-DIRECT-SAFETY: novo callback segue utilizavel apos reentrada");
+
+            limbs.seen.clear();
+            skeletons->set_post_limb(handle, Limb, &limbs);
+            limbs.destroyInside = true;
+            const int destroyedBefore = destroyed;
+            Check(skeletons->draw_ex(&playTag, &actorTag, handle) == SHIP_NATIVE_OK && limbs.seen.size() == 1 &&
+                      destroyed == destroyedBefore,
+                  "destruir no próprio callback para os callbacks e adia a instância");
+            ShipLuaHost::LeaveOotRenderScope();
+            Check(limbs.ok, "payloads e destruição no pós-membro");
+            Check(skeletons->get_state(handle, &state) == SHIP_NATIVE_INVALID_ARGUMENT, "handle destruído");
+            ShipLuaHost::ReleaseRetiredOotSkeletons();
+            Check(destroyed == destroyedBefore + 1, "instância solta no frame seguinte");
+
+            uint64_t throwingHandle = 0;
+            Check(skeletons->create_ex("skel.direct_throw", &link, &throwingHandle) == SHIP_NATIVE_OK,
+                  "V-SKELETON-DIRECT-SAFETY: esqueleto para destruir e lancar");
+            Limbs destroyThrow;
+            destroyThrow.skeletons = skeletons;
+            destroyThrow.skeleton = throwingHandle;
+            destroyThrow.destroyInside = destroyThrow.throwInside = true;
+            Check(skeletons->set_post_limb(throwingHandle, Limb, &destroyThrow) == SHIP_NATIVE_OK,
+                  "V-SKELETON-DIRECT-SAFETY: instala destruicao reentrante");
+            ShipLuaHost::EnterOotRenderScope();
+            const int destroyedAtThrow = destroyed;
+            Check(drawWithoutException(throwingHandle, "V-SKELETON-DIRECT-SAFETY: destruir e lancar no pos-membro") ==
+                          SHIP_NATIVE_FAILURE &&
+                      destroyThrow.seen.size() == 1 && destroyThrow.ok && destroyed == destroyedAtThrow,
+                  "V-SKELETON-DIRECT-SAFETY: registro some, instancia permanece viva durante draw");
+            ShipLuaHost::LeaveOotRenderScope();
+            Check(!ShipLuaHost::InOotRenderScope() &&
+                      skeletons->get_state(throwingHandle, &state) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "V-SKELETON-DIRECT-SAFETY: escopo encerrado e handle antigo invalido");
+            ShipLuaHost::ReleaseRetiredOotSkeletons();
+            Check(destroyed == destroyedAtThrow + 1,
+                  "V-SKELETON-DIRECT-SAFETY: instancia aposentada liberada uma unica vez");
+
+            Check(skeletons->create_ex("skel.unload", &link, &handle) == SHIP_NATIVE_OK, "esqueleto do dono que sai");
+            const int destroyedAtUnload = destroyed;
+            policy.onProviderUnload("skel.unload");
+            ShipLuaHost::ReleaseRetiredOotSkeletons();
+            Check(destroyed == destroyedAtUnload + 1 &&
+                      skeletons->get_state(handle, &state) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      skeletons->create_ex("skel.unload", &link, &handle) == SHIP_NATIVE_UNSUPPORTED,
+                  "unload destrói os esqueletos do dono e bloqueia o dono");
+
+            ShipNativeStatus fromWorker = SHIP_NATIVE_OK;
+            std::thread worker([&] {
+                uint64_t ignored = 0;
+                fromWorker = skeletons->create_ex("skel.mod", &link, &ignored);
+            });
+            worker.join();
+            Check(fromWorker == SHIP_NATIVE_INVALID_ARGUMENT, "esqueleto fora da thread do jogo");
+        }
+    }
+    {
+        using namespace HostSlimBody;
+        const auto* body = Find(policy);
+        const auto* movement = HostSlimMovement::Find(policy);
+        Check(body && movement && body->layout_id && std::strcmp(body->layout_id, LINKSPAN_OOT_LAYOUT_ID) == 0,
+              "player-body V1 publicado");
+        if (body && movement) {
+            HostSlimSkeletons::Install();
+            ShipLuaHost::SetOotPlayerBodyBridge({ LuaBody, Activate, Deactivate, Segments, Root, RootStop });
+            // Link parado em gameplay, como no começo dos testes da F2d.
+            HostSlimMovement::gameplay = HostSlimMovement::eligible = HostSlimMovement::neutral = true;
+            HostSlimMovement::action = &HostSlimMovement::idleTag;
+            ShipLuaHost::SetOotActionBridge({ HostSlimMovement::Snapshot, HostSlimMovement::Restore });
+            ShipLuaHost::NotifyOotPlayerCreated(&HostSlimMovement::playerTag);
+            const ShipOotBodyAnimationV1 animations[] = {
+                { sizeof(ShipOotBodyAnimationV1), 0, "parado", "objects/corpo/parado", 0, {} },
+                { sizeof(ShipOotBodyAnimationV1), 0, "andar", "objects/corpo/andar", 0, {} },
+                { sizeof(ShipOotBodyAnimationV1), 0, "soco", "objects/corpo/soco", 0, {} },
+            };
+            const ShipOotBodySegmentV1 bodySegments[] = { { sizeof(ShipOotBodySegmentV1), 6, "objects/corpo" } };
+            ShipOotBodySpecV1 spec{};
+            spec.size = sizeof(spec);
+            spec.skeleton = { sizeof(ShipOotSkeletonSpecV2), SHIP_OOT_SKELETON_LINK, "objects/corpo/skel",
+                              "objects/corpo/parado",        { -57, 3377, 0 },       0 };
+            spec.default_animation = "parado";
+            spec.animations = animations;
+            spec.animation_count = 3;
+            spec.segments = bodySegments;
+            spec.segment_count = 1;
+
+            auto bad = spec;
+            bad.size = sizeof(bad) - 1;
+            Check(body->set_body("body.mod", &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "spec curta");
+            bad = spec;
+            bad.default_animation = "voar";
+            Check(body->set_body("body.mod", &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "padrão fora da lista");
+            const ShipOotBodyAnimationV1 twice[] = { animations[0], animations[0] };
+            bad = spec;
+            bad.animations = twice;
+            bad.animation_count = 2;
+            Check(body->set_body("body.mod", &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "nome repetido");
+            const ShipOotBodySegmentV1 segmentZero[] = { { sizeof(ShipOotBodySegmentV1), 0, "objects/corpo" } };
+            bad = spec;
+            bad.segments = segmentZero;
+            Check(body->set_body("body.mod", &bad) == SHIP_NATIVE_INVALID_ARGUMENT, "segmento 0");
+
+            HostSlimSkeletons::notLoaded.insert("__OTR__objects/corpo/soco");
+            const int createdBefore = HostSlimSkeletons::created;
+            Check(body->set_body("body.mod", &spec) == SHIP_NATIVE_FAILURE && activated == 0, "animação inválida");
+            ShipLuaHost::ReleaseRetiredOotSkeletons();
+            // As duas contagens incluem os esqueletos da tarefa 22, todos destruídos lá.
+            Check(HostSlimSkeletons::created == createdBefore + 1 &&
+                      HostSlimSkeletons::destroyed == HostSlimSkeletons::created && !ShipLuaHost::OotPlayerBodyInUse(),
+                  "falha não deixa corpo nem esqueleto");
+            HostSlimSkeletons::notLoaded.clear();
+            luaBody = true;
+            Check(body->set_body("body.mod", &spec) == SHIP_NATIVE_LIMIT, "corpo Lua ativo");
+            luaBody = false;
+
+            Check(body->set_body("body.mod", &spec) == SHIP_NATIVE_OK && activated == 1 &&
+                      segments.at(6) == "objects/corpo" && ShipLuaHost::OotPlayerBodyInUse(),
+                  "corpo ativo");
+            Check(body->set_body("outro.mod", &spec) == SHIP_NATIVE_LIMIT, "corpo de outro dono");
+            ShipOotBodyStateV1 state{};
+            state.size = sizeof(state);
+            Check(body->get_state(&state) == SHIP_NATIVE_OK && state.active && !state.controlled &&
+                      state.body_generation != 0 && state.scene_epoch == ShipLuaHost::OotSceneEpoch(),
+                  "estado do corpo");
+
+            Controller controller;
+            controller.body = body;
+            ShipOotBodyControllerV1 callbacks{ sizeof(callbacks), 0, Tick, PostLimb, Draw, &controller };
+            uint64_t control = 7;
+            Check(body->acquire_control("outro.mod", state.body_generation, &callbacks, &control) ==
+                          SHIP_NATIVE_LIMIT &&
+                      control == 0,
+                  "controle só do dono do corpo");
+            Check(body->acquire_control("body.mod", state.body_generation + 1, &callbacks, &control) ==
+                      SHIP_NATIVE_UNSUPPORTED,
+                  "geração errada");
+            Check(body->acquire_control("body.mod", state.body_generation, &callbacks, &control) == SHIP_NATIVE_OK &&
+                      control,
+                  "controle");
+            controller.control = control;
+            uint64_t second = 0;
+            Check(body->acquire_control("body.mod", state.body_generation, &callbacks, &second) == SHIP_NATIVE_LIMIT,
+                  "um controle por vez");
+            Check(body->set_root_motion(control, 0, SHIP_OOT_ROOT_DISABLED) == SHIP_NATIVE_UNSUPPORTED,
+                  "raiz só dentro do tick");
+
+            const size_t playsBefore = HostSlimSkeletons::playLog.size();
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(controller.ticks == 1 && HostSlimSkeletons::playLog.size() == playsBefore + 1 &&
+                      HostSlimSkeletons::playLog.back() == "__OTR__objects/corpo/parado" && roots == 1 &&
+                      rootMoves == 0,
+                  "primeiro tick toca o padrão e neutraliza a raiz");
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(HostSlimSkeletons::playLog.size() == playsBefore + 1, "padrão não reinicia");
+
+            controller.fallbackWalk = true;
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(HostSlimSkeletons::playLog.back() == "__OTR__objects/corpo/andar", "FALLBACK no mesmo tick");
+            const size_t walking = HostSlimSkeletons::playLog.size();
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(HostSlimSkeletons::playLog.size() == walking, "FALLBACK repetido continua a animação");
+            controller.fallbackWalk = false;
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(HostSlimSkeletons::playLog.back() == "__OTR__objects/corpo/parado", "FALLBACK vale um tick");
+
+            const ShipOotAnimationPlayV2 once{ sizeof(once), 3.0f, 0.0f, LINKSPAN_OOT_ANIM_ONCE, 0, { 0, 0 } };
+            Check(body->start_animation(control, "voar", &once, SHIP_OOT_ANIM_OVERRIDE) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "nome desconhecido");
+            Check(body->start_animation(control, "soco", &once, SHIP_OOT_ANIM_OVERRIDE) == SHIP_NATIVE_OK, "OVERRIDE");
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(HostSlimSkeletons::playLog.back() == "__OTR__objects/corpo/soco", "OVERRIDE aplicado");
+            for (int i = 0; i < 4; ++i)
+                ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(HostSlimSkeletons::playLog.back() == "__OTR__objects/corpo/parado", "ONCE terminado volta ao padrão");
+
+            uint64_t action = 0;
+            HostSlimMovement::Owner actionOwner;
+            const ShipOotPlayerActionSpecV1 actionSpec{ sizeof(actionSpec), 0, HostSlimMovement::Tick, &actionOwner };
+            Check(movement->acquire_action("body.mod", &actionSpec, &action) == SHIP_NATIVE_OK, "ação do dono");
+            controller.action = action;
+            controller.rootMode = SHIP_OOT_ROOT_XZ;
+            const int movesBefore = rootMoves, restartsBefore = rootRestarts;
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(rootMoves == movesBefore + 2 && rootRestarts == restartsBefore + 1,
+                  "raiz XZ com a ação do dono, primeira amostra neutra");
+            const int stopsBefore = rootStops;
+            movement->release_action(action);
+            Check(rootStops == stopsBefore + 1, "ação solta depois do tick neutraliza o MOVEACTOR do frame");
+            controller.rootMode = SHIP_OOT_ROOT_DISABLED;
+            controller.ok =
+                controller.ok && body->set_root_motion(control, action, SHIP_OOT_ROOT_XZ) == SHIP_NATIVE_UNSUPPORTED;
+
+            Check(body->set_segment(control, 16, "objects/x") == SHIP_NATIVE_INVALID_ARGUMENT &&
+                      body->set_segment(control, 8, "objects/extra") == SHIP_NATIVE_OK &&
+                      segments.at(8) == "objects/extra" && body->set_segment(control, 8, nullptr) == SHIP_NATIVE_OK &&
+                      !segments.count(8),
+                  "segmentos");
+            failSegments = true;
+            Check(body->set_segment(control, 9, "objects/extra") == SHIP_NATIVE_FAILURE && !segments.count(9),
+                  "segmento que falha não entra");
+            failSegments = false;
+
+            ShipLuaHost::EnterOotRenderScope();
+            controller.drawDefault = 0;
+            Check(!ShipLuaHost::OotPlayerBodyDraw(&playTag, &playerTag, &actorTag) && controller.draws == 1,
+                  "draw do dono no lugar do esqueleto");
+            controller.drawDefault = 1;
+            Check(ShipLuaHost::OotPlayerBodyDraw(&playTag, &playerTag, &actorTag), "draw padrão");
+            const auto* skeletons = HostSlimSkeletons::Find(policy);
+            Check(skeletons &&
+                      skeletons->draw_ex(&playTag, &actorTag, ShipLuaHost::OotPlayerBodySkeleton()) == SHIP_NATIVE_OK &&
+                      controller.posts == 3,
+                  "pós-membro do corpo chega ao dono");
+            ShipLuaHost::LeaveOotRenderScope();
+
+            const uint64_t generation = state.body_generation;
+            ShipLuaHost::DispatchOotPlayDestroy(&playTag);
+            Check(body->get_state(&state) == SHIP_NATIVE_OK && !state.active && deactivated == 1 && shownLink == 0 &&
+                      ShipLuaHost::OotPlayerBodyInUse(),
+                  "fim da cena guarda só a definição");
+            ShipLuaHost::OotPlayerBodyPlayerUpdate(&playTag, &playerTag);
+            Check(body->get_state(&state) == SHIP_NATIVE_OK && state.active && state.body_generation > generation &&
+                      activated == 2,
+                  "cena nova recria o corpo com geração nova");
+            const int ticksBefore = controller.ticks;
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(controller.ticks == ticksBefore &&
+                      body->start_animation(control, "soco", &once, SHIP_OOT_ANIM_OVERRIDE) == SHIP_NATIVE_UNSUPPORTED,
+                  "controle da geração anterior caiu");
+
+            Check(body->acquire_control("body.mod", state.body_generation, &callbacks, &control) == SHIP_NATIVE_OK,
+                  "controle na geração nova");
+            controller.control = control;
+            controller.tickStatus = SHIP_NATIVE_FAILURE;
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(body->get_state(&state) == SHIP_NATIVE_OK && !state.controlled, "tick que falha perde o controle");
+            controller.tickStatus = SHIP_NATIVE_OK;
+
+            // V-BODY-CALLBACK-SAFETY: excecao nao cruza o host e o proximo controle continua utilizavel.
+            const auto withoutException = [&](auto&& operation, const char* message) {
+                bool escaped = false;
+                try {
+                    operation();
+                } catch (...) { escaped = true; }
+                Check(!escaped, message);
+                return !escaped;
+            };
+            const auto recoverControl = [&] {
+                state.size = sizeof(state);
+                const bool acquired =
+                    body->get_state(&state) == SHIP_NATIVE_OK && state.active &&
+                    body->acquire_control("body.mod", state.body_generation, &callbacks, &control) == SHIP_NATIVE_OK;
+                Check(acquired, "V-BODY-CALLBACK-SAFETY: callbackDepth permite readquirir controle");
+                controller.control = control;
+                return acquired;
+            };
+
+            if (recoverControl()) {
+                const int ticksAtException = controller.ticks;
+                controller.throwTick = true;
+                withoutException([&] { ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag); },
+                                 "V-BODY-CALLBACK-SAFETY: excecao do tick contida");
+                controller.throwTick = false;
+                Check(controller.ticks == ticksAtException + 1 && body->get_state(&state) == SHIP_NATIVE_OK &&
+                          state.active && !state.controlled,
+                      "V-BODY-CALLBACK-SAFETY: tick com excecao cancela controle e conserva corpo");
+                if (recoverControl()) {
+                    Check(body->set_root_motion(control, 0, SHIP_OOT_ROOT_DISABLED) == SHIP_NATIVE_UNSUPPORTED,
+                          "V-BODY-CALLBACK-SAFETY: ticking restaurado fora do callback");
+                    const int ticksBeforeRecovery = controller.ticks;
+                    withoutException([&] { ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag); },
+                                     "V-BODY-CALLBACK-SAFETY: tick apos recuperacao");
+                    Check(controller.ticks == ticksBeforeRecovery + 1 && body->get_state(&state) == SHIP_NATIVE_OK &&
+                              state.controlled,
+                          "V-BODY-CALLBACK-SAFETY: controlador novo recebe tick");
+                    body->release_control(control);
+                }
+            }
+
+            if (recoverControl()) {
+                ShipLuaHost::EnterOotRenderScope();
+                const int drawsAtException = controller.draws;
+                controller.drawDefault = 0;
+                controller.throwDraw = true;
+                for (int attempt = 0; attempt < 4; ++attempt) {
+                    withoutException(
+                        [&] {
+                            Check(ShipLuaHost::OotPlayerBodyDraw(&playTag, &playerTag, &actorTag),
+                                  "V-BODY-CALLBACK-SAFETY: draw com excecao usa desenho padrao");
+                        },
+                        "V-BODY-CALLBACK-SAFETY: excecao do draw contida");
+                }
+                controller.throwDraw = false;
+                Check(controller.draws == drawsAtException + 3 && body->get_state(&state) == SHIP_NATIVE_OK &&
+                          state.controlled,
+                      "V-BODY-CALLBACK-SAFETY: tres falhas desativam so o callback draw");
+                body->release_control(control);
+                if (recoverControl()) {
+                    const int drawsBeforeRecovery = controller.draws;
+                    withoutException(
+                        [&] {
+                            Check(!ShipLuaHost::OotPlayerBodyDraw(&playTag, &playerTag, &actorTag),
+                                  "V-BODY-CALLBACK-SAFETY: draw novo volta a escolher desenho");
+                        },
+                        "V-BODY-CALLBACK-SAFETY: draw apos recuperacao");
+                    Check(controller.draws == drawsBeforeRecovery + 1,
+                          "V-BODY-CALLBACK-SAFETY: novo controle restaura callback draw");
+                    body->release_control(control);
+                }
+                controller.drawDefault = 1;
+                ShipLuaHost::LeaveOotRenderScope();
+            }
+
+            if (recoverControl()) {
+                ShipLuaHost::EnterOotRenderScope();
+                const int postsAtException = controller.posts;
+                controller.throwPost = true;
+                if (skeletons) {
+                    for (int attempt = 0; attempt < 2; ++attempt) {
+                        withoutException(
+                            [&] {
+                                Check(skeletons->draw_ex(&playTag, &actorTag, ShipLuaHost::OotPlayerBodySkeleton()) ==
+                                          SHIP_NATIVE_OK,
+                                      "V-BODY-CALLBACK-SAFETY: draw sobrevive ao post_limb com excecao");
+                            },
+                            "V-BODY-CALLBACK-SAFETY: excecao do post_limb contida");
+                    }
+                }
+                controller.throwPost = false;
+                Check(skeletons && controller.posts == postsAtException + 3 &&
+                          body->get_state(&state) == SHIP_NATIVE_OK && state.controlled,
+                      "V-BODY-CALLBACK-SAFETY: tres falhas desativam so o post_limb");
+                body->release_control(control);
+                if (recoverControl() && skeletons) {
+                    const int postsBeforeRecovery = controller.posts;
+                    withoutException(
+                        [&] {
+                            Check(skeletons->draw_ex(&playTag, &actorTag, ShipLuaHost::OotPlayerBodySkeleton()) ==
+                                      SHIP_NATIVE_OK,
+                                  "V-BODY-CALLBACK-SAFETY: draw depois de recuperar post_limb");
+                        },
+                        "V-BODY-CALLBACK-SAFETY: post_limb apos recuperacao");
+                    Check(controller.posts == postsBeforeRecovery + 3,
+                          "V-BODY-CALLBACK-SAFETY: novo controle restaura post_limb");
+                    body->release_control(control);
+                }
+                ShipLuaHost::LeaveOotRenderScope();
+            }
+
+            // V-BODY-LIFETIME-REENTRY: teardown no callback nao reutiliza controle ou esqueleto invalidados.
+            // Mais forte que engine.kill_actor: Actor_Kill so marca; Actor_Delete avisa depois do callback.
+            for (int source = 0; source < 3; ++source) {
+                ShipLuaHost::ReleaseRetiredOotSkeletons();
+                state.size = sizeof(state);
+                Check(body->get_state(&state) == SHIP_NATIVE_OK && state.active,
+                      "V-BODY-LIFETIME-REENTRY: corpo ativo antes da reentrada");
+                const uint64_t epochBefore = state.scene_epoch, generationBefore = state.body_generation;
+                if (!recoverControl())
+                    continue;
+                const uint64_t oldControl = control;
+                const int postsBefore = controller.posts, destroyedBefore = HostSlimSkeletons::destroyed;
+                controller.endSceneTick = source == 0;
+                controller.endSceneDraw = source == 1;
+                controller.endScenePost = source == 2;
+                if (source == 0) {
+                    withoutException([&] { ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag); },
+                                     "V-BODY-LIFETIME-REENTRY: teardown durante tick");
+                } else {
+                    ShipLuaHost::EnterOotRenderScope();
+                    if (source == 1) {
+                        withoutException(
+                            [&] {
+                                Check(!ShipLuaHost::OotPlayerBodyDraw(&playTag, &playerTag, &actorTag),
+                                      "V-BODY-LIFETIME-REENTRY: draw invalido nao pede esqueleto padrao");
+                            },
+                            "V-BODY-LIFETIME-REENTRY: teardown durante draw");
+                    } else if (skeletons) {
+                        const uint64_t oldSkeleton = ShipLuaHost::OotPlayerBodySkeleton();
+                        withoutException(
+                            [&] {
+                                Check(skeletons->draw_ex(&playTag, &actorTag, oldSkeleton) == SHIP_NATIVE_OK,
+                                      "V-BODY-LIFETIME-REENTRY: draw em curso pode terminar");
+                            },
+                            "V-BODY-LIFETIME-REENTRY: teardown durante post_limb");
+                        Check(controller.posts == postsBefore + 1 && HostSlimSkeletons::destroyed == destroyedBefore,
+                              "V-BODY-LIFETIME-REENTRY: proximos membros param e instancia fica aposentada");
+                    }
+                    ShipLuaHost::LeaveOotRenderScope();
+                }
+                controller.endSceneTick = controller.endSceneDraw = controller.endScenePost = false;
+                Check(body->get_state(&state) == SHIP_NATIVE_OK && !state.active && !state.controlled &&
+                          state.scene_epoch == epochBefore && ShipLuaHost::OotPlayerBodyInUse(),
+                      "V-BODY-LIFETIME-REENTRY: definicao preservada sem inventar epoch de cena");
+                Check(body->start_animation(oldControl, "soco", &once, SHIP_OOT_ANIM_OVERRIDE) ==
+                          SHIP_NATIVE_UNSUPPORTED,
+                      "V-BODY-LIFETIME-REENTRY: controle antigo invalidado");
+                ShipLuaHost::ReleaseRetiredOotSkeletons();
+                Check(HostSlimSkeletons::destroyed == destroyedBefore + 1,
+                      "V-BODY-LIFETIME-REENTRY: esqueleto liberado uma vez fora do callback");
+                ShipLuaHost::OotPlayerBodyPlayerUpdate(&playTag, &playerTag);
+                Check(body->get_state(&state) == SHIP_NATIVE_OK && state.active && !state.controlled &&
+                          state.body_generation > generationBefore && state.scene_epoch == epochBefore,
+                      "V-BODY-LIFETIME-REENTRY: reativacao troca geracao, conserva epoch");
+                if (recoverControl()) {
+                    Check(control != oldControl &&
+                              body->set_root_motion(control, 0, SHIP_OOT_ROOT_DISABLED) == SHIP_NATIVE_UNSUPPORTED,
+                          "V-BODY-LIFETIME-REENTRY: token novo e guarda de ticking recuperada");
+                    const int ticksBeforeRecovery = controller.ticks;
+                    withoutException([&] { ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag); },
+                                     "V-BODY-LIFETIME-REENTRY: tick depois da reativacao");
+                    Check(controller.ticks == ticksBeforeRecovery + 1,
+                          "V-BODY-LIFETIME-REENTRY: callback novo recebe tick");
+                    body->release_control(control);
+                }
+            }
+
+            const uint64_t generationBeforeRecovery = state.body_generation;
+            Check(body->set_body("body.mod", &spec) == SHIP_NATIVE_OK && body->get_state(&state) == SHIP_NATIVE_OK &&
+                      state.active && !state.controlled && state.body_generation > generationBeforeRecovery,
+                  "V-BODY-CALLBACK-SAFETY: set_body funciona depois das tres excecoes");
+
+            Check(body->acquire_control("body.mod", state.body_generation, &callbacks, &control) == SHIP_NATIVE_OK,
+                  "controle antes do unload");
+            const int callsAtUnload = controller.ticks + controller.draws + controller.posts;
+            policy.onProviderUnload("body.mod");
+            ShipLuaHost::OotPlayerBodyTick(&playTag, &playerTag);
+            Check(controller.ticks + controller.draws + controller.posts == callsAtUnload && shownLink == 1 &&
+                      !ShipLuaHost::OotPlayerBodyInUse() &&
+                      body->set_body("body.mod", &spec) == SHIP_NATIVE_UNSUPPORTED,
+                  "unload devolve o Link sem chamar a DLL");
+            Check(controller.ok, "payloads do corpo");
+            ShipLuaHost::ReleaseRetiredOotSkeletons();
+            ShipLuaHost::SetOotPlayerBodyBridge({});
+            ShipLuaHost::SetOotActionBridge({});
         }
     }
     {
