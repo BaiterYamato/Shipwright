@@ -1351,6 +1351,40 @@ void RunListChecks() {
 }
 } // namespace HostSlimQuads
 
+namespace HostSlimResources {
+ShipLuaHost::OotPrefixedMountRequest last;
+int mounts = 0;
+ShipNativeStatus result = SHIP_NATIVE_OK;
+
+ShipNativeStatus SHIP_NATIVE_CALL Transform(void*, const char*, const uint8_t*, size_t, ShipNativeWriteFn, void*) {
+    return SHIP_NATIVE_OK;
+}
+ShipNativeStatus MountPrefixed(const ShipLuaHost::OotPrefixedMountRequest& request, uint64_t* handle,
+                               ShipOotMountInfoV1* info) {
+    ++mounts;
+    if (result != SHIP_NATIVE_OK)
+        return result;
+    last = request;
+    *handle = nextArchiveHandle++;
+    info->file_count = 3;
+    info->aliases_accepted = static_cast<uint32_t>(request.aliases.size());
+    return SHIP_NATIVE_OK;
+}
+void Install(bool prefixed) {
+    ShipLuaHost::SetOotNativeResourceBridge({ HasResourceFile, ReadResourceFile, ListResourceFiles, DirtyResources,
+                                              UnloadResource, MountArchive, UnmountArchive, GetGameVersions,
+                                              ReadResourceFileLayers, prefixed ? MountPrefixed : nullptr });
+}
+const ShipOotResourcesV4* Find(const ShipLua::NativeProviderPolicy& policy) {
+    for (const auto& service : policy.services) {
+        if (service.name == LINKSPAN_OOT_RESOURCES_SERVICE && service.version == LINKSPAN_OOT_RESOURCES_VERSION_4 &&
+            service.size == sizeof(ShipOotResourcesV4))
+            return static_cast<const ShipOotResourcesV4*>(service.table);
+    }
+    return nullptr;
+}
+} // namespace HostSlimResources
+
 int main(int argc, char** argv) {
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -1901,7 +1935,7 @@ int main(int argc, char** argv) {
         Check(refused, "randomizer queries run only on the owner thread");
         ShipLuaHost::BindOotRandoQueryBackend({});
     }
-    Check(policy.services.size() == 35 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 36 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
               policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
               policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
               policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -3825,6 +3859,118 @@ int main(int argc, char** argv) {
     const auto* engine = static_cast<const ShipOotEngineV1*>(policy.services[0].table);
     const auto* movement = static_cast<const ShipOotMovementV1*>(policy.services[1].table);
     const auto* movementV2 = static_cast<const ShipOotMovementV2*>(policy.services[2].table);
+    {
+        using namespace HostSlimResources;
+        const uint64_t savedNextArchiveHandle = nextArchiveHandle;
+        auto savedUnmountedArchives = unmountedArchives;
+        static_assert(offsetof(ShipOotResourcesV4, mount_archive_prefixed) == sizeof(ShipOotResourcesV3));
+        const auto* resources4 = Find(policy);
+        Check(resources4 != nullptr, "resources V4 publicado");
+        if (resources4) {
+            Install(true);
+            const ShipOotMountAliasV1 aliases[] = { { sizeof(ShipOotMountAliasV1), 0, "textures/", "" } };
+            ShipOotPrefixedArchiveSpecV1 spec{};
+            spec.size = sizeof(spec);
+            spec.owner = "res.mod";
+            spec.archive_path = "mods/res/assets/res.o2r";
+            spec.prefix = "mod/res/";
+            spec.flags = LINKSPAN_OOT_MOUNT_STRICT;
+            spec.aliases = aliases;
+            spec.alias_count = 1;
+            spec.transform = Transform;
+            ShipOotMountInfoV1 info{};
+            info.size = sizeof(info);
+            uint64_t handle = 7;
+
+            const char* badPrefixes[] = { "",          "mod/res",     "/mod/res/",
+                                          "mod//res/", "mod/../res/", "__OTR__mod/",
+                                          "mod\\res/", "C:/mod/",     "mod/[ab]/",
+                                          "mod/res]/" };
+            for (const char* prefix : badPrefixes) {
+                auto bad = spec;
+                bad.prefix = prefix;
+                Check(resources4->mount_archive_prefixed(&bad, &handle, &info) == SHIP_NATIVE_INVALID_ARGUMENT &&
+                          handle == 0,
+                      "prefixo fora da forma normalizada");
+            }
+            auto bad = spec;
+            bad.flags = 2;
+            Check(resources4->mount_archive_prefixed(&bad, &handle, &info) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "flag desconhecida");
+            bad = spec;
+            bad.reserved_flags = 1;
+            Check(resources4->mount_archive_prefixed(&bad, &handle, &info) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "reserva não zerada");
+            bad = spec;
+            bad.transform = nullptr;
+            bad.transform_user = &info;
+            Check(resources4->mount_archive_prefixed(&bad, &handle, &info) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "user sem transform");
+            const ShipOotMountAliasV1 badAlias[] = { { sizeof(ShipOotMountAliasV1), 0, "textures", "" } };
+            bad = spec;
+            bad.aliases = badAlias;
+            Check(resources4->mount_archive_prefixed(&bad, &handle, &info) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "alias sem barra final");
+            bad = spec;
+            bad.owner = "";
+            Check(resources4->mount_archive_prefixed(&bad, &handle, &info) == SHIP_NATIVE_INVALID_ARGUMENT,
+                  "dono vazio");
+            Check(mounts == 0, "spec inválida não chega à ponte");
+
+            {
+                ShipLuaHost::OotArchiveTransformScope transformScope;
+                uint64_t ignored = 7;
+                const auto mountStatus = resources4->mount_archive(spec.archive_path, &ignored);
+                const auto prefixedStatus = resources4->mount_archive_prefixed(&spec, &ignored, &info);
+                const auto unmountStatus = resources4->unmount_archive(7);
+                Check(mountStatus == SHIP_NATIVE_LIMIT && prefixedStatus == SHIP_NATIVE_LIMIT &&
+                          unmountStatus == SHIP_NATIVE_LIMIT && ignored == 0 && mounts == 0,
+                      "transform não reentra em montagem ou desmontagem");
+            }
+
+            Check(resources4->mount_archive_prefixed(&spec, &handle, &info) == SHIP_NATIVE_OK && handle != 0 &&
+                      info.size == sizeof(info) && info.file_count == 3 && info.aliases_accepted == 1 &&
+                      last.owner == "res.mod" && last.archivePath == "mods/res/assets/res.o2r" &&
+                      last.prefix == "mod/res/" && last.strict && last.aliases.size() == 1 &&
+                      last.aliases[0].first == "textures/" && last.aliases[0].second.empty() &&
+                      last.transform == Transform && !last.transformUser,
+                  "montagem com prefixo copia o pedido");
+            result = SHIP_NATIVE_FAILURE;
+            uint64_t failed = 7;
+            Check(resources4->mount_archive_prefixed(&spec, &failed, &info) == SHIP_NATIVE_FAILURE && failed == 0,
+                  "falha da ponte zera o handle");
+            result = SHIP_NATIVE_OK;
+
+            uint64_t second = 0;
+            Check(resources4->mount_archive_prefixed(&spec, &second, &info) == SHIP_NATIVE_OK && second != handle,
+                  "segunda montagem do mesmo dono");
+            const size_t unmountedBefore = unmountedArchives.size();
+            Check(resources4->unmount_archive(second) == SHIP_NATIVE_OK && unmountedArchives.back() == second,
+                  "unmount_archive desmonta a prefixada");
+            policy.onProviderUnload("res.mod");
+            Check(unmountedArchives.size() == unmountedBefore + 2 && unmountedArchives.back() == handle,
+                  "unload desmonta só o que sobrou do dono");
+            Check(resources4->mount_archive_prefixed(&spec, &second, &info) == SHIP_NATIVE_UNSUPPORTED,
+                  "dono descarregado");
+
+            Install(false);
+            auto other = spec;
+            other.owner = "res.other";
+            Check(resources4->mount_archive_prefixed(&other, &second, &info) == SHIP_NATIVE_UNSUPPORTED,
+                  "sem ponte V4");
+            Install(true);
+            ShipNativeStatus fromWorker = SHIP_NATIVE_OK;
+            std::thread worker([&] {
+                uint64_t ignored = 0;
+                fromWorker = resources4->mount_archive_prefixed(&other, &ignored, &info);
+            });
+            worker.join();
+            Check(fromWorker == SHIP_NATIVE_INVALID_ARGUMENT, "montagem fora da thread do jogo");
+            Install(false);
+        }
+        nextArchiveHandle = savedNextArchiveHandle;
+        unmountedArchives = std::move(savedUnmountedArchives);
+    }
     const auto* resources = static_cast<const ShipOotResourcesV1*>(policy.services[3].table);
     const auto* resourcesV2 = static_cast<const ShipOotResourcesV2*>(policy.services[4].table);
     const auto* registry = static_cast<const ShipOotRegistryV1*>(policy.services[5].table);

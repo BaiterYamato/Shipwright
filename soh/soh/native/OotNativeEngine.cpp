@@ -26,6 +26,10 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <vector>
+#include <string_view>
+#include <string>
+#include <map>
 #include <thread>
 #include "z64.h"
 #include "macros.h"
@@ -53,6 +57,22 @@ extern u8 gEquipAgeReqs[][4];
 }
 
 namespace ShipLuaHost {
+namespace {
+thread_local uint32_t archiveTransformDepth = 0;
+}
+
+bool InOotArchiveTransform() {
+    return archiveTransformDepth != 0;
+}
+
+OotArchiveTransformScope::OotArchiveTransformScope() {
+    ++archiveTransformDepth;
+}
+
+OotArchiveTransformScope::~OotArchiveTransformScope() {
+    --archiveTransformDepth;
+}
+
 bool InOotJsonTranscode(); // OotNativeJsonTypes.cpp
 namespace {
 std::thread::id gameThread;
@@ -549,6 +569,8 @@ ShipNativeStatus SHIP_NATIVE_CALL UnloadResource(const char* path) {
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 ShipNativeStatus SHIP_NATIVE_CALL MountArchive(const char* path, uint64_t* handle) {
+    if (InOotArchiveTransform())
+        return SHIP_NATIVE_LIMIT;
     if (!OnGameThread() || !ValidText(path) || !handle || !resourceBridge.mountArchive)
         return SHIP_NATIVE_INVALID_ARGUMENT;
     *handle = 0;
@@ -556,12 +578,125 @@ ShipNativeStatus SHIP_NATIVE_CALL MountArchive(const char* path, uint64_t* handl
         return resourceBridge.mountArchive(path, handle);
     } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
+std::map<uint64_t, std::string> prefixedOwners; // handle → dono (resources V4)
+
 ShipNativeStatus SHIP_NATIVE_CALL UnmountArchive(uint64_t handle) {
+    if (InOotArchiveTransform())
+        return SHIP_NATIVE_LIMIT;
     if (!OnGameThread() || !handle || !resourceBridge.unmountArchive)
         return SHIP_NATIVE_INVALID_ARGUMENT;
     try {
-        return resourceBridge.unmountArchive(handle);
+        const ShipNativeStatus status = resourceBridge.unmountArchive(handle);
+        if (status == SHIP_NATIVE_OK)
+            prefixedOwners.erase(handle);
+        return status;
     } catch (...) { return SHIP_NATIVE_FAILURE; }
+}
+
+constexpr uint32_t kMaxMountAliases = 64;
+constexpr size_t kMaxMountPrefix = 256;
+
+// Relativo, segmentos não vazios terminados em '/', sem ".", "..", "__OTR__", '\\', ':', curingas nem controle.
+bool ValidMountPrefix(const char* value, bool allowEmpty) {
+    if (!value)
+        return false;
+    const size_t length = strnlen(value, kMaxMountPrefix + 1);
+    if (length == 0)
+        return allowEmpty;
+    if (length > kMaxMountPrefix || value[length - 1] != '/' || std::strncmp(value, "__OTR__", 7) == 0)
+        return false;
+    size_t start = 0;
+    for (size_t i = 0; i < length; ++i) {
+        const auto c = static_cast<unsigned char>(value[i]);
+        if (c < 0x20 || c == 0x7f || c == '\\' || c == ':' || c == '*' || c == '?' || c == '[' || c == ']')
+            return false;
+        if (c == '/') {
+            const std::string_view segment(value + start, i - start);
+            if (segment.empty() || segment == "." || segment == "..")
+                return false;
+            start = i + 1;
+        }
+    }
+    return true;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL MountArchivePrefixed(const ShipOotPrefixedArchiveSpecV1* spec, uint64_t* handle,
+                                                       ShipOotMountInfoV1* info) {
+    if (handle)
+        *handle = 0;
+    if (InOotArchiveTransform())
+        return SHIP_NATIVE_LIMIT;
+    if (!OnGameThread() || !spec || !handle || !info || spec->size < sizeof(ShipOotPrefixedArchiveSpecV1) ||
+        info->size < sizeof(ShipOotMountInfoV1) || spec->reserved_align || spec->reserved_flags ||
+        spec->reserved_aliases || (spec->flags & ~LINKSPAN_OOT_MOUNT_STRICT) || !ValidOotServiceOwner(spec->owner) ||
+        !ValidText(spec->archive_path) || !ValidMountPrefix(spec->prefix, false) ||
+        spec->alias_count > kMaxMountAliases || (spec->alias_count && !spec->aliases) ||
+        (!spec->transform && spec->transform_user))
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    for (uint32_t i = 0; i < spec->alias_count; ++i) {
+        const auto& alias = spec->aliases[i];
+        if (alias.size < sizeof(ShipOotMountAliasV1) || alias.reserved_align ||
+            !ValidMountPrefix(alias.source_prefix, true) || !ValidMountPrefix(alias.target_prefix, true))
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    if (OotServiceOwnerBlocked(spec->owner) || !resourceBridge.mountPrefixed || !resourceBridge.unmountArchive)
+        return SHIP_NATIVE_UNSUPPORTED;
+    OotPrefixedMountRequest request;
+    try {
+        request.owner = spec->owner;
+        request.archivePath = spec->archive_path;
+        request.prefix = spec->prefix;
+        request.strict = (spec->flags & LINKSPAN_OOT_MOUNT_STRICT) != 0;
+        request.aliases.reserve(spec->alias_count);
+        for (uint32_t i = 0; i < spec->alias_count; ++i)
+            request.aliases.emplace_back(spec->aliases[i].source_prefix, spec->aliases[i].target_prefix);
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
+    request.transform = spec->transform;
+    request.transformUser = spec->transform_user;
+    ShipOotMountInfoV1 result{};
+    result.size = sizeof(result);
+    ShipNativeStatus status = SHIP_NATIVE_FAILURE;
+    try {
+        status = resourceBridge.mountPrefixed(request, handle, &result);
+    } catch (...) { status = SHIP_NATIVE_FAILURE; }
+    if (status != SHIP_NATIVE_OK) {
+        *handle = 0;
+        return status;
+    }
+    bool recorded = false;
+    try {
+        recorded = prefixedOwners.emplace(*handle, request.owner).second;
+    } catch (...) {}
+    if (!recorded) {
+        const uint64_t mountedHandle = *handle;
+        *handle = 0;
+        try {
+            resourceBridge.unmountArchive(mountedHandle);
+        } catch (...) {}
+        return SHIP_NATIVE_FAILURE;
+    }
+    result.size = sizeof(result);
+    *info = result;
+    return SHIP_NATIVE_OK;
+}
+
+// Unload do dono: desmonta o que ele deixou montado, da última montagem para a primeira.
+void ReleaseOotResourceOwner(std::string_view owner) {
+    for (;;) {
+        auto latest = prefixedOwners.end();
+        for (auto it = prefixedOwners.begin(); it != prefixedOwners.end(); ++it) {
+            if (it->second == owner)
+                latest = it;
+        }
+        if (latest == prefixedOwners.end())
+            break;
+        auto entry = prefixedOwners.extract(latest);
+        const uint64_t handle = entry.key();
+        try {
+            if (resourceBridge.unmountArchive)
+                resourceBridge.unmountArchive(handle);
+        } catch (...) {}
+    }
 }
 ShipNativeStatus SHIP_NATIVE_CALL GetGameVersions(uint32_t* output, uint32_t capacity, uint32_t* outputCount) {
     if (!OnGameThread() || !outputCount || (!output && capacity) || !resourceBridge.getGameVersions)
@@ -691,6 +826,19 @@ const ShipOotResourcesV3 resourcesV3{ sizeof(ShipOotResourcesV3),
                                       ReadFileLayers,
                                       RegisterOotJsonType,
                                       UnregisterOotJsonType };
+const ShipOotResourcesV4 resourcesV4{ sizeof(ShipOotResourcesV4),
+                                      HasFile,
+                                      ReadFile,
+                                      ListFiles,
+                                      DirtyResources,
+                                      UnloadResource,
+                                      MountArchive,
+                                      UnmountArchive,
+                                      GetGameVersions,
+                                      ReadFileLayers,
+                                      RegisterOotJsonType,
+                                      UnregisterOotJsonType,
+                                      MountArchivePrefixed };
 const ShipOotOcarinaV1 ocarinaV1{ sizeof(ShipOotOcarinaV1), OcarinaActive,      OcarinaSongFlags,
                                   OcarinaSongCount,         OcarinaSongPattern, OcarinaSubmitSong };
 } // namespace
@@ -827,6 +975,7 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
         ReleaseOotRegistryOwner(owner);
         ReleaseOotRenderOwner(owner);
         ReleaseOotLightOwner(owner);
+        ReleaseOotResourceOwner(owner);
     };
     const auto& randomizerV2 = GetOotNativeRandomizerServiceV2();
     policy.services.push_back(
@@ -843,6 +992,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& playerBody = GetOotNativePlayerBodyService();
     policy.services.push_back(
         { LINKSPAN_OOT_PLAYER_BODY_SERVICE, LINKSPAN_OOT_PLAYER_BODY_VERSION, sizeof(playerBody), &playerBody });
+    policy.services.push_back(
+        { LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_4, sizeof(resourcesV4), &resourcesV4 });
     // RFC 0029 (ABI 1.4): nome → endereço de functions.h/variables.h, preso ao layout id.
     policy.publicSymbols = CreateOotPublicSymbols();
     policy.escapeHatch = CreateOotEscapeHatch();
