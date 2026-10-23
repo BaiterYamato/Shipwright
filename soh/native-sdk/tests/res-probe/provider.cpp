@@ -241,7 +241,7 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
 }
 } // namespace
 
-SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query() {
+extern "C" SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query() {
     static const ShipNativeDescriptor descriptor{ sizeof(descriptor), 1, 4, Init, Shutdown };
     return &descriptor;
 }
