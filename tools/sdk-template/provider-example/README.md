@@ -2,7 +2,7 @@
 
 Build in Release following the author guide. Exports `ShipNative_Query`, queries
 `linkspan.oot.engine` v1 and rejects incompatible layouts or sizeof values. The manifest requests
-ABI 1.2, available in the current 1.3 descriptor. It installs no patches, loads no assets
+ABI 1.2; the descriptor version comes from the bundled header macros (`nativeProviderAbi` in `linkspan-sdk.json`). It installs no patches, loads no assets
 and does not alter the game. `doctor` analyzes the PE without loading the DLL.
 
 This probe is a draft for the external gate. It is not a complete native

@@ -55,7 +55,7 @@ abi_version = "1.2"
 win64 = "provider/linkspan_sdk_probe.dll"
 ```
 
-The manifest’s Lua API range and provider ABI are separate version contracts. The probe manifest requests ABI 1.2; its descriptor uses the current header macros (1.3). Preserve this checked example or select the manifest ABI required by the functions you use. The [main.lua](examples/provider-example/main.lua) entrypoint requires `ship` without changing gameplay.
+The manifest’s Lua API range and provider ABI are separate version contracts. The probe manifest requests ABI 1.2; its descriptor uses `SHIP_NATIVE_ABI_MAJOR` and `SHIP_NATIVE_ABI_MINOR` from the bundled header; `nativeProviderAbi` records that version. Preserve this checked example or select the manifest ABI required by the functions you use. The [main.lua](examples/provider-example/main.lua) entrypoint requires `ship` without changing gameplay.
 
 ## 4. Validate the runtime and engine before using pointers
 

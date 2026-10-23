@@ -4,7 +4,7 @@
 
 ## Boundary and versioning
 
-The provider boundary is the versioned C ABI in [ship_native_abi.h](include/shiplua/native/ship_native_abi.h). This header declares `SHIP_NATIVE_ABI_MAJOR = 1u` and `SHIP_NATIVE_ABI_MINOR = 3u`. It does not expose a stable C++ ABI or require linking host/core/Lua import libraries. The OoT package still requires the exact MSVC/x64 layout and compile settings because mods can convert opaque pointers to host types. Provider ABI, service versions, Lua API range and layout ID are separate checks.
+The provider boundary is the versioned C ABI in [ship_native_abi.h](include/shiplua/native/ship_native_abi.h). The `SHIP_NATIVE_ABI_MAJOR` and `SHIP_NATIVE_ABI_MINOR` macros in this header define the version recorded as `nativeProviderAbi` in [linkspan-sdk.json](linkspan-sdk.json). It does not expose a stable C++ ABI or require linking host/core/Lua import libraries. The OoT package still requires the exact MSVC/x64 layout and compile settings because mods can convert opaque pointers to host types. Provider ABI, service versions, Lua API range and layout ID are separate checks.
 
 Export `ShipNative_Query` with C linkage, `SHIP_NATIVE_EXPORT` and `SHIP_NATIVE_CALL` (`__cdecl` on Windows). It returns a `const ShipNativeDescriptor*` with `size`, `abi_major`, `abi_minor`, `init` and `shutdown`. Keep the descriptor valid, as in the probe’s static descriptor. Query, DLL constructors and `DllMain` are already native execution; this ABI is not a sandbox.
 
@@ -42,7 +42,7 @@ Core extensions declare points only in init; only their owner dispatches them. T
 
 ## ABI 1.3 and executable fingerprints
 
-`get_host_fingerprint` is available to any provider: it copies the executable SHA-256 as 64 hexadecimal bytes without a NUL terminator. Null output and zero capacity query its size. `resolve_symbol`, `install_patch` and `remove_patch` require a core extension with manifest ABI `"1.3"` whose `[provider].host_fingerprints` contains the running executable hash; otherwise they return `UNSUPPORTED`. A layout match alone is insufficient.
+`get_host_fingerprint` is available to any provider: it copies the executable SHA-256 as 64 hexadecimal bytes without a NUL terminator. Null output and zero capacity query its size. Private `resolve_symbol` lookups, `install_patch` and `remove_patch` require a core extension with manifest ABI `"1.3"` or `"1.4"` whose `[provider].host_fingerprints` contains the running executable hash; otherwise they return `UNSUPPORTED`. A layout match alone is insufficient for private symbols or patches. With manifest ABI `"1.4"`, a `pre_game` core extension whose `provider.host_layout_id` matches the SDK/host layout can use `resolve_symbol` for the public catalogue without a fingerprint. The descriptor must report minor 4 or later; a 1.3 manifest cannot use this public path.
 
 Symbol names are a unique function name or `file.c!Function` for repeated static names. Missing/ambiguous names are `UNSUPPORTED`. Patches target the executable, return an original trampoline and reject a second patch at the same address with `LIMIT`. Host symbols must correspond to that exact executable. Init patches activate together after init returns: do not depend on them during init or install patches in shutdown. The loader removes patches before shutdown; a removal failure can quarantine the DLL to avoid unloading code still in use. No executable or symbols file is included in the SDK.
 

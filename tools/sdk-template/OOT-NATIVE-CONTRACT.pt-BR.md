@@ -4,7 +4,7 @@
 
 ## Fronteira e versionamento
 
-A fronteira do provider é a ABI C versionada de [ship_native_abi.h](include/shiplua/native/ship_native_abi.h). Este header declara `SHIP_NATIVE_ABI_MAJOR = 1u` e `SHIP_NATIVE_ABI_MINOR = 3u`. Não expõe ABI C++ estável nem exige vincular bibliotecas de importação do host/core/Lua. O pacote OoT ainda exige layout e opções de compilação MSVC/x64 exatos porque mods podem converter ponteiros opacos para tipos do host. ABI do provider, versões de serviços, faixa da API Lua e layout ID são verificações separadas.
+A fronteira do provider é a ABI C versionada de [ship_native_abi.h](include/shiplua/native/ship_native_abi.h). Os macros `SHIP_NATIVE_ABI_MAJOR` e `SHIP_NATIVE_ABI_MINOR` deste header definem a versão registrada como `nativeProviderAbi` em [linkspan-sdk.json](linkspan-sdk.json). Não expõe ABI C++ estável nem exige vincular bibliotecas de importação do host/core/Lua. O pacote OoT ainda exige layout e opções de compilação MSVC/x64 exatos porque mods podem converter ponteiros opacos para tipos do host. ABI do provider, versões de serviços, faixa da API Lua e layout ID são verificações separadas.
 
 Exporte `ShipNative_Query` com linkage C, `SHIP_NATIVE_EXPORT` e `SHIP_NATIVE_CALL` (`__cdecl` no Windows). Retorna um `const ShipNativeDescriptor*` com `size`, `abi_major`, `abi_minor`, `init` e `shutdown`. Mantenha o descriptor válido, como o descriptor estático do probe. Query, construtores de DLL e `DllMain` já executam código nativo; esta ABI não é uma sandbox.
 
@@ -42,7 +42,7 @@ Core extensions só declaram pontos no init; somente o dono os despacha. O loade
 
 ## ABI 1.3 e fingerprints do executável
 
-`get_host_fingerprint` está disponível a qualquer provider: copia o SHA-256 do executável em 64 bytes hexadecimais sem terminador NUL. Saída nula e capacidade zero consultam o tamanho. `resolve_symbol`, `install_patch` e `remove_patch` exigem core extension com ABI `"1.3"` no manifesto cujo `[provider].host_fingerprints` contenha o hash do executável em execução; caso contrário, retornam `UNSUPPORTED`. Somente layout correspondente não basta.
+`get_host_fingerprint` está disponível a qualquer provider: copia o SHA-256 do executável em 64 bytes hexadecimais sem terminador NUL. Saída nula e capacidade zero consultam o tamanho. Consultas privadas de `resolve_symbol`, `install_patch` e `remove_patch` exigem core extension com ABI `"1.3"` ou `"1.4"` no manifesto cujo `[provider].host_fingerprints` contenha o hash do executável em execução; caso contrário, retornam `UNSUPPORTED`. Somente layout correspondente não basta para símbolos privados ou patches. Com ABI `"1.4"` no manifesto, uma core extension `pre_game` cujo `provider.host_layout_id` corresponda ao layout do SDK/host pode usar `resolve_symbol` para o catálogo público sem fingerprint. O descriptor deve informar minor 4 ou maior; um manifesto 1.3 não usa esse caminho público.
 
 Nomes de símbolo são o nome único de função ou `file.c!Function` para nomes static repetidos. Nome ausente/ambíguo retorna `UNSUPPORTED`. Patches têm como alvo o executável, devolvem trampolim para o original e recusam segundo patch no mesmo endereço com `LIMIT`. Símbolos do host devem corresponder ao executável exato. Patches de init ativam em conjunto depois do retorno do init: não dependa deles no init nem instale patches no shutdown. O loader remove patches antes do shutdown; falha de remoção pode colocar a DLL em quarentena para evitar descarregar código ainda usado. O SDK não inclui executável nem arquivo de símbolos.
 

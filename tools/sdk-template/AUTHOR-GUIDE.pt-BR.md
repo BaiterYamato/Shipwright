@@ -55,7 +55,7 @@ abi_version = "1.2"
 win64 = "provider/linkspan_sdk_probe.dll"
 ```
 
-A faixa da API Lua do manifesto e a ABI do provider são contratos de versão separados. O manifesto do probe pede ABI 1.2; seu descriptor usa os macros atuais do header (1.3). Preserve este exemplo conferido ou selecione a ABI do manifesto exigida pelas funções usadas. O entrypoint [main.lua](examples/provider-example/main.lua) requer `ship` sem alterar gameplay.
+A faixa da API Lua do manifesto e a ABI do provider são contratos de versão separados. O manifesto do probe pede ABI 1.2; seu descriptor usa `SHIP_NATIVE_ABI_MAJOR` e `SHIP_NATIVE_ABI_MINOR` do header distribuído; `nativeProviderAbi` registra essa versão. Preserve este exemplo conferido ou selecione a ABI do manifesto exigida pelas funções usadas. O entrypoint [main.lua](examples/provider-example/main.lua) requer `ship` sem alterar gameplay.
 
 ## 4. Valide runtime e engine antes de usar ponteiros
 
