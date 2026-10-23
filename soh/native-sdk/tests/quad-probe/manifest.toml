@@ -1,0 +1,12 @@
+id = "linkspan.test.quad_probe"
+name = "Player Quad Probe"
+version = "0.1.0"
+api = ">=0.5.0 <0.6.0"
+entrypoint = "main.lua"
+games = ["oot"]
+kind = "core_extension"
+load_phase = "pre_game"
+
+[provider]
+abi_version = "1.4"
+win64 = "provider/quad_probe.dll"

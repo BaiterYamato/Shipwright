@@ -35,6 +35,8 @@ void InitializeOotNativeWorld(std::thread::id ownerThread = std::this_thread::ge
 void ResetOotNativeWorld();
 const ShipOotWorldV1& GetOotNativeWorldService();
 const ShipOotCollidersV1& GetOotNativeCollidersService();
+// HOST-SLIM-001 (RFC 0029): V1 + layout_id + quads do Player (OotNativePlayerQuads.cpp).
+const ShipOotCollidersV2& GetOotNativeCollidersServiceV2();
 
 // Fim de cada frame, depois das checagens de colisão: libera colliders destruídos
 // num frame anterior.

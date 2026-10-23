@@ -6,6 +6,7 @@
 
 #include <string.h>
 extern void LinkSpan_PlayDrawEnd(PlayState* play);
+extern void LinkSpan_PlayerQuadsResolved(PlayState* play);
 extern void LinkSpan_PlayDestroy(PlayState* play);
 extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 
@@ -1227,6 +1228,8 @@ void Play_Update(PlayState* play) {
 
                     PLAY_LOG(3624);
                     CollisionCheck_Damage(play, &play->colChkCtx);
+                    // HOST-SLIM-001: acertos dos quads arrendados do Link, antes de qualquer ator atualizar.
+                    LinkSpan_PlayerQuadsResolved(play);
 
                     PLAY_LOG(3631);
                     CollisionCheck_ClearContext(play, &play->colChkCtx);
