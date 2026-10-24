@@ -37,6 +37,9 @@ struct Probe {
     unsigned long long quietBefore = 0;
     bool unmountNamesAbsent = false;
     std::string failure;
+    // O SDL_main do SoH reabre stderr em CONOUT$ e descarta o pipe herdado: o
+    // Shutdown vai para res-probe.log na raiz de dados, como no damage-probe.
+    std::FILE* log = nullptr;
 };
 
 void Check(Probe& p, unsigned index, bool success) {
@@ -216,6 +219,11 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     if (!p)
         return SHIP_NATIVE_FAILURE;
     *output = p; // rollback também recebe a instância.
+    p->log = std::fopen("res-probe.log", "w");
+    if (!p->log)
+        return SHIP_NATIVE_FAILURE;
+    std::fprintf(p->log, "res-probe abi=1.4\n");
+    std::fflush(p->log);
     p->api = static_cast<const ShipOotResourcesV4*>(
         runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_4,
                              sizeof(ShipOotResourcesV4)));
@@ -235,8 +243,11 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
     if (!p)
         return;
     // Vida da DLL/callback sob concorrência requer prova instrumentada do host.
-    std::fprintf(stderr, "res-probe shutdown left_handle=%llu transform_calls=%llu\n",
-                 static_cast<unsigned long long>(p->handle), p->transforms.load());
+    if (p->log) {
+        std::fprintf(p->log, "res-probe shutdown left_handle=%llu transform_calls=%llu\n",
+                     static_cast<unsigned long long>(p->handle), p->transforms.load());
+        std::fclose(p->log);
+    }
     delete p;
 }
 } // namespace
