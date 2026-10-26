@@ -24,6 +24,18 @@ extern "C" {
 void Play_Update(PlayState* play);
 }
 
+extern "C" void LinkSpan_ActorHealthInit(Actor* actor);
+extern "C" void ShipLua_EmitActorInit(Actor* actor);
+float LinkSpan_ExtendedDamage(Actor* target, float damage, bool* handled);
+bool LinkSpan_ActorHealthInfo(Actor* actor, uint32_t* health, uint32_t* maxHealth, bool* extended);
+
+namespace ShipLuaHost {
+// Overloads internos: os headers do SDK e o layout ficam intactos.
+float DispatchOotActorDamage(ShipOotActorDamageHookV1* payload, bool extended);
+float FinalizeOotActorDamage(float originalDamage, float transformedDamage, uint8_t accumulatedDamage,
+                             bool nativeChanged, bool extended);
+} // namespace ShipLuaHost
+
 namespace {
 [[maybe_unused]] const bool kHookLoggerBound = [] {
     ShipLuaHost::SetOotHookLogger([](const std::string& message) { SPDLOG_WARN("Link-Span hooks: {}", message); });
@@ -92,10 +104,20 @@ extern "C" void LinkSpan_PlayUpdate(PlayState* play) {
 }
 
 extern "C" void LinkSpan_ActorInit(Actor* actor, PlayState* play) {
-    const auto* registry = ShipLuaHost::GetOotHookRegistry();
-    const auto point = ShipLuaHost::GetOotHookPoints().actorInit;
-    if (registry && registry->HasHooks(point))
-        DispatchActor(point, actor, play, nullptr);
+    if (actor == nullptr) {
+        return;
+    }
+    LinkSpan_ActorHealthInit(actor);
+    try {
+        const auto* registry = ShipLuaHost::GetOotHookRegistry();
+        const auto point = ShipLuaHost::GetOotHookPoints().actorInit;
+        if (registry && registry->HasHooks(point)) {
+            DispatchActor(point, actor, play, nullptr);
+        }
+    } catch (...) {
+        // O init Lua continua mesmo se o despacho nativo falhar.
+    }
+    ShipLua_EmitActorInit(actor);
 }
 extern "C" void LinkSpan_PlayDrawEnd(PlayState* play) {
     DispatchRenderPlay(ShipLuaHost::GetOotHookPoints().playDrawEnd, play);
@@ -406,18 +428,33 @@ extern "C" float ShipLua_TransformActorDamage(Actor* target, Actor* attacker, ui
                                               uint8_t attackerIsPlayer, float baseDamage, float damage);
 
 extern "C" float LinkSpan_ActorDamage(PlayState* play, Collider* collider, ColliderInfo* info, float damage) {
-    if (!collider || !collider->actor || !info || !info->acHitInfo)
+    if (!collider || !collider->actor || !info || !info->acHitInfo) {
         return damage;
-    Actor* target = collider->actor;
-    // Atacante do elemento; collider->ac guarda só o último AT que acertou o collider e não serve de reserva.
-    Actor* attacker = info->acHit ? info->acHit->actor : nullptr;
-    const uint32_t dmgFlags = info->acHitInfo->toucher.dmgFlags;
-    const uint8_t damageEffect = target->colChkInfo.damageEffect;
-    const uint8_t attackerIsPlayer = info->acHit && (info->acHit->atFlags & AT_TYPE_PLAYER) ? 1 : 0;
-    ShipOotActorDamageHookV1 payload{ sizeof(payload),  play, target, attacker, dmgFlags, damageEffect,
-                                      attackerIsPlayer, {},   damage, damage };
-    const float nativeDamage = ShipLuaHost::DispatchOotActorDamage(&payload);
-    const float finalDamage =
-        ShipLua_TransformActorDamage(target, attacker, dmgFlags, damageEffect, attackerIsPlayer, damage, nativeDamage);
-    return ShipLuaHost::FinalizeOotActorDamage(damage, finalDamage, target->colChkInfo.damage, nativeDamage != damage);
+    }
+    try {
+        Actor* target = collider->actor;
+        Actor* attacker = info->acHit ? info->acHit->actor : nullptr;
+        const uint32_t dmgFlags = info->acHitInfo->toucher.dmgFlags;
+        const uint8_t damageEffect = target->colChkInfo.damageEffect;
+        const uint8_t attackerIsPlayer = info->acHit && (info->acHit->atFlags & AT_TYPE_PLAYER) ? 1 : 0;
+        uint32_t health = 0;
+        uint32_t maxHealth = 0;
+        bool extended = false;
+        LinkSpan_ActorHealthInfo(target, &health, &maxHealth, &extended);
+        ShipOotActorDamageHookV1 payload{ sizeof(payload),  play, target, attacker, dmgFlags, damageEffect,
+                                          attackerIsPlayer, {},   damage, damage };
+        const float nativeDamage = ShipLuaHost::DispatchOotActorDamage(&payload, extended);
+        const float finalDamage = ShipLua_TransformActorDamage(target, attacker, dmgFlags, damageEffect,
+                                                               attackerIsPlayer, damage, nativeDamage);
+        // Um callback pode ter ligado ou reescalado a vida; consulta novamente.
+        LinkSpan_ActorHealthInfo(target, &health, &maxHealth, &extended);
+        const float bounded = ShipLuaHost::FinalizeOotActorDamage(damage, finalDamage, target->colChkInfo.damage,
+                                                                  nativeDamage != damage, extended);
+        bool handled = false;
+        return LinkSpan_ExtendedDamage(target, bounded, &handled);
+    } catch (...) {
+        // Mesmo na falha, um alvo estendido recebe só a queda do espelho.
+        bool handled = false;
+        return LinkSpan_ExtendedDamage(collider->actor, damage, &handled);
+    }
 }

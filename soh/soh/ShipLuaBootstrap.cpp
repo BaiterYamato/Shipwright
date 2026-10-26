@@ -70,6 +70,8 @@
 #include <shiplua/runtime/LuaRuntime.h>
 #include <shiplua/storage/AtomicFile.h>
 #include <shiplua/storage/KeyValueStorage.h>
+#include <shiplua/save/ModSaveStore.h>
+#include <limits>
 #include <shiplua/timer/FrameTimerScheduler.h>
 #include <shiplua/world/WorldHandoff.h>
 
@@ -141,11 +143,47 @@ uint8_t gLinkSpanEngineExtended = 0;
 void Fast_SetQuantizeFloatMtx(bool on);
 }
 
+extern "C" void LinkSpan_ActorHealthDestroy(Actor* actor);
+void LinkSpan_ActorHealthReset();
+bool LinkSpan_ActorHealthInfo(Actor* actor, uint32_t* health, uint32_t* maxHealth, bool* extended);
+ShipLua::Result<bool> LinkSpan_SetActorMaxHealth(Actor* actor, uint32_t maxHealth);
+
 namespace ShipLuaHost {
 namespace {
 
 std::unique_ptr<ShipLua::ModHost> gModHost;
 std::shared_ptr<OotActorProvider> gActorProvider;
+// Observe só quando algum mod recebe eventos; falha de handle omite o snapshot.
+ShipLua::EventValue::Object ActorSnapshot(Actor* actor) {
+    if (actor == nullptr || gActorProvider == nullptr || gModHost == nullptr || gModHost->SubscriptionCount() == 0) {
+        return {};
+    }
+    const auto observed = gActorProvider->Observe(actor);
+    if (!observed.isOk()) {
+        SPDLOG_WARN("ShipLua: snapshot de ator indisponível: {}", observed.message);
+        return {};
+    }
+    const auto& handle = *observed.value;
+    return {
+        { "handle",
+          ShipLua::EventValue::Object{
+              { "kind", ShipLua::HandleKindName(handle.kind) },
+              { "slot", static_cast<std::int64_t>(handle.slot) },
+              { "generation", static_cast<std::int64_t>(handle.generation) },
+              { "scene_generation", static_cast<std::int64_t>(handle.sceneGeneration) },
+          } },
+        { "actor_id", static_cast<std::int64_t>(actor->id) },
+        { "category", static_cast<std::int64_t>(actor->category) },
+        { "params", static_cast<std::int64_t>(actor->params) },
+    };
+}
+
+void AddActorSnapshot(ShipLua::EventPayload& payload, const char* field, Actor* actor) {
+    auto snapshot = ActorSnapshot(actor);
+    if (!snapshot.empty()) {
+        payload.emplace(field, std::move(snapshot));
+    }
+}
 std::shared_ptr<ShipLua::CapabilityRegistry> gCapabilityRegistry;
 std::shared_ptr<OotHotkeyRegistry> gHotkeys;
 std::shared_ptr<SohGui::SohMenuModRegistry> gMenuRegistry;
@@ -822,6 +860,54 @@ std::shared_ptr<OotActorProvider> CreateActorProvider() {
             Actor_Kill(static_cast<Actor*>(actor));
         }
     };
+    hooks.readField = [](void* native, const std::string& field) -> ShipLua::Result<ShipLua::ActorFieldValue> {
+        using Value = ShipLua::ActorFieldValue;
+        using Result = ShipLua::Result<Value>;
+        auto* actor = static_cast<Actor*>(native);
+        if (actor == nullptr || gPlayState == nullptr) {
+            return Result::ok(Value{ std::monostate{} });
+        }
+        if (field == "actor_id") {
+            return Result::ok(Value{ static_cast<std::int64_t>(actor->id) });
+        }
+        if (field == "category") {
+            return Result::ok(Value{ static_cast<std::int64_t>(actor->category) });
+        }
+        if (field == "params") {
+            return Result::ok(Value{ static_cast<std::int64_t>(actor->params) });
+        }
+        if (field == "health" || field == "max_health" || field == "extended") {
+            uint32_t health = 0;
+            uint32_t maxHealth = 0;
+            bool extended = false;
+            if (!LinkSpan_ActorHealthInfo(actor, &health, &maxHealth, &extended)) {
+                return Result::ok(Value{ std::monostate{} });
+            }
+            if (field == "extended") {
+                return Result::ok(Value{ extended });
+            }
+            return Result::ok(Value{ static_cast<std::int64_t>(field == "health" ? health : maxHealth) });
+        }
+        if (field == "pos_x" || field == "pos_y" || field == "pos_z") {
+            return Result::ok(Value{ static_cast<double>(field == "pos_x"   ? actor->world.pos.x
+                                                         : field == "pos_y" ? actor->world.pos.y
+                                                                            : actor->world.pos.z) });
+        }
+        if (field == "screen_x" || field == "screen_y") {
+            // W cru do ator: Actor_ProjectPos já o transforma e corta negativos.
+            if (!(actor->projectedW > 0.0f)) {
+                return Result::ok(Value{ std::monostate{} });
+            }
+            s16 x = 0;
+            s16 y = 0;
+            Actor_GetScreenPos(gPlayState, actor, &x, &y);
+            return Result::ok(Value{ static_cast<std::int64_t>(field == "screen_x" ? x : y) });
+        }
+        return Result::err(ShipLua::ErrorCode::InvalidArgument, "unknown actor field");
+    };
+    hooks.setMaxHealth = [](void* actor, uint32_t maxHealth) {
+        return LinkSpan_SetActorMaxHealth(static_cast<Actor*>(actor), maxHealth);
+    };
     std::vector<OotActorDefinition> allowlist{
         { "oot.en_dog", ACTOR_EN_DOG, OBJECT_DOG, static_cast<std::int16_t>(0x8000) },
         { "oot.en_torch2", ACTOR_EN_TORCH2, OBJECT_TORCH2, 0 },
@@ -854,6 +940,105 @@ ShipLua::Result<void> RegisterHostCapability(const std::string& id, const std::s
 }
 
 ShipLua::Result<bool> ApplyPlayerSpeedMultiplier(double requested);
+const char* CurrentGameStateMode();
+
+class OotModSaveBackend final : public ShipLua::ModSaveBackend {
+  public:
+    bool Available() const override {
+        return GetOotNativeSaveService().get_slot() >= 0 && gPlayState != nullptr;
+    }
+
+    ShipLua::Result<ShipLua::ModSaveValues> Load(const std::string& modId) override {
+        using Result = ShipLua::Result<ShipLua::ModSaveValues>;
+        if (!Available()) {
+            return Result::err(ShipLua::ErrorCode::InvalidState, "no save file is loaded");
+        }
+        try {
+            nlohmann::json data;
+            uint32_t version = 0;
+            ShipLua::ModSaveValues values;
+            // O helper já extrai o objeto data, sem o envelope version/required.
+            if (!ExportOotSaveNamespace(modId, data, version) || !data.is_object()) {
+                return Result::ok(std::move(values));
+            }
+            for (const auto& [key, value] : data.items()) {
+                if (value.is_boolean()) {
+                    values.emplace(key, value.get<bool>());
+                } else if (value.is_number_unsigned()) {
+                    const auto number = value.get<uint64_t>();
+                    if (number <= static_cast<uint64_t>((std::numeric_limits<int64_t>::max)())) {
+                        values.emplace(key, static_cast<int64_t>(number));
+                    }
+                } else if (value.is_number_integer()) {
+                    values.emplace(key, value.get<int64_t>());
+                } else if (value.is_number_float()) {
+                    const auto number = value.get<double>();
+                    if (std::isfinite(number)) {
+                        values.emplace(key, number);
+                    }
+                } else if (value.is_string()) {
+                    values.emplace(key, value.get<std::string>());
+                }
+            }
+            return Result::ok(std::move(values));
+        } catch (...) { return Result::err(ShipLua::ErrorCode::HostFailure, "cannot read mod save data"); }
+    }
+
+    ShipLua::Result<void> Store(const std::string& modId, const ShipLua::ModSaveValues& values) override {
+        using Result = ShipLua::Result<void>;
+        if (!Available()) {
+            return Result::err(ShipLua::ErrorCode::InvalidState, "no save file is loaded");
+        }
+        try {
+            auto data = nlohmann::json::object();
+            for (const auto& [key, value] : values) {
+                std::visit([&](const auto& scalar) { data[key] = scalar; }, value);
+            }
+            if (!ReplaceOotSaveNamespace(modId, 1, std::move(data))) {
+                return Result::err(ShipLua::ErrorCode::HostFailure, "cannot replace mod save namespace");
+            }
+            return Result::ok();
+        } catch (...) { return Result::err(ShipLua::ErrorCode::HostFailure, "cannot write mod save data"); }
+    }
+};
+
+PlayState* gSfxPlay = nullptr;
+uint32_t gSfxFrame = 0;
+uint32_t gSfxCalls = 0;
+
+ShipLua::Result<bool> PlayHostSfx(std::int64_t id) {
+    using Result = ShipLua::Result<bool>;
+    try {
+        if (id < 0 || id > 0xFFFF || std::strcmp(CurrentGameStateMode(), "gameplay") != 0) {
+            return Result::ok(false);
+        }
+        if (gSfxPlay != gPlayState || gSfxFrame != gPlayState->gameplayFrames) {
+            gSfxPlay = gPlayState;
+            gSfxFrame = gPlayState->gameplayFrames;
+            gSfxCalls = 0;
+        }
+        if (gSfxCalls >= 8) {
+            return Result::ok(false);
+        }
+        ++gSfxCalls;
+        Audio_PlaySfxGeneral(static_cast<u16>(id), &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
+                             &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+        return Result::ok(true);
+    } catch (...) { return Result::err(ShipLua::ErrorCode::HostFailure, "cannot play sound effect"); }
+}
+
+ShipLua::Result<bool> PlayHostFanfare(std::int64_t id) {
+    using Result = ShipLua::Result<bool>;
+    try {
+        constexpr std::array<std::int64_t, 6> allowed{ 0x22, 0x24, 0x2B, 0x39, 0x3B, 0x43 };
+        if (std::strcmp(CurrentGameStateMode(), "gameplay") != 0 ||
+            std::find(allowed.begin(), allowed.end(), id) == allowed.end()) {
+            return Result::ok(false);
+        }
+        Audio_PlayFanfare(static_cast<u16>(id));
+        return Result::ok(true);
+    } catch (...) { return Result::err(ShipLua::ErrorCode::HostFailure, "cannot play fanfare"); }
+}
 
 ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     ShipLua::LuaApiHostContext context;
@@ -882,12 +1067,30 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
     context.hotkeys = gHotkeys;
     context.capabilityRegistry = gCapabilityRegistry;
     context.actors = gActorProvider;
+    context.saveData = std::make_shared<ShipLua::ModSaveStore>(std::make_shared<OotModSaveBackend>());
+    context.playSfx = PlayHostSfx;
+    context.playFanfare = PlayHostFanfare;
+    // actor.observe e actor.health são anunciadas pelo registry do provider (B1).
+    context.capabilities.insert(context.capabilities.end(),
+                                { "core.modules", "core.save", "audio.play", "actor.events" });
     context.timers = gTimers;
     context.setSpeedMultiplier = ApplyPlayerSpeedMultiplier;
     context.capabilities.push_back("core.timers");
     auto registered = RegisterHostCapability("oot.player.jump", "Apply a validated jump impulse to OoT Link.");
     if (!registered.isOk()) {
         return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
+    }
+    const std::pair<const char*, const char*> actorOffers[] = {
+        { "core.modules", "Load Lua modules from the mod package." },
+        { "core.save", "Persist scalar mod data in the loaded save file." },
+        { "audio.play", "Play bounded sound effects and allowlisted fanfares during gameplay." },
+        { "actor.events", "Publish actor.init and actor.destroy with instance handles." },
+    };
+    for (const auto& [id, description] : actorOffers) {
+        registered = RegisterHostCapability(id, description);
+        if (!registered.isOk()) {
+            return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
+        }
     }
     registered = RegisterHostCapability("core.timers", "Per-frame timers owned by each mod (ship.timer).");
     if (!registered.isOk()) {
@@ -2075,29 +2278,34 @@ extern "C" void ShipLua_TransformGivenItem(GetItemEntry* entry) {
 // Só um resultado numérico finito substitui damage; bool e string não são números.
 extern "C" float ShipLua_TransformActorDamage(Actor* target, Actor* attacker, uint32_t dmgFlags, uint8_t damageEffect,
                                               uint8_t attackerIsPlayer, float baseDamage, float damage) {
-    if (gModHost == nullptr || target == nullptr) {
-        return damage;
-    }
-    // O core expõe apenas a contagem global, não uma consulta por nome de evento.
-    if (gModHost->SubscriptionCount() == 0) {
+    if (gModHost == nullptr || target == nullptr || gModHost->SubscriptionCount() == 0) {
         return damage;
     }
     try {
-        // Callback com falha descarta o resultado no helper, e o dano de entrada passa intacto.
-        const auto result = DispatchHookTransform(
-            "hook.oot.actor.damage",
-            ShipLua::EventPayload{
-                { "target_id", static_cast<std::int64_t>(target->id) },
-                { "target_category", static_cast<std::int64_t>(target->category) },
-                { "attacker_id", attacker != nullptr ? static_cast<std::int64_t>(attacker->id) : std::int64_t{ -1 } },
-                { "attacker_category",
-                  attacker != nullptr ? static_cast<std::int64_t>(attacker->category) : std::int64_t{ -1 } },
-                { "attacker_is_player", attackerIsPlayer != 0 },
-                { "dmg_flags", static_cast<std::int64_t>(dmgFlags) },
-                { "damage_effect", static_cast<std::int64_t>(damageEffect) },
-                { "base_damage", static_cast<double>(baseDamage) },
-                { "damage", static_cast<double>(damage) },
-            });
+        uint32_t health = 0;
+        uint32_t maxHealth = 0;
+        bool extended = false;
+        LinkSpan_ActorHealthInfo(target, &health, &maxHealth, &extended);
+        ShipLua::EventPayload payload{
+            { "target_id", static_cast<std::int64_t>(target->id) },
+            { "target_category", static_cast<std::int64_t>(target->category) },
+            { "attacker_id", attacker != nullptr ? static_cast<std::int64_t>(attacker->id) : std::int64_t{ -1 } },
+            { "attacker_category",
+              attacker != nullptr ? static_cast<std::int64_t>(attacker->category) : std::int64_t{ -1 } },
+            { "attacker_is_player", attackerIsPlayer != 0 },
+            { "dmg_flags", static_cast<std::int64_t>(dmgFlags) },
+            { "damage_effect", static_cast<std::int64_t>(damageEffect) },
+            { "base_damage", static_cast<double>(baseDamage) },
+            { "damage", static_cast<double>(damage) },
+            { "target_health", static_cast<std::int64_t>(health) },
+            { "target_max_health", static_cast<std::int64_t>(maxHealth) },
+            { "target_extended", extended },
+        };
+        AddActorSnapshot(payload, "target", target);
+        if (attacker != nullptr) {
+            AddActorSnapshot(payload, "attacker", attacker);
+        }
+        const auto result = DispatchHookTransform("hook.oot.actor.damage", std::move(payload));
         if (!result.has_value()) {
             return damage;
         }
@@ -2112,12 +2320,9 @@ extern "C" float ShipLua_TransformActorDamage(Actor* target, Actor* attacker, ui
         if (!std::isfinite(replacement)) {
             return damage;
         }
-        // Limitar antes de converter evita overflow para float com doubles finitos grandes.
-        return static_cast<float>(std::clamp(replacement, 0.0, 255.0));
-    } catch (...) {
-        // Falha de alocação ou outra exceção C++ não atravessa a fronteira C.
-        return damage;
-    }
+        // Corte antes do cast, nas unidades reais do alvo.
+        return static_cast<float>(std::clamp(replacement, 0.0, extended ? 65535.0 : 255.0));
+    } catch (...) { return damage; }
 }
 
 std::optional<std::string> gCustomBodyOverrideAnim;
@@ -5378,6 +5583,71 @@ void DispatchHookEvent(const char* name, ShipLua::EventPayload payload) {
     gModHost->DispatchEvent(name, payload);
 }
 
+extern "C" void ShipLua_EmitActorInit(Actor* actor) {
+    if (gModHost == nullptr || gModHost->SubscriptionCount() == 0 || actor == nullptr) {
+        return;
+    }
+    try {
+        ShipLua::EventPayload payload;
+        AddActorSnapshot(payload, "actor", actor);
+        DispatchHookEvent("actor.init", std::move(payload));
+    } catch (...) {
+        // Falha de notificação não atravessa a fronteira C.
+    }
+}
+
+extern "C" void ShipLua_EmitActorDestroy(Actor* actor) {
+    if (gModHost == nullptr || gModHost->SubscriptionCount() == 0 || actor == nullptr) {
+        return;
+    }
+    try {
+        const auto snapshot = ActorSnapshot(actor);
+        ShipLua::EventPayload payload;
+        const auto handle = snapshot.find("handle");
+        if (handle != snapshot.end()) {
+            payload.emplace("handle", handle->second);
+        }
+        DispatchHookEvent("actor.destroy", std::move(payload));
+    } catch (...) {
+        // A invalidação e a limpeza rodam no chamador mesmo sem evento.
+    }
+}
+
+extern "C" void ShipLua_EmitActorDamaged(Actor* actor, uint32_t amount) {
+    if (gModHost == nullptr || gModHost->SubscriptionCount() == 0 || actor == nullptr || amount == 0) {
+        return;
+    }
+    try {
+        uint32_t health = 0;
+        uint32_t maxHealth = 0;
+        bool extended = false;
+        if (!LinkSpan_ActorHealthInfo(actor, &health, &maxHealth, &extended)) {
+            return;
+        }
+        ShipLua::EventPayload payload{
+            { "amount", static_cast<std::int64_t>(amount) },
+            { "health", static_cast<std::int64_t>(health) },
+            { "max_health", static_cast<std::int64_t>(maxHealth) },
+            { "extended", extended },
+        };
+        AddActorSnapshot(payload, "target", actor);
+        DispatchHookEvent("hook.oot.actor.damaged", std::move(payload));
+    } catch (...) {
+        // O dano já foi confirmado.
+    }
+}
+
+extern "C" void ShipLua_EmitSaveSaving(int32_t fileNum) {
+    if (gModHost == nullptr || gModHost->SubscriptionCount() == 0) {
+        return;
+    }
+    try {
+        DispatchHookEvent("save.saving", ShipLua::EventPayload{ { "slot", static_cast<std::int64_t>(fileNum) } });
+    } catch (...) {
+        // A gravação do jogo continua mesmo se a notificação falhar.
+    }
+}
+
 int LuaAttachModel(lua_State* state) {
     const char* slot = luaL_checkstring(state, 1);
     const char* path = luaL_optstring(state, 2, nullptr);
@@ -5883,6 +6153,8 @@ int LuaSetHeldItemModel(lua_State* state) {
 enum class FieldKind {
     Health,
     HealthCapacity,
+    Age,
+    GsTokens,
     Magic,
     Rupees,
     PosX,
@@ -5920,6 +6192,8 @@ struct PlayerField {
 constexpr PlayerField kPlayerFields[] = {
     { "health", FieldKind::Health, 0, 20 * 16, true },
     { "health_capacity", FieldKind::HealthCapacity, 16, 20 * 16, true },
+    { "age", FieldKind::Age, 0, 1, false },
+    { "gs_tokens", FieldKind::GsTokens, 0, 100, false },
     { "magic", FieldKind::Magic, 0, 96, true },
     { "rupees", FieldKind::Rupees, 0, 999, true },
     { "pos_x", FieldKind::PosX, -100000, 100000, true },
@@ -5960,6 +6234,10 @@ double ReadPlayerField(const PlayerField& field, Player* player) {
             return gSaveContext.health;
         case FieldKind::HealthCapacity:
             return gSaveContext.healthCapacity;
+        case FieldKind::Age:
+            return gSaveContext.linkAge;
+        case FieldKind::GsTokens:
+            return gSaveContext.inventory.gsTokens;
         case FieldKind::Magic:
             return gSaveContext.magic;
         case FieldKind::Rupees:
@@ -6051,6 +6329,8 @@ void WritePlayerField(const PlayerField& field, Player* player, double value) {
                 func_8083FB7C(player, gPlayState);
             }
             break;
+        case FieldKind::Age:
+        case FieldKind::GsTokens:
         case FieldKind::OnGround:
         case FieldKind::Rolling:
         case FieldKind::Swimming:
@@ -7244,16 +7524,22 @@ void Initialize() {
     gHookEnemyDefeatHook =
         GameInteractor::Instance->RegisterGameHook<GameInteractor::OnEnemyDefeat>([](void* actorPtr) {
             Actor* actor = static_cast<Actor*>(actorPtr);
-            if (actor == nullptr) {
+            if (actor == nullptr || gModHost == nullptr || gModHost->SubscriptionCount() == 0) {
                 return;
             }
-            DispatchHookEvent("hook.oot.enemy.defeat", ShipLua::EventPayload{
-                                                           { "actor_id", static_cast<std::int64_t>(actor->id) },
-                                                           { "category", static_cast<std::int64_t>(actor->category) },
-                                                           { "pos_x", static_cast<double>(actor->world.pos.x) },
-                                                           { "pos_y", static_cast<double>(actor->world.pos.y) },
-                                                           { "pos_z", static_cast<double>(actor->world.pos.z) },
-                                                       });
+            try {
+                ShipLua::EventPayload payload{
+                    { "actor_id", static_cast<std::int64_t>(actor->id) },
+                    { "category", static_cast<std::int64_t>(actor->category) },
+                    { "pos_x", static_cast<double>(actor->world.pos.x) },
+                    { "pos_y", static_cast<double>(actor->world.pos.y) },
+                    { "pos_z", static_cast<double>(actor->world.pos.z) },
+                };
+                AddActorSnapshot(payload, "actor", actor);
+                DispatchHookEvent("hook.oot.enemy.defeat", std::move(payload));
+            } catch (...) {
+                // Não interrompe a morte do inimigo por falha de notificação.
+            }
         });
     // OnPlayDrawEnd roda após o desenho do mundo (Player incluído) e antes do
     // HUD — bodyPartsPos já está resolvido para o frame atual nesse ponto.
@@ -7267,16 +7553,26 @@ void Initialize() {
     });
 
     gActorDestroyHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnActorDestroy>([](void* actor) {
-        ShipLuaPuppet_HandleActorDestroy(actor);
-        if (gActorProvider == nullptr) {
-            return;
+        ShipLua_EmitActorDestroy(static_cast<Actor*>(actor));
+        try {
+            ShipLuaPuppet_HandleActorDestroy(actor);
+        } catch (...) {}
+        try {
+            if (gActorProvider != nullptr) {
+                const auto destroyed = gActorProvider->OnNativeActorDestroyed(actor);
+                if (!destroyed.isOk()) {
+                    SPDLOG_ERROR("ShipLua failed to invalidate a destroyed OoT actor: {}", destroyed.message);
+                }
+            }
+        } catch (...) {
+            // A limpeza da conta não depende de alocação/log do provider.
         }
-        const auto destroyed = gActorProvider->OnNativeActorDestroyed(actor);
-        if (!destroyed.isOk()) {
-            SPDLOG_ERROR("ShipLua failed to invalidate a destroyed OoT actor: {}", destroyed.message);
-        }
+        LinkSpan_ActorHealthDestroy(static_cast<Actor*>(actor));
     });
     gPlayDestroyHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayDestroy>([]() {
+        LinkSpan_ActorHealthReset();
+        gSfxPlay = nullptr;
+        gSfxCalls = 0;
         ShipLuaPuppet_Reset();
         CustomBodyResetForSceneChange();
         // O contexto de luzes é reconstruído na cena nova: manter o nó antigo

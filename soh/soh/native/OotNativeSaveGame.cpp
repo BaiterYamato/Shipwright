@@ -15,6 +15,8 @@ extern "C" {
 #include "variables.h"
 }
 
+extern "C" void ShipLua_EmitSaveSaving(int32_t fileNum);
+
 namespace ShipLuaHost {
 // OotNativeRandoGame.cpp
 void StoreOotRandoSeed();
@@ -275,6 +277,7 @@ void OotBeforeSave(int32_t fileNum, int32_t sectionId) {
     }
     SetOotSaveSlot(fileNum);
     DispatchOotSaveHook(GetOotHookPoints().saveSaving, fileNum, -1);
+    ShipLua_EmitSaveSaving(fileNum);
     StoreSceneFlags();
     StoreHorseScene();
     StoreEntrances();
