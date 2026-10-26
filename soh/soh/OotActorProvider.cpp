@@ -91,6 +91,10 @@ ShipLua::Result<ShipLua::Handle> OotActorProvider::Spawn(const std::string& owne
     if (!thread.isOk()) {
         return ShipLua::Result<ShipLua::Handle>::err(thread.code, thread.message);
     }
+    if (mSceneTeardown) {
+        return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::InvalidState,
+                                                     "cannot spawn an OoT actor during scene teardown");
+    }
     if (ownerModId.empty()) {
         return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::InvalidArgument,
                                                      "actor owner mod id cannot be empty");
@@ -173,41 +177,66 @@ ShipLua::Result<ShipLua::Handle> OotActorProvider::Spawn(const std::string& owne
         return handle;
     }
 
+    // A reserva conta para o limite mesmo durante um spawn reentrante.
+    const ShipLua::Handle reserved = *handle.value;
+    mRecords.emplace(reserved.slot, ActorRecord{ reserved, ownerModId, request.actor, nullptr, false });
+    const auto cancel = [&]() {
+        const auto record = mRecords.find(reserved.slot);
+        if (record != mRecords.end() && SameHandle(record->second, reserved)) {
+            void* actor = record->second.nativeActor;
+            if (actor != nullptr) {
+                // Init pode ter publicado o handle; fica legível até o destroy nativo.
+                record->second.observed = true;
+                if (!record->second.removalPending) {
+                    record->second.removalPending = true;
+                    try {
+                        mHooks.kill(actor);
+                    } catch (...) {
+                        // Preserva a identidade mesmo se o kill falhar.
+                    }
+                }
+                return;
+            }
+            mRecords.erase(record);
+        }
+        (void)mHandles.Destroy(reserved, ownerModId);
+    };
+    const auto bind = [&](void* actor) {
+        const auto record = mRecords.find(reserved.slot);
+        if (actor == nullptr || mSceneTeardown || !mHandles.IsAlive(reserved) || record == mRecords.end() ||
+            !SameHandle(record->second, reserved)) {
+            return false;
+        }
+        if (record->second.nativeActor != nullptr) {
+            return record->second.nativeActor == actor;
+        }
+        if (mByActor.contains(actor)) {
+            return false;
+        }
+        mByActor.emplace(actor, reserved.slot);
+        record->second.nativeActor = actor;
+        return true;
+    };
+
     void* nativeActor = nullptr;
     try {
-        nativeActor = mHooks.spawn(resolved, request);
+        nativeActor = mHooks.spawn(resolved, request, bind);
     } catch (const std::exception& error) {
-        (void)mHandles.Destroy(*handle.value, ownerModId);
+        cancel();
         return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::HostFailure,
                                                      "OoT actor spawn failed: " + std::string(error.what()));
     } catch (...) {
-        (void)mHandles.Destroy(*handle.value, ownerModId);
+        cancel();
         return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::HostFailure, "OoT actor spawn failed");
     }
-    if (nativeActor == nullptr) {
-        (void)mHandles.Destroy(*handle.value, ownerModId);
-        return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::HostFailure, "OoT rejected the actor spawn");
+    // Init pode destruir o ator, descarregar o mod ou trocar a cena.
+    if (nativeActor == nullptr || mSceneTeardown || Resolve(reserved) != nativeActor) {
+        cancel();
+        return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::HostFailure,
+                                                     "OoT actor spawn did not leave a live bound actor");
     }
-
-    // actor.init pode observar o ator dentro do hook de spawn. A posse final
-    // é do mod criador; o handle temporário de observação deve expirar.
-    const auto existing = mByActor.find(nativeActor);
-    if (existing != mByActor.end()) {
-        const ActorRecord previous = mRecords.at(existing->second);
-        if (!previous.observed) {
-            (void)mHandles.Destroy(*handle.value, ownerModId);
-            return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::HostFailure,
-                                                         "OoT spawn returned an already owned actor");
-        }
-        (void)mHandles.Destroy(previous.handle, previous.ownerModId);
-        mRecords.erase(previous.handle.slot);
-        mByActor.erase(existing);
-    }
-    ActorRecord record{ *handle.value, ownerModId, request.actor, nativeActor, false };
-    mRecords.emplace(record.handle.slot, std::move(record));
-    mByActor.emplace(nativeActor, handle.value->slot);
     mLogger.info(ownerModId,
-                 "spawned OoT actor '" + request.actor + "' in handle slot " + std::to_string(handle.value->slot));
+                 "spawned OoT actor '" + request.actor + "' in handle slot " + std::to_string(reserved.slot));
     return handle;
 }
 
@@ -228,23 +257,29 @@ ShipLua::Result<void> OotActorProvider::Destroy(const std::string& ownerModId, c
         return ShipLua::Result<void>::err(ShipLua::ErrorCode::PermissionDenied,
                                           "observed OoT actors cannot be destroyed by mods");
     }
+    if (record->second.removalPending) {
+        return ShipLua::Result<void>::ok();
+    }
     const ActorRecord value = record->second;
+    record->second.removalPending = true;
+    const auto undoPending = [&]() {
+        const auto remaining = mRecords.find(handle.slot);
+        if (remaining != mRecords.end() && SameHandle(remaining->second, handle)) {
+            remaining->second.removalPending = false;
+        }
+    };
     try {
         mHooks.kill(value.nativeActor);
     } catch (const std::exception& error) {
+        undoPending();
         return ShipLua::Result<void>::err(ShipLua::ErrorCode::HostFailure,
                                           "OoT actor destroy failed: " + std::string(error.what()));
-    } catch (...) { return ShipLua::Result<void>::err(ShipLua::ErrorCode::HostFailure, "OoT actor destroy failed"); }
-    // O hook pode ter notificado a destruição durante kill.
-    const auto remaining = mRecords.find(handle.slot);
-    if (remaining != mRecords.end() && SameHandle(remaining->second, handle)) {
-        mByActor.erase(value.nativeActor);
-        mRecords.erase(remaining);
-        const auto destroyed = mHandles.Destroy(handle, ownerModId);
-        if (!destroyed.isOk()) {
-            return destroyed;
-        }
+    } catch (...) {
+        undoPending();
+        return ShipLua::Result<void>::err(ShipLua::ErrorCode::HostFailure, "OoT actor destroy failed");
     }
+    // O kill nativo é adiado: o registro fica pendente até o OnNativeActorDestroyed, para o actor.destroy sair com o
+    // handle do init e a vida ainda legível (o hook também pode ter notificado durante o kill).
     mLogger.info(ownerModId, "destroyed OoT actor '" + value.actorKey + "'");
     return ShipLua::Result<void>::ok();
 }
@@ -267,7 +302,8 @@ ShipLua::Result<bool> OotActorProvider::Exists(const std::string& ownerModId, co
         return ShipLua::Result<bool>::err(ShipLua::ErrorCode::PermissionDenied,
                                           "observed OoT actors are not owned by mods");
     }
-    return ShipLua::Result<bool>::ok(true);
+    // Destruído pela API e à espera do destroy nativo: para o mod, já não existe.
+    return ShipLua::Result<bool>::ok(!record->second.removalPending);
 }
 
 ShipLua::Result<ShipLua::Handle> OotActorProvider::Observe(void* actor) {
@@ -282,6 +318,10 @@ ShipLua::Result<ShipLua::Handle> OotActorProvider::Observe(void* actor) {
     const auto existing = mByActor.find(actor);
     if (existing != mByActor.end()) {
         return ShipLua::Result<ShipLua::Handle>::ok(mRecords.at(existing->second).handle);
+    }
+    if (mSceneTeardown) {
+        return ShipLua::Result<ShipLua::Handle>::err(ShipLua::ErrorCode::InvalidState,
+                                                     "cannot observe a new OoT actor during scene teardown");
     }
     auto handle = mHandles.Create(ShipLua::HandleKind::Actor, kOotHostObserverOwner);
     if (!handle.isOk()) {
@@ -399,11 +439,19 @@ ShipLua::Result<std::size_t> OotActorProvider::ReleaseMod(const std::string& mod
         if (record == mRecords.end() || !SameHandle(record->second, value.handle)) {
             continue;
         }
-        try {
-            mHooks.kill(value.nativeActor);
-        } catch (...) { mLogger.error(modId, "native kill failed during OoT actor cleanup"); }
+        const bool pending = record->second.removalPending;
+        // O mod perde a posse, mas o callback nativo ainda precisa da identidade.
+        record->second.observed = true;
+        record->second.removalPending = true;
+        if (!pending && value.nativeActor != nullptr) {
+            try {
+                mHooks.kill(value.nativeActor);
+            } catch (...) { mLogger.error(modId, "native kill failed during OoT actor cleanup"); }
+        }
+        // Ator nativo vivo: o registro fica até o destroy nativo; reserva sem ator sai já.
         const auto remaining = mRecords.find(value.handle.slot);
-        if (remaining != mRecords.end() && SameHandle(remaining->second, value.handle)) {
+        if (value.nativeActor == nullptr && remaining != mRecords.end() &&
+            SameHandle(remaining->second, value.handle)) {
             mByActor.erase(value.nativeActor);
             mRecords.erase(remaining);
             (void)mHandles.Destroy(value.handle, modId);
@@ -416,11 +464,34 @@ ShipLua::Result<std::size_t> OotActorProvider::ReleaseMod(const std::string& mod
     return ShipLua::Result<std::size_t>::ok(released);
 }
 
+ShipLua::Result<void> OotActorProvider::BeginSceneTeardown() {
+    const auto thread = ValidateThread("begin scene teardown");
+    if (!thread.isOk()) {
+        return thread;
+    }
+    mSceneTeardown = true;
+    return ShipLua::Result<void>::ok();
+}
+
+ShipLua::Result<std::size_t> OotActorProvider::FinishSceneTeardown() {
+    const auto thread = ValidateThread("finish scene teardown");
+    if (!thread.isOk()) {
+        return ShipLua::Result<std::size_t>::err(thread.code, thread.message);
+    }
+    const std::size_t invalidated = mHandles.Count();
+    mByActor.clear();
+    mRecords.clear();
+    (void)mHandles.InvalidateScene();
+    mSceneTeardown = false;
+    return ShipLua::Result<std::size_t>::ok(invalidated);
+}
+
 ShipLua::Result<std::size_t> OotActorProvider::OnSceneChange() {
     const auto thread = ValidateThread("scene change");
     if (!thread.isOk()) {
         return ShipLua::Result<std::size_t>::err(thread.code, thread.message);
     }
+    (void)BeginSceneTeardown();
     std::vector<ActorRecord> owned;
     for (const auto& [slot, record] : mRecords) {
         (void)slot;
@@ -430,16 +501,17 @@ ShipLua::Result<std::size_t> OotActorProvider::OnSceneChange() {
     }
     const std::size_t invalidated = mHandles.Count();
     for (const ActorRecord& record : owned) {
-        if (!Resolve(record.handle)) {
+        const auto current = mRecords.find(record.handle.slot);
+        if (current == mRecords.end() || !SameHandle(current->second, record.handle) ||
+            current->second.removalPending || current->second.observed) {
             continue;
         }
+        current->second.removalPending = true;
         try {
             mHooks.kill(record.nativeActor);
         } catch (...) { mLogger.error(record.ownerModId, "native kill failed during OoT scene cleanup"); }
     }
-    mByActor.clear();
-    mRecords.clear();
-    (void)mHandles.InvalidateScene();
+    (void)FinishSceneTeardown();
     if (invalidated > 0) {
         mLogger.info("host", "invalidated " + std::to_string(invalidated) + " OoT actor handle(s) on scene change");
     }
@@ -452,7 +524,7 @@ ShipLua::Result<std::size_t> OotActorProvider::Shutdown() {
 
 std::size_t OotActorProvider::CountForMod(const std::string& modId) const {
     return static_cast<std::size_t>(std::count_if(mRecords.begin(), mRecords.end(), [&modId](const auto& entry) {
-        return !entry.second.observed && entry.second.ownerModId == modId;
+        return !entry.second.observed && !entry.second.removalPending && entry.second.ownerModId == modId;
     }));
 }
 

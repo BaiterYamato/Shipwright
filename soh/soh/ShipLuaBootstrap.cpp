@@ -153,6 +153,38 @@ namespace {
 
 std::unique_ptr<ShipLua::ModHost> gModHost;
 std::shared_ptr<OotActorProvider> gActorProvider;
+const std::function<bool(void*)>* gActorSpawnBinder = nullptr;
+
+extern "C" const void* ShipLua_TakeActorSpawnBinding(void) {
+    const auto* bind = gActorSpawnBinder;
+    gActorSpawnBinder = nullptr;
+    return bind;
+}
+
+extern "C" int ShipLua_BindSpawnedActor(const void* binding, Actor* actor) {
+    const auto* bind = static_cast<const std::function<bool(void*)>*>(binding);
+    try {
+        return bind == nullptr || (*bind)(actor);
+    } catch (...) { return false; }
+}
+
+extern "C" void ShipLua_FinishActorSceneTeardown(void) {
+    if (gLinkSpanEngineExtended == 0) {
+        return;
+    }
+    try {
+        if (gActorProvider != nullptr) {
+            (void)gActorProvider->FinishSceneTeardown();
+        }
+    } catch (...) {
+        // Nenhuma exceção atravessa a fronteira C.
+    }
+    try {
+        LinkSpan_ActorHealthReset();
+    } catch (...) {
+        // Mantém a fronteira C mesmo se a implementação da conta mudar.
+    }
+}
 // Observe só quando algum mod recebe eventos; falha de handle omite o snapshot.
 ShipLua::EventValue::Object ActorSnapshot(Actor* actor) {
     if (actor == nullptr || gActorProvider == nullptr || gModHost == nullptr || gModHost->SubscriptionCount() == 0) {
@@ -819,7 +851,8 @@ std::shared_ptr<OotActorProvider> CreateActorProvider() {
         const s32 objectIndex = Object_GetIndex(&gPlayState->objectCtx, objectId);
         return objectIndex >= 0 && Object_IsLoaded(&gPlayState->objectCtx, objectIndex);
     };
-    hooks.spawn = [](const OotActorDefinition& definition, const ShipLua::ActorSpawnRequest& request) -> void* {
+    hooks.spawn = [](const OotActorDefinition& definition, const ShipLua::ActorSpawnRequest& request,
+                     const std::function<bool(void*)>& bind) -> void* {
         if (gPlayState == nullptr) {
             return nullptr;
         }
@@ -838,18 +871,31 @@ std::shared_ptr<OotActorProvider> CreateActorProvider() {
                 rotationY = static_cast<std::int16_t>(player->actor.shape.rot.y + 0x8000);
             }
         }
+        struct BindScope {
+            const std::function<bool(void*)>* previous;
+            explicit BindScope(const std::function<bool(void*)>& callback) : previous(gActorSpawnBinder) {
+                gActorSpawnBinder = &callback;
+            }
+            ~BindScope() {
+                gActorSpawnBinder = previous;
+            }
+        } scope(bind);
         Actor* spawned = Actor_Spawn(&gPlayState->actorCtx, gPlayState, definition.actorId, x, y, z,
                                      DegreesToBinang(request.rotationX), rotationY, DegreesToBinang(request.rotationZ),
                                      definition.params);
+        // Init pode ter removido o ator ou a cena; não desreferencia um retorno antigo.
+        if (spawned != nullptr && !bind(spawned)) {
+            return nullptr;
+        }
         if (spawned != nullptr && definition.key == "oot.link_child_puppet") {
             if (!ShipLuaPuppet_Attach(spawned, gPlayState)) {
-                Actor_Kill(spawned);
+                // O cancelamento do provider agenda kill sem perder o handle do init.
                 return nullptr;
             }
         }
         if (spawned != nullptr && definition.key == "oot.mm_elegy_statue") {
             if (!ShipLuaPuppet_AttachStatue(spawned)) {
-                Actor_Kill(spawned);
+                // O cancelamento do provider agenda kill sem perder o handle do init.
                 return nullptr;
             }
         }
@@ -5605,9 +5651,10 @@ extern "C" void ShipLua_EmitActorDestroy(Actor* actor) {
         const auto snapshot = ActorSnapshot(actor);
         ShipLua::EventPayload payload;
         const auto handle = snapshot.find("handle");
-        if (handle != snapshot.end()) {
-            payload.emplace("handle", handle->second);
+        if (handle == snapshot.end()) {
+            return;
         }
+        payload.emplace("handle", handle->second);
         DispatchHookEvent("actor.destroy", std::move(payload));
     } catch (...) {
         // A invalidação e a limpeza rodam no chamador mesmo sem evento.
@@ -7554,6 +7601,9 @@ void Initialize() {
     });
 
     gActorDestroyHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnActorDestroy>([](void* actor) {
+        if (gLinkSpanEngineExtended == 0) {
+            return;
+        }
         ShipLua_EmitActorDestroy(static_cast<Actor*>(actor));
         try {
             ShipLuaPuppet_HandleActorDestroy(actor);
@@ -7571,7 +7621,9 @@ void Initialize() {
         LinkSpan_ActorHealthDestroy(static_cast<Actor*>(actor));
     });
     gPlayDestroyHook = GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayDestroy>([]() {
-        LinkSpan_ActorHealthReset();
+        if (gActorProvider != nullptr) {
+            (void)gActorProvider->BeginSceneTeardown();
+        }
         gSfxPlay = nullptr;
         gSfxCalls = 0;
         ShipLuaPuppet_Reset();
@@ -7582,13 +7634,7 @@ void Initialize() {
         gPointLightNode = nullptr;
         gPointLightActive = false;
         gEnvOverrideActive = false;
-        if (gActorProvider == nullptr) {
-            return;
-        }
-        const auto cleaned = gActorProvider->OnSceneChange();
-        if (!cleaned.isOk()) {
-            SPDLOG_ERROR("ShipLua failed to clean OoT actors during scene teardown: {}", cleaned.message);
-        }
+        // Handles e vida só expiram após Actor_CleanupContext em Play_Destroy.
     });
     // Religa o corpo customizado sozinho na cena nova, se ele estava ativo na
     // cena anterior — resolve a limitação conhecida da v1 (corpo sumia em

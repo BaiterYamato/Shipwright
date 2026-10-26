@@ -32,12 +32,18 @@ struct Fixture {
     std::vector<std::unique_ptr<FakeActor>> actors;
     std::size_t readCalls = 0;
     std::size_t healthCalls = 0;
+    std::size_t killCalls = 0;
     void* lastReadActor = nullptr;
     std::string lastReadField;
     bool throwRead = false;
     bool throwHealth = false;
     bool notifyKill = false;
     bool observeDuringSpawn = false;
+    bool failBeforeBind = false;
+    bool failAfterInit = false;
+    bool throwAfterInit = false;
+    std::function<void(FakeActor*)> onInit;
+    std::function<void()> onKill;
     ShipLua::Result<ShipLua::Handle> initObservation;
     ShipLuaHost::OotActorProvider provider;
 
@@ -50,19 +56,36 @@ struct Fixture {
               },
               ShipLuaHost::OotActorProviderHooks{
                   [this](std::int16_t objectId) { return readyObjects.contains(objectId); },
-                  [this](const ShipLuaHost::OotActorDefinition& definition,
-                         const ShipLua::ActorSpawnRequest&) -> void* {
+                  [this](const ShipLuaHost::OotActorDefinition& definition, const ShipLua::ActorSpawnRequest&,
+                         const std::function<bool(void*)>& bind) -> void* {
+                      if (failBeforeBind) {
+                          return nullptr;
+                      }
                       auto actor = std::make_unique<FakeActor>();
                       actor->actorId = definition.actorId;
                       FakeActor* native = actor.get();
                       actors.emplace_back(std::move(actor));
+                      if (!bind(native)) {
+                          native->killed = true;
+                          return nullptr;
+                      }
                       if (observeDuringSpawn) {
                           initObservation = provider.Observe(native);
                       }
-                      return native;
+                      if (onInit) {
+                          onInit(native);
+                      }
+                      if (throwAfterInit) {
+                          throw std::runtime_error("fake spawn failure after init");
+                      }
+                      return failAfterInit ? nullptr : native;
                   },
                   [this](void* actor) {
+                      ++killCalls;
                       static_cast<FakeActor*>(actor)->killed = true;
+                      if (onKill) {
+                          onKill();
+                      }
                       if (notifyKill) {
                           (void)provider.OnNativeActorDestroyed(actor);
                       }
@@ -73,6 +96,14 @@ struct Fixture {
                       lastReadField = field;
                       if (throwRead) {
                           throw std::runtime_error("fake read failure");
+                      }
+                      if (field == "health" || field == "max_health") {
+                          return ShipLua::Result<ShipLua::ActorFieldValue>::ok(
+                              static_cast<std::int64_t>(static_cast<FakeActor*>(actor)->maxHealth));
+                      }
+                      if (field == "extended") {
+                          return ShipLua::Result<ShipLua::ActorFieldValue>::ok(
+                              static_cast<FakeActor*>(actor)->maxHealth > 4);
                       }
                       if (field == "actor_id") {
                           return ShipLua::Result<ShipLua::ActorFieldValue>::ok(
@@ -155,8 +186,14 @@ void TestSpawnDestroyAndOwnership() {
 
     Check(fixture.provider.Destroy("test.mod", *spawned.value).isOk(), "owner should destroy actor");
     Check(fixture.actors.front()->killed, "native actor should be killed");
+    // O kill nativo é adiado: até o Actor_Delete o handle segue legível, mas o ator já não existe para o mod.
+    const auto pending = fixture.provider.Exists("test.mod", *spawned.value);
+    Check(pending.isOk() && !*pending.value, "destroyed actor must stop existing for its owner");
+    Check(fixture.provider.Get(*spawned.value, "actor_id").isOk(), "pending destroy must keep the handle readable");
+    Check(fixture.provider.OnNativeActorDestroyed(fixture.actors.front().get()).value.value_or(false),
+          "native delete should invalidate the destroyed actor");
     const auto stale = fixture.provider.Exists("test.mod", *spawned.value);
-    Check(stale.code == ShipLua::ErrorCode::InvalidHandle, "destroyed handle must be stale");
+    Check(stale.code == ShipLua::ErrorCode::InvalidHandle, "destroyed handle must be stale after native delete");
 }
 
 void TestObjectDependencyAndInvalidHandle() {
@@ -192,6 +229,8 @@ void TestNativeDestroyAndLifecycleCleanup() {
     const auto released = fixture.provider.ReleaseMod("second.mod");
     Check(released.isOk() && *released.value == 1, "mod unload should release owned actors");
     Check(fixture.actors.back()->killed, "mod unload should kill its native actor");
+    Check(fixture.provider.OnNativeActorDestroyed(fixture.actors.back().get()).value.value_or(false),
+          "released actor keeps its record until the native delete");
 
     const auto third = fixture.provider.Spawn("third.mod", DogRequest());
     Check(third.isOk(), "provider should remain usable after mod cleanup");
@@ -333,6 +372,8 @@ void TestObservedCleanup() {
           "mod release should kill and release spawned actors");
     Check(fixture.provider.Resolve(*observed.value) == &actor && !actor.killed,
           "mod release must preserve observed actors and their handles");
+    Check(fixture.provider.OnNativeActorDestroyed(fixture.actors.front().get()).value.value_or(false),
+          "released spawn keeps its record until the native delete");
     CheckEmpty(fixture.provider.Get(*spawned.value, "actor_id"), "released spawns should not be readable");
     const auto respawned = fixture.provider.Spawn("test.mod", DogRequest());
     if (!Check(respawned.isOk(), "scene test spawn should succeed")) {
@@ -439,12 +480,239 @@ void TestObservationDuringSpawn() {
     Check(observed.isOk() && *observed.value == *spawned.value, "completed spawn should keep the mod-owned handle");
     Check(fixture.provider.Count() == 1 && fixture.provider.Handles().Count() == 1,
           "spawn-time observation must not leave duplicate records");
-    CheckEmpty(fixture.provider.Get(*fixture.initObservation.value, "actor_id"),
-               "temporary observation must expire when spawn assigns ownership");
+    Check(*fixture.initObservation.value == *spawned.value,
+          "init, spawn result and later events must share the complete handle");
+    Check(fixture.provider.Handles().OwnerOf(*fixture.initObservation.value) == "test.mod",
+          "init must already expose mod ownership");
+    const auto id = fixture.provider.Get(*fixture.initObservation.value, "actor_id");
+    Check(id.isOk() && std::get<std::int64_t>(*id.value) == 1, "init handle must remain readable after spawn");
     Check(fixture.provider.Destroy("test.mod", *spawned.value).isOk(), "spawn-time observation must not break Destroy");
+    Check(fixture.provider.OnNativeActorDestroyed(fixture.actors.back().get()).value.value_or(false),
+          "native delete should close the destroyed spawn");
     Check(fixture.provider.Count() == 0 && fixture.provider.Handles().Count() == 0,
           "destroy must leave no observation pointing at the spawned actor");
 }
+
+void TestFailedSpawnPreservesPublishedHandle() {
+    for (int failure = 0; failure < 3; ++failure) {
+        Fixture fixture;
+        fixture.observeDuringSpawn = true;
+        fixture.failBeforeBind = failure == 0;
+        fixture.failAfterInit = failure == 1;
+        fixture.throwAfterInit = failure == 2;
+        const auto spawned = fixture.provider.Spawn("test.mod", DogRequest());
+        Check(!spawned.isOk(), "rejected or throwing native spawn must fail");
+        if (failure == 0) {
+            Check(fixture.provider.Count() == 0 && fixture.provider.Handles().Count() == 0,
+                  "falha anterior ao bind libera a reserva sem evento");
+            continue;
+        }
+        Check(fixture.initObservation.isOk(), "falha tardia ja publicou init");
+        const auto init = *fixture.initObservation.value;
+        const auto destroy = fixture.provider.Observe(fixture.actors.back().get());
+        Check(destroy.isOk() && *destroy.value == init, "destroy tardio deve usar o handle completo do init");
+        const auto hp = fixture.provider.Get(init, "health");
+        Check(hp.isOk() && std::get<std::int64_t>(*hp.value) == 4, "vida legivel ate destroy nativo");
+        Check(fixture.provider.CountForMod("test.mod") == 0, "cancelamento retira a posse do mod");
+        Check(fixture.provider.Destroy("test.mod", init).code == ShipLua::ErrorCode::PermissionDenied,
+              "mod nao pode destruir novamente o spawn cancelado");
+        Check(fixture.provider.ReleaseMod("test.mod").value == 0 && fixture.killCalls == 1,
+              "unload nao deve repetir kill do cancelamento");
+        Check(fixture.provider.OnNativeActorDestroyed(fixture.actors.back().get()).value == true,
+              "destroy nativo invalida a identidade publicada");
+        CheckEmpty(fixture.provider.Get(init, "health"), "vida expira depois do destroy nativo");
+        Check(fixture.provider.Count() == 0 && fixture.provider.Handles().Count() == 0,
+              "destroy nativo deve liberar registro e reserva");
+    }
+}
+
+void TestReentrantSpawnAndNativeChild() {
+    Fixture fixture;
+    ShipLua::Result<ShipLua::Handle> parent, child, nested;
+    bool inParent = false;
+    FakeActor nativeChild{ 42 };
+    fixture.onInit = [&](FakeActor* actor) {
+        if (inParent) {
+            return;
+        }
+        inParent = true;
+        parent = fixture.provider.Observe(actor);
+        child = fixture.provider.Observe(&nativeChild);
+        nested = fixture.provider.Spawn("other.mod", DogRequest());
+    };
+    const auto spawned = fixture.provider.Spawn("test.mod", DogRequest());
+    if (!Check(spawned.isOk() && parent.isOk() && child.isOk() && nested.isOk(),
+               "init may observe a native child and spawn another mod actor")) {
+        return;
+    }
+    Check(*parent.value == *spawned.value, "nested spawn must preserve the outer reservation");
+    Check(*nested.value != *parent.value, "nested spawn must have its own identity");
+    Check(fixture.provider.Handles().OwnerOf(*nested.value) == "other.mod", "nested spawn must keep its owner");
+    Check(fixture.provider.Handles().OwnerOf(*child.value) == ShipLuaHost::kOotHostObserverOwner,
+          "native init children must remain host observations");
+    Check(fixture.provider.Count() == 3 && fixture.provider.Handles().Count() == 3,
+          "nested init must not leak or replace handles");
+}
+
+void TestActorDestroyedInsideInit() {
+    Fixture fixture;
+    fixture.observeDuringSpawn = true;
+    fixture.onInit = [&](FakeActor* actor) {
+        Check(fixture.provider.OnNativeActorDestroyed(actor).value == true,
+              "native deletion inside init must find the reserved handle");
+    };
+    const auto spawned = fixture.provider.Spawn("test.mod", DogRequest());
+    Check(!spawned.isOk(), "spawn must not return a handle destroyed inside init");
+    Check(fixture.provider.Count() == 0 && fixture.provider.Handles().Count() == 0,
+          "native deletion inside init must leave no record");
+    CheckEmpty(fixture.provider.Get(*fixture.initObservation.value, "health"), "deleted init handle must stay expired");
+}
+
+void TestSceneTeardownDestroyIdentityAndHealth() {
+    Fixture fixture;
+    const auto owned = fixture.provider.Spawn("test.mod", DogRequest());
+    FakeActor vanilla{ 42 }, unknown{ 43 };
+    const auto observed = fixture.provider.Observe(&vanilla);
+    if (!Check(owned.isOk() && observed.isOk(), "teardown needs owned and observed actors")) {
+        return;
+    }
+    Check(fixture.provider.SetMaxHealth("test.mod", *observed.value, 535).value == true,
+          "teardown actor must have extended health");
+    const auto scene = fixture.provider.Handles().SceneGeneration();
+    Check(fixture.provider.BeginSceneTeardown().isOk(), "OnPlayDestroy must begin teardown");
+    Check(fixture.provider.Handles().SceneGeneration() == scene, "begin teardown must preserve scene generation");
+    Check(fixture.provider.Spawn("test.mod", DogRequest()).code == ShipLua::ErrorCode::InvalidState,
+          "destroy callbacks cannot spawn new actors during teardown");
+    Check(!fixture.provider.Observe(&unknown).isOk(), "teardown must not mint handles for untracked actors");
+    Check(fixture.provider.Handles().Count() == 2, "failed teardown observation must not allocate");
+
+    // Play_Destroy -> Actor_CleanupContext -> Actor_Delete -> evento -> invalidação.
+    const auto destroyEvent = [&](void* actor, const ShipLua::Handle& expected, std::int64_t health) {
+        const auto snapshot = fixture.provider.Observe(actor);
+        if (!Check(snapshot.isOk(), "destroy snapshot must find the old identity")) {
+            return;
+        }
+        Check(*snapshot.value == expected, "teardown destroy must publish the complete original handle");
+        const auto current = fixture.provider.Get(expected, "health");
+        const auto maximum = fixture.provider.Get(expected, "max_health");
+        const auto extended = fixture.provider.Get(expected, "extended");
+        Check(current.isOk() && std::get<std::int64_t>(*current.value) == health,
+              "health must remain readable inside teardown destroy");
+        Check(maximum.isOk() && std::get<std::int64_t>(*maximum.value) == health,
+              "max_health must remain readable inside teardown destroy");
+        Check(extended.isOk() && std::get<bool>(*extended.value) == (health > 4),
+              "extended state must remain readable inside teardown destroy");
+        Check(fixture.provider.OnNativeActorDestroyed(actor).value == true,
+              "native destroy must invalidate the original handle after the event");
+        CheckEmpty(fixture.provider.Get(expected, "health"), "handle must expire after destroy callback");
+        Check(!fixture.provider.Observe(actor).isOk(), "repeated teardown notification must not recreate a handle");
+    };
+    destroyEvent(fixture.actors.front().get(), *owned.value, 4);
+    destroyEvent(&vanilla, *observed.value, 535);
+    Check(fixture.provider.Count() == 0 && fixture.provider.Handles().Count() == 0,
+          "all teardown destroy events must leave no handles");
+    Check(fixture.provider.FinishSceneTeardown().value == 0, "finish should find no surviving actors");
+    Check(fixture.provider.Handles().SceneGeneration() != scene, "scene invalidation must follow native cleanup");
+    Check(!fixture.actors.front()->killed, "finish teardown must not call kill on freed native actors");
+    Check(fixture.provider.Observe(&unknown).isOk(), "new scene may create observation handles again");
+}
+
+void TestSceneChangeInsideSpawn() {
+    Fixture fixture;
+    fixture.observeDuringSpawn = true;
+    ShipLua::Result<ShipLua::Handle> nextScene;
+    FakeActor newActor{ 42 };
+    fixture.onInit = [&](FakeActor* actor) {
+        Check(fixture.provider.BeginSceneTeardown().isOk(), "init may begin scene teardown");
+        Check(fixture.provider.OnNativeActorDestroyed(actor).value == true, "teardown must remove spawning actor");
+        Check(fixture.provider.FinishSceneTeardown().isOk(), "native cleanup may finish before spawn returns");
+        nextScene = fixture.provider.Observe(&newActor);
+    };
+    Check(!fixture.provider.Spawn("test.mod", DogRequest()).isOk(), "old-scene spawn must fail after teardown");
+    Check(fixture.provider.Count() == 1 && fixture.provider.Handles().Count() == 1,
+          "cancelled spawn must preserve new-scene records even if the slot was reused");
+    Check(nextScene.isOk() && fixture.provider.Resolve(*nextScene.value) == &newActor,
+          "cancellation must not erase a newer handle");
+    CheckEmpty(fixture.provider.Get(*fixture.initObservation.value, "health"), "old init handle must stay expired");
+}
+
+void TestSceneTeardownBeginsInsideSpawn() {
+    Fixture fixture;
+    fixture.observeDuringSpawn = true;
+    fixture.onInit = [&](FakeActor*) {
+        Check(fixture.provider.BeginSceneTeardown().isOk(), "init may begin teardown before spawn returns");
+    };
+    Check(!fixture.provider.Spawn("test.mod", DogRequest()).isOk(), "spawn must fail while teardown is pending");
+    Check(fixture.provider.Count() == 1 && fixture.provider.Handles().Count() == 1,
+          "pending native cleanup must preserve an identity already published by init");
+    const auto destroyHandle = fixture.provider.Observe(fixture.actors.front().get());
+    Check(destroyHandle.isOk() && *destroyHandle.value == *fixture.initObservation.value,
+          "cancelled spawn must still publish the original handle during teardown destroy");
+    const auto health = fixture.provider.Get(*fixture.initObservation.value, "health");
+    Check(health.isOk() && std::get<std::int64_t>(*health.value) == 4,
+          "cancelled spawn health must remain readable until native destroy");
+    Check(fixture.provider.OnNativeActorDestroyed(fixture.actors.front().get()).value == true,
+          "native cleanup must finish the cancelled spawn lifetime");
+    Check(fixture.provider.FinishSceneTeardown().value == 0, "cancelled spawn must leave no handle after cleanup");
+}
+
+void TestTeardownCallbackDestroysOtherActor() {
+    for (bool release : { false, true }) {
+        Fixture fixture;
+        const auto a = fixture.provider.Spawn("test.mod", DogRequest());
+        const auto b = fixture.provider.Spawn("test.mod", DogRequest());
+        if (!Check(a.isOk() && b.isOk(), "callback precisa de dois atores")) {
+            return;
+        }
+        fixture.provider.SetMaxHealth("test.mod", *b.value, 535);
+        fixture.provider.BeginSceneTeardown();
+        // Callback destroy de A pede a limpeza de B antes do Actor_Delete(B).
+        if (release) {
+            Check(fixture.provider.ReleaseMod("test.mod").value == 2, "unload agenda ambos os atores");
+            Check(fixture.provider.ReleaseMod("test.mod").value == 0, "unload repetido nao repete kill");
+        } else {
+            Check(fixture.provider.Destroy("test.mod", *b.value).isOk(), "callback de A pode matar B");
+            Check(fixture.provider.Destroy("test.mod", *b.value).isOk(), "destroy pendente e idempotente");
+        }
+        const auto event = fixture.provider.Observe(fixture.actors.back().get());
+        Check(event.isOk() && *event.value == *b.value, "destroy de B preserva o handle do init");
+        const auto hp = fixture.provider.Get(*b.value, "health");
+        Check(hp.isOk() && std::get<std::int64_t>(*hp.value) == 535, "vida de B fica legivel no callback");
+        Check(fixture.killCalls == (release ? 2u : 1u), "cada ator recebe um unico kill");
+        fixture.provider.OnNativeActorDestroyed(fixture.actors.back().get());
+        CheckEmpty(fixture.provider.Get(*b.value, "health"), "B expira depois do evento nativo");
+        fixture.provider.OnNativeActorDestroyed(fixture.actors.front().get());
+        Check(fixture.provider.FinishSceneTeardown().value == 0, "fecho encontra registros vazios");
+    }
+}
+
+void TestPendingRemovalReentry() {
+    Fixture fixture;
+    Check(fixture.provider.Spawn("test.mod", DogRequest()).isOk(), "primeiro ator para reentrada");
+    Check(fixture.provider.Spawn("test.mod", DogRequest()).isOk(), "segundo ator para reentrada");
+    fixture.onKill = [&]() { (void)fixture.provider.ReleaseMod("test.mod"); };
+    Check(fixture.provider.OnSceneChange().value == 2, "scene change invalida ambas as identidades");
+    Check(fixture.killCalls == 2, "release reentrante nao repete kills ja pendentes na cena");
+    Check(fixture.provider.Count() == 0, "reentrada deixa registros vazios");
+}
+
+#ifdef OOT_ACTOR_PROVIDER_GAME_TESTS
+} // namespace
+
+extern "C" int TestActorSpawnBindRollback(void);
+extern "C" int TestActorCleanupFinish(void);
+bool TestActorWrappersWithoutMods();
+bool TestSpawnAttachFailure(bool statue);
+
+namespace {
+void TestGameLifecycleBoundaries() {
+    Check(TestActorSpawnBindRollback(), "bind recusado reverte recursos sem categoria, flags ou evento");
+    Check(TestActorCleanupFinish(), "Actor_CleanupContext finaliza depois de excluir todos os atores");
+    Check(TestActorWrappersWithoutMods(), "wrappers sem mods retornam antes de registry/provider/mapas");
+    Check(TestSpawnAttachFailure(false), "attach puppet recusado preserva identidade ate destroy");
+    Check(TestSpawnAttachFailure(true), "attach statue recusado preserva identidade ate destroy");
+}
+#endif
 
 } // namespace
 
@@ -463,6 +731,17 @@ int main() {
     TestMissingHooksAndThreadValidation();
     TestKillNotificationReentry();
     TestObservationDuringSpawn();
+    TestFailedSpawnPreservesPublishedHandle();
+    TestReentrantSpawnAndNativeChild();
+    TestActorDestroyedInsideInit();
+    TestSceneTeardownDestroyIdentityAndHealth();
+    TestSceneChangeInsideSpawn();
+    TestSceneTeardownBeginsInsideSpawn();
+    TestTeardownCallbackDestroysOtherActor();
+    TestPendingRemovalReentry();
+#ifdef OOT_ACTOR_PROVIDER_GAME_TESTS
+    TestGameLifecycleBoundaries();
+#endif
     std::cout << "OotActorProviderTests: " << failures << " failure(s)\n";
     return failures;
 }

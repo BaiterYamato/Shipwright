@@ -7,6 +7,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 extern f32 LinkSpan_ActorDamage(PlayState* play, Collider* collider, ColliderInfo* info, f32 damage);
+extern s32 LinkSpan_ActorHasExtendedHealth(Actor* actor);
 
 typedef s32 (*ColChkResetFunc)(PlayState*, Collider*);
 typedef void (*ColChkBloodFunc)(PlayState*, Collider*, Vec3f*);
@@ -3032,7 +3033,9 @@ void CollisionCheck_ApplyDamage(PlayState* play, CollisionCheckContext* colChkCt
         collider->actor->colChkInfo.damage += LinkSpan_ActorDamage(play, collider, info, damage);
     }
 
-    if (CVarGetInteger(CVAR_ENHANCEMENT("IvanCoopModeEnabled"), 0)) {
+    // Na conta estendida, cada contribuição já recebeu o coop antes do espelho.
+    if (CVarGetInteger(CVAR_ENHANCEMENT("IvanCoopModeEnabled"), 0) &&
+        (!LinkSpan_EngineExtended() || !LinkSpan_ActorHasExtendedHealth(collider->actor))) {
         collider->actor->colChkInfo.damage *= GET_PLAYER(play)->ivanDamageMultiplier;
     }
 }

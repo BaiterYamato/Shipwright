@@ -31,6 +31,9 @@
 // assina hook.oot.item.give.
 extern void ShipLua_TransformGivenItem(GetItemEntry* entry);
 extern void LinkSpan_ActorInit(Actor* actor, PlayState* play);
+extern void ShipLua_FinishActorSceneTeardown(void);
+extern const void* ShipLua_TakeActorSpawnBinding(void);
+extern int ShipLua_BindSpawnedActor(const void* binding, Actor* actor);
 // RFC 0031: vida estendida e dano efetivo (soh/soh/OotActorHealthGame.cpp).
 extern s32 LinkSpan_ActorApplyDamage(Actor* actor);
 extern void LinkSpan_ActorSettleDamage(Actor* actor);
@@ -3397,6 +3400,7 @@ void func_80031C3C(ActorContext* actorCtx, PlayState* play) {
 
     Play_SaveSceneFlags(play);
     func_80030488(play);
+    ShipLua_FinishActorSceneTeardown();
 }
 
 /**
@@ -3480,6 +3484,8 @@ int gMapLoading = 0;
 
 Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 posX, f32 posY, f32 posZ, s16 rotX,
                    s16 rotY, s16 rotZ, s16 params) {
+    // Consome na entrada: hooks anteriores ao init também podem criar filhos.
+    const void* spawnBinding = LinkSpan_EngineExtended() ? ShipLua_TakeActorSpawnBinding() : NULL;
     Actor* actor;
     s32 objBankIndex;
     u32 temp;
@@ -3565,6 +3571,15 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     actor->home.rot.z = rotZ;
     actor->params = params;
 
+    // Associa antes das listas: rollback não publica destroy nem limpa a sala.
+    actor->category = dbEntry->category;
+    if (spawnBinding != NULL && !ShipLua_BindSpawnedActor(spawnBinding, actor)) {
+        ObjectExtension_Free(actor);
+        ZELDA_ARENA_FREE_DEBUG(actor);
+        dbEntry->numLoaded--;
+        Actor_FreeOverlay(dbEntry);
+        return NULL;
+    }
     Actor_AddToCategory(actorCtx, actor, dbEntry->category);
 
     temp = gSegments[6];

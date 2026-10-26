@@ -16,6 +16,15 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(nei_fork_dir "${CMAKE_BINARY_DIR}/nei-fork")
 set(fork_src "${CMAKE_CURRENT_SOURCE_DIR}/fork")
 file(GLOB nei_fork_patches CONFIGURE_DEPENDS "${fork_src}/patches/*.patch")
+# Mudanças nos fontes mesclados também precisam disparar um novo configure.
+file(STRINGS "${host_root}/soh/hookable_sources.txt" nei_overlay_host_sources ENCODING UTF-8 REGEX "^[ \t]*[^# \t]")
+foreach(nei_overlay_host_source IN LISTS nei_overlay_host_sources)
+    string(STRIP "${nei_overlay_host_source}" nei_overlay_host_source)
+    if(nei_overlay_host_source AND NOT nei_overlay_host_source MATCHES "^#")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+            "${host_root}/soh/${nei_overlay_host_source}")
+    endif()
+endforeach()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${fork_src}/sync.py" "${fork_src}/gen_compat.py" "${fork_src}/extract_additions.py" "${fork_src}/extract.txt"
     "${fork_src}/gen_stubs.py" "${fork_src}/stub-names.txt" "${fork_src}/extracted-fixes.txt"
