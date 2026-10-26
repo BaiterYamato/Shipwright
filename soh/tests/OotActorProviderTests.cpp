@@ -79,7 +79,7 @@ struct Fixture {
                               static_cast<std::int64_t>(static_cast<FakeActor*>(actor)->actorId));
                       }
                       return ShipLua::Result<ShipLua::ActorFieldValue>::err(ShipLua::ErrorCode::InvalidArgument,
-                                                                          "fake field unavailable");
+                                                                            "fake field unavailable");
                   },
                   [this](void* actor, std::uint32_t maxHealth) -> ShipLua::Result<bool> {
                       ++healthCalls;
@@ -130,7 +130,8 @@ void TestCapabilitiesAndAllowlist() {
     if (Check(health.has_value(), "actor.health descriptor should exist for OoT")) {
         Check(health->permissions == std::vector<std::string>{ "world.entities.write" },
               "health should require write permission");
-        Check(health->description == "Extended per-actor health above 255.", "health description should match the contract");
+        Check(health->description == "Extended per-actor health above 255.",
+              "health description should match the contract");
         Check(health->limits.perMod == ShipLuaHost::kOotSpawnLimitPerMod, "health offer should use the spawn limit");
     }
     Check(!registry.Has("actor.observe", "mm") && !registry.Has("actor.health", "mm"),
@@ -250,7 +251,8 @@ void TestObservationIdentityAndOwnership() {
     }
     const auto observed = fixture.provider.Observe(fixture.actors.back().get());
     Check(observed.isOk() && *observed.value == *spawned.value, "Observe should reuse the spawning mod's handle");
-    Check(fixture.provider.Handles().OwnerOf(*spawned.value) == "test.mod", "observation must preserve spawn ownership");
+    Check(fixture.provider.Handles().OwnerOf(*spawned.value) == "test.mod",
+          "observation must preserve spawn ownership");
     Check(fixture.provider.CountForMod(ShipLuaHost::kOotHostObserverOwner) == 0,
           "spawn counts must exclude observation records");
 }
@@ -339,7 +341,8 @@ void TestObservedCleanup() {
     const auto changed = fixture.provider.OnSceneChange();
     Check(changed.isOk() && changed.value == 2, "scene cleanup should invalidate spawned and observed handles");
     Check(!actor.killed && fixture.actors.back()->killed, "scene cleanup should kill only spawned actors");
-    Check(fixture.provider.Count() == 0 && fixture.provider.Handles().Count() == 0, "scene cleanup should clear records");
+    Check(fixture.provider.Count() == 0 && fixture.provider.Handles().Count() == 0,
+          "scene cleanup should clear records");
     CheckEmpty(fixture.provider.Get(*observed.value, "actor_id"), "observations should expire across scenes");
     const auto nextScene = fixture.provider.Observe(&actor);
     Check(nextScene.isOk() && nextScene.value->sceneGeneration != observed.value->sceneGeneration,
@@ -371,7 +374,8 @@ void TestSpawnAndObservationLimits() {
     Check(total.provider.Observe(&scene.back()).code == ShipLua::ErrorCode::ResourceLimit,
           "observation 1025 should hit the total registry limit");
     Check(total.provider.Observe(&scene.front()).isOk(), "existing observations should resolve even when full");
-    Check(total.provider.Spawn("test.mod", DogRequest()).code == ShipLua::ErrorCode::ResourceLimit && total.actors.empty(),
+    Check(total.provider.Spawn("test.mod", DogRequest()).code == ShipLua::ErrorCode::ResourceLimit &&
+              total.actors.empty(),
           "total handle exhaustion should block spawn before calling the native hook");
 }
 

@@ -64,10 +64,9 @@ OotHealthSettle OotHealthSettleAfterUpdate(ExtendedHealth& health, uint8_t vanil
         }
     }
     if (vanillaNow != expected) {
-        health.hp = vanillaNow == 0
-                        ? 0
-                        : static_cast<uint32_t>(std::max<uint64_t>(
-                              1, static_cast<uint64_t>(health.max) * vanillaNow / health.vanillaMax));
+        health.hp = vanillaNow == 0 ? 0
+                                    : static_cast<uint32_t>(std::max<uint64_t>(1, static_cast<uint64_t>(health.max) *
+                                                                                      vanillaNow / health.vanillaMax));
         health.pending = 0;
         return OotHealthSettle::Rescaled;
     }

@@ -72,9 +72,8 @@ ShipLua::Result<void> OotActorProvider::RegisterCapabilities(ShipLua::Capability
 
     std::vector<std::string> registered;
     for (const OfferSpec& spec : offers) {
-        auto result =
-            registry.Register(spec.id, MakeOffer(*providerVersion.value, *capabilityVersion.value, spec.permission,
-                                                 spec.description, kOotSpawnLimitPerMod));
+        auto result = registry.Register(spec.id, MakeOffer(*providerVersion.value, *capabilityVersion.value,
+                                                           spec.permission, spec.description, kOotSpawnLimitPerMod));
         if (!result.isOk()) {
             for (const std::string& id : registered) {
                 (void)registry.Unregister(id, kProviderName);
@@ -306,7 +305,7 @@ void* OotActorProvider::Resolve(const ShipLua::Handle& handle) const {
 }
 
 ShipLua::Result<ShipLua::ActorFieldValue> OotActorProvider::Get(const ShipLua::Handle& handle,
-                                                             const std::string& field) const {
+                                                                const std::string& field) const {
     const auto thread = ValidateThread("get");
     if (!thread.isOk()) {
         return ShipLua::Result<ShipLua::ActorFieldValue>::err(thread.code, thread.message);
@@ -317,7 +316,7 @@ ShipLua::Result<ShipLua::ActorFieldValue> OotActorProvider::Get(const ShipLua::H
     }
     if (!mHooks.readField) {
         return ShipLua::Result<ShipLua::ActorFieldValue>::err(ShipLua::ErrorCode::Unsupported,
-                                                             "OoT actor readField hook is unavailable");
+                                                              "OoT actor readField hook is unavailable");
     }
     try {
         return mHooks.readField(actor, field);
@@ -326,12 +325,12 @@ ShipLua::Result<ShipLua::ActorFieldValue> OotActorProvider::Get(const ShipLua::H
             ShipLua::ErrorCode::HostFailure, "OoT actor field read failed: " + std::string(error.what()));
     } catch (...) {
         return ShipLua::Result<ShipLua::ActorFieldValue>::err(ShipLua::ErrorCode::HostFailure,
-                                                             "OoT actor field read failed");
+                                                              "OoT actor field read failed");
     }
 }
 
 ShipLua::Result<bool> OotActorProvider::SetMaxHealth(const std::string& callingModId, const ShipLua::Handle& handle,
-                                                    std::uint32_t maxHealth) {
+                                                     std::uint32_t maxHealth) {
     (void)callingModId; // A permissão de escrita é validada pelo core, sem exigir posse.
     const auto thread = ValidateThread("set max health");
     if (!thread.isOk()) {
@@ -452,9 +451,9 @@ ShipLua::Result<std::size_t> OotActorProvider::Shutdown() {
 }
 
 std::size_t OotActorProvider::CountForMod(const std::string& modId) const {
-    return static_cast<std::size_t>(std::count_if(
-        mRecords.begin(), mRecords.end(),
-        [&modId](const auto& entry) { return !entry.second.observed && entry.second.ownerModId == modId; }));
+    return static_cast<std::size_t>(std::count_if(mRecords.begin(), mRecords.end(), [&modId](const auto& entry) {
+        return !entry.second.observed && entry.second.ownerModId == modId;
+    }));
 }
 
 ShipLua::Result<void> OotActorProvider::ValidateThread(const char* operation) const {

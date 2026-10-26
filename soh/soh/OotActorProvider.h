@@ -58,7 +58,8 @@ class OotActorProvider final : public ShipLua::ActorProvider {
     ShipLua::Result<ShipLua::Handle> Observe(void* actor);
     // Ator nativo do handle vivo, ou nullptr.
     void* Resolve(const ShipLua::Handle& handle) const;
-    ShipLua::Result<ShipLua::ActorFieldValue> Get(const ShipLua::Handle& handle, const std::string& field) const override;
+    ShipLua::Result<ShipLua::ActorFieldValue> Get(const ShipLua::Handle& handle,
+                                                  const std::string& field) const override;
     ShipLua::Result<bool> SetMaxHealth(const std::string& callingModId, const ShipLua::Handle& handle,
                                        std::uint32_t maxHealth) override;
 
