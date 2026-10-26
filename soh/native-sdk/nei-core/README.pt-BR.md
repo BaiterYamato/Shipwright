@@ -159,6 +159,14 @@ a pasta do jogo).
   do item. O estado do time leva os blocos `nei.items` e `nei.state`. Todos os clientes da sala precisam do
   Link-Span com este coremod.
 
+## Atributos de item
+
+Quando o core do Link-Span oferece o `linkspan.attributes` (RFC 0030), o coremod registra a fonte de itens `nei`:
+cada item do NEI possuído conta como `owned`, ou como `equipped` enquanto está num botão C. Qualquer mod pode
+então dar atributos ou tags aos itens do NEI no próprio `attributes.toml`, com o id do item como alvo (por
+exemplo `target = "skijer.nei.rocs_feather"`). O guia é o `docs/item-attributes.pt-BR.md` do core. Sem o
+serviço, o NEI funciona como antes.
+
 ## Criar um add-on
 
 Um add-on é um mod nativo que usa `linkspan.nei.items` v1 (`include/linkspan/nei/nei_items.h`, que vem no
