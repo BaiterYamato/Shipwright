@@ -267,6 +267,27 @@ if(MSVC)
 endif()
 add_test(NAME oot_actor_health_tests COMMAND oot_actor_health_tests)
 
+# Vida estendida com o adaptador do jogo (OotActorHealthGame.cpp): folga, settle, coop e caminho sem mods, com dublês
+# do jogo em tests/health_game (sem linkar o soh).
+add_executable(oot_actor_health_game_tests
+    tests/OotActorHealthTests.cpp
+    soh/OotActorHealth.cpp
+    soh/OotActorHealthGame.cpp
+    tests/health_game/adapter_support.cpp
+)
+target_compile_definitions(oot_actor_health_game_tests PRIVATE OOT_ACTOR_HEALTH_GAME_TESTS main=HealthTestsMain)
+target_include_directories(oot_actor_health_game_tests BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/health_game/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(oot_actor_health_game_tests PRIVATE shiplua)
+if(MSVC)
+    set_property(TARGET oot_actor_health_game_tests PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(oot_actor_health_game_tests PRIVATE /EHsc)
+endif()
+add_test(NAME oot_actor_health_game_tests COMMAND oot_actor_health_game_tests)
+
 add_executable(oot_unbound_collision_tests tests/OotUnboundCollisionTests.cpp)
 target_include_directories(oot_unbound_collision_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if(MSVC)
