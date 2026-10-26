@@ -31,7 +31,10 @@ struct OotActorDefinition {
 
 struct OotActorProviderHooks {
     std::function<bool(std::int16_t objectId)> objectReady;
-    std::function<void*(const OotActorDefinition& definition, const ShipLua::ActorSpawnRequest& request)> spawn;
+    // O hook associa o ator antes de qualquer init nativo ou evento público.
+    std::function<void*(const OotActorDefinition& definition, const ShipLua::ActorSpawnRequest& request,
+                        const std::function<bool(void*)>& bind)>
+        spawn;
     std::function<void(void* actor)> kill;
     // RFC 0031. Lê um campo do ator nativo vivo (nome já validado pelo core).
     std::function<ShipLua::Result<ShipLua::ActorFieldValue>(void* actor, const std::string& field)> readField;
@@ -67,7 +70,10 @@ class OotActorProvider final : public ShipLua::ActorProvider {
     ShipLua::Result<bool> OnNativeActorDestroyed(void* actor);
     // Called immediately before unloading one mod.
     ShipLua::Result<std::size_t> ReleaseMod(const std::string& modId) override;
-    // Called from OnPlayDestroy, while native actors are still valid.
+    // Preserva handles existentes até cada destroy; bloqueia novas identidades.
+    ShipLua::Result<void> BeginSceneTeardown();
+    // Chamado após a limpeza nativa; não toca em ponteiros de atores.
+    ShipLua::Result<std::size_t> FinishSceneTeardown();
     ShipLua::Result<std::size_t> OnSceneChange();
     ShipLua::Result<std::size_t> Shutdown();
 
@@ -89,6 +95,7 @@ class OotActorProvider final : public ShipLua::ActorProvider {
         std::string actorKey;
         void* nativeActor = nullptr;
         bool observed = false;
+        bool removalPending = false;
     };
 
     ShipLua::Result<void> ValidateThread(const char* operation) const;
@@ -103,6 +110,7 @@ class OotActorProvider final : public ShipLua::ActorProvider {
     std::map<std::uint32_t, ActorRecord> mRecords;
     std::unordered_map<void*, std::uint32_t> mByActor;
     std::thread::id mGameThread;
+    bool mSceneTeardown = false;
 };
 
 } // namespace ShipLuaHost

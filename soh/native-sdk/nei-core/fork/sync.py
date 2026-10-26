@@ -398,6 +398,9 @@ def main():
     for pasta in ("overlay-merges", "overlay-extra"):
         inputs += sorted(os.path.join(HERE, pasta, p) for p in os.listdir(os.path.join(HERE, pasta)))
     inputs += [os.path.abspath(__file__), symbols, os.path.join(repo, "soh", "hookable_sources.txt")]
+    # A mescla lê estes fontes do working tree; mudanças neles invalidam a extração.
+    from overlay import fontes_sobreponiveis
+    inputs += [os.path.join(repo, *p.split("/")) for p in fontes_sobreponiveis(repo)]
     signature = FORK_COMMIT + "\n" + "\n".join(f"{p} {os.path.getmtime(p)}" for p in inputs)
     if os.path.exists(stamp) and open(stamp, encoding="utf-8").read() == signature:
         print("nei fork: em dia")

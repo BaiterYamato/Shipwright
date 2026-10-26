@@ -9,22 +9,30 @@
 #include <shiplua/runtime/Result.h>
 #include <libultraship/bridge.h>
 #include "soh/cvar_prefixes.h"
+#include "../src/code/linkspan_vanilla.h"
 
 extern "C" {
 #include "z64.h"
 #include "macros.h"
 #include "variables.h"
-extern PlayState* gPlayState;
 void ShipLua_EmitActorDamaged(Actor* actor, uint32_t amount);
 }
 
 namespace {
 std::unordered_map<Actor*, uint8_t> gVanillaMax;
 std::unordered_map<Actor*, ShipLuaHost::ExtendedHealth> gExtended;
+
+// Esses consumidores comparam a vida anterior com limiares de fase.
+constexpr int16_t kActorsWithoutHealthHeadroom[] = { ACTOR_EN_IK, ACTOR_EN_DH, ACTOR_EN_ZF };
+
+bool AllowsHealthHeadroom(const Actor* actor) {
+    return std::find(std::begin(kActorsWithoutHealthHeadroom), std::end(kActorsWithoutHealthHeadroom), actor->id) ==
+           std::end(kActorsWithoutHealthHeadroom);
+}
 } // namespace
 
 extern "C" void LinkSpan_ActorHealthInit(Actor* actor) {
-    if (actor == nullptr) {
+    if (!LinkSpan_EngineExtended() || actor == nullptr) {
         return;
     }
     try {
@@ -38,6 +46,9 @@ extern "C" void LinkSpan_ActorHealthInit(Actor* actor) {
 }
 
 extern "C" void LinkSpan_ActorHealthDestroy(Actor* actor) {
+    if (!LinkSpan_EngineExtended() || actor == nullptr) {
+        return;
+    }
     try {
         gExtended.erase(actor);
         gVanillaMax.erase(actor);
@@ -61,6 +72,11 @@ bool LinkSpan_ActorHealthInfo(Actor* actor, uint32_t* health, uint32_t* maxHealt
         *maxHealth = static_cast<uint32_t>(gSaveContext.healthCapacity);
         return true;
     }
+    if (!LinkSpan_EngineExtended()) {
+        *health = actor->colChkInfo.health;
+        *maxHealth = 0;
+        return true;
+    }
     const auto found = gExtended.find(actor);
     if (found != gExtended.end()) {
         *health = found->second.hp;
@@ -80,6 +96,9 @@ ShipLua::Result<bool> LinkSpan_SetActorMaxHealth(Actor* actor, uint32_t maxHealt
         return ShipLua::Result<bool>::err(ShipLua::ErrorCode::InvalidArgument,
                                           "invalid actor or maximum health (Link is read-only)");
     }
+    if (!LinkSpan_EngineExtended()) {
+        return ShipLua::Result<bool>::err(ShipLua::ErrorCode::InvalidState, "extended engine is disabled");
+    }
     const auto vanilla = gVanillaMax.find(actor);
     if (vanilla == gVanillaMax.end() || vanilla->second == 0) {
         return ShipLua::Result<bool>::err(ShipLua::ErrorCode::InvalidState, "actor had no health at initialization");
@@ -92,6 +111,7 @@ ShipLua::Result<bool> LinkSpan_SetActorMaxHealth(Actor* actor, uint32_t maxHealt
         } else {
             ShipLuaHost::OotHealthRescale(found->second, maxHealth);
         }
+        found->second.allowHeadroom = AllowsHealthHeadroom(actor);
         actor->colChkInfo.health = ShipLuaHost::OotHealthMirror(found->second, found->second.hp);
         return ShipLua::Result<bool>::ok(true);
     } catch (...) {
@@ -99,27 +119,49 @@ ShipLua::Result<bool> LinkSpan_SetActorMaxHealth(Actor* actor, uint32_t maxHealt
     }
 }
 
-float LinkSpan_ExtendedDamage(Actor* target, float damage, bool* handled) {
-    if (handled != nullptr) {
-        *handled = false;
+extern "C" int LinkSpan_ActorHasExtendedHealth(Actor* actor) noexcept {
+    if (!LinkSpan_EngineExtended() || actor == nullptr) {
+        return 0;
     }
-    if (gExtended.empty() || target == nullptr) {
+    try {
+        return !gExtended.empty() && gExtended.find(actor) != gExtended.end();
+    } catch (...) { return 0; }
+}
+
+float LinkSpan_ExtendedDamage(PlayState* play, Actor* target, float damage) noexcept {
+    if (!LinkSpan_EngineExtended() || target == nullptr) {
         return damage;
     }
-    const auto found = gExtended.find(target);
-    if (found == gExtended.end()) {
-        return damage;
+    try {
+        if (gExtended.empty()) {
+            return damage;
+        }
+        const auto found = gExtended.find(target);
+        if (found == gExtended.end()) {
+            return damage;
+        }
+        Player* player = play != nullptr ? GET_PLAYER(play) : nullptr;
+        const uint32_t coopMultiplier = CVarGetInteger(CVAR_ENHANCEMENT("IvanCoopModeEnabled"), 0) && player != nullptr
+                                            ? player->ivanDamageMultiplier
+                                            : 1;
+        // Trunca só depois do corte; coop é aplicado uma vez por contribuição.
+        const float bounded = std::clamp(std::isnan(damage) ? 0.0f : damage, 0.0f, 65535.0f);
+        const bool hadHeadroom = found->second.headroom;
+        const uint8_t delta =
+            ShipLuaHost::OotHealthAddDebit(found->second, static_cast<uint32_t>(bounded), coopMultiplier);
+        if (!hadHeadroom && found->second.headroom) {
+            target->colChkInfo.health =
+                static_cast<uint8_t>(ShipLuaHost::OotHealthMirror(found->second, found->second.hp) + 1);
+        }
+        return delta;
+    } catch (...) {
+        // Nunca devolve débito real ao u8 após uma falha na conta estendida.
+        return 0.0f;
     }
-    if (handled != nullptr) {
-        *handled = true;
-    }
-    // Trunca só depois do corte; NaN não chega ao cast inteiro.
-    const float bounded = std::clamp(std::isnan(damage) ? 0.0f : damage, 0.0f, 65535.0f);
-    return ShipLuaHost::OotHealthAddDebit(found->second, static_cast<uint32_t>(bounded));
 }
 
 extern "C" void LinkSpan_ActorDamaged(Actor* actor, uint32_t amount) {
-    if (actor == nullptr || amount == 0) {
+    if (!LinkSpan_EngineExtended() || actor == nullptr || amount == 0) {
         return;
     }
     try {
@@ -130,7 +172,7 @@ extern "C" void LinkSpan_ActorDamaged(Actor* actor, uint32_t amount) {
 }
 
 extern "C" int LinkSpan_ActorApplyDamage(Actor* actor) {
-    if (gExtended.empty() || actor == nullptr) {
+    if (!LinkSpan_EngineExtended() || actor == nullptr || gExtended.empty()) {
         return 0;
     }
     try {
@@ -138,13 +180,9 @@ extern "C" int LinkSpan_ActorApplyDamage(Actor* actor) {
         if (found == gExtended.end()) {
             return 0;
         }
-        Player* player = gPlayState != nullptr ? GET_PLAYER(gPlayState) : nullptr;
-        const uint32_t coopMultiplier = CVarGetInteger(CVAR_ENHANCEMENT("IvanCoopModeEnabled"), 0) && player != nullptr
-                                            ? player->ivanDamageMultiplier
-                                            : 1;
-        const auto committed = ShipLuaHost::OotHealthApply(found->second, coopMultiplier);
+        const auto committed = ShipLuaHost::OotHealthApply(found->second);
         actor->colChkInfo.health = committed.vanillaHealth;
-        actor->colChkInfo.damage = 0;
+        // damage pertence ao consumidor até CollisionCheck_ResetDamage.
         LinkSpan_ActorDamaged(actor, committed.amount);
         return 1;
     } catch (...) {
@@ -154,7 +192,7 @@ extern "C" int LinkSpan_ActorApplyDamage(Actor* actor) {
 }
 
 extern "C" void LinkSpan_ActorSettleDamage(Actor* actor) {
-    if (gExtended.empty() || actor == nullptr) {
+    if (!LinkSpan_EngineExtended() || actor == nullptr || gExtended.empty()) {
         return;
     }
     try {
@@ -164,7 +202,7 @@ extern "C" void LinkSpan_ActorSettleDamage(Actor* actor) {
         }
         uint32_t amount = 0;
         const auto settled = ShipLuaHost::OotHealthSettleAfterUpdate(found->second, actor->colChkInfo.health, amount);
-        if (settled == ShipLuaHost::OotHealthSettle::Committed || settled == ShipLuaHost::OotHealthSettle::Rescaled) {
+        if (settled != ShipLuaHost::OotHealthSettle::None) {
             // Cura acima de V satura em max, preservando hp <= max.
             found->second.hp = std::min(found->second.hp, found->second.max);
             actor->colChkInfo.health = ShipLuaHost::OotHealthMirror(found->second, found->second.hp);

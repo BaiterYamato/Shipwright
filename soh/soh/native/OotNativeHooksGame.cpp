@@ -17,6 +17,7 @@
 
 #include "z64.h"
 #include "macros.h"
+#include "../../src/code/linkspan_vanilla.h"
 
 extern "C" {
 #include "functions.h"
@@ -26,7 +27,7 @@ void Play_Update(PlayState* play);
 
 extern "C" void LinkSpan_ActorHealthInit(Actor* actor);
 extern "C" void ShipLua_EmitActorInit(Actor* actor);
-float LinkSpan_ExtendedDamage(Actor* target, float damage, bool* handled);
+float LinkSpan_ExtendedDamage(PlayState* play, Actor* target, float damage) noexcept;
 bool LinkSpan_ActorHealthInfo(Actor* actor, uint32_t* health, uint32_t* maxHealth, bool* extended);
 
 namespace ShipLuaHost {
@@ -104,7 +105,7 @@ extern "C" void LinkSpan_PlayUpdate(PlayState* play) {
 }
 
 extern "C" void LinkSpan_ActorInit(Actor* actor, PlayState* play) {
-    if (actor == nullptr) {
+    if (!LinkSpan_EngineExtended() || actor == nullptr) {
         return;
     }
     LinkSpan_ActorHealthInit(actor);
@@ -428,7 +429,7 @@ extern "C" float ShipLua_TransformActorDamage(Actor* target, Actor* attacker, ui
                                               uint8_t attackerIsPlayer, float baseDamage, float damage);
 
 extern "C" float LinkSpan_ActorDamage(PlayState* play, Collider* collider, ColliderInfo* info, float damage) {
-    if (!collider || !collider->actor || !info || !info->acHitInfo) {
+    if (!LinkSpan_EngineExtended() || !collider || !collider->actor || !info || !info->acHitInfo) {
         return damage;
     }
     try {
@@ -450,11 +451,9 @@ extern "C" float LinkSpan_ActorDamage(PlayState* play, Collider* collider, Colli
         LinkSpan_ActorHealthInfo(target, &health, &maxHealth, &extended);
         const float bounded = ShipLuaHost::FinalizeOotActorDamage(damage, finalDamage, target->colChkInfo.damage,
                                                                   nativeDamage != damage, extended);
-        bool handled = false;
-        return LinkSpan_ExtendedDamage(target, bounded, &handled);
+        return LinkSpan_ExtendedDamage(play, target, bounded);
     } catch (...) {
         // Mesmo na falha, um alvo estendido recebe só a queda do espelho.
-        bool handled = false;
-        return LinkSpan_ExtendedDamage(collider->actor, damage, &handled);
+        return LinkSpan_ExtendedDamage(play, collider->actor, damage);
     }
 }
