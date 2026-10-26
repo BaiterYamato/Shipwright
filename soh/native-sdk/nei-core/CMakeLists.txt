@@ -58,13 +58,13 @@ add_custom_command(OUTPUT "${nei_imports_asm}" "${nei_imports_c}"
     DEPENDS nei_fork $<TARGET_OBJECTS:nei_fork> "${fork_src}/gen_imports.py" "${NEI_HOST_SYMBOLS}"
     COMMAND_EXPAND_LISTS VERBATIM)
 
-add_library(linkspan_nei_core SHARED nei_core.cpp assets.cpp registry.cpp text.cpp fork/fork_glue.cpp fork/backend_glue.cpp fork/kaleido_glue.cpp
+add_library(linkspan_nei_core SHARED nei_core.cpp assets.cpp registry.cpp attribute_source.cpp text.cpp fork/fork_glue.cpp fork/backend_glue.cpp fork/kaleido_glue.cpp
     fork/overlay_glue.cpp fork_save.cpp
     $<TARGET_OBJECTS:nei_fork> "${nei_imports_asm}" "${nei_imports_c}")
 # O .map traduz o RVA que o crash handler do host mostra (a DLL não leva PDB) na função do fork.
 target_link_options(linkspan_nei_core PRIVATE /MAP)
 add_library(linkspan_nei_demo SHARED demo/nei_demo.cpp)
-add_executable(linkspan_nei_core_tests tests.cpp registry.cpp fork_save.cpp "${fork_src}/nei_save_bridge.c")
+add_executable(linkspan_nei_core_tests tests.cpp registry.cpp attribute_source.cpp fork_save.cpp "${fork_src}/nei_save_bridge.c")
 add_executable(linkspan_nei_lantern_tests lantern_light_tests.cpp)
 add_executable(linkspan_nei_extended_tests extended_items_tests.cpp)
 add_executable(linkspan_nei_inventory_controls_tests inventory_controls_tests.cpp)

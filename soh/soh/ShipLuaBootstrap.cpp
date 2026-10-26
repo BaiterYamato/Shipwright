@@ -63,6 +63,7 @@
 #include <ship/resource/archive/ArchiveManager.h>
 #include <ship/resource/archive/O2rArchive.h>
 #include <ship/utils/StringHelper.h>
+#include <shiplua/attributes/AttributeRegistry.h>
 #include <shiplua/generated/ApiBindings.h>
 #include <shiplua/host/ModHost.h>
 #include <shiplua/manifest/ManifestParser.h>
@@ -1027,6 +1028,16 @@ ShipLua::Result<ShipLua::LuaApiHostContext> CreateHostContext() {
         if (!registered.isOk()) {
             return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
         }
+    }
+
+    // ship.attributes (RFC 0030): registro do core, passivo enquanto nenhum mod declara atributos. O ModHost liga o
+    // serviço nativo linkspan.attributes a partir daqui.
+    context.attributes = std::make_shared<ShipLua::AttributeRegistry>();
+    context.capabilities.push_back("core.attributes");
+    registered =
+        RegisterHostCapability("core.attributes", "Item attributes, modifiers and tags shared across mods (RFC 0030).");
+    if (!registered.isOk()) {
+        return ShipLua::Result<ShipLua::LuaApiHostContext>::err(registered.code, registered.message);
     }
 
     // ship.storage.shared: store COMPARTILHADO entre os dois jogos, num arquivo

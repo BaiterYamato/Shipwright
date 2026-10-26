@@ -1,0 +1,35 @@
+# Fixture da RFC 0030: um atributo, três modificadores sobre itens da fonte oot e um sobre um item do NEI.
+[[attribute]]
+id = "linkspan.test.attributes.power"
+base = 0
+name = "Power"
+
+[[modifier]]
+id = "linkspan.test.attributes.swords"
+target = "#linkspan.swords"
+attribute = "linkspan.test.attributes.power"
+op = "add"
+value = 1
+
+[[modifier]]
+id = "linkspan.test.attributes.master"
+target = "oot.sword.master"
+attribute = "linkspan.test.attributes.power"
+op = "add"
+value = 2
+
+[[modifier]]
+id = "linkspan.test.attributes.strength"
+target = "oot.strength.goron_bracelet"
+attribute = "linkspan.test.attributes.power"
+op = "add"
+value = 10
+when = "owned"
+
+[[modifier]]
+id = "linkspan.test.attributes.nei"
+target = "skijer.nei.deku_leaf"
+attribute = "linkspan.test.attributes.power"
+op = "add"
+value = 100
+when = "owned"

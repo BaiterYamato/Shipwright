@@ -1,0 +1,13 @@
+id = "linkspan.oot.item_source"
+name = "Fonte de itens ativos do OoT"
+version = "0.1.0"
+api = ">=0.5.0 <0.6.0"
+games = ["oot"]
+entrypoint = "main.lua"
+
+[capabilities]
+required = ["core.attributes"]
+
+[provider]
+abi_version = "1.4"
+win64 = "provider/oot_item_source.dll"

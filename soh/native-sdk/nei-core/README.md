@@ -25,7 +25,7 @@ Disabling an equipped item also removes it from the C button. Press **L** on the
 game's item page to reach the NEI page. The grid includes items from
 add-ons registered in this session. The result appears in **Status** and in the log.
 
-## Items and abilities in version 0.3.25
+## Items and abilities in version 0.3.26
 
 ### Animations and effects
 
@@ -156,6 +156,14 @@ the game folder).
 - **Anchor:** in a room that synchronizes items and flags, an NEI item's get-item reaches partners by the
   item's name. The team state carries the `nei.items` and `nei.state` blocks. All clients in the room need
   Link-Span with this coremod.
+
+## Item attributes
+
+When the Link-Span core offers `linkspan.attributes` (RFC 0030), the coremod registers the `nei` item source:
+each owned NEI item counts as `owned`, or as `equipped` while it is on a C button. Any mod can then give NEI
+items attributes or tags in its own `attributes.toml`, with the item id as the target (for example
+`target = "skijer.nei.rocs_feather"`). The guide is `docs/item-attributes.md` in the core. Without the service,
+the NEI works as before.
 
 ## Create an add-on
 
