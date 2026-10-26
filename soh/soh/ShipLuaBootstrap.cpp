@@ -991,8 +991,9 @@ class OotModSaveBackend final : public ShipLua::ModSaveBackend {
         }
         try {
             auto data = nlohmann::json::object();
-            for (const auto& [key, value] : values) {
-                std::visit([&](const auto& scalar) { data[key] = scalar; }, value);
+            // Sem structured binding: o clang do Xcode 15 não deixa o lambda capturá-lo.
+            for (const auto& entry : values) {
+                std::visit([&](const auto& scalar) { data[entry.first] = scalar; }, entry.second);
             }
             if (!ReplaceOotSaveNamespace(modId, 1, std::move(data))) {
                 return Result::err(ShipLua::ErrorCode::HostFailure, "cannot replace mod save namespace");
