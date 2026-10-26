@@ -23,11 +23,22 @@ uint64_t Declare(const char* name, uint32_t payloadSize,
     return registry->DeclarePoint("", spec, &id) == SHIP_NATIVE_OK ? id : 0;
 }
 
-ShipNativeStatus SHIP_NATIVE_CALL NormalizeActorDamage(const ShipNativeHookCall* call) {
+struct ActorDamageNormalization {
+    float baseDamage;
+    bool extended;
+};
+
+ShipNativeStatus NormalizeActorDamage(const ShipNativeHookCall* call, bool extended) {
     auto* payload = static_cast<ShipOotActorDamageHookV1*>(call->payload);
-    const float baseDamage = *static_cast<const float*>(call->original_context);
-    payload->damage = std::clamp(std::isnan(payload->damage) ? baseDamage : payload->damage, 0.0f, 255.0f);
+    const auto& context = *static_cast<const ActorDamageNormalization*>(call->original_context);
+    payload->damage = std::clamp(std::isnan(payload->damage) ? context.baseDamage : payload->damage, 0.0f,
+                                 extended ? 65535.0f : 255.0f);
     return SHIP_NATIVE_OK;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL NormalizeActorDamage(const ShipNativeHookCall* call) {
+    const auto& context = *static_cast<const ActorDamageNormalization*>(call->original_context);
+    return NormalizeActorDamage(call, context.extended);
 }
 
 // Operação do jogo para call_original. `allowed` é o valor do jogo, não o do payload: um OBSERVE que escreva no
@@ -261,23 +272,39 @@ void DispatchOotModArchives(const std::vector<OotModArchive>& archives) {
     registry->Dispatch(points.modsArchives, &payload, sizeof(payload), nullptr, nullptr);
 }
 
-float DispatchOotActorDamage(ShipOotActorDamageHookV1* payload) {
-    if (!payload)
+float DispatchOotActorDamage(ShipOotActorDamageHookV1* payload, bool extended) {
+    if (!payload) {
         return 0.0f;
-    if (!registry || !registry->HasHooks(points.actorDamage))
+    }
+    if (!registry || !registry->HasHooks(points.actorDamage)) {
         return payload->damage;
-    float baseDamage = payload->base_damage;
-    registry->Dispatch(points.actorDamage, payload, sizeof(*payload), NormalizeActorDamage, &baseDamage);
+    }
+    ActorDamageNormalization context{ payload->base_damage, extended };
+    registry->Dispatch(points.actorDamage, payload, sizeof(*payload), NormalizeActorDamage, &context);
     return payload->damage;
+}
+
+float DispatchOotActorDamage(ShipOotActorDamageHookV1* payload) {
+    return DispatchOotActorDamage(payload, false);
+}
+
+float FinalizeOotActorDamage(float originalDamage, float transformedDamage, uint8_t accumulatedDamage,
+                             bool nativeChanged, bool extended) {
+    if (extended) {
+        // O débito real não usa o espaço restante no acumulador u8.
+        const float value = std::isnan(transformedDamage) ? originalDamage : transformedDamage;
+        return std::clamp(std::isnan(value) ? 0.0f : value, 0.0f, 65535.0f);
+    }
+    if (!nativeChanged && transformedDamage == originalDamage) {
+        return transformedDamage;
+    }
+    const float remaining = 255.0f - static_cast<float>(accumulatedDamage);
+    return std::clamp(transformedDamage, 0.0f, remaining);
 }
 
 float FinalizeOotActorDamage(float originalDamage, float transformedDamage, uint8_t accumulatedDamage,
                              bool nativeChanged) {
-    if (!nativeChanged && transformedDamage == originalDamage)
-        return transformedDamage;
-    // Os estágios anteriores já devolvem número finito em 0..255 quando trocam o dano.
-    const float remaining = 255.0f - static_cast<float>(accumulatedDamage);
-    return std::clamp(transformedDamage, 0.0f, remaining);
+    return FinalizeOotActorDamage(originalDamage, transformedDamage, accumulatedDamage, nativeChanged, false);
 }
 
 void ResetOotHooks() {

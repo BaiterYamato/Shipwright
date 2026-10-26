@@ -31,6 +31,10 @@
 // assina hook.oot.item.give.
 extern void ShipLua_TransformGivenItem(GetItemEntry* entry);
 extern void LinkSpan_ActorInit(Actor* actor, PlayState* play);
+// RFC 0031: vida estendida e dano efetivo (soh/soh/OotActorHealthGame.cpp).
+extern s32 LinkSpan_ActorApplyDamage(Actor* actor);
+extern void LinkSpan_ActorSettleDamage(Actor* actor);
+extern void LinkSpan_ActorDamaged(Actor* actor, u32 amount);
 
 #if defined(_MSC_VER) || defined(__GNUC__)
 #include "textures/place_title_cards/g_pn_49.h"
@@ -2729,6 +2733,7 @@ void Actor_UpdateAll(PlayState* play, ActorContext* actorCtx) {
             } else if ((unkFlag && !(actor->flags & unkFlag)) ||
                        (!unkFlag && unkCondition && (sp74 != actor) && (actor != player->naviActor) &&
                         (actor != player->heldActor) && (&player->actor != actor->parent))) {
+                LinkSpan_ActorSettleDamage(actor);
                 CollisionCheck_ResetDamage(&actor->colChkInfo);
                 actor = actor->next;
             } else if (actor->update == NULL) {
@@ -2770,6 +2775,7 @@ void Actor_UpdateAll(PlayState* play, ActorContext* actorCtx) {
                     func_8003F8EC(play, &play->colCtx.dyna, actor);
                 }
 
+                LinkSpan_ActorSettleDamage(actor);
                 CollisionCheck_ResetDamage(&actor->colChkInfo);
 
                 actor = actor->next;
@@ -4932,11 +4938,18 @@ u8 func_800355E4(PlayState* play, Collider* collider) {
 }
 
 u8 Actor_ApplyDamage(Actor* actor) {
+    u8 before = actor->colChkInfo.health;
+
+    // RFC 0031: com vida estendida, o host grava a vida (espelho) e emite o dano efetivo.
+    if (LinkSpan_ActorApplyDamage(actor)) {
+        return actor->colChkInfo.health;
+    }
     if (actor->colChkInfo.damage >= actor->colChkInfo.health) {
         actor->colChkInfo.health = 0;
     } else {
         actor->colChkInfo.health -= actor->colChkInfo.damage;
     }
+    LinkSpan_ActorDamaged(actor, before - actor->colChkInfo.health);
 
     return actor->colChkInfo.health;
 }
