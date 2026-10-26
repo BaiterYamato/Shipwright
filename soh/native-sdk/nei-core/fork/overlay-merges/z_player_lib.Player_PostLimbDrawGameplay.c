@@ -1,4 +1,4 @@
-/* overlay-merge 29ee0b84b096 f8ac85e6787f 2c2690a66ccf */
+/* overlay-merge 1a2cff3920cf f8ac85e6787f 2c2690a66ccf */
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* thisx) {
     Player* this = (Player*)thisx;
 
@@ -199,7 +199,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
         ItemEquip_CaptureHandMatrix();
 
         if (this->rightHandType == PLAYER_MODELTYPE_RH_FF) {
-            Matrix_Get(&this->shieldMf);
+            if (!LinkSpan_PlayerQuadOwned(&this->shieldQuad)) {
+                Matrix_Get(&this->shieldMf);
+            }
         } else if ((this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT) ||
                    (this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT_2)) {
             s32 stringModelToUse = gSaveContext.linkAge;
@@ -247,7 +249,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
             CLOSE_DISPS(play->state.gfxCtx);
         } else if ((this->actor.scale.y >= 0.0f) && (this->rightHandType == PLAYER_MODELTYPE_RH_SHIELD)) {
-            Matrix_Get(&this->shieldMf);
+            if (!LinkSpan_PlayerQuadOwned(&this->shieldQuad)) {
+                Matrix_Get(&this->shieldMf);
+            }
             Player_UpdateShieldCollider(play, this, &this->shieldQuad, sRightHandLimbModelShieldQuadVertices);
 
             // Gerudo: skip the shield DL — the dual scimitar at R_HAND was
@@ -326,7 +330,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                 }
 
                 Matrix_TranslateRotateZYX(&sSheathLimbModelShieldOnBackPos, &sSheathLimbModelShieldOnBackZyxRot);
-                Matrix_Get(&this->shieldMf);
+                if (!LinkSpan_PlayerQuadOwned(&this->shieldQuad)) {
+                    Matrix_Get(&this->shieldMf);
+                }
 
                 // Shield of Ikana: draw MM Mirror Shield on back
                 ExtEquip_DrawShieldBackDL(play);

@@ -11,7 +11,11 @@ declaração do host num ponteiro que gen_imports.py manda resolver no init da D
 Por fim extrai as funções que o fork acrescentou em arquivos do host (extract.txt -> <out>/extracted) e gera os
 stubs dos subsistemas que ficaram de fora (stub-names.txt -> <out>/nei_stubs.c).
 
-Uso: python sync.py <repo-do-host> <out> <soh.symbols>
+Função do overlay em conflito (mescla de três vias sem resolução em overlay-merges/, ou com resolução velha) não
+é desviada; o sync falha com a lista delas, a menos que receba --permitir-conflitos (só avisa). overlay_conflito.py
+mostra a mescla de uma delas e a assinatura que a resolução precisa ter.
+
+Uso: python sync.py <repo-do-host> <out> <soh.symbols> [--permitir-conflitos]
 """
 import os
 import re
@@ -390,6 +394,7 @@ def extract(repo, out, symbols):
 
 def main():
     repo, out, symbols = sys.argv[1], os.path.abspath(sys.argv[2]), os.path.abspath(sys.argv[3])
+    permitir_conflitos = "--permitir-conflitos" in sys.argv[4:]
     stamp = os.path.join(out, "sync.stamp")
     inputs = sorted(os.path.join(HERE, "patches", p) for p in os.listdir(os.path.join(HERE, "patches")))
     inputs += [os.path.join(HERE, f) for f in ("gen_compat.py", "extract_additions.py", "extract.txt", "gen_stubs.py",
@@ -401,7 +406,8 @@ def main():
     # A mescla lê estes fontes do working tree; mudanças neles invalidam a extração.
     from overlay import fontes_sobreponiveis
     inputs += [os.path.join(repo, *p.split("/")) for p in fontes_sobreponiveis(repo)]
-    signature = FORK_COMMIT + "\n" + "\n".join(f"{p} {os.path.getmtime(p)}" for p in inputs)
+    signature = FORK_COMMIT + ("\npermitir-conflitos" if permitir_conflitos else "") + "\n" + \
+        "\n".join(f"{p} {os.path.getmtime(p)}" for p in inputs)
     if os.path.exists(stamp) and open(stamp, encoding="utf-8").read() == signature:
         print("nei fork: em dia")
         return
@@ -432,7 +438,17 @@ def main():
     macros, dados = host_data_macros(repo, symbols)
     with open(os.path.join(out, "compat", "nei_host_data.h"), "w", encoding="utf-8", newline="\n") as f:
         f.write(macros)
-    extracted, sobrepostas, _ = extract(repo, out, symbols)
+    extracted, sobrepostas, relatorios = extract(repo, out, symbols)
+    # Conflito no overlay deixa a função do host sem desvio, sem erro nenhum no build nem no jogo. Sem o stamp, o
+    # próximo configure refaz a extração e acusa de novo.
+    conflitos = ["%s: %s" % (r["arquivo"], c) for r in relatorios for c in r.get("conflitos", [])]
+    if conflitos:
+        print("nei fork: %d funções do overlay em conflito ficam sem desvio (overlay-report.txt):" % len(conflitos))
+        for c in conflitos:
+            print("  " + c)
+        print("  resolva em fork/overlay-merges/ (python fork/overlay_conflito.py <host> <arquivo> <função>)")
+        if not permitir_conflitos:
+            sys.exit(3)
     substituicoes = aplicar_substituicoes(out)
     aplicar_backends(out)
     laterais = campos_laterais(out)
@@ -468,4 +484,5 @@ def main():
           f"{atores['arquivos']} arquivos, stubs gerados")
 
 
-main()
+if __name__ == "__main__":
+    main()

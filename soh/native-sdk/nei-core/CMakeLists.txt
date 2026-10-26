@@ -30,9 +30,21 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${fork_src}/gen_stubs.py" "${fork_src}/stub-names.txt" "${fork_src}/extracted-fixes.txt"
     "${fork_src}/gen_item_models.py" "${fork_src}/cmodels.py" "${fork_src}/overlay.py" "${fork_src}/overlay-exclude.txt"
     "${host_root}/soh/hookable_sources.txt" "${NEI_HOST_SYMBOLS}" ${nei_fork_patches})
+# As resoluções à mão do overlay valem por assinatura das três versões; trocar uma refaz a extração.
+file(GLOB nei_overlay_resolutions CONFIGURE_DEPENDS "${fork_src}/overlay-merges/*.c" "${fork_src}/overlay-extra/*.c")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${nei_overlay_resolutions})
+# Função do overlay em conflito fica sem desvio; por padrão o configure falha. ON só avisa (host em obras).
+option(NEI_ALLOW_OVERLAY_CONFLICTS "Extrair o fork NEI mesmo com funções do overlay em conflito" OFF)
+set(nei_sync_flags "")
+if(NEI_ALLOW_OVERLAY_CONFLICTS)
+    set(nei_sync_flags "--permitir-conflitos")
+endif()
 execute_process(COMMAND "${Python3_EXECUTABLE}" "${fork_src}/sync.py" "${host_root}" "${nei_fork_dir}" "${NEI_HOST_SYMBOLS}"
-    RESULT_VARIABLE nei_sync_result)
-if(NOT nei_sync_result EQUAL 0)
+    ${nei_sync_flags} RESULT_VARIABLE nei_sync_result)
+if(nei_sync_result EQUAL 3)
+    message(FATAL_ERROR "fork/sync.py: funções do overlay em conflito (lista acima); resolva em fork/overlay-merges/ "
+        "ou configure com -DNEI_ALLOW_OVERLAY_CONFLICTS=ON")
+elseif(NOT nei_sync_result EQUAL 0)
     message(FATAL_ERROR "fork/sync.py falhou; confira se o commit do fork está no git do host")
 endif()
 # Funções que o fork acrescentou em arquivos do host; a do z_player.c (extracted/unit) entra no player_unit.c.
