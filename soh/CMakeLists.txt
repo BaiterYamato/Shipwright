@@ -255,6 +255,18 @@ if(MSVC)
 endif()
 add_test(NAME oot_actor_provider_tests COMMAND oot_actor_provider_tests)
 
+add_executable(oot_actor_health_tests
+    tests/OotActorHealthTests.cpp
+    soh/OotActorHealth.cpp
+)
+target_include_directories(oot_actor_health_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+    set_property(TARGET oot_actor_health_tests PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(oot_actor_health_tests PRIVATE /EHsc)
+endif()
+add_test(NAME oot_actor_health_tests COMMAND oot_actor_health_tests)
+
 add_executable(oot_unbound_collision_tests tests/OotUnboundCollisionTests.cpp)
 target_include_directories(oot_unbound_collision_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if(MSVC)
