@@ -56,12 +56,8 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
         }
     }
 
-    // O Player_Draw do host (o NEI só o embrulha) passa o endereço do host. Função de outro fonte usada como valor
-    // não ganha o nei_fnaddr_ da extração, e a cópia da DLL tem outro endereço: sem isto, máscara nenhuma é desenhada.
-    extern void* nei_fnaddr_Player_OverrideLimbDrawGameplayDefault;
     // FIX: Validate mask range to prevent crashes with custom items (masks are 1-8)
-    if ((overrideLimbDraw == nei_fnaddr_Player_OverrideLimbDrawGameplayDefault ||
-         overrideLimbDraw == Player_OverrideLimbDrawGameplayDefault) &&
+    if ((overrideLimbDraw == Player_OverrideLimbDrawGameplayDefault) &&
         (this->currentMask >= PLAYER_MASK_KEATON && this->currentMask <= PLAYER_MASK_TRUTH)) {
         // Fixes a bug in vanilla where ice traps are rendered extremely large while wearing a bunny hood
         if (CVarGetInteger(CVAR_GENERAL("FixIceTrapWithBunnyHood"), 1))
