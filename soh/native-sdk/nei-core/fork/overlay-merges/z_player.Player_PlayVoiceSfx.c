@@ -1,6 +1,9 @@
-/* overlay-merge 76ebc4c2a61d 7f3954336f05 605ad5069db0 */
+/* overlay-merge 80fb2a7dc2a1 7f3954336f05 605ad5069db0 */
 void Player_PlayVoiceSfx(Player* this, u16 sfxId) {
     if (ShipLua_TransformVoiceSfx(&sfxId) != 0) {
+        return;
+    }
+    if (LinkSpan_PlayerVoiceSfx(this, &sfxId) != 0) {
         return;
     }
     if (!GameInteractor_Should(VB_PLAYER_VOICE_SFX, true, this, sfxId)) {

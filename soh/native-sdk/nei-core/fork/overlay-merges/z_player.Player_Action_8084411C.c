@@ -1,4 +1,4 @@
-/* overlay-merge afb0677e0516 ad7fd4df1e64 57c77b5f4f19 */
+/* overlay-merge 3990cd350129 ad7fd4df1e64 57c77b5f4f19 */
 void Player_Action_8084411C(Player* this, PlayState* play) {
     f32 sp4C;
     s16 sp4A;
@@ -67,12 +67,13 @@ void Player_Action_8084411C(Player* this, PlayState* play) {
                         MmForm_GetCurrentForm() == 2 /* MM_PLAYER_FORM_ZORA */ && this->actor.yDistToWater < 50.0f) {
                         inWaterBlocksGrab = 0;
                     }
-                    if (!GameInteractor_GetDisableLedgeGrabsActive() && !ShipLua_ShouldBlockLedgeGrabs() &&
-                        GameInteractor_Should(VB_PLAYER_GRAB_LEDGE, true, this) &&
+                    // O veto de mods e o VB_PLAYER_GRAB_LEDGE do host passam pelo gancho
+                    // LinkSpan_PlayerLedgeGrabAllowed.
+                    if (!GameInteractor_GetDisableLedgeGrabsActive() &&
                         (this->actor.bgCheckFlags & BGCHECKFLAG_PLAYER_WALL_INTERACT) &&
                         !(this->stateFlags2 & PLAYER_STATE2_HOPPING) &&
                         !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) && !inWaterBlocksGrab &&
-                        (this->linearVelocity > 0.0f)) {
+                        (this->linearVelocity > 0.0f) && LinkSpan_PlayerLedgeGrabAllowed(this, play)) {
                         if ((this->yDistToLedge >= 150.0f) &&
                             (this->controlStickDirections[this->controlStickDataIndex] == 0)) {
                             func_8083EC18(this, play, sTouchedWallFlags);
