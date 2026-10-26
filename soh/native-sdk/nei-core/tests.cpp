@@ -9,6 +9,7 @@
 
 #include "fork/nei_save_bridge.h"
 #include "fork_save.h"
+#include "attribute_source.h"
 #include "registry.h"
 #include "mods/nei_save.h"
 
@@ -361,6 +362,56 @@ void TestGiveUseAndLevels() {
     registry.Detach();
 }
 
+void TestActiveItems() {
+    FakeItems::Reset();
+    FakeSave::hasBlock = false;
+    FakeSave::slot = 0;
+    LinkSpanNei::Registry registry;
+    registry.Attach(&FakeItems::table, &FakeSave::table, 7);
+    registry.OnSaveLoaded();
+    Definition definition;
+    uint64_t seeds = 0, rock = 0, leaf = 0;
+    CHECK(registry.Define(&definition.item, &seeds) == SHIP_NATIVE_OK);
+    definition.item.id = "test.nei.rock";
+    CHECK(registry.Define(&definition.item, &rock) == SHIP_NATIVE_OK);
+    definition.item.id = "test.nei.leaf";
+    CHECK(registry.Define(&definition.item, &leaf) == SHIP_NATIVE_OK);
+    CHECK(registry.Grant(seeds) == SHIP_NATIVE_OK);
+    CHECK(registry.Grant(rock) == SHIP_NATIVE_OK);
+    CHECK(registry.Equip(seeds, 1) == SHIP_NATIVE_OK);
+
+    struct Emitted {
+        std::map<std::string, uint8_t> items;
+        uint32_t calls = 0;
+    } emitted;
+    const auto emit = [](void* sink, const char* id, uint8_t when) -> ShipNativeStatus {
+        auto& out = *static_cast<Emitted*>(sink);
+        ++out.calls;
+        out.items.emplace(id, when);
+        return SHIP_NATIVE_OK;
+    };
+    CHECK(LinkSpanNei::EmitActiveItems(registry, emit, &emitted) == SHIP_NATIVE_OK);
+    CHECK(emitted.calls == 2 && emitted.items.size() == 2);
+    CHECK(emitted.items.contains("test.nei.seeds") &&
+          emitted.items.at("test.nei.seeds") == LINKSPAN_ATTR_WHEN_EQUIPPED);
+    CHECK(emitted.items.contains("test.nei.rock") && emitted.items.at("test.nei.rock") == LINKSPAN_ATTR_WHEN_OWNED);
+    CHECK(!emitted.items.contains("test.nei.leaf"));
+
+    uint32_t calls = 0;
+    const auto limit = [](void* sink, const char*, uint8_t) -> ShipNativeStatus {
+        ++*static_cast<uint32_t*>(sink);
+        return SHIP_NATIVE_LIMIT;
+    };
+    CHECK(LinkSpanNei::EmitActiveItems(registry, limit, &calls) == SHIP_NATIVE_LIMIT);
+    CHECK(calls == 1);
+    CHECK(LinkSpanNei::EmitActiveItems(registry, nullptr, nullptr) == SHIP_NATIVE_INVALID_ARGUMENT);
+    const auto throws = [](void*, const char*, uint8_t) -> ShipNativeStatus { throw 1; };
+    CHECK(LinkSpanNei::EmitActiveItems(registry, throws, nullptr) == SHIP_NATIVE_FAILURE);
+    registry.Detach();
+    calls = 0;
+    CHECK(LinkSpanNei::EmitActiveItems(registry, limit, &calls) == SHIP_NATIVE_OK && calls == 0);
+}
+
 void TestSaveRoundTrip() {
     // O bloco do teste anterior: possuído, nível 1, 12 unidades, e um id que ninguém definiu.
     FakeSave::block = "{\"items\":{\"test.nei.seeds\":{\"owned\":true,\"count\":12,\"level\":1},"
@@ -527,6 +578,7 @@ int main() {
     TestGiveUseAndLevels();
     TestSaveRoundTrip();
     TestForkSaveRoundTrip();
+    TestActiveItems();
     if (gFailures) {
         std::fprintf(stderr, "nei core: %d falhas\n", gFailures);
         return EXIT_FAILURE;

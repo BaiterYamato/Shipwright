@@ -11,6 +11,7 @@
 #include <thread>
 
 #include "assets.h"
+#include "attribute_source.h"
 #include "fork/fork_glue.h"
 #include "fork/kaleido_glue.h"
 #include "fork/progression.h"
@@ -35,6 +36,8 @@ struct Core {
     std::thread::id owner;
     const ShipOotEngineV1* engine = nullptr;
     const ShipOotSaveV1* save = nullptr;
+    const LinkSpanAttributesV1* attributes = nullptr;
+    uint64_t attributeSource = 0;
     // Arquivo cujo estado está na memória. Um arquivo novo não passa por oot.save.loaded: o jogo chama
     // Save_InitFile e grava, então sem isto o primeiro save do arquivo novo levaria os itens do anterior.
     int32_t loadedSlot = -1;
@@ -437,8 +440,23 @@ ShipNativeStatus Observe(const ShipNativeRuntime* runtime, const char* point, Sh
     return runtime->register_hook(runtime->context, &spec, &handle);
 }
 
+ShipNativeStatus SHIP_NATIVE_CALL ActiveItems(void*, LinkSpanAttrEmitFn emit, void* sink) {
+    if (!gCore) {
+        return SHIP_NATIVE_OK;
+    }
+    if (!Owned()) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    return LinkSpanNei::EmitActiveItems(gCore->registry, emit, sink);
+}
+
 void Release() {
     if (gCore) {
+        if (gCore->attributes) {
+            gCore->attributes->unregister_item_source(gCore->attributes->context, gCore->attributeSource);
+            gCore->attributes = nullptr;
+            gCore->attributeSource = 0;
+        }
         LinkSpanNei::StopFork();
         LinkSpanNei::UnmountAssets();
         gCore->registry.Detach();
@@ -544,6 +562,18 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     if (status != SHIP_NATIVE_OK) {
         Release();
         return status;
+    }
+    // Opcional: o NEI segue funcionando quando o serviço falta ou não aceita a fonte.
+    const auto* attributes = static_cast<const LinkSpanAttributesV1*>(runtime->get_service(
+        runtime->context, LINKSPAN_ATTRIBUTES_SERVICE, LINKSPAN_ATTRIBUTES_VERSION, sizeof(LinkSpanAttributesV1)));
+    if (attributes && attributes->size >= sizeof(LinkSpanAttributesV1) && attributes->register_item_source &&
+        attributes->unregister_item_source) {
+        uint64_t handle = 0;
+        if (attributes->register_item_source(attributes->context, "nei", ActiveItems, nullptr, &handle) ==
+            SHIP_NATIVE_OK) {
+            gCore->attributes = attributes;
+            gCore->attributeSource = handle;
+        }
     }
     // Antes do fork: os itens que desenham modelo do fork só são definidos com o núcleo dos assets montado.
     LinkSpanNei::MountAssets(runtime);
