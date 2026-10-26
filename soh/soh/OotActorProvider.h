@@ -6,6 +6,7 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <shiplua/actor/ActorProvider.h>
@@ -15,6 +16,9 @@
 #include <shiplua/runtime/Result.h>
 
 namespace ShipLuaHost {
+
+inline constexpr const char* kOotHostObserverOwner = "linkspan.host";
+inline constexpr std::size_t kOotSpawnLimitPerMod = 16;
 
 // Stable logical actor id translated by the OoT host. Raw engine ids and
 // native pointers never cross this provider boundary.
@@ -29,16 +33,19 @@ struct OotActorProviderHooks {
     std::function<bool(std::int16_t objectId)> objectReady;
     std::function<void*(const OotActorDefinition& definition, const ShipLua::ActorSpawnRequest& request)> spawn;
     std::function<void(void* actor)> kill;
+    // RFC 0031. Lê um campo do ator nativo vivo (nome já validado pelo core).
+    std::function<ShipLua::Result<ShipLua::ActorFieldValue>(void* actor, const std::string& field)> readField;
+    // RFC 0031. Liga ou reescala a vida estendida no ator nativo vivo.
+    std::function<ShipLua::Result<bool>(void* actor, std::uint32_t maxHealth)> setMaxHealth;
 };
 
-// First native provider slice for the generic actor API. All public methods
-// are main-thread-only. Handles are owned by the creating mod, invalidated on
-// scene changes and never contain an Actor*.
+// Uso exclusivo da thread do jogo. Handles pertencem ao mod criador ou ao
+// observador do host, expiram na troca de cena e nunca contêm um Actor*.
 class OotActorProvider final : public ShipLua::ActorProvider {
   public:
     OotActorProvider(std::vector<OotActorDefinition> allowlist, OotActorProviderHooks hooks,
                      ShipLua::Logger logger = {}, std::int16_t forbiddenActorId = 0,
-                     ShipLua::HandleLimits limits = { 16, 256 });
+                     ShipLua::HandleLimits limits = { 0, 1024 });
 
     ShipLua::Result<void> RegisterCapabilities(ShipLua::CapabilityRegistry& registry) const;
 
@@ -46,6 +53,14 @@ class OotActorProvider final : public ShipLua::ActorProvider {
                                            const ShipLua::ActorSpawnRequest& request) override;
     ShipLua::Result<void> Destroy(const std::string& ownerModId, const ShipLua::Handle& handle) override;
     ShipLua::Result<bool> Exists(const std::string& ownerModId, const ShipLua::Handle& handle) const override;
+
+    // RFC 0031. Reutiliza o handle do mod criador ou cria um de observação.
+    ShipLua::Result<ShipLua::Handle> Observe(void* actor);
+    // Ator nativo do handle vivo, ou nullptr.
+    void* Resolve(const ShipLua::Handle& handle) const;
+    ShipLua::Result<ShipLua::ActorFieldValue> Get(const ShipLua::Handle& handle, const std::string& field) const override;
+    ShipLua::Result<bool> SetMaxHealth(const std::string& callingModId, const ShipLua::Handle& handle,
+                                       std::uint32_t maxHealth) override;
 
     // Called by the host before the native Actor memory is released.
     ShipLua::Result<bool> OnNativeActorDestroyed(void* actor);
@@ -72,6 +87,7 @@ class OotActorProvider final : public ShipLua::ActorProvider {
         std::string ownerModId;
         std::string actorKey;
         void* nativeActor = nullptr;
+        bool observed = false;
     };
 
     ShipLua::Result<void> ValidateThread(const char* operation) const;
@@ -84,6 +100,7 @@ class OotActorProvider final : public ShipLua::ActorProvider {
     ShipLua::Logger mLogger;
     ShipLua::HandleRegistry mHandles;
     std::map<std::uint32_t, ActorRecord> mRecords;
+    std::unordered_map<void*, std::uint32_t> mByActor;
     std::thread::id mGameThread;
 };
 
