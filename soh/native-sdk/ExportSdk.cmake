@@ -128,6 +128,15 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         --shell "${CMAKE_SOURCE_DIR}/soh/native-sdk/puppets"
         --cmake "${CMAKE_COMMAND}" --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
     set_tests_properties(oot_native_mod_shells PROPERTIES TIMEOUT 1800)
+    # RFC 0032: ferramenta fora dos releases, compilada contra o SDK e testada sem jogo.
+    add_test(NAME oot_native_playtest_tool COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/test_mod_shells.py"
+        --sdk "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake" --host $<TARGET_FILE:soh>
+        --shell "${CMAKE_SOURCE_DIR}/soh/native-sdk/tools/playtest/agent"
+        --cmake "${CMAKE_COMMAND}" --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}"
+        --ctest "${CMAKE_CTEST_COMMAND}"
+        --python-tests "${CMAKE_SOURCE_DIR}/soh/native-sdk/tools/playtest/mcp/tests")
+    set_tests_properties(oot_native_playtest_tool PROPERTIES TIMEOUT 1800)
 endif()
 
 # Escape hatch (COREEXT-008, RFC 0023): MinHook v1.3.4 compilada direto das fontes, sem o
