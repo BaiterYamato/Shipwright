@@ -327,6 +327,18 @@ def extract(repo, out, symbols):
         unit, fork_only = path.startswith("@"), path.startswith("+")
         entradas[path.lstrip("@+").strip()] = [unit, fork_only, seeds.split(), extra_includes.split()]
     excluir, sem_desvio = overlay.ler_excluir()
+    # Funções não static dos fontes sobreponíveis: usadas como valor numa unidade do overlay de outro fonte, também
+    # ganham o endereço do host (extract_additions.py --valor-do-host).
+    from extract_additions import declaracoes_topo
+    nomes_do_host = set()
+    for path in overlay.fontes_sobreponiveis(repo):
+        with open(os.path.join(repo, *path.split("/")), encoding="utf-8", errors="replace") as f:
+            nomes_do_host |= {d.nome for d in declaracoes_topo(f.read())
+                              if d.tipo == "funcao" and "{" in d.mascara and not re.match(r"\s*static\b", d.mascara)}
+    valor_do_host = os.path.join(out, "valor-do-host.txt")
+    os.makedirs(out, exist_ok=True)
+    with open(valor_do_host, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(sorted(nomes_do_host)) + "\n")
     mesclados, relatorios = {}, []
     for path in overlay.fontes_sobreponiveis(repo):
         destino, sementes, rel = overlay.planejar(repo, FORK_COMMIT, FORK_BASE, path,
@@ -351,7 +363,7 @@ def extract(repo, out, symbols):
                 args += ["--sobrepoe", seed[1:]]
         args += ["--symbols", symbols]
         if path in mesclados:
-            args += ["--fork-file", mesclados[path], "--tabela"]
+            args += ["--fork-file", mesclados[path], "--tabela", "--valor-do-host", valor_do_host]
             args += [x for nome in sorted(sem_desvio) for x in ("--sem-desvio", nome)]
         # Header com - na frente é o contrário: um #include do fork que a saída não deve copiar.
         for header in extra_includes:

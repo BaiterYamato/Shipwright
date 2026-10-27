@@ -397,6 +397,9 @@ def main():
                          "valor pelo endereco dela no host")
     ap.add_argument("--sem-desvio", action="append", default=[],
                     help="sobreposta que fica fora da tabela de desvios (o desvio é instalado em outro lugar)")
+    ap.add_argument("--valor-do-host",
+                    help="arquivo com as funções não static dos fontes sobreponíveis (uma por linha); com --tabela, "
+                         "as de outro fonte usadas como valor também ganham o endereço do host")
     a = ap.parse_args()
     repo = os.path.abspath(a.repo)
     sobrepoe = set(a.sobrepoe)
@@ -583,10 +586,17 @@ def main():
     # Função do host usada como valor (actionFunc, comparação, callback) precisa do endereço do host: o jogo
     # compara `this->actionFunc == Player_Action_X` com o endereço dele, e a cópia da DLL ou o thunk do import
     # dariam outro. A chamada direta continua indo para a cópia ou para o thunk. Com --tabela vale para as funções do
-    # próprio fonte; em qualquer modo, para o init do próximo game state: Graph_GetNextGameState compara
-    # `gameState->init` com FileChoose_Init, Opening_Init... do host, e o thunk da DLL encerra o jogo (o START da
-    # tela de título com o NEI caía assim).
+    # próprio fonte e as dos outros fontes sobreponíveis (--valor-do-host); em qualquer modo, para o init do próximo
+    # game state: Graph_GetNextGameState compara `gameState->init` com FileChoose_Init, Opening_Init... do host, e o
+    # thunk da DLL encerra o jogo (o START da tela de título com o NEI caía assim).
     do_host = {n for n, d in hmap.items() if d.tipo == "funcao"} if a.tabela else set()
+    # De outro fonte: o Player_Draw do host passa Player_OverrideLimbDrawGameplayDefault (z_player_lib.c) e o
+    # Player_DrawGameplay (z_player.c) compara; com o endereço da cópia, máscara nenhuma era desenhada. A função de
+    # outro fonte ou está no host, ou é desviada para a cópia, então o endereço do host vale nos dois casos. Nome
+    # repetido no soh.symbols fica de fora: o nei_q_ qualificaria pelo arquivo atual.
+    if a.tabela and a.valor_do_host:
+        with open(a.valor_do_host, encoding="utf-8") as f:
+            do_host |= {n for n in f.read().split() if resolviveis is None or repeticoes.get(n) == 1}
     proximo_estado = re.compile(r"\bSET_NEXT_GAMESTATE\s*\(\s*[^,]+,\s*([A-Za-z_]\w*)\s*,")
     valor = re.compile(r"(&\s*)?\b([A-Za-z_]\w*)\b(?!\s*\()")
     for d in funcoes:
