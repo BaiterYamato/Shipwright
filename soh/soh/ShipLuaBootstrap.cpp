@@ -988,6 +988,11 @@ ShipLua::Result<void> RegisterHostCapability(const std::string& id, const std::s
 ShipLua::Result<bool> ApplyPlayerSpeedMultiplier(double requested);
 const char* CurrentGameStateMode();
 
+bool IsReservedOotModSaveId(const std::string& modId) {
+    // Mesma regra de IsHostName em native/OotNativeSave.cpp (namespace anônimo).
+    return modId.rfind("linkspan.", 0) == 0;
+}
+
 class OotModSaveBackend final : public ShipLua::ModSaveBackend {
   public:
     bool Available() const override {
@@ -998,6 +1003,11 @@ class OotModSaveBackend final : public ShipLua::ModSaveBackend {
         using Result = ShipLua::Result<ShipLua::ModSaveValues>;
         if (!Available()) {
             return Result::err(ShipLua::ErrorCode::InvalidState, "no save file is loaded");
+        }
+        if (IsReservedOotModSaveId(modId)) {
+            return Result::err(
+                ShipLua::ErrorCode::InvalidArgument,
+                "mod ids starting with 'linkspan.' are reserved for host save blocks; use another id prefix");
         }
         try {
             nlohmann::json data;
@@ -1034,6 +1044,11 @@ class OotModSaveBackend final : public ShipLua::ModSaveBackend {
         using Result = ShipLua::Result<void>;
         if (!Available()) {
             return Result::err(ShipLua::ErrorCode::InvalidState, "no save file is loaded");
+        }
+        if (IsReservedOotModSaveId(modId)) {
+            return Result::err(
+                ShipLua::ErrorCode::InvalidArgument,
+                "mod ids starting with 'linkspan.' are reserved for host save blocks; use another id prefix");
         }
         try {
             auto data = nlohmann::json::object();
