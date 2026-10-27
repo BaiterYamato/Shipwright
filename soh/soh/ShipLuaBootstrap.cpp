@@ -2164,11 +2164,29 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
     std::string wanted;
     const f32 speed = fabsf(player->linearVelocity);
     const bool overridden = gCustomBodyOverrideAnim.has_value();
-    if (gCustomBodyOverrideAnim.has_value()) {
+    const bool climbing = (player->stateFlags1 & PLAYER_STATE1_CLIMBING_LADDER) != 0;
+    const s16 climbInput = play->state.input[0].rel.stick_y;
+    // Escada: com os nomes convencionais declarados na spec, a pose segue o passo do Player antes de qualquer
+    // override (que fica guardado para depois da escada). Sem eles, a escolha cai no hook Lua normalmente.
+    const char* climbAnim = nullptr;
+    if (climbing) {
+        const bool rightStep = (player->av2.actionVar2 & 1) != 0;
+        if (player->av2.actionVar2 < 0) {
+            climbAnim = player->av2.actionVar2 == -4 ? "climb_start_b" : "climb_start_a";
+        } else if (climbInput > 0) {
+            climbAnim = rightStep ? "climb_up_r" : "climb_up_l";
+        } else if (climbInput < 0) {
+            climbAnim = rightStep ? "climb_down_r" : "climb_down_l";
+        } else {
+            climbAnim = "climb_wait";
+        }
+    }
+    const bool climbOwnsPose = climbAnim != nullptr && gCustomBodySpec.anims.count(climbAnim) != 0;
+    if (climbOwnsPose) {
+        wanted = climbAnim;
+    } else if (overridden) {
         wanted = *gCustomBodyOverrideAnim;
     } else {
-        const bool climbing = (player->stateFlags1 & PLAYER_STATE1_CLIMBING_LADDER) != 0;
-        const s16 climbInput = play->state.input[0].rel.stick_y;
         const bool handleDoorOpening = player->actionFunc == Player_Action_80845EF8 && player->doorActor != nullptr &&
                                        player->doorType == PLAYER_DOORTYPE_HANDLE;
         const bool chestOpening = (player->stateFlags1 & PLAYER_STATE1_GETTING_ITEM) != 0 &&
@@ -2213,19 +2231,30 @@ extern "C" void CustomBodyActorUpdate(Actor* actor, PlayState* play) {
                                                                        : gCustomBodySpec.defaultAnim;
     }
     if (wanted != gCustomBodyCurrentAnim) {
-        if (CustomBodyStartAnimation(play, wanted, 1.0f, false, gCustomBodySpec.reverseAnims.count(wanted) != 0) &&
-            !overridden) {
-            gCustomBodyOverrideAnim.reset();
-            gCustomBodyOverrideOnce = false;
+        const auto previousOverride = gCustomBodyOverrideAnim;
+        const bool previousOnce = gCustomBodyOverrideOnce;
+        if (CustomBodyStartAnimation(play, wanted, 1.0f, false, gCustomBodySpec.reverseAnims.count(wanted) != 0)) {
+            if (climbOwnsPose) {
+                gCustomBodyOverrideAnim = previousOverride;
+                gCustomBodyOverrideOnce = previousOnce;
+            } else if (!overridden) {
+                gCustomBodyOverrideAnim.reset();
+                gCustomBodyOverrideOnce = false;
+            }
         }
     }
-    if ((player->stateFlags1 & PLAYER_STATE1_CLIMBING_LADDER) != 0) {
+    if (climbing) {
         gCustomBodySkelAnime.playSpeed = player->skelAnime.playSpeed;
     }
-    if (LinkAnimation_Update(play, &gCustomBodySkelAnime) && gCustomBodyOverrideOnce) {
+    if (LinkAnimation_Update(play, &gCustomBodySkelAnime) && gCustomBodyOverrideOnce && !climbOwnsPose) {
         gCustomBodyOverrideAnim.reset();
         gCustomBodyOverrideOnce = false;
     }
+    // LinkAnimation_Update só enfileira a pose; a fila roda depois de Actor_UpdateAll. MOVEACTOR enfileirado
+    // depois dela neutraliza jointTable[0] antes do draw: UPDATEY devolve a raiz vertical a baseTransl e NOMOVE
+    // impede que a translação de uma animação declarada por Lua mova o Player ou desloque a malha.
+    gCustomBodySkelAnime.movementFlags |= ANIM_FLAG_UPDATEY | ANIM_FLAG_NOMOVE;
+    AnimationContext_SetMoveActor(play, &player->actor, &gCustomBodySkelAnime, 0.0f);
 }
 
 extern "C" void CustomBodyActorDraw(Actor* actor, PlayState* play) {
@@ -3742,6 +3771,80 @@ bool IsUnboundLayerArchive(const std::filesystem::path& path) {
            manifest.contains("formatVersion") && manifest["formatVersion"] == 2;
 }
 
+// Archive de assets de um mod: toda entrada fica sob "mod/<id>/" e as de objects/ e textures/ cujo caminho
+// original está livre no VFS ganham também alias no hash original, para as referências internas (DL→textura,
+// gravadas por hash do caminho sem prefixo) resolverem sozinhas. A decisão é arquivo a arquivo: uma colisão
+// não derruba o alias das outras entradas, ao contrário das regras do resources V4. Sem tradução de bytes.
+class ModAssetArchive final : public Ship::Archive {
+  public:
+    ModAssetArchive(const std::string& path, Ship::ArchiveManager* manager, std::string prefix)
+        : Ship::Archive(path), mInner(std::make_shared<Ship::O2rArchive>(path)), mManager(manager),
+          mPrefix(std::move(prefix)) {
+    }
+
+    bool Open() override {
+        if (!mInner->Open()) {
+            SPDLOG_WARN("ShipLua n\xC3\xA3o abriu o archive interno '{}'", GetPath());
+            return false;
+        }
+        std::size_t aliased = 0;
+        std::size_t blocked = 0;
+        const auto files = mInner->ListFiles();
+        for (const auto& [hash, filePath] : *files) {
+            IndexFile(mPrefix + filePath);
+            // Só dados de render: o áudio do SoH enumera o índice global (audio/*) e quebraria com entradas
+            // alheias; objects/ e textures/ só são resolvidos por referência direta.
+            const bool renderData = filePath.rfind("objects/", 0) == 0 || filePath.rfind("textures/", 0) == 0;
+            if (renderData && mManager != nullptr && !mManager->HasFile(filePath)) {
+                IndexFile(filePath);
+                ++aliased;
+            } else {
+                ++blocked;
+            }
+        }
+        mOwnIndex = ListFiles();
+        SPDLOG_INFO("ShipLua exp\xC3\xB4s {} assets sob '{}' ({} com alias direto, {} sem alias)", files->size(),
+                    mPrefix, aliased, blocked);
+        return !files->empty();
+    }
+
+    bool Close() override {
+        mOwnIndex.reset();
+        return mInner->Close();
+    }
+
+    std::shared_ptr<Ship::File> LoadFile(const std::string& filePath) override {
+        if (!HasFile(filePath)) {
+            return nullptr;
+        }
+        if (filePath.rfind(mPrefix, 0) == 0) {
+            return mInner->LoadFile(filePath.substr(mPrefix.size()));
+        }
+        return mInner->LoadFile(filePath);
+    }
+
+    std::shared_ptr<Ship::File> LoadFile(uint64_t hash) override {
+        if (mOwnIndex == nullptr) {
+            return nullptr;
+        }
+        const auto it = mOwnIndex->find(hash);
+        if (it == mOwnIndex->end()) {
+            return nullptr;
+        }
+        return LoadFile(it->second);
+    }
+
+    bool WriteFile(const std::string&, const std::vector<uint8_t>&) override {
+        return false;
+    }
+
+  private:
+    std::shared_ptr<Ship::O2rArchive> mInner;
+    Ship::ArchiveManager* mManager = nullptr;
+    std::string mPrefix;
+    std::shared_ptr<std::unordered_map<uint64_t, std::string>> mOwnIndex;
+};
+
 // Archives de assets comuns ficam sob "mod/<nome>/", sem colidir com o jogo.
 // Camadas Unbound v2 precisam preservar os caminhos originais para que cenas,
 // colisões e entradas sejam mescladas; elas são montadas após o provider.
@@ -3788,7 +3891,6 @@ void MountModAssetArchives() {
     }
 
     std::size_t mounted = 0;
-    static uint64_t archiveSerial = 0;
     std::sort(archives.begin(), archives.end());
     for (const std::filesystem::path& archivePath : archives) {
         // A base Unbound é convertida no Init do provider. Só depois dele uma
@@ -3806,14 +3908,8 @@ void MountModAssetArchives() {
             continue;
         }
         const std::string id = archivePath.stem().string();
-        ShipLuaHost::OotPrefixedMountRequest request;
-        request.owner = id;
-        request.archivePath = archivePath.string();
-        request.prefix = "mod/" + id + "/";
-        request.aliases = { { "objects/", "objects/" }, { "textures/", "textures/" } };
-        // Assets comuns não recebem tradução de dialeto de outro jogo.
-        const auto modArchive = std::make_shared<ShipLuaHost::OotPrefixedArchive>(
-            request, archivePath.string(), ++archiveSerial, archiveManager.get());
+        const auto modArchive =
+            std::make_shared<ModAssetArchive>(archivePath.string(), archiveManager.get(), "mod/" + id + "/");
         modArchive->Load();
         if (modArchive->IsLoaded() && archiveManager->AddArchive(modArchive) != nullptr) {
             ++mounted;
