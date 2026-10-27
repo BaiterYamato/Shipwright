@@ -8,7 +8,13 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from linkspan_playtest import server
+try:
+    from linkspan_playtest import server
+except ModuleNotFoundError as error:
+    # O runner do CI não instala o pacote mcp; os outros módulos de teste não dependem dele.
+    if error.name != "mcp":
+        raise
+    raise unittest.SkipTest("pacote mcp ausente") from None
 from linkspan_playtest.capture import png_rgb
 
 
