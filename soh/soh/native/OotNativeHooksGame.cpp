@@ -307,7 +307,6 @@ extern "C" void LinkSpan_RoomActors(PlayState* play, s32 layer) {
 extern "C" {
 extern PlayState* gPlayState;
 u8 ShipLua_ShouldBlockRoll(void);
-u8 ShipLua_ShouldBlockLedgeGrabs(void);
 }
 
 namespace {
@@ -345,7 +344,7 @@ extern "C" s32 LinkSpan_PlayerRollAllowed(Player* player, PlayState* play) {
 
 extern "C" s32 LinkSpan_PlayerLedgeGrabAllowed(Player* player, PlayState* play) {
     return ShipLuaHost::DispatchOotPlayerGate(ShipLuaHost::GetOotHookPoints().playerLedgeGrabAllowed, play, player,
-                                              !ShipLua_ShouldBlockLedgeGrabs());
+                                              true);
 }
 
 extern "C" void LinkSpan_PlayerAction(Player* player, PlayState* play, Input* input, s32 vanillaAllowed) {

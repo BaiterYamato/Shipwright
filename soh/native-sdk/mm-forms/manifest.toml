@@ -1,0 +1,18 @@
+id = "linkspan.mm.forms"
+name = "MM Forms"
+version = "0.0.1"
+api = ">=0.5.0 <0.6.0"
+games = ["oot"]
+entrypoint = "main.lua"
+kind = "core_extension"
+load_phase = "pre_game"
+
+[capabilities]
+required = ["oot.player.immunity", "oot.player.weight", "player.speed", "core.timers", "scene.events"]
+
+[dependencies]
+"linkspan.mm.base" = ">=0.0.1"
+
+[provider]
+abi_version = "1.4"
+win64 = "provider/mm_forms.dll"

@@ -20,8 +20,6 @@ extern u8 LinkSpan_PlayerQuadOwned(void* collider);
 // Desenha a máscara de transformação do ShipLua enquanto as matrizes dos
 // membros ainda estão ativas. No MM ela sai do bolso na mão esquerda e só
 // depois passa ao rosto; emitir depois de Player_DrawImpl perde ambas.
-void ShipLua_DrawMaskTransitionHand(PlayState* play, Player* player);
-void ShipLua_DrawMaskTransitionHead(PlayState* play, Player* player);
 
 typedef struct {
     /* 0x00 */ u8 flag;
@@ -1818,7 +1816,6 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
         Actor* hookedActor;
 
         Math_Vec3f_Copy(&this->leftHandPos, D_80160000);
-        ShipLua_DrawMaskTransitionHand(play, this);
 
         if (this->itemAction == PLAYER_IA_DEKU_STICK) {
             Vec3f sp124[3];
@@ -2013,7 +2010,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             }
         } else if (limbIndex == PLAYER_LIMB_HEAD) {
             Matrix_MultVec3f(&sPlayerFocusOffsetFromHead, &this->actor.focus.pos);
-            ShipLua_DrawMaskTransitionHead(play, this);
+
         } else {
             Vec3f* vec = &sLeftRightFootLimbModelFootPos[(gSaveContext.linkAge)];
 
