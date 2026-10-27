@@ -76,6 +76,20 @@ if(MSVC)
 endif()
 add_test(NAME oot_native_registry_tests COMMAND oot_native_registry_tests)
 
+# RFC 0032: ponte do hook oot.input.pad contra um registro real, sem o jogo.
+add_executable(oot_native_input_pad_tests
+    "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/InputPadTests.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeInputPad.cpp")
+target_include_directories(oot_native_input_pad_tests PRIVATE
+    "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native")
+target_compile_definitions(oot_native_input_pad_tests PRIVATE "$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS>")
+target_link_libraries(oot_native_input_pad_tests PRIVATE shiplua)
+if(MSVC)
+    set_property(TARGET oot_native_input_pad_tests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+add_test(NAME oot_native_input_pad_tests COMMAND oot_native_input_pad_tests)
+
 add_executable(oot_native_scenes_tests
     "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/SceneRegistryTests.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp"

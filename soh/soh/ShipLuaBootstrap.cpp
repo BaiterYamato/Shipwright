@@ -133,6 +133,7 @@ namespace ShipLuaHost {
 namespace {
 
 std::unique_ptr<ShipLua::ModHost> gModHost;
+std::vector<std::filesystem::path> gToolDirectories; // RFC 0032: --linkspan-tool
 std::shared_ptr<OotActorProvider> gActorProvider;
 const std::function<bool(void*)>* gActorSpawnBinder = nullptr;
 
@@ -3969,6 +3970,14 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
 
     // Mod nativo que derrubar o boot fica em mods/.shiplua-disabled no próximo início.
     gModHost->EnableBootGuard(modsRoot);
+    std::vector<std::filesystem::path> tools;
+    for (const auto& tool : gToolDirectories) {
+        if (tool.empty())
+            SPDLOG_WARN("ShipLua ignorou --linkspan-tool sem pasta");
+        else
+            tools.push_back(tool);
+    }
+    gModHost->SetToolDirectories(std::move(tools));
     auto loaded = gModHost->LoadModsFromRoot(modsRoot, cacheRoot);
     if (!loaded.isOk()) {
         SPDLOG_ERROR("ShipLua n\xC3\xA3o conseguiu carregar a pasta de mods '{}': {}", modsRoot.string(),
@@ -3977,6 +3986,9 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     }
     if (!loaded.value->loadedIds.empty())
         SetEngineExtended(true);
+    // Ferramentas do SDK (RFC 0032) ficam fora de loadedIds: não ligam o motor alargado nem entram no menu.
+    for (const auto& toolId : loaded.value->toolIds)
+        SPDLOG_INFO("ShipLua carregou a ferramenta '{}'", toolId);
     for (const auto& [modId, reason] : loaded.value->rejected) {
         SPDLOG_WARN("ShipLua rejeitou o mod '{}': {}", modId, reason);
     }
@@ -4096,6 +4108,10 @@ extern "C" void LinkSpan_ApplyPendingSettings(void) {
     for (const auto& name : pending) {
         ShipInit::Init(name);
     }
+}
+
+void SetToolDirectories(std::vector<std::filesystem::path> directories) {
+    gToolDirectories = std::move(directories);
 }
 
 void Initialize() {

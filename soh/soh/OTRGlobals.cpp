@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -1546,7 +1547,21 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     SetAppImageHome();
 #endif
     OTRGlobals::Instance = new OTRGlobals();
-    OTRGlobals::Instance->RunExtract(argc, argv);
+    // SOH [Link-Span] RFC 0032: --linkspan-tool <pasta> sai do argv; o RunExtract trata o 1º argumento como ROM.
+    std::vector<char*> forwarded;
+    std::vector<std::filesystem::path> tools;
+    for (int i = 0; i < argc; ++i) {
+        if (i > 0 && std::strcmp(argv[i], "--linkspan-tool") == 0) {
+            std::error_code error;
+            tools.push_back(i + 1 < argc ? std::filesystem::absolute(reinterpret_cast<const char8_t*>(argv[++i]), error)
+                                         : std::filesystem::path());
+            continue;
+        }
+        forwarded.push_back(argv[i]);
+    }
+    ShipLuaHost::SetToolDirectories(std::move(tools));
+    forwarded.push_back(nullptr);
+    OTRGlobals::Instance->RunExtract(static_cast<int>(forwarded.size()) - 1, forwarded.data());
 
     OTRGlobals::Instance->Initialize();
     CustomMessageManager::Instance = new CustomMessageManager();
