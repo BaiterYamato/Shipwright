@@ -9,19 +9,9 @@
 
 namespace SOH {
 
-// O caminho de cada amostra vem gravado DENTRO do arquivo de soundfont e é
-// sempre relativo à raiz do o2r de origem ("audio/samples/..."). Ao carregar uma
-// fonte de um archive montado sob um namespace — o mm.o2r do jogo vizinho fica
-// sob "mm/", os assets próprios de um mod sob "mod/<id>/" — resolver o caminho
-// literal traz a amostra do OoT de mesmo nome, ou nullptr, sem erro nenhum.
-//
-// O prefixo é DERIVADO do caminho do próprio recurso em vez de vir de estado
-// global: o factory roda em worker thread (medido em OOT-AUDIO-001 Fase 1 —
-// o load foi pedido na thread 13150 e o factory rodou na 63696), então um
-// global seria compartilhado entre carregamentos concorrentes.
-//
-//   "mm/audio/fonts/Soundfont_0" -> "mm/"
-//   "audio/fonts/Soundfont_0"    -> ""
+// Dependências relativas de soundfonts preservam o namespace do recurso.
+// O cálculo é local: factories podem carregar namespaces diferentes em paralelo.
+// Ex.: "mod/exemplo/audio/fonts/Soundfont_0" -> "mod/exemplo/".
 static std::string NamespacePrefixOf(const std::shared_ptr<Ship::ResourceInitData>& initData) {
     if (initData == nullptr) {
         return "";

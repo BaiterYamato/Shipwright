@@ -1,0 +1,4 @@
+-- Casca fora do RC: carregar o provider registra os tipos, sem spawn automático.
+-- Os controles de Kafei/Elegia serão incorporados aqui na migração dos exemplos.
+-- actor_ids retorna os IDs para ship.actor.spawn("oot.id." .. id, ...).
+-- ship.native.call só alcança a DLL deste pacote.

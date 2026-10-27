@@ -104,6 +104,16 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         --source "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/public-probe"
         --output "${CMAKE_BINARY_DIR}/native-packages" --cmake "${CMAKE_COMMAND}"
         --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
+    # Cascas do conteúdo que saiu do exe (RFC 0029 F4): fora do RC e sem prova em jogo, mas compiladas a cada CI
+    # contra o SDK do mesmo build para não apodrecerem.
+    add_test(NAME oot_native_mod_shells COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/test_mod_shells.py"
+        --sdk "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake" --host $<TARGET_FILE:soh>
+        --shell "${CMAKE_SOURCE_DIR}/soh/native-sdk/mm-base"
+        --shell "${CMAKE_SOURCE_DIR}/soh/native-sdk/mm-forms"
+        --shell "${CMAKE_SOURCE_DIR}/soh/native-sdk/puppets"
+        --cmake "${CMAKE_COMMAND}" --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
+    set_tests_properties(oot_native_mod_shells PROPERTIES TIMEOUT 1800)
 endif()
 
 # Escape hatch (COREEXT-008, RFC 0023): MinHook v1.3.4 compilada direto das fontes, sem o

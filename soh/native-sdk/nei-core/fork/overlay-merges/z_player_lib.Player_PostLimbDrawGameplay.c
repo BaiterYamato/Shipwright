@@ -1,4 +1,4 @@
-/* overlay-merge 1a2cff3920cf f8ac85e6787f 2c2690a66ccf */
+/* overlay-merge 2d24df1ca871 f8ac85e6787f 2c2690a66ccf */
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* thisx) {
     Player* this = (Player*)thisx;
 
@@ -13,7 +13,6 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
         Actor* hookedActor;
 
         Math_Vec3f_Copy(&this->leftHandPos, D_80160000);
-        ShipLua_DrawMaskTransitionHand(play, this);
 
         // Boss Remains: draw Odolwa's sword on the hand bone (the native sword was hidden to a
         // closed fist in Player_OverrideLimbDrawGameplayDefault, so *dList != NULL means a hand DL
@@ -340,7 +339,6 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
         } else if (limbIndex == PLAYER_LIMB_HEAD) {
             Matrix_MultVec3f(&sPlayerFocusOffsetFromHead, &this->actor.focus.pos);
-            ShipLua_DrawMaskTransitionHead(play, this);
 
             // Draw worn MM mask on Link's head (matrix is in head limb space)
             TransformMasks_WearDraw(play, this);

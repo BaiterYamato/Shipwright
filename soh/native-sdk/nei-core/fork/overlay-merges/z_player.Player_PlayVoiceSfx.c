@@ -1,8 +1,5 @@
-/* overlay-merge 80fb2a7dc2a1 7f3954336f05 605ad5069db0 */
+/* overlay-merge ca8140ab41a7 7f3954336f05 605ad5069db0 */
 void Player_PlayVoiceSfx(Player* this, u16 sfxId) {
-    if (ShipLua_TransformVoiceSfx(&sfxId) != 0) {
-        return;
-    }
     if (LinkSpan_PlayerVoiceSfx(this, &sfxId) != 0) {
         return;
     }
