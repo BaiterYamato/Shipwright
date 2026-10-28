@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linkspan-playtest"
+version = "0.1.0"
+description = "Ferramentas MCP de playtest do Link-Span OoT"
+requires-python = ">=3.11"
+dependencies = ["mcp"]
+
+[project.scripts]
+linkspan-playtest-mcp = "linkspan_playtest.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["linkspan_playtest*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

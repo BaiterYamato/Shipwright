@@ -7,6 +7,9 @@
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
 
+// RFC 0032: oot.input.pad (OotNativeHooksGame.cpp).
+void LinkSpan_DispatchInputPad(OSContPad* pads, int count);
+
 s32 D_8012D280 = 1;
 
 void OTRControllerCallback(uint8_t rumble);
@@ -326,6 +329,8 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
 
     if (padMgr->preNMIShutdown) {
         memset(padMgr->pads, 0, sizeof(padMgr->pads));
+    } else {
+        LinkSpan_DispatchInputPad(padMgr->pads, __osMaxControllers);
     }
     PadMgr_ProcessInputs(padMgr);
     osContStartQuery(queue);

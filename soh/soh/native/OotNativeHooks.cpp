@@ -146,6 +146,9 @@ std::shared_ptr<ShipLua::NativeHookRegistry> CreateOotHookRegistry() {
     }
     points.actorDamage = Declare(LINKSPAN_OOT_HOOK_ACTOR_DAMAGE, sizeof(ShipOotActorDamageHookV1),
                                  SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM, LINKSPAN_OOT_HOOKS_VERSION);
+    points.inputPad =
+        Declare(LINKSPAN_OOT_HOOK_INPUT_PAD, sizeof(ShipOotInputPadHookV1),
+                SHIP_NATIVE_HOOK_OBSERVE | SHIP_NATIVE_HOOK_TRANSFORM, LINKSPAN_OOT_HOOK_INPUT_PAD_VERSION);
     return registry;
 }
 

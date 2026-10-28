@@ -313,4 +313,32 @@ typedef struct ShipOotActorDamageHookV1 {
     float damage;      /* o que vai somar; o TRANSFORM troca */
 } ShipOotActorDamageHookV1;
 
+/* oot.input.pad: TRANSFORM ou OBSERVE, ShipOotInputPadHookV1, thread do jogo (RFC 0032). Uma vez por leitura de
+ *   controle no PadMgr_HandleRetraceMsg, depois de osContGetReadData e antes de PadMgr_ProcessInputs, em todos os
+ *   estados do jogo (título, seleção de arquivo, gameplay, pausa). O TRANSFORM soma, troca ou zera o input de
+ *   qualquer porta; o host copia botões e sticks de volta para os pads, e press/rel saem do resultado. Sem assinante
+ *   o host não monta o payload, e o hook não depende do motor alargado: uma ferramenta do SDK pode assiná-lo sem
+ *   nenhum mod carregado. */
+#define LINKSPAN_OOT_HOOK_INPUT_PAD "oot.input.pad"
+#define LINKSPAN_OOT_HOOK_INPUT_PAD_VERSION 1u
+
+typedef struct ShipOotInputPadV1 {
+    uint32_t button; /* CONTROLLERBUTTONS_T do SoH (uint32_t): BTN_* do N64 nos 16 bits baixos */
+    int8_t stick_x;
+    int8_t stick_y;
+    int8_t right_stick_x;
+    int8_t right_stick_y;
+    uint8_t err_no; /* só leitura */
+    uint8_t reserved[3];
+} ShipOotInputPadV1;
+
+typedef struct ShipOotInputPadHookV1 {
+    uint32_t size;
+    uint32_t frame;     /* cresce 1 por leitura de controle */
+    void* game_state;   /* GameState atual; NULL quando o host ainda não tem um */
+    uint8_t port_count; /* portas válidas em pads */
+    uint8_t reserved[3];
+    ShipOotInputPadV1 pads[4];
+} ShipOotInputPadHookV1;
+
 #endif

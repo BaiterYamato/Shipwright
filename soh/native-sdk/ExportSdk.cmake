@@ -76,6 +76,20 @@ if(MSVC)
 endif()
 add_test(NAME oot_native_registry_tests COMMAND oot_native_registry_tests)
 
+# RFC 0032: ponte do hook oot.input.pad contra um registro real, sem o jogo.
+add_executable(oot_native_input_pad_tests
+    "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/InputPadTests.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeInputPad.cpp")
+target_include_directories(oot_native_input_pad_tests PRIVATE
+    "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native")
+target_compile_definitions(oot_native_input_pad_tests PRIVATE "$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS>")
+target_link_libraries(oot_native_input_pad_tests PRIVATE shiplua)
+if(MSVC)
+    set_property(TARGET oot_native_input_pad_tests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+add_test(NAME oot_native_input_pad_tests COMMAND oot_native_input_pad_tests)
+
 add_executable(oot_native_scenes_tests
     "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/SceneRegistryTests.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp"
@@ -114,6 +128,15 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         --shell "${CMAKE_SOURCE_DIR}/soh/native-sdk/puppets"
         --cmake "${CMAKE_COMMAND}" --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}")
     set_tests_properties(oot_native_mod_shells PROPERTIES TIMEOUT 1800)
+    # RFC 0032: ferramenta fora dos releases, compilada contra o SDK e testada sem jogo.
+    add_test(NAME oot_native_playtest_tool COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/test_mod_shells.py"
+        --sdk "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake" --host $<TARGET_FILE:soh>
+        --shell "${CMAKE_SOURCE_DIR}/soh/native-sdk/tools/playtest/agent"
+        --cmake "${CMAKE_COMMAND}" --generator "${CMAKE_GENERATOR}" --make-program "${CMAKE_MAKE_PROGRAM}"
+        --ctest "${CMAKE_CTEST_COMMAND}"
+        --python-tests "${CMAKE_SOURCE_DIR}/soh/native-sdk/tools/playtest/mcp/tests")
+    set_tests_properties(oot_native_playtest_tool PROPERTIES TIMEOUT 1800)
 endif()
 
 # Escape hatch (COREEXT-008, RFC 0023): MinHook v1.3.4 compilada direto das fontes, sem o

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <filesystem>
+#include <vector>
+
 namespace ShipLua {
 class ModHost;
 }
@@ -10,6 +13,8 @@ class OotActorProvider;
 class OotHotkeyRegistry;
 class OotWorldAdapter;
 
+// RFC 0032: pastas de --linkspan-tool, guardadas antes do Initialize. Caminho vazio = flag sem pasta.
+void SetToolDirectories(std::vector<std::filesystem::path> directories);
 void Initialize();
 void Shutdown();
 ShipLua::ModHost* GetModHost();

@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import sys
 
 
 def run(*command):
@@ -22,6 +23,8 @@ def main():
     parser.add_argument("--cmake", required=True)
     parser.add_argument("--generator", default="Visual Studio 17 2022")
     parser.add_argument("--make-program", default="")
+    parser.add_argument("--ctest", default="", help="executa os testes C++ do pacote compilado")
+    parser.add_argument("--python-tests", type=Path, help="testes Python da ferramenta")
     args = parser.parse_args()
     if args.generator.startswith("Visual Studio"):
         generator = ["-G", args.generator, "-A", "x64"]
@@ -38,6 +41,8 @@ def main():
             run(args.cmake, "-S", shell, "-B", build, *generator, f"-DOOT_NATIVE_SDK={args.sdk}",
                 f"-DHOST_EXECUTABLE={args.host}")
             run(args.cmake, "--build", build, "--config", "Release")
+            if args.ctest:
+                run(args.ctest, "--test-dir", build, "-C", "Release", "--output-on-failure", "--no-tests=error")
             manifest = (build / "mod" / "manifest.toml").read_text(encoding="utf-8")
             if f'host_layout_id = "{layout.group(1)}"' not in manifest:
                 raise AssertionError(f"{shell.name}: manifesto sem o layout do SDK")
@@ -45,6 +50,9 @@ def main():
             if not dlls:
                 raise AssertionError(f"{shell.name}: pacote sem DLL em provider/")
             print(f"{shell.name}: {', '.join(dll.name for dll in dlls)} com layout {layout.group(1)[:8]}")
+
+    if args.python_tests:
+        print(run(sys.executable, "-m", "unittest", "discover", "-s", args.python_tests, "-p", "test_*.py"), end="")
 
 
 if __name__ == "__main__":
