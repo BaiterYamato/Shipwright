@@ -34,6 +34,7 @@ class Gameplay {
     Json CameraState() const;
     Json Actors(const Json& args) const;
     Json SceneMap(const Json& args) const;
+    Json SceneOverview(const Json& args) const;
     std::optional<Json> Execute(Request& request, InputQueue& queue, ShipOotInputPadV1* pad);
 };
 } // namespace Playtest

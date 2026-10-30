@@ -7,6 +7,7 @@ import time
 from mcp.server.fastmcp import FastMCP, Image
 from . import launcher
 from .capture import capture_window
+from .overview import collect_overview, render_overview, overview_summary
 from .conditions import wait_for as wait_for_state
 
 mcp = FastMCP("linkspan-playtest")
@@ -82,6 +83,40 @@ def scene_map(offset: int = 0, limit: int = 128) -> dict:
     complete=false: o host não oferece linkspan.oot.scene_query v1 (spawns, entradas e exits).
     """
     return _v2("scene_map", offset=offset, limit=limit)
+
+
+@mcp.tool()
+def scene_overview(y_min: float | None = None, y_max: float | None = None,
+                   bbox: list[float] | None = None, include_actors: bool = False,
+                   include_ceiling: bool = False, stride: int = 1, limit: int = 128,
+                   max_pages: int = 32, size: int = 960, offset: int = 0,
+                   water_offset: int = 0, transition_offset: int = 0, actor_offset: int = 0,
+                   room_offset: int = 0, scene_epoch: int | None = None) -> list:
+    """Planta PNG da colisão estática + resumo. X à direita, +Z abaixo; yaw em graus.
+
+    bbox=[x_min,z_min,x_max,z_max]; Y padrão Link-200..Link+300, fixado na primeira página.
+    Até 64 páginas de 1..128 elementos por lista; partial e next_offsets permitem continuar.
+    Ao continuar, forneça scene_epoch, os cursores e a mesma faixa Y/bbox/stride.
+    Chão/água sobrepostos mostram a camada mais alta. DynaPoly e contornos de sala ausentes.
+    Não calcula rota nem garante transitabilidade. Reduza a faixa Y em mapas com vários andares.
+    """
+    if type(size) is not int or not 384 <= size <= 1280:
+        raise ValueError("size precisa estar em 384..1280 pixels")
+    arguments = dict(include_actors=include_actors, include_ceiling=include_ceiling, stride=stride,
+                     limit=limit, offset=offset, water_offset=water_offset,
+                     transition_offset=transition_offset, actor_offset=actor_offset, room_offset=room_offset)
+    for key, value in (("y_min", y_min), ("y_max", y_max), ("bbox", bbox), ("scene_epoch", scene_epoch)):
+        if value is not None:
+            arguments[key] = value
+    with _lock:
+        session = _active()
+        scene = collect_overview(lambda **args: _v2("scene_overview", **args), arguments, max_pages)
+        png = render_overview(scene, size)
+        path = session.directory / f"{time.time_ns()}-scene-overview.png"
+        path.write_bytes(png)
+        summary = overview_summary(scene)
+        session.record("scene_overview_render", {"path": str(path), "summary": summary})
+        return [f"path: {path}; {summary}", Image(data=png, format="png")]
 
 
 @mcp.tool()

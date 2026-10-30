@@ -110,8 +110,8 @@ bool ParseRequest(std::string_view line, Request& out, std::string& error) {
     }
     out.op = j["op"].get<std::string>();
     if (out.op != "hello" && out.op != "state" && out.op != "input" && out.op != "cancel" && out.op != "release" &&
-        out.op != "result" && out.op != "scene_map" && out.op != "actors" && out.op != "teleport" &&
-        out.op != "camera_state" && out.op != "camera_set" && out.op != "walk_to") {
+        out.op != "result" && out.op != "scene_overview" && out.op != "scene_map" && out.op != "actors" &&
+        out.op != "teleport" && out.op != "camera_state" && out.op != "camera_set" && out.op != "walk_to") {
         error = "op desconhecida";
         return false;
     }
@@ -147,6 +147,33 @@ bool ValidateV2(const Request& request, std::string& error) {
     if (op == "result") {
         fields({ "ticket" });
         valid = number("ticket", 1, 9007199254740991.0, true, true);
+    } else if (op == "scene_overview") {
+        fields({ "offset", "water_offset", "transition_offset", "actor_offset", "room_offset", "limit", "stride",
+                 "y_min", "y_max", "bbox", "include_actors", "include_ceiling", "scene_epoch" });
+        for (auto key : { "offset", "water_offset", "transition_offset", "actor_offset", "room_offset" })
+            valid = valid && number(key, 0, 4294967295.0, false, true);
+        valid = valid && number("limit", 1, 128, false, true) && number("stride", 1, 64, false, true) &&
+                number("y_min", -10000000, 10000000, false) && number("y_max", -10000000, 10000000, false) &&
+                number("scene_epoch", 0, 9007199254740991.0, false, true);
+        for (auto key : { "include_actors", "include_ceiling" })
+            valid = valid && (!a.contains(key) || a[key].is_boolean());
+        if (a.contains("y_min") && a.contains("y_max"))
+            valid = valid && a["y_min"] <= a["y_max"];
+        if (a.contains("bbox")) {
+            const auto& b = a["bbox"];
+            bool box = b.is_array() && b.size() == 4;
+            if (box)
+                for (const auto& v : b)
+                    box =
+                        box && v.is_number() && std::isfinite(v.get<double>()) && std::abs(v.get<double>()) <= 10000000;
+            valid = valid && box;
+            if (box)
+                valid = valid && b[0] < b[2] && b[1] < b[3];
+        }
+        // Continued pages must be bound to their original scene.
+        for (auto key : { "offset", "water_offset", "transition_offset", "actor_offset", "room_offset" })
+            if (a.contains(key) && a[key].is_number() && a[key] > 0)
+                valid = valid && a.contains("scene_epoch");
     } else if (op == "scene_map" || op == "actors") {
         fields({ "offset", "limit" });
         valid = number("offset", 0, 65535, false, true) && number("limit", 1, 128, false, true);

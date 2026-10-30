@@ -111,6 +111,7 @@ As nove ferramentas anteriores mantêm assinaturas e comportamento. A v2 acresce
 | Ferramenta | Contrato |
 | --- | --- |
 | `scene_map(offset=0, limit=128)` | Cena viva: spawns, entradas locais, exits, salas e transition actors com posição, `rotY`, parâmetros, salas e plano de cruzamento. |
+| `scene_overview(y_min=null, y_max=null, bbox=null, include_actors=false, include_ceiling=false, stride=1, limit=128, max_pages=32, size=960, ...)` | Planta PNG vista de cima da colisão estática, mais um resumo em texto: chão em cinza pela altura, paredes, água, Link com seta do yaw, planos de transição com as salas de cada lado e atores. |
 | `actors(radius=null, category=null, offset=0, limit=128)` | Atores vivos, ordenados por distância 3D, categoria/id/nome/posição/sala. Categorias numéricas 0..11; NPC=4, prop=6, porta=10. |
 | `teleport(x,y,z,yaw=null,timeout=3)` | Verifica chão/parede e Player; escreve posição atual, anterior e home, zera velocidade, espera dois updates e bgcheck. |
 | `camera_state()` | `eye`, `at`, yaw/pitch/distância, `input_yaw` real, modo, frame e epoch. |
@@ -142,6 +143,15 @@ Tipo 0 antecipa a sala oposta durante o carregamento; tipo 3 depende de switch. 
 com `50 < |sinal| < 100`, então atravesse o plano em vez de parar nele. `Door_Shutter` usa a semântica
 local-Z verificada no host. Outros tipos retornam `semantics="orientation_only"` e salas de sinal `null`, pois
 orientação geométrica não prova sua regra de ativação. Os parâmetros permanecem disponíveis para inspeção.
+
+`scene_overview` lê `colCtx.colHeader` dentro do callback do jogo e pagina os polígonos com cursores brutos (até 4096
+polígonos lidos e 128 devolvidos por página); o MCP junta até `max_pages` páginas do mesmo `scene_epoch` e desenha o
+PNG só com a biblioteca padrão. Chão, parede e teto seguem os limiares de normal do `z_bgcheck.c`. A faixa Y padrão é
+Link-200..Link+300 e fica fixa desde a primeira página; estreite-a em mapas com vários andares ou passe
+`bbox=[x_min,z_min,x_max,z_max]`. Polígonos não têm sala, então as salas aparecem só por transições, atores e água. A
+colisão dinâmica (`DynaPoly`, plataformas) não é desenhada. A imagem fica na pasta da sessão e volta como conteúdo de
+imagem do MCP; `partial=true` e `next_offsets` indicam que faltam páginas. Não calcula rota nem prova que uma área é
+transitável. Em jogo, Kokiri Forest (1692 polígonos) levou 12 páginas e menos de 1 s.
 
 `actors` aceita raio 0 (só coincidentes), não aceita negativos e usa limite 1..128. Nomes vêm de
 `tables/actor_table.h`; tipos dinâmicos podem ter `name=null`. A varredura protege contra ciclos e limita 4096 atores,

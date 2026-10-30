@@ -22,11 +22,11 @@ class McpTests(unittest.TestCase):
     def tearDown(self):
         server._session = None
 
-    def test_fifteen_tools_registered(self):
+    def test_sixteen_tools_registered(self):
         tools = asyncio.run(server.mcp.list_tools())
         self.assertEqual({tool.name for tool in tools}, {"game_launch", "game_attach", "game_close", "game_state",
                                                       "input", "wait_for", "screenshot", "console", "log",
-                                                      "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to"})
+                                                      "scene_overview", "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to"})
 
     def test_new_tools_forward_arguments_and_record_results(self):
         requests, records = [], []

@@ -112,6 +112,7 @@ The nine earlier tools keep their signatures and behavior. v2 adds:
 | Tool | Contract |
 | --- | --- |
 | `scene_map(offset=0, limit=128)` | Live scene: spawns, local entrances, exits, rooms, and transition actors with position, `rotY`, params, rooms, and crossing plane. |
+| `scene_overview(y_min=null, y_max=null, bbox=null, include_actors=false, include_ceiling=false, stride=1, limit=128, max_pages=32, size=960, ...)` | Top-down PNG of the static collision plus a text summary: floor shaded by height, walls, water, Link with a yaw arrow, transition planes with their side rooms, and actors. |
 | `actors(radius=null, category=null, offset=0, limit=128)` | Live actors sorted by 3D distance, with category/id/name/position/room. Categories are 0..11; NPC=4, prop=6, door=10. |
 | `teleport(x,y,z,yaw=null,timeout=3)` | Checks floor, walls, and the Player; writes the current, previous, and home positions, clears velocity and pushed speed, then waits for two updates and bgcheck. |
 | `camera_state()` | `eye`, `at`, yaw/pitch/distance, the real `input_yaw`, mode, frame, and epoch. |
@@ -144,6 +145,16 @@ destination on side 1. Type 0 preloads the opposite room; type 3 depends on a sw
 rooms only while `50 < |side| < 100`, so walk through the plane instead of stopping on it. `Door_Shutter` uses the
 local-Z rule verified in the host. Other actors return `semantics="orientation_only"` and `null` side rooms, because
 their orientation does not prove their activation rule. Their params stay available for inspection.
+
+`scene_overview` reads `colCtx.colHeader` inside the game callback and pages through polygons with raw cursors
+(at most 4096 polygons scanned and 128 returned per page); the MCP joins up to `max_pages` pages from the same
+`scene_epoch` and renders the PNG with the standard library only. Floors, walls, and ceilings follow the normal
+thresholds of `z_bgcheck.c`. The Y window defaults to Link-200..Link+300 and is fixed on the first page; narrow it on
+maps with several floors, or pass `bbox=[x_min,z_min,x_max,z_max]`. Polygons carry no room, so rooms are located only
+through transitions, actors, and water boxes. Dynamic collision (`DynaPoly`, moving platforms) is not drawn. The image
+is saved in the session folder and returned as MCP image content; `partial=true` and `next_offsets` mean more pages
+are left. It does not plan routes or prove that an area is walkable. In game, Kokiri Forest (1692 polygons) took 12
+pages and under 1 s.
 
 `actors` accepts radius 0 (coincident actors only), rejects negative values, and limits pages to 1..128. Names come
 from `tables/actor_table.h`; dynamic types may have `name=null`. The scan guards against cycles, stops at 4096 actors,

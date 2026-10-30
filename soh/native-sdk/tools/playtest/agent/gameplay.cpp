@@ -1,4 +1,5 @@
 #include "gameplay.h"
+#include "overview.h"
 #include "z64save.h"
 #include <algorithm>
 #include <chrono>
@@ -253,6 +254,72 @@ Json Gameplay::SceneMap(const Json& a) const {
     });
     return j;
 }
+Json Gameplay::SceneOverview(const Json& args) const {
+    if (!play_ || !player_ || !player_->actor.update)
+        throw std::runtime_error("scene_overview exige gameplay com Player");
+    if (play_->transitionTrigger || play_->transitionMode || play_->roomCtx.status)
+        throw std::runtime_error("scene_overview: transição/carregamento em andamento; tente novamente");
+    if (args.contains("scene_epoch") && args["scene_epoch"] != epoch_)
+        throw std::runtime_error("scene_overview: scene_epoch mudou; descarte as páginas e reinicie");
+    const auto* header = play_->colCtx.colHeader; // Local ao callback; nunca publicado/retido.
+    if (!header)
+        throw std::runtime_error("scene_overview: colisão estática indisponível");
+    Json a = args;
+    a["y_min"] = args.value("y_min", double(player_->actor.world.pos.y) - 200);
+    a["y_max"] = args.value("y_max", double(player_->actor.world.pos.y) + 300);
+    if (a["y_min"] > a["y_max"])
+        throw std::runtime_error("scene_overview: y_min maior que y_max");
+    auto j = OverviewCollision(*header, a);
+    j["scene"] = play_->sceneNum;
+    j["scene_epoch"] = epoch_;
+    j["frame"] = frame_;
+    j["room"] = play_->roomCtx.curRoom.num;
+    j["previous_room"] = play_->roomCtx.prevRoom.num;
+    j["y_min"] = a["y_min"];
+    j["y_max"] = a["y_max"];
+    j["stride"] = a.value("stride", 1u);
+    j["link"] = { { "position", Position(player_->actor.world.pos) },
+                  { "yaw", player_->actor.shape.rot.y * (180.0 / 32768.0) },
+                  { "room", j["room"] } };
+    const auto limit = a.value("limit", 128u), to = a.value("transition_offset", 0u);
+    // Reuse the existing transition semantics, only copying values inside this callback.
+    const auto map = SceneMap({ { "offset", to }, { "limit", limit } });
+    j["transitions"] = map["transitions"];
+    j["rooms"] = Json::array();
+    const uint64_t ro = a.value("room_offset", uint64_t(0));
+    for (uint64_t i = ro; i < uint64_t(play_->numRooms) && i < ro + limit; ++i)
+        j["rooms"].push_back({ { "id", i }, { "current", i == uint64_t(play_->roomCtx.curRoom.num) } });
+    const uint64_t nr = ro + j["rooms"].size();
+    j["next_offsets"]["room_offset"] = nr < uint64_t(play_->numRooms) ? Json(nr) : Json(nullptr);
+    // Room ids have no geometry association in CollisionPoly. List all bounded room ids separately.
+    j["room_count"] = play_->numRooms;
+    j["counts"]["transitions"] = map["counts"]["transitions"];
+    const uint64_t nt = uint64_t(to) + j["transitions"].size();
+    j["next_offsets"]["transition_offset"] = nt < play_->transiActorCtx.numActors ? Json(nt) : Json(nullptr);
+    j["actors"] = Json::array();
+    j["counts"]["actors"] = 0;
+    j["next_offsets"]["actor_offset"] = nullptr;
+    j["actors_truncated"] = false;
+    if (a.value("include_actors", false)) {
+        const auto ao = a.value("actor_offset", 0u);
+        const auto actors = Actors({ { "offset", ao }, { "limit", limit } });
+        j["actors"] = actors["actors"];
+        j["counts"]["actors"] = actors["total"];
+        j["actors_truncated"] = actors["truncated"];
+        j["next_offsets"]["actor_offset"] = actors["has_more"].get<bool>() ? Json(uint64_t(ao) + limit) : Json(nullptr);
+    }
+    j["dynamic_collision"] = "omitted";
+    j["warnings"] = { "Colisão estática sem sala por polígono; salas localizadas somente nas transições/atores/água.",
+                      "DynaPoly omitido: buffers baked sem contagem pública de geometria válida neste callback." };
+    j["has_more"] = false;
+    for (const auto& next : j["next_offsets"])
+        if (!next.is_null())
+            j["has_more"] = true;
+    // Leave space for the ticket/result envelope and id (MaxLine is shared with the Python client).
+    if (j.dump().size() > MaxLine - 4096)
+        throw std::runtime_error("scene_overview: página grande demais; reduza limit");
+    return j;
+}
 void Gameplay::Cleanup() {
     if (cameraToken_ && camera_ && camera_->release)
         camera_->release(cameraToken_);
@@ -298,6 +365,8 @@ void Gameplay::Tick(PlayState* play, uint64_t frame, Server& server, ShipOotInpu
 }
 std::optional<Json> Gameplay::Execute(Request& r, InputQueue& queue, ShipOotInputPadV1* pad) {
     auto& a = r.args;
+    if (r.op == "scene_overview")
+        return SceneOverview(a);
     if (r.op == "scene_map")
         return SceneMap(a);
     if (r.op == "actors")

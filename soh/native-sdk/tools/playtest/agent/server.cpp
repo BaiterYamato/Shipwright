@@ -58,7 +58,8 @@ struct Server::Impl {
                                { "layout_id", layout },
                                { "protocol_version", ProtocolVersion },
                                { "capabilities",
-                                 { "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to" } } });
+                                 { "scene_overview", "scene_map", "actors", "teleport", "camera_state", "camera_set",
+                                   "walk_to" } } });
         }
         if (!lease.Owns(connection))
             return ReplyError(id, "lease necessário");
