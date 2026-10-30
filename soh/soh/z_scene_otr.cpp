@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 
 #include "global.h"
+#include "../src/code/linkspan_vanilla.h"
 #include "soh/OTRGlobals.h"
 #include "../src/code/z_light_list.h" // SOH [Unbound] Internal C/C++ API.
 #include "soh/native/OotNativeScenes.h"
@@ -67,6 +68,8 @@ template <typename Target> Target ClampSceneCount(uint32_t count, const char* la
 
 extern Ship::IResource* OTRPlay_LoadFile(PlayState* play, const char* fileName);
 extern "C" s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId);
+// SOH [Link-Span] HOST-SLIM-001 F4 (V2): mesmo limite efetivo do caminho C, incluindo os objetos reservados.
+extern "C" s32 Object_GetBankLimit(void);
 extern "C" RomFile sNaviMsgFiles[];
 s32 OTRScene_ExecuteCommands(PlayState* play, SOH::Scene* scene);
 
@@ -88,7 +91,10 @@ bool Scene_CommandActorList(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetActorList* cmdActor = std::static_pointer_cast<SOH::SetActorList>(cmd);
     SOH::SetActorList* cmdActor = (SOH::SetActorList*)cmd;
 
-    play->numSetupActors = ClampSceneCount<decltype(play->numSetupActors)>(cmdActor->numActors, "actor list");
+    // SOH [Link-Span] HOST-SLIM-001 F4 (V7): a lista de atores da sala tambem tinha contagem u8.
+    play->numSetupActors = LinkSpan_EngineExtended()
+                               ? ClampSceneCount<decltype(play->numSetupActors)>(cmdActor->numActors, "actor list")
+                               : static_cast<u8>(cmdActor->numActors);
     play->setupActorList = (ActorEntry*)cmdActor->GetRawPointer();
     // Link-Span: mods (oot.room.actors) podem editar a lista antes do spawn.
     LinkSpan_RoomActors(play, sLinkSpanSceneLayer);
@@ -115,7 +121,10 @@ bool Scene_CommandRoomList(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetRoomList* cmdRoomList = std::static_pointer_cast<SOH::SetRoomList>(cmd);
     SOH::SetRoomList* cmdRoomList = (SOH::SetRoomList*)cmd;
 
-    play->numRooms = ClampSceneCount<decltype(play->numRooms)>(cmdRoomList->numRooms, "room list");
+    // SOH [Link-Span] HOST-SLIM-001 F4 (V7): sem mods, a contagem volta a conversao u8 do upstream.
+    play->numRooms = LinkSpan_EngineExtended()
+                         ? ClampSceneCount<decltype(play->numRooms)>(cmdRoomList->numRooms, "room list")
+                         : static_cast<u8>(cmdRoomList->numRooms);
     play->roomList = (RomFile*)cmdRoomList->GetRawPointer();
 
     return false;
@@ -207,12 +216,15 @@ bool Scene_CommandObjectList(PlayState* play, SOH::ISceneCommand* cmd) {
 
     // Continuing from the last index, add the remaining object ids from the command object list.
     // SOH [Unbound] Keep the stored count inside the enlarged bank even when a malformed resource exceeds it.
-    for (; k < objects.size() && i < OBJECT_EXCHANGE_BANK_MAX; k++, i++) {
-        OTRfunc_800982FC(&play->objectCtx, i, objects[k]);
+    for (; k < objects.size() && i < Object_GetBankLimit(); k++, i++) {
+        // Sem mods, a ultima vaga so entra na contagem, como no upstream.
+        if (LinkSpan_EngineExtended() || i < 127) {
+            OTRfunc_800982FC(&play->objectCtx, i, objects[k]);
+        }
     }
 
     if (k < objects.size()) {
-        SPDLOG_ERROR("[Unbound] object list exceeds the bank ({} slots); dropping {} objects", OBJECT_EXCHANGE_BANK_MAX,
+        SPDLOG_ERROR("[Unbound] object list exceeds the bank ({} slots); dropping {} objects", Object_GetBankLimit(),
                      objects.size() - k);
     }
 
@@ -244,8 +256,11 @@ bool Scene_CommandTransitionActorList(PlayState* play, SOH::ISceneCommand* cmd) 
     // SOH::SetTransitionActorList* cmdActor = static_pointer_cast<SOH::SetTransitionActorList>(cmd);
     SOH::SetTransitionActorList* cmdActor = (SOH::SetTransitionActorList*)cmd;
 
-    play->transiActorCtx.numActors = ClampSceneCount<decltype(play->transiActorCtx.numActors)>(
-        cmdActor->numTransitionActors, "transition actor list");
+    // SOH [Link-Span] HOST-SLIM-001 F4 (V7): contagem antiga u8; o indice independente fica reservado ao modo amplo.
+    play->transiActorCtx.numActors = LinkSpan_EngineExtended()
+                                         ? ClampSceneCount<decltype(play->transiActorCtx.numActors)>(
+                                               cmdActor->numTransitionActors, "transition actor list")
+                                         : static_cast<u8>(cmdActor->numTransitionActors);
     play->transiActorCtx.list = (TransitionActorEntry*)cmdActor->GetRawPointer();
 
     // Loops transition actors and sets them to default values (not spawned yet)
@@ -566,7 +581,8 @@ extern "C" s32 OTRRoom_RequestNewRoom(PlayState* play, RoomContext* roomCtx, s32
 
     if (roomCtx->status == 0) {
         roomCtx->prevRoom = roomCtx->curRoom;
-        roomCtx->curRoom.num = roomNum;
+        // SOH [Link-Span] HOST-SLIM-001 F4 (V7): o identificador runtime da sala era s8.
+        roomCtx->curRoom.num = LinkSpan_EngineExtended() ? roomNum : static_cast<s8>(roomNum);
         roomCtx->curRoom.segment = NULL;
         roomCtx->status = 1;
 

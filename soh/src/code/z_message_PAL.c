@@ -998,7 +998,7 @@ static s32 Message_DecodedControlUnits(u16 character, bool wide) {
 
 // SOH [Link-Span] R04: limitar lookahead e pular operandos.
 static bool Message_FindQuickTextEnd(MessageContext* msgCtx, u16* pos, bool wide) {
-    u32 capacity = wide ? ARRAY_COUNT(msgCtx->msgBufDecodedWide) : ARRAY_COUNT(msgCtx->msgBufDecoded);
+    u32 capacity = wide ? LINKSPAN_MESSAGE_DECODED_BUF_SIZE / sizeof(u16) : LINKSPAN_MESSAGE_DECODED_BUF_SIZE;
     u32 length = (u32)msgCtx->decodedTextLen + 1;
     u32 j = *pos;
     u16 character;
@@ -1746,12 +1746,12 @@ void Message_LoadItemIcon(PlayState* play, u16 itemId, s16 y) {
 }
 
 // SOH [Link-Span] R04: conferir antes da escrita e encerrar a caixa no excesso.
-// OOT-VANILLA-001: sem mod, nada é conferido, como no upstream.
-#define MESSAGE_DECODE_REQUIRE_INDEX(index)                                          \
-    do {                                                                             \
-        if (LinkSpan_EngineExtended() && ((index) < 0 || (index) >= decodedLimit)) { \
-            goto decodeOverflow;                                                     \
-        }                                                                            \
+// SOH [Link-Span] HOST-SLIM-001 F4 (V3): aplica o limite efetivo antigo sem escrever na capacidade extra.
+#define MESSAGE_DECODE_REQUIRE_INDEX(index)             \
+    do {                                                \
+        if (((index) < 0 || (index) >= decodedLimit)) { \
+            goto decodeOverflow;                        \
+        }                                               \
     } while (0)
 #define MESSAGE_DECODE_REQUIRE_GLYPH(index)                                                  \
     do {                                                                                     \
@@ -1799,7 +1799,7 @@ static s32 Message_RawControlUnits(u16 character, bool wide) {
 }
 
 static bool Message_HasRawUnits(Font* font, s32 pos, s32 count, bool wide) {
-    u32 capacity = wide ? ARRAY_COUNT(font->msgBufWide) : ARRAY_COUNT(font->msgBuf);
+    u32 capacity = wide ? LINKSPAN_MESSAGE_BUF_SIZE / sizeof(u16) : LINKSPAN_MESSAGE_BUF_SIZE;
     u32 length = font->msgLength / (wide ? sizeof(u16) : sizeof(u8));
     if (length > capacity) {
         length = capacity;
@@ -1817,8 +1817,8 @@ bool Message_DecodeName(PlayState* play, s16* decodedBufPosPtr, s32* charTexIdxP
     Font* font = &play->msgCtx.font;
 
     s16 decodedLimit = (gSaveContext.language == LANGUAGE_JPN && !sTextIsCredits && !sDisplayNextMessageAsEnglish)
-                           ? ARRAY_COUNT(msgCtx->msgBufDecodedWide)
-                           : ARRAY_COUNT(msgCtx->msgBufDecoded);
+                           ? LINKSPAN_MESSAGE_DECODED_BUF_SIZE / sizeof(u16)
+                           : LINKSPAN_MESSAGE_DECODED_BUF_SIZE;
     u8 emptyChar = (gSaveContext.ship.filenameLanguage == NAME_LANGUAGE_PAL) ? 0x3E : 0xDF;
 
     for (playerNameLen = ARRAY_COUNT(gSaveContext.playerName); playerNameLen > 0; playerNameLen--) {
@@ -2091,16 +2091,15 @@ static bool Message_DecodeJPN(PlayState* play) {
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
 
-    s16 decodedLimit = ARRAY_COUNT(msgCtx->msgBufDecodedWide);
+    s16 decodedLimit = LINKSPAN_MESSAGE_DECODED_BUF_SIZE / sizeof(u16);
     u16 rawTokenStart = msgCtx->msgBufPos;
 
     while (true) {
         rawTokenStart = msgCtx->msgBufPos;
-        if (LinkSpan_EngineExtended() && !Message_HasRawUnits(font, msgCtx->msgBufPos, 1, true)) {
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos, 1, true)) {
             goto decodeOverflow;
         }
-        if (LinkSpan_EngineExtended() &&
-            !Message_HasRawUnits(font, msgCtx->msgBufPos,
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos,
                                  Message_RawControlUnits((u16)font->msgBufWide[msgCtx->msgBufPos], true), true)) {
             goto decodeOverflow;
         }
@@ -2494,7 +2493,7 @@ static bool Message_DecodeChecked(PlayState* play) {
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
 
-    s16 decodedLimit = ARRAY_COUNT(msgCtx->msgBufDecoded);
+    s16 decodedLimit = LINKSPAN_MESSAGE_DECODED_BUF_SIZE;
     u16 rawTokenStart = msgCtx->msgBufPos;
 
     // #region SOH [NTSC] - allow switching languages mid text
@@ -2526,11 +2525,10 @@ static bool Message_DecodeChecked(PlayState* play) {
 
     while (true) {
         rawTokenStart = msgCtx->msgBufPos;
-        if (LinkSpan_EngineExtended() && !Message_HasRawUnits(font, msgCtx->msgBufPos, 1, false)) {
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos, 1, false)) {
             goto decodeOverflow;
         }
-        if (LinkSpan_EngineExtended() &&
-            !Message_HasRawUnits(font, msgCtx->msgBufPos,
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos,
                                  Message_RawControlUnits((u8)font->msgBuf[msgCtx->msgBufPos], false), false)) {
             goto decodeOverflow;
         }
@@ -3064,10 +3062,10 @@ void Message_OpenText(PlayState* play, u16 textId) {
         Message_FindCreditsMessage(play, textId);
         msgCtx->msgLength = font->msgLength;
         char* src = (uintptr_t)font->msgOffset;
-        if (font->msgLength > sizeof(font->msgBuf)) { // SOH [Unbound] never overrun the font buffer
+        if (font->msgLength > LINKSPAN_MESSAGE_BUF_SIZE) { // SOH [Unbound] never overrun the font buffer
             osSyncPrintf("[Unbound] message %x is %d bytes; truncating to %d\n", textId, font->msgLength,
-                         (int)sizeof(font->msgBuf));
-            msgCtx->msgLength = font->msgLength = sizeof(font->msgBuf);
+                         (int)LINKSPAN_MESSAGE_BUF_SIZE);
+            msgCtx->msgLength = font->msgLength = LINKSPAN_MESSAGE_BUF_SIZE;
         }
         memcpy(font->msgBuf, src, font->msgLength);
 
@@ -3094,7 +3092,8 @@ void Message_OpenText(PlayState* play, u16 textId) {
                 R_TEXT_INIT_XPOS = 65;
             }
         }
-        msgCtx->msgLength = font->msgLength = GetEquipNowMessage(font->msgBuf, font->msgOffset, sizeof(font->msgBuf));
+        msgCtx->msgLength = font->msgLength =
+            GetEquipNowMessage(font->msgBuf, font->msgOffset, LINKSPAN_MESSAGE_BUF_SIZE);
     } else {
         if (gSaveContext.language == LANGUAGE_JPN) {
             Message_FindMessageJPN(play, textId);
@@ -3103,10 +3102,10 @@ void Message_OpenText(PlayState* play, u16 textId) {
         }
         msgCtx->msgLength = font->msgLength;
         char* src = (uintptr_t)font->msgOffset;
-        if (font->msgLength > sizeof(font->msgBuf)) { // SOH [Unbound] never overrun the font buffer
+        if (font->msgLength > LINKSPAN_MESSAGE_BUF_SIZE) { // SOH [Unbound] never overrun the font buffer
             osSyncPrintf("[Unbound] message %x is %d bytes; truncating to %d\n", textId, font->msgLength,
-                         (int)sizeof(font->msgBuf));
-            msgCtx->msgLength = font->msgLength = sizeof(font->msgBuf);
+                         (int)LINKSPAN_MESSAGE_BUF_SIZE);
+            msgCtx->msgLength = font->msgLength = LINKSPAN_MESSAGE_BUF_SIZE;
         }
         memcpy(font->msgBuf, src, font->msgLength);
     }

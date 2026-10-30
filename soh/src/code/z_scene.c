@@ -14,13 +14,18 @@ s16 SaveContext_NormalizeWorldMapArea(s32 area) {
 
 RomFile sNaviMsgFiles[];
 
+// SOH [Link-Span] HOST-SLIM-001 F4 (V2): limite efetivo; o banco fisico e o layout do SDK permanecem ampliados.
+s32 Object_GetBankLimit(void) {
+    return LinkSpan_EngineExtended() ? OBJECT_EXCHANGE_BANK_MAX : 128;
+}
+
 s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId) {
     size_t size;
     // SOH [Unbound] objects are resolved by asset name on PC; ids past the vanilla table have no ROM file
     s32 hasRomFile = (objectId >= 0) && ((u32)objectId < gObjectTableSize);
 
-    if (objectCtx->num >= OBJECT_EXCHANGE_BANK_MAX) {
-        osSyncPrintf("[Unbound] object bank full (%d slots); object %d was not loaded\n", OBJECT_EXCHANGE_BANK_MAX,
+    if (objectCtx->num >= Object_GetBankLimit()) {
+        osSyncPrintf("[Unbound] object bank full (%d slots); object %d was not loaded\n", Object_GetBankLimit(),
                      objectId);
         return -1;
     }
@@ -33,7 +38,7 @@ s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId) {
     osSyncPrintf("num=%d adrs=%x end=%x\n", objectCtx->num, (uintptr_t)objectCtx->status[objectCtx->num].segment + size,
                  objectCtx->spaceEnd);
 
-    assert(((objectCtx->num < OBJECT_EXCHANGE_BANK_MAX) &&
+    assert(((objectCtx->num < Object_GetBankLimit()) &&
             (((uintptr_t)objectCtx->status[objectCtx->num].segment + size) < (uintptr_t)objectCtx->spaceEnd)));
 
     if (hasRomFile) {
@@ -41,7 +46,7 @@ s32 Object_Spawn(ObjectContext* objectCtx, s16 objectId) {
                             __LINE__);
     }
 
-    if (objectCtx->num < OBJECT_EXCHANGE_BANK_MAX - 1) {
+    if (objectCtx->num < Object_GetBankLimit() - 1) {
         objectCtx->status[objectCtx->num + 1].segment =
             (void*)ALIGN16((uintptr_t)objectCtx->status[objectCtx->num].segment + size);
     }
@@ -81,7 +86,7 @@ void Object_InitBank(PlayState* play, ObjectContext* objectCtx) {
     objectCtx->num = objectCtx->unk_09 = 0;
     objectCtx->mainKeepIndex = objectCtx->subKeepIndex = 0;
 
-    for (i = 0; i < OBJECT_EXCHANGE_BANK_MAX; i++) {
+    for (i = 0; i < Object_GetBankLimit(); i++) {
         objectCtx->status[i].id = OBJECT_INVALID;
         objectCtx->status[i].segment = NULL;
     }
@@ -148,7 +153,7 @@ s32 Object_GetIndex(ObjectContext* objectCtx, s16 objectId) {
 }
 
 s32 Object_IsLoaded(ObjectContext* objectCtx, s32 bankIndex) {
-    if ((bankIndex < 0) || (bankIndex >= OBJECT_EXCHANGE_BANK_MAX)) {
+    if ((bankIndex < 0) || (bankIndex >= Object_GetBankLimit())) {
         return false; // fora do array: o upstream lia memória vizinha
     }
     // OOT-VANILLA-001: sem mod, vaga além de num ainda responde pelo id gravado nela, como no upstream.
@@ -326,11 +331,11 @@ void Scene_CommandObjectList(PlayState* play, SceneCmd* cmd) {
         status++;
     }
 
-    assert(cmd->objectList.num <= OBJECT_EXCHANGE_BANK_MAX);
+    assert(cmd->objectList.num <= Object_GetBankLimit());
 
-    while (k < cmd->objectList.num) {
+    while (k < cmd->objectList.num && (LinkSpan_EngineExtended() || i < Object_GetBankLimit())) {
         nextPtr = func_800982FC(&play->objectCtx, i, *objectEntry);
-        if (i < OBJECT_EXCHANGE_BANK_MAX - 1) {
+        if (i < Object_GetBankLimit() - 1) {
             firstStatus[i + 1].segment = nextPtr;
         }
         i++;

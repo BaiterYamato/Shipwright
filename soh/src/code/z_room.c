@@ -135,11 +135,16 @@ void func_80095D04(PlayState* play, Room* room, u32 flags) {
     polygonDlist = SEGMENTED_TO_VIRTUAL(polygon2->start);
     spA4 = spB8;
 
-    if (polygon2->num > SHAPE_SORT_MAX) {
-        osSyncPrintf("[Unbound] room %d: %u mesh entries exceed SHAPE_SORT_MAX (%d); extra entries are not drawn\n",
-                     room->num, polygon2->num, SHAPE_SORT_MAX);
+    // SOH [Link-Span] HOST-SLIM-001 F4 (V7): orcamento efetivo antigo de 64; armazenamento fisico continua em 1024.
+    s32 sortMax = LinkSpan_EngineExtended() ? SHAPE_SORT_MAX : 64;
+    if (!LinkSpan_EngineExtended()) {
+        assert(polygon2->num <= 64);
     }
-    numEntries = MIN(polygon2->num, SHAPE_SORT_MAX);
+    if (polygon2->num > sortMax) {
+        osSyncPrintf("[Unbound] room %d: %u mesh entries exceed SHAPE_SORT_MAX (%d); extra entries are not drawn\n",
+                     room->num, polygon2->num, sortMax);
+    }
+    numEntries = MIN(polygon2->num, sortMax);
     sp78 = polygonDlist;
 
     for (sp9C = 0; sp9C < numEntries; sp9C++, polygonDlist++) {

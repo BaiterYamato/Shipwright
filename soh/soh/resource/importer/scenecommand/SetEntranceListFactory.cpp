@@ -1,4 +1,5 @@
 #include <tinyxml2.h>
+#include "src/code/linkspan_vanilla.h"
 
 #include "soh/resource/importer/scenecommand/SetEntranceListFactory.h"
 #include "soh/resource/type/scenecommand/SetEntranceList.h"
@@ -43,7 +44,10 @@ SetEntranceListFactoryXML::ReadResource(std::shared_ptr<Ship::ResourceInitData> 
         if (childName == "EntranceEntry") {
             EntranceEntry entry;
             entry.spawn = child->IntAttribute("Spawn");
-            entry.room = child->IntAttribute("Room");
+            // SOH [Link-Span] HOST-SLIM-001 F4 (V7): EntranceEntry.room era u8; ReadInt8 tambem terminava convertido
+            // para u8.
+            entry.room =
+                LinkSpan_EngineExtended() ? child->IntAttribute("Room") : static_cast<u8>(child->IntAttribute("Room"));
             setEntranceList->entrances.push_back(entry);
         }
 

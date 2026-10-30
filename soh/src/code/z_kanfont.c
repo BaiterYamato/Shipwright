@@ -1,4 +1,5 @@
 #include "global.h"
+#include "linkspan_vanilla.h"
 
 #include <string.h>
 
@@ -4244,8 +4245,9 @@ void Font_LoadOrderedFontNTSC(Font* font) {
     }
 
     size = msgEntry->msgSize;
-    if (size > sizeof(font->msgBuf)) { // SOH [Unbound]
-        size = sizeof(font->msgBuf);
+    // SOH [Link-Span] HOST-SLIM-001 F4 (V3): a copia de texto JPN tambem respeita os 1280 bytes sem mods.
+    if (size > LINKSPAN_MESSAGE_BUF_SIZE) {
+        size = LINKSPAN_MESSAGE_BUF_SIZE;
     }
     len = (u32)size / 2;
     memcpy(font->msgBuf, msgEntry->segment, size);

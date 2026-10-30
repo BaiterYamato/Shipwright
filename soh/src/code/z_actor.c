@@ -3560,8 +3560,9 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     actor->destroy = dbEntry->destroy;
     actor->update = dbEntry->update;
     actor->draw = dbEntry->draw;
-    actor->room = play->roomCtx.curRoom.num;
-    actor->transitionIndex = sSpawnTransitionIndex; // SOH [Unbound] -1 unless spawned from the transition list
+    // SOH [Link-Span] HOST-SLIM-001 F4 (V7): sem mods, sala s8 e indice extra inativo; leitores usam os bits de params.
+    actor->room = LinkSpan_EngineExtended() ? play->roomCtx.curRoom.num : (s8)play->roomCtx.curRoom.num;
+    actor->transitionIndex = LinkSpan_EngineExtended() ? sSpawnTransitionIndex : -1;
     sSpawnTransitionIndex = -1;
     actor->home.pos.x = posX;
     actor->home.pos.y = posY;
@@ -3619,7 +3620,7 @@ void Actor_SpawnTransitionActors(PlayState* play, ActorContext* actorCtx) {
     s32 i;
 
     transitionActor = play->transiActorCtx.list;
-    numActors = play->transiActorCtx.numActors;
+    numActors = LinkSpan_EngineExtended() ? play->transiActorCtx.numActors : (u8)play->transiActorCtx.numActors;
 
     for (i = 0; i < numActors; i++) {
         if (transitionActor->id >= 0) {
@@ -3635,11 +3636,13 @@ void Actor_SpawnTransitionActors(PlayState* play, ActorContext* actorCtx) {
                 sSpawnTransitionIndex = i;
                 Actor_Spawn(actorCtx, play, (s16)(transitionActor->id & 0x1FFF), transitionActor->pos.x,
                             transitionActor->pos.y, transitionActor->pos.z, 0, transitionActor->rotY, 0,
-                            ((i & 0x3F) << 0xA) | (transitionActor->params & 0x3FF));
+                            LinkSpan_EngineExtended() ? ((i & 0x3F) << 0xA) | (transitionActor->params & 0x3FF)
+                                                      : (i << 0xA) + transitionActor->params);
                 sSpawnTransitionIndex = -1;
 
                 transitionActor->id = -transitionActor->id;
-                numActors = play->transiActorCtx.numActors;
+                numActors =
+                    LinkSpan_EngineExtended() ? play->transiActorCtx.numActors : (u8)play->transiActorCtx.numActors;
             }
         }
         transitionActor++;
