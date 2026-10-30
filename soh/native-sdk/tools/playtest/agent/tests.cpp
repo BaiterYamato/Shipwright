@@ -87,7 +87,60 @@ int main() {
         Check(lease.Release(2));
         Check(lease.Acquire(3, false));
         Check(!lease.Acquire(0, true));
-        std::cout << "protocolo, fila e lease: OK\n";
+        for (auto valid : { R"({"id":"v2","op":"scene_map","limit":128})",
+                            R"({"id":"v2","op":"actors","radius":100,"category":4})",
+                            R"({"id":"v2","op":"teleport","x":1,"y":2,"z":3,"yaw":90})",
+                            R"({"id":"v2","op":"camera_set","yaw":90,"pitch":-30,"distance":200})",
+                            R"({"id":"v2","op":"camera_set","eye":[0,1,0],"at":[1,0,0]})",
+                            R"({"id":"v2","op":"camera_set","mode":"normal"})",
+                            R"({"id":"v2","op":"camera_state"})",
+                            R"({"id":"v2","op":"walk_to","x":0,"z":0})" })
+            Check(ParseRequest(valid, request, error));
+        for (auto invalid : { R"({"id":"v2","op":"teleport","x":1,"z":2})",
+                              R"({"id":"v2","op":"walk_to","x":true,"z":0})",
+                              R"({"id":"v2","op":"walk_to","x":0,"z":0,"timeout":0})",
+                              R"({"id":"v2","op":"walk_to","x":0,"z":0,"_epoch":1})",
+                              R"({"id":"v2","op":"actors","radius":-1})",
+                              R"({"id":"v2","op":"actors","category":12})",
+                              R"({"id":"v2","op":"scene_map","limit":129})",
+                              R"({"id":"v2","op":"scene_map","offset":1.5})",
+                              R"({"id":"v2","op":"camera_set","mode":"normal","eye":[0,0,0]})",
+                              R"({"id":"v2","op":"camera_set","eye":[0,0,0],"at":[0,0,0]})",
+                              R"({"id":"v2","op":"camera_set","yaw":0,"pitch":90,"distance":10})",
+                              R"({"id":"v2","op":"camera_set","eye":[0,1,0],"at":[1,0,0],"yaw":1})",
+                              R"({"id":"v2","op":"result","ticket":0})" })
+            Check(!ParseRequest(invalid, request, error));
+        const auto zPlane = CrossingPlane(0x23, 4 << 6, 0, 0, 1);
+        Check(zPlane["axis"] == "z" && zPlane["negative_room"] == 0 && zPlane["positive_room"] == 1);
+        Check(CrossingPlane(0x23, 4 << 6, 16384, 0, 1)["axis"] == "x");
+        Check(CrossingPlane(0x23, 4 << 6, 8192, 0, 1)["axis"] == "oblique_xz");
+        Check(CrossingPlane(0x23, 2 << 6, 0, 0, 1)["positive_room"] == 0);
+        Check(!CrossingPlane(0x23, 1 << 6, 0, 0, 1)["bidirectional"].get<bool>());
+        Check(CrossingPlane(9, 0, 0, 0, 1)["semantics"] == "orientation_only");
+        Check(CrossingPlane(0x2E, 0, 0, 0, 1)["positive_room"] == 1);
+        Check(Steering(0, 100, 0) == std::pair<int8_t,int8_t>{0,80});
+        Check(Steering(100, 0, 0) == std::pair<int8_t,int8_t>{-80,0});
+        Check(Steering(100, 0, 90) == std::pair<int8_t,int8_t>{0,80});
+        Check(Steering(0, 100, 90) == std::pair<int8_t,int8_t>{80,0});
+        Mailbox mailbox;
+        Check(ParseRequest(R"({"id":"v2","op":"camera_state"})", request, error));
+        auto ticket = mailbox.Submit(request);
+        Check(mailbox.Result(ticket)["status"] == "pending");
+        bool busy = false;
+        try { mailbox.Submit(request); } catch (const std::exception&) { busy = true; }
+        Check(busy);
+        mailbox.Tick([](Request&) -> std::optional<Json> { return std::nullopt; });
+        Check(mailbox.Busy());
+        mailbox.Tick([](Request&) -> std::optional<Json> { return Json{{"status","applied"}}; });
+        Check(mailbox.Result(ticket)["result"]["status"] == "applied");
+        mailbox.Cancel();
+        bool expired = false;
+        try { mailbox.Result(ticket); } catch (const std::exception&) { expired = true; }
+        Check(expired && mailbox.TakeCleanup() && !mailbox.TakeCleanup());
+        ticket = mailbox.Submit(request);
+        mailbox.Tick([](Request&) -> std::optional<Json> { throw std::runtime_error("falha controlada"); });
+        Check(mailbox.Result(ticket)["result"]["status"] == "error" && mailbox.TakeCleanup());
+        std::cout << "protocolo v1/v2, geometria, steering, fila, lease e mailbox: OK\n";
         return 0;
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';

@@ -65,6 +65,83 @@ def game_state() -> dict:
         return session.client.state()
 
 
+def _v2(op, **arguments):
+    with _lock:
+        session = _active()
+        session.record(op, arguments)
+        result = session.client.execute(op, **arguments)
+        session.record(op + "_result", result)
+        return result
+
+
+@mcp.tool()
+def scene_map(offset: int = 0, limit: int = 128) -> dict:
+    """Mapa vivo: spawns, entradas, exits, salas e planos EnHoll. null indica lista indisponível.
+
+    Paginação simultânea de cada lista; avance offset em limit enquanto has_more.
+    complete=false: o host não oferece linkspan.oot.scene_query v1 (spawns, entradas e exits).
+    """
+    return _v2("scene_map", offset=offset, limit=limit)
+
+
+@mcp.tool()
+def actors(radius: float | None = None, category: int | None = None, offset: int = 0, limit: int = 128) -> dict:
+    """Atores vivos, ordenados por distância 3D do Link. Categoria 0..11; npc=4, prop=6, door=10.
+
+    Nomes vêm da tabela pública do SDK; tipos dinâmicos podem ter name=null.
+    """
+    arguments = {"offset": offset, "limit": limit}
+    if radius is not None:
+        arguments["radius"] = radius
+    if category is not None:
+        arguments["category"] = category
+    return _v2("actors", **arguments)
+
+
+@mcp.tool()
+def teleport(x: float, y: float, z: float, yaw: float | None = None, timeout: float = 3) -> dict:
+    """Teleporta no chão, zera velocidade e confirma bgcheck. Yaw em graus (0=+Z, 90=+X).
+
+    Recusa cutscene, caminhada automática, Player ocupado ou destino sem chão seguro.
+    status=grounded confirma; refused/timeout/scene_changed nunca significam sucesso.
+    """
+    arguments = {"x": x, "y": y, "z": z, "timeout": timeout}
+    if yaw is not None:
+        arguments["yaw"] = yaw
+    return _v2("teleport", **arguments)
+
+
+@mcp.tool()
+def camera_state() -> dict:
+    """Eye, at, yaw/pitch em graus e input_yaw real usado pelo controle; modo e frame."""
+    return _v2("camera_state")
+
+
+@mcp.tool()
+def camera_set(mode: str = "free", yaw: float | None = None, pitch: float | None = None,
+               distance: float | None = None, eye: list[float] | None = None, at: list[float] | None = None) -> dict:
+    """Câmera com posse exclusiva: yaw+pitch+distance ou eye+at ([x,y,z]); ângulos em graus.
+
+    Yaw 0 olha +Z, 90 olha +X; pitch negativo olha para baixo. Sem at, orbita Link+40Y.
+    mode=normal libera a câmera. Posse cai em troca de cena, cutscene ou desconexão.
+    """
+    arguments = {"mode": mode}
+    for name, value in (("yaw", yaw), ("pitch", pitch), ("distance", distance), ("eye", eye), ("at", at)):
+        if value is not None:
+            arguments[name] = value
+    return _v2("camera_set", **arguments)
+
+
+@mcp.tool()
+def walk_to(x: float, z: float, tolerance: float = 20, timeout: float = 15) -> dict:
+    """Anda em linha reta compensando input_yaw a cada pad read; para em parede, queda ou falta de progresso.
+
+    Não calcula rotas. Devolve status, posição, distância inicial/restante e progresso.
+    Recusa Player sem controle e interrompe ao trocar cena/Player; aceita troca de sala.
+    """
+    return _v2("walk_to", x=x, z=z, tolerance=tolerance, timeout=timeout)
+
+
 @mcp.tool()
 def input(steps: list[dict], wait: bool = True) -> dict:
     """Enfileira botões/sticks por frame. wait aguarda o frame posterior ao último passo."""

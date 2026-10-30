@@ -1,6 +1,9 @@
 #include "protocol.h"
 #include <array>
 #include <utility>
+#include <cmath>
+#include <algorithm>
+#include <set>
 
 namespace Playtest {
 bool ParseButtons(const Json& names, uint16_t& mask, std::string& error) {
@@ -106,12 +109,98 @@ bool ParseRequest(std::string_view line, Request& out, std::string& error) {
         return false;
     }
     out.op = j["op"].get<std::string>();
-    if (out.op != "hello" && out.op != "state" && out.op != "input" && out.op != "cancel" && out.op != "release") {
+    if (out.op != "hello" && out.op != "state" && out.op != "input" && out.op != "cancel" && out.op != "release" &&
+        out.op != "result" && out.op != "scene_map" && out.op != "actors" && out.op != "teleport" &&
+        out.op != "camera_state" && out.op != "camera_set" && out.op != "walk_to") {
         error = "op desconhecida";
         return false;
     }
     out.args = j;
-    return true;
+    return ValidateV2(out, error);
+}
+bool ValidateV2(const Request& request, std::string& error) {
+    const auto& a = request.args;
+    const auto& op = request.op;
+    if (op == "hello" || op == "input" || op == "state" || op == "cancel" || op == "release")
+        return true; // V1 continua aceito pelo agente novo.
+    std::set<std::string> allowed{ "id", "op" };
+    auto fields = [&](std::initializer_list<const char*> keys) { for (auto k : keys) allowed.insert(k); };
+    auto number = [&](const char* key, double lo, double hi, bool required = true, bool integer = false) {
+        if (!a.contains(key)) return !required;
+        const auto& v = a[key];
+        return v.is_number() && (!integer || v.is_number_integer()) && std::isfinite(v.get<double>()) &&
+               v >= lo && v <= hi;
+    };
+    auto vec = [&](const char* key) {
+        if (!a.contains(key) || !a[key].is_array() || a[key].size() != 3) return false;
+        for (const auto& v : a[key])
+            if (!v.is_number() || !std::isfinite(v.get<double>()) || std::abs(v.get<double>()) > 10000000) return false;
+        return true;
+    };
+    bool valid = true;
+    if (op == "result") {
+        fields({ "ticket" }); valid = number("ticket", 1, 9007199254740991.0, true, true);
+    } else if (op == "scene_map" || op == "actors") {
+        fields({ "offset", "limit" });
+        valid = number("offset", 0, 65535, false, true) && number("limit", 1, 128, false, true);
+        if (op == "actors") {
+            fields({ "radius", "category" });
+            valid = valid && number("radius", 0, 10000000, false) && number("category", 0, 11, false, true);
+        }
+    } else if (op == "teleport" || op == "walk_to") {
+        fields({ "x", "z", "timeout" });
+        valid = number("x", -10000000, 10000000) && number("z", -10000000, 10000000) &&
+                number("timeout", 0.1, 120, false);
+        if (op == "teleport") {
+            fields({ "y", "yaw" });
+            valid = valid && number("y", -10000000, 10000000) && number("yaw", -360, 360, false);
+        } else {
+            fields({ "tolerance" }); valid = valid && number("tolerance", 1, 1000, false);
+        }
+    } else if (op == "camera_set") {
+        fields({ "mode", "eye", "at", "yaw", "pitch", "distance" });
+        const auto mode = a.value("mode", Json("free"));
+        valid = mode == "normal" || mode == "free";
+        if (mode == "normal") valid = valid && a.size() == 3;
+        else if (a.contains("eye")) {
+            valid = valid && vec("eye") && vec("at") && !a.contains("yaw") && !a.contains("pitch") && !a.contains("distance");
+            if (valid) {
+                double d = 0; for (int i = 0; i < 3; ++i) d += std::pow(a["eye"][i].get<double>() - a["at"][i].get<double>(), 2);
+                valid = d > 0.0001;
+            }
+        } else valid = valid && number("yaw", -360, 360) && number("pitch", -89, 89) &&
+                     number("distance", 1, 100000) && (!a.contains("at") || vec("at"));
+    }
+    for (auto it = a.begin(); it != a.end(); ++it) valid = valid && allowed.count(it.key()) != 0;
+    if (!valid) error = "argumentos v2 inválidos: campo desconhecido, número fora da faixa ou combinação incompatível";
+    return valid;
+}
+Json CrossingPlane(int actorId, int params, int rotY, int front, int back) {
+    // En_Holl = 0x23; semântica do ator fica na ferramenta, nunca no exe.
+    const int type = (static_cast<unsigned>(params) >> 6) & 7;
+    const bool holl = actorId == 0x23 && type <= 6;
+    const bool shutter = actorId == 0x2E;
+    const bool vertical = holl && (type == 1 || type == 2 || type == 5);
+    const double rad = rotY * (3.14159265358979323846 / 32768.0);
+    double nx = vertical ? 0 : std::sin(rad), ny = vertical ? 1 : 0, nz = vertical ? 0 : std::cos(rad);
+    const char* axis = vertical ? "y" : (std::abs(nx) < 0.0001 ? "z" : (std::abs(nz) < 0.0001 ? "x" : "oblique_xz"));
+    // Verticais 2/5: lado 0 acima; horizontais: lado 0 em local -Z.
+    const bool positiveFront = vertical;
+    if (!holl && !shutter) return { { "axis", axis }, { "normal", { nx, ny, nz } },
+        { "semantics", "orientation_only" }, { "negative_room", nullptr }, { "positive_room", nullptr },
+        { "note", "orientação local-Z; ativação e sentido dependem deste tipo de ator" } };
+    return { { "axis", axis }, { "normal", { nx, ny, nz } }, { "type", holl ? Json(type) : Json(nullptr) },
+             { "semantics", holl ? "en_holl" : "door_shutter" },
+             { "negative_room", positiveFront ? back : front }, { "positive_room", positiveFront ? front : back },
+             { "bidirectional", !holl || type != 1 }, { "fixed_destination", holl && type == 1 ? Json(back) : Json(nullptr) },
+             { "note", holl && type == 0 ? "tipo 0 antecipa carregamento do lado oposto; confirmar sala após cruzar" :
+                                     "sinal = dot(posição-Link - posição-plano, normal); respeitar faixa de ativação" } };
+}
+std::pair<int8_t, int8_t> Steering(double dx, double dz, double yaw, int magnitude) {
+    const double angle = std::atan2(dx, dz) - yaw * (3.14159265358979323846 / 180.0);
+    // OoT calcula o ângulo do stick com atan2(-stickX, stickY).
+    return { static_cast<int8_t>(std::clamp(std::lround(-std::sin(angle) * magnitude), -128L, 127L)),
+             static_cast<int8_t>(std::clamp(std::lround(std::cos(angle) * magnitude), -128L, 127L)) };
 }
 std::string Reply(const std::string& id, const Json& body) {
     Json j = body;

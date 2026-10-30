@@ -2150,7 +2150,7 @@ int main(int argc, char** argv) {
         Check(refused, "randomizer queries run only on the owner thread");
         ShipLuaHost::BindOotRandoQueryBackend({});
     }
-    Check(policy.services.size() == 36 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 37 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
               policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
               policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
               policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&

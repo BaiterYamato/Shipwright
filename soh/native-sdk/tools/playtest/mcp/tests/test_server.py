@@ -22,10 +22,33 @@ class McpTests(unittest.TestCase):
     def tearDown(self):
         server._session = None
 
-    def test_nine_tools_registered(self):
+    def test_fifteen_tools_registered(self):
         tools = asyncio.run(server.mcp.list_tools())
         self.assertEqual({tool.name for tool in tools}, {"game_launch", "game_attach", "game_close", "game_state",
-                                                      "input", "wait_for", "screenshot", "console", "log"})
+                                                      "input", "wait_for", "screenshot", "console", "log",
+                                                      "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to"})
+
+    def test_new_tools_forward_arguments_and_record_results(self):
+        requests, records = [], []
+        def execute(op, **arguments):
+            requests.append((op, arguments))
+            return {"status": "refused", "reason": "cutscene"}
+        server._session = SimpleNamespace(process=SimpleNamespace(poll=lambda: None),
+                                          client=SimpleNamespace(execute=execute),
+                                          record=lambda *args: records.append(args))
+        self.assertEqual(server.scene_map()["status"], "refused")
+        server.actors(radius=100, category=4)
+        server.teleport(1, 2, 3, yaw=90)
+        server.camera_state()
+        server.camera_set(yaw=90, pitch=-30, distance=100)
+        server.camera_set(mode="normal")
+        server.camera_set(eye=[1, 2, 3], at=[0, 0, 0])
+        server.walk_to(100, 200, tolerance=10, timeout=30)
+        self.assertEqual(requests[1], ("actors", {"radius": 100, "category": 4, "offset": 0, "limit": 128}))
+        self.assertEqual(requests[2][1]["yaw"], 90)
+        self.assertEqual(requests[5], ("camera_set", {"mode": "normal"}))
+        self.assertEqual(requests[-1], ("walk_to", {"x": 100, "z": 200, "tolerance": 10, "timeout": 30}))
+        self.assertEqual(len(records), 2 * len(requests))
 
     def test_screenshot_mcp_returns_real_image(self):
         png = png_rgb(1, 1, b"\xff\x80\x01")

@@ -27,6 +27,10 @@ class ConditionsTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse(value)
 
+    def test_v2_observation_conditions(self):
+        self.assertTrue(parse('grounded == true and controllable == true and scene_epoch > 1 and camera.input_yaw == 90')(
+            {"grounded": True, "controllable": True, "scene_epoch": 2, "camera": {"input_yaw": 90}}))
+
     def test_wait_and_timeout(self):
         class Fake:
             frame = 0

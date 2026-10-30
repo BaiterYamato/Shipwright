@@ -104,3 +104,90 @@ background without focus; minimized windows and genuinely black frames were not 
 The host CTest `oot_native_playtest_tool` builds this package against its exported SDK, runs the pure C++ tests, then
 runs the Python tests with `unittest`. These checks do not replace the live title → file select → gameplay →
 transition → screenshot proof.
+
+## v2 — PLAYTEST-MCP-002 (0.2.0)
+
+The nine earlier tools keep their signatures and behavior. v2 adds:
+
+| Tool | Contract |
+| --- | --- |
+| `scene_map(offset=0, limit=128)` | Live scene: spawns, local entrances, exits, rooms, and transition actors with position, `rotY`, params, rooms, and crossing plane. |
+| `actors(radius=null, category=null, offset=0, limit=128)` | Live actors sorted by 3D distance, with category/id/name/position/room. Categories are 0..11; NPC=4, prop=6, door=10. |
+| `teleport(x,y,z,yaw=null,timeout=3)` | Checks floor, walls, and the Player; writes the current, previous, and home positions, clears velocity and pushed speed, then waits for two updates and bgcheck. |
+| `camera_state()` | `eye`, `at`, yaw/pitch/distance, the real `input_yaw`, mode, frame, and epoch. |
+| `camera_set(mode="free",yaw=null,pitch=null,distance=null,eye=null,at=null)` | Use yaw+pitch+distance, optionally with `at`, or eye+at. `mode="normal"` releases the camera. |
+| `walk_to(x,z,tolerance=20,timeout=15)` | Straight-line pad control that compensates for the input yaw. Stops at a wall, a drop, the timeout, or 1.5 s without getting closer to the target. Returns progress. |
+
+The new tools use **degrees**: yaw 0 faces +Z and +90 faces +X; a negative pitch looks down. Input `eye` and `at` are
+`[x,y,z]` lists; returned positions are `{x,y,z}` objects. Map `rotY`/rotation and the `game_state` rotation stay in
+the game's binary units (16384 = 90 degrees). `camera_state.yaw` is the eye-to-at view direction; `input_yaw` is
+`Camera_GetInputDirYaw`, which `walk_to` uses.
+
+The map reads `PlayState` and the alternate header the game actually ran. `PlayState` has no counts for spawns,
+entrances, and exits, so the host captures them from the scene commands it executed and serves them through
+`linkspan.oot.scene_query` v1 (`soh/native-sdk/include/oot_scene_query.h`, exported with the SDK). That header is a
+versioned service contract outside the layout id globs, so adding it does not invalidate built mods; consumers still
+check `layout_id` and the element stride before indexing. On a host without the service the agent returns
+`complete=false`, `null` for the unknown lists, and a warning; rooms, transitions, and the selected spawn stay
+available. The agent never opens O2R files.
+
+`scene_map.entrance_index` is the global entrance; `current_entrance` is the local `setupEntranceList` index
+(`curSpawn`). Spawns and entrances are separate lists: `entrances[i].spawn` indexes `spawns`. Exits are indices into
+the global entrance table and carry no coordinates. Rooms are listed by id and current/previous state, with no floor
+geometry. `counts` gives totals; advance `offset += limit` while `has_more=true`. `complete` reports whether the lists
+are available, independent of paging. Read the pages again if `scene_epoch` changes.
+
+`transitions[].crossing` carries the unit normal, the axis (`x`, `y`, `z`, or `oblique_xz`), and the rooms on the
+negative and positive sides. The side is `dot(Link - transition.position, normal)`. A horizontal EnHoll uses the
+normal `(sin(rotY),0,cos(rotY))`; vertical types 1/2/5 use Y. Types 2/5 have side 0 above; type 1 has a fixed
+destination on side 1. Type 0 preloads the opposite room; type 3 depends on a switch. Horizontal types 4/6 switch
+rooms only while `50 < |side| < 100`, so walk through the plane instead of stopping on it. `Door_Shutter` uses the
+local-Z rule verified in the host. Other actors return `semantics="orientation_only"` and `null` side rooms, because
+their orientation does not prove their activation rule. Their params stay available for inspection.
+
+`actors` accepts radius 0 (coincident actors only), rejects negative values, and limits pages to 1..128. Names come
+from `tables/actor_table.h`; dynamic types may have `name=null`. The scan guards against cycles, stops at 4096 actors,
+and reports `truncated`. Pages are different snapshots; actors can spawn or despawn between them.
+
+`teleport` refuses pause/text, cutscenes, automatic walking, transitions, doors, rolling, water, climbing, Epona, and
+incompatible Player states; it never changes the action function, and the Player must be on the ground. The floor
+probe starts at `y+50`, needs a floor within 200 units of `y` with normal Y >= 0.5, and the target must be clear of
+walls. Y snaps to floor+1, and the fall height is reset to the target. Only `status="grounded"` confirms the position
+after bgcheck; `refused`, `timeout`, `scene_changed`, and `unsupported` are distinct results. `mutated=true` reports
+that the agent wrote state or took the pad even if confirmation failed afterwards; there is no rollback or retry. A
+refusal before the operation takes the pad leaves the pending `input` queue untouched.
+
+The camera goes through `linkspan.oot.camera` with exclusive ownership; the host reapplies the view. Ownership is lost
+on cutscenes and scene changes; cancel/release, disconnect, and shutdown release it. Pending cleanup runs inside the
+same critical section as the next request, so a cancel followed by a new `camera_set` cannot release the new view.
+`camera_set` confirms that the service accepted the view; read `camera_state` on a later frame to check the effective
+view. The agent never writes camera memory.
+
+`walk_to` keeps the pad neutral between frames, checks walls and floor, and waits while a room loads; the wait does not
+count against the 1.5 s progress window, and a request that arrives during a load starts when it ends. A scene or
+Player change stops it. Being pushed sideways (conveyors, moving actors) does not count as progress. It does not plan
+routes, open doors, or solve obstacles. `arrived`, `blocked`, `refused`, `timeout`, and `scene_changed` include
+position and progress; an instant result does not remove residual inertia.
+
+The snapshot gains `scene_epoch`, `grounded`, `controllable`, `blocked_reason`, and `camera`; `wait_for` accepts these
+scalars plus `camera.yaw`, `camera.input_yaw`, and `camera.mode` (not the `blocked_reason` text).
+
+### JSON protocol v2
+
+Line-delimited JSON keeps `{id,op,...}` and `{id,ok,...}`. The MCP `hello` sends `protocol_version:2`; the reply
+includes `protocol_version:2`, `agent_version:"0.2.0"`, `layout_id`, and capabilities. The new MCP refuses agents
+without v2, including on attach, without waiting 90 s for a permanent mismatch. The new agent still accepts a v1
+`hello` without the field from old clients; when present, the number must be the integer 2.
+
+New operations run on the game thread. The TCP thread returns `{ticket,status:"pending"}`; poll
+`{id,op:"result",ticket}` until `{status:"done",result:{...}}`. One operation can be pending at a time; a conflict
+returns `ok:false` with busy. The last result lives until the next request or cancel. The MCP polls for you and
+records each request and result in the evidence. `input` is busy while a v2 operation is pending. Cancel, an owner
+change, and disconnect invalidate the ticket and leave input neutral; camera cleanup happens on the next game
+callback. Without a callback the client cancels after timeout+5 s. Mutations are never replayed after a socket error.
+
+Unknown or internal arguments, booleans where numbers are expected, non-finite values, timeouts outside 0.1..120 s,
+coordinates beyond +/-10,000,000, pitch outside -89..89, and invalid camera combinations are refused. The CMake tests
+include `playtest_gameplay_tests` (fake services plus the real TCP server, with regressions for the adversarial
+review) next to the pure protocol/queue/lease tests. The in-game proof (Kokiri Forest, through the EnHoll between
+rooms 0 and 1 and back, using only the new tools) passed on host `2E11252A`.

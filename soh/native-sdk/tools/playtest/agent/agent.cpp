@@ -1,4 +1,5 @@
 #include "server.h"
+#include "gameplay.h"
 #include "oot_engine.h"
 #include "shiplua/native/ship_native_abi.h"
 #include "z64.h"
@@ -12,6 +13,7 @@
 
 namespace {
 std::unique_ptr<Playtest::Server> gServer;
+Playtest::Gameplay gGameplay;
 GameState** gState = nullptr;
 SaveContext* gSave = nullptr;
 // O GameState_Init zera `init` depois de rodá-lo; o `destroy` que o init gravou identifica o estado atual.
@@ -29,6 +31,11 @@ void Log(const char* message) {
     // A ABI não oferece logger; stderr fica no log da sessão criado pelo launcher.
     std::fprintf(stderr, "[playtest] %s\n", message);
     std::fflush(stderr);
+}
+ShipNativeStatus SHIP_NATIVE_CALL OnPlayDestroy(void*, const ShipNativeHookCall*) {
+    gGameplay.SceneEnded();
+    if (gServer) gServer->Queue().Cancel();
+    return SHIP_NATIVE_OK;
 }
 ShipNativeStatus SHIP_NATIVE_CALL OnPad(void*, const ShipNativeHookCall* call) {
     if (!gServer || !call || !call->payload || call->payload_size < sizeof(ShipOotInputPadHookV1))
@@ -86,11 +93,23 @@ ShipNativeStatus SHIP_NATIVE_CALL OnPad(void*, const ShipNativeHookCall* call) {
         }
         if (payload->port_count)
             gServer->Queue().Apply(gFrame, payload->pads[0]);
+        auto* livePlay = destroy == gPlayDestroy && gSave && gSave->gameMode != GAMEMODE_TITLE_SCREEN
+            ? reinterpret_cast<PlayState*>(state) : nullptr;
+        gGameplay.Tick(livePlay, gFrame, *gServer, payload->port_count ? &payload->pads[0] : nullptr);
+        j.update(gGameplay.Observation());
+        if (livePlay) {
+            const auto* actor = livePlay->actorCtx.actorLists[ACTORCAT_PLAYER].head;
+            if (actor) {
+                j["position"] = { { "x", actor->world.pos.x }, { "y", actor->world.pos.y }, { "z", actor->world.pos.z } };
+                j["rotation"] = { { "x", actor->shape.rot.x }, { "y", actor->shape.rot.y }, { "z", actor->shape.rot.z } };
+            }
+        }
         j["queue_size"] = gServer->Queue().Size();
         gServer->Publish(std::move(snapshot));
         return SHIP_NATIVE_OK;
     } catch (...) {
         gServer->Queue().Cancel();
+        gServer->Commands().Cancel();
         Log("falha ao atualizar o retrato; entrada cancelada");
         return SHIP_NATIVE_FAILURE;
     }
@@ -131,6 +150,10 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         Log("catálogo público incompleto");
         return SHIP_NATIVE_UNSUPPORTED;
     }
+    if (!gGameplay.Init(runtime)) {
+        Log("SDK incompatível: tamanhos de structs ou símbolos públicos de gameplay ausentes");
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
     gFirst = true;
     gFrame = 0;
     const char* sail = std::getenv("LINKSPAN_PLAYTEST_SAIL");
@@ -157,6 +180,13 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         Log("hook oot.input.pad indisponível");
         return result;
     }
+    const ShipNativeHookSpec destroyHook{ sizeof(destroyHook), LINKSPAN_OOT_HOOK_PLAY_DESTROY,
+        LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, 0, 0, OnPlayDestroy, nullptr };
+    result = runtime->register_hook(runtime->context, &destroyHook, &handle);
+    if (result != SHIP_NATIVE_OK) {
+        Log("hook público oot.play.destroy indisponível");
+        return result;
+    }
     if (!gServer->Start(static_cast<uint16_t>(port), token)) {
         Log("não foi possível abrir o socket local");
         return SHIP_NATIVE_FAILURE;
@@ -168,6 +198,7 @@ void SHIP_NATIVE_CALL Shutdown(void*) {
     if (gServer)
         gServer->Stop();
     gServer.reset();
+    gGameplay.Cleanup();
     gState = nullptr;
     gSave = nullptr;
 }

@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from linkspan_playtest import launcher
@@ -12,6 +12,30 @@ from linkspan_playtest.launcher import sail_settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_protocol_mismatch_does_not_retry_for_90_seconds(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            runtime, agent = root / "runtime", root / "agent"
+            runtime.mkdir(); (agent / "provider").mkdir(parents=True)
+            (runtime / "soh.exe").write_bytes(b"fake-exe")
+            (agent / "manifest.toml").write_text("fake manifest")
+            (agent / "provider/linkspan_playtest.dll").write_bytes(b"fake-dll")
+            process = SimpleNamespace(pid=12, code=None)
+            process.poll = lambda: process.code
+            process.terminate = lambda: setattr(process, "code", 0)
+            process.wait = lambda timeout: 0
+            client = Mock()
+            client.hello.side_effect = launcher.ProtocolError("MCP exige v2; recompile o agente")
+            with patch.dict(launcher.os.environ, {"LINKSPAN_PLAYTEST_AGENT": str(agent),
+                                                 "LINKSPAN_PLAYTEST_EVIDENCE": str(root / "evidence")}):
+                with patch.object(launcher.subprocess, "Popen", return_value=process), \
+                        patch.object(launcher, "AgentClient", return_value=client), \
+                        patch.object(launcher.time, "sleep") as sleep:
+                    with self.assertRaisesRegex(RuntimeError, "MCP exige v2"):
+                        launcher.launch(str(runtime))
+            self.assertEqual(client.hello.call_count, 1)
+            sleep.assert_not_called()
+
     def test_restore_preserves_unrelated_edits(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "shipofharkinian.json"

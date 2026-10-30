@@ -12,6 +12,8 @@
 #include "soh/OTRGlobals.h"
 #include "../src/code/z_light_list.h" // SOH [Unbound] Internal C/C++ API.
 #include "soh/native/OotNativeScenes.h"
+#include "../native-sdk/include/oot_scene_query.h"
+#include "soh/resource/type/scenecommand/SetExitList.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "ResourceManagerHelpers.h"
 #include "soh/resource/type/Scene.h"
@@ -51,6 +53,11 @@ extern "C" {
 
 extern "C" void LinkSpan_RoomActors(PlayState* play, s32 layer);
 
+namespace ShipLuaHost {
+void BeginOotSceneQuery(void* play);
+void CaptureOotSceneList(void* play, uint32_t kind, const void* data, uint32_t count, uint32_t stride);
+}
+
 namespace {
 // Camada (cabeçalho alternativo) cujos comandos estão executando, para oot.room.actors.
 s32 sLinkSpanSceneLayer = 0;
@@ -77,6 +84,8 @@ bool Scene_CommandSpawnList(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetStartPositionList* cmdStartPos = std::static_pointer_cast<SOH::SetStartPositionList>(cmd);
     SOH::SetStartPositionList* cmdStartPos = (SOH::SetStartPositionList*)cmd;
     ActorEntry* entries = (ActorEntry*)cmdStartPos->GetRawPointer();
+    ShipLuaHost::CaptureOotSceneList(play, SHIP_OOT_SCENE_SPAWNS, entries,
+        static_cast<uint32_t>(cmdStartPos->startPositions.size()), sizeof(ActorEntry));
 
     play->linkActorEntry = &entries[play->setupEntranceList[play->curSpawn].spawn];
     play->linkAgeOnLoad = gSaveContext.linkAge;
@@ -134,6 +143,10 @@ bool Scene_CommandEntranceList(PlayState* play, SOH::ISceneCommand* cmd) {
     // SOH::SetEntranceList* otrEntrance = std::static_pointer_cast<SOH::SetEntranceList>(cmd);
     SOH::SetEntranceList* otrEntrance = (SOH::SetEntranceList*)cmd;
     play->setupEntranceList = (EntranceEntry*)otrEntrance->GetRawPointer();
+    static_assert(sizeof(EntranceEntry) == sizeof(SOH::EntranceEntry));
+    static_assert(offsetof(EntranceEntry, room) == offsetof(SOH::EntranceEntry, room));
+    ShipLuaHost::CaptureOotSceneList(play, SHIP_OOT_SCENE_ENTRANCES, play->setupEntranceList,
+        static_cast<uint32_t>(otrEntrance->entrances.size()), sizeof(EntranceEntry));
 
     return false;
 }
@@ -362,6 +375,9 @@ bool Scene_CommandWindSettings(PlayState* play, SOH::ISceneCommand* cmd) {
 
 bool Scene_CommandExitList(PlayState* play, SOH::ISceneCommand* cmd) {
     play->setupExitList = (s16*)cmd->GetRawPointer();
+    const auto* exits = static_cast<SOH::SetExitList*>(cmd);
+    ShipLuaHost::CaptureOotSceneList(play, SHIP_OOT_SCENE_EXITS, play->setupExitList,
+        static_cast<uint32_t>(exits->exits.size()), sizeof(uint16_t));
 
     return false;
 }
@@ -515,6 +531,9 @@ bool (*sceneCommands[])(PlayState*, SOH::ISceneCommand*) = {
 };
 
 s32 OTRScene_ExecuteCommands(PlayState* play, SOH::Scene* scene) {
+    // Só a raiz reinicia a captura. Alternates selecionados sobrescrevem as listas;
+    // carregar uma sala preserva os metadados da cena.
+    if (scene == play->sceneSegment) ShipLuaHost::BeginOotSceneQuery(play);
     SOH::SceneCommandID cmdCode;
 
     for (size_t i = 0; i < scene->commands.size(); i++) {
