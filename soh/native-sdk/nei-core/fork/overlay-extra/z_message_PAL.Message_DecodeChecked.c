@@ -1,4 +1,4 @@
-/* overlay-extra d4f2c0f3faee da39a3ee5e6b da39a3ee5e6b */
+/* overlay-extra 24b92391a760 da39a3ee5e6b da39a3ee5e6b */
 static bool Message_DecodeChecked(PlayState* play) {
     u8 temp_s2;
     u8 phi_s1;
@@ -14,7 +14,7 @@ static bool Message_DecodeChecked(PlayState* play) {
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &play->msgCtx.font;
 
-    s16 decodedLimit = ARRAY_COUNT(msgCtx->msgBufDecoded);
+    s16 decodedLimit = LINKSPAN_MESSAGE_DECODED_BUF_SIZE;
     u16 rawTokenStart = msgCtx->msgBufPos;
 
     // #region SOH [NTSC] - allow switching languages mid text
@@ -46,11 +46,10 @@ static bool Message_DecodeChecked(PlayState* play) {
 
     while (true) {
         rawTokenStart = msgCtx->msgBufPos;
-        if (LinkSpan_EngineExtended() && !Message_HasRawUnits(font, msgCtx->msgBufPos, 1, false)) {
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos, 1, false)) {
             goto decodeOverflow;
         }
-        if (LinkSpan_EngineExtended() &&
-            !Message_HasRawUnits(font, msgCtx->msgBufPos,
+        if (!Message_HasRawUnits(font, msgCtx->msgBufPos,
                                  Message_RawControlUnits((u8)font->msgBuf[msgCtx->msgBufPos], false), false)) {
             goto decodeOverflow;
         }
