@@ -1,3 +1,5 @@
+#include "modassets/ModAssetAliasPlan.h"
+#include <stdexcept>
 #include "ShipLuaBootstrap.h"
 #include "native/OotNativeEngine.h"
 #include "native/OotPrefixedArchive.h"
@@ -216,8 +218,7 @@ std::shared_ptr<Ship::ResourceManager> NativeResourceManager() {
 
 // HOST-SLIM-001 F4 (RFC 0029): tira do VFS a montagem privada de um archive de mod. Serve ao mod que não carregou e ao
 // archive promovido à raiz no oot.mods.archives: com as duas montagens, o mesmo arquivo aparecia duas vezes nas
-// leituras por camada. O RemoveArchive remove a primeira montagem com o mesmo caminho em texto, e a privada, montada no
-// boot, vem antes de qualquer raiz.
+// leituras por camada. A remoção por shared_ptr seleciona a identidade da montagem privada.
 bool RetirePrivateModArchive(const std::filesystem::path& path) {
     const auto manager = NativeResourceManager();
     const auto archives = manager ? manager->GetArchiveManager() : nullptr;
@@ -3778,82 +3779,9 @@ struct ModArchiveCandidate {
     std::filesystem::path archive;
     std::filesystem::path modDirectory;
     std::string privatePrefix;
+    std::shared_ptr<Ship::Archive> privateArchive;
 };
 std::vector<ModArchiveCandidate> gModArchiveCandidates;
-
-// Archive de assets de um mod: toda entrada fica sob "mod/<id>/" e as de objects/ e textures/ cujo caminho
-// original está livre no VFS ganham também alias no hash original, para as referências internas (DL→textura,
-// gravadas por hash do caminho sem prefixo) resolverem sozinhas. A decisão é arquivo a arquivo: uma colisão
-// não derruba o alias das outras entradas, ao contrário das regras do resources V4. Sem tradução de bytes.
-class ModAssetArchive final : public Ship::Archive {
-  public:
-    ModAssetArchive(const std::string& path, Ship::ArchiveManager* manager, std::string prefix)
-        : Ship::Archive(path), mInner(std::make_shared<Ship::O2rArchive>(path)), mManager(manager),
-          mPrefix(std::move(prefix)) {
-    }
-
-    bool Open() override {
-        if (!mInner->Open()) {
-            SPDLOG_WARN("ShipLua n\xC3\xA3o abriu o archive interno '{}'", GetPath());
-            return false;
-        }
-        std::size_t aliased = 0;
-        std::size_t blocked = 0;
-        const auto files = mInner->ListFiles();
-        for (const auto& [hash, filePath] : *files) {
-            IndexFile(mPrefix + filePath);
-            // Só dados de render: o áudio do SoH enumera o índice global (audio/*) e quebraria com entradas
-            // alheias; objects/ e textures/ só são resolvidos por referência direta.
-            const bool renderData = filePath.rfind("objects/", 0) == 0 || filePath.rfind("textures/", 0) == 0;
-            if (renderData && mManager != nullptr && !mManager->HasFile(filePath)) {
-                IndexFile(filePath);
-                ++aliased;
-            } else {
-                ++blocked;
-            }
-        }
-        mOwnIndex = ListFiles();
-        SPDLOG_INFO("ShipLua exp\xC3\xB4s {} assets sob '{}' ({} com alias direto, {} sem alias)", files->size(),
-                    mPrefix, aliased, blocked);
-        return !files->empty();
-    }
-
-    bool Close() override {
-        mOwnIndex.reset();
-        return mInner->Close();
-    }
-
-    std::shared_ptr<Ship::File> LoadFile(const std::string& filePath) override {
-        if (!HasFile(filePath)) {
-            return nullptr;
-        }
-        if (filePath.rfind(mPrefix, 0) == 0) {
-            return mInner->LoadFile(filePath.substr(mPrefix.size()));
-        }
-        return mInner->LoadFile(filePath);
-    }
-
-    std::shared_ptr<Ship::File> LoadFile(uint64_t hash) override {
-        if (mOwnIndex == nullptr) {
-            return nullptr;
-        }
-        const auto it = mOwnIndex->find(hash);
-        if (it == mOwnIndex->end()) {
-            return nullptr;
-        }
-        return LoadFile(it->second);
-    }
-
-    bool WriteFile(const std::string&, const std::vector<uint8_t>&) override {
-        return false;
-    }
-
-  private:
-    std::shared_ptr<Ship::O2rArchive> mInner;
-    Ship::ArchiveManager* mManager = nullptr;
-    std::string mPrefix;
-    std::shared_ptr<std::unordered_map<uint64_t, std::string>> mOwnIndex;
-};
 
 // Archives de assets ficam sob "mod/<nome>/", sem colidir com o jogo. Quem precisa de um deles com os caminhos
 // originais (as camadas do framework Unbound) monta na raiz pelo oot.mods.archives, depois dos providers
@@ -3909,14 +3837,23 @@ void MountModAssetArchives() {
               ownerEntry == archiveModDirectory.end() ? std::filesystem::path{} : ownerEntry->second,
               {} });
         const std::string id = archivePath.stem().string();
-        const auto modArchive =
-            std::make_shared<ModAssetArchive>(archivePath.string(), archiveManager.get(), "mod/" + id + "/");
+        SohModAssets::Hashes reserved;
+        // O vetor de GetArchives() vive só no shared_ptr: segurá-lo antes do laço (o range-for não estende a vida do
+        // temporário antes do C++23).
+        const auto mountedArchives = archiveManager->GetArchives();
+        for (const auto& existing : *mountedArchives)
+            for (const auto& [hash, name] : *existing->ListFiles())
+                reserved.insert(hash);
+        const auto modArchive = std::make_shared<SohModAssets::ModAssetArchive>(archivePath.string(), "mod/" + id + "/",
+                                                                                std::move(reserved));
         modArchive->Load();
-        if (modArchive->IsLoaded() && archiveManager->AddArchive(modArchive) != nullptr) {
+        const auto mountedArchive = modArchive->IsLoaded() ? archiveManager->AddArchive(modArchive) : nullptr;
+        if (mountedArchive) {
             ++mounted;
             SPDLOG_INFO("ShipLua montou assets do mod '{}' sob 'mod/{}/': {}", id, id, archivePath.string());
             gModArchiveCandidates.back().privatePrefix = "mod/" + id + "/";
-            gPrivateModArchives.push_back(modArchive);
+            gPrivateModArchives.push_back(mountedArchive);
+            gModArchiveCandidates.back().privateArchive = mountedArchive;
         } else {
             SPDLOG_WARN("ShipLua n\xC3\xA3o conseguiu montar os assets de mod '{}'", archivePath.string());
         }
@@ -3998,37 +3935,77 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     // jogo nem ficar com alias. A origem deve ser a pasta efetivamente carregada, não apenas outro mod com o mesmo id.
     // O .o2r solto em mods/ é data mod e não tem manifesto.
     std::vector<ShipLuaHost::OotModArchive> acceptedArchives;
+    SohModAssets::Archives rejectedArchives;
+    std::map<std::filesystem::path, std::pair<bool, std::string>> acceptanceByDirectory;
     for (const auto& candidate : gModArchiveCandidates) {
         std::string owner;
         if (!candidate.modDirectory.empty()) {
-            const auto manifest = ShipLua::ParseManifestFile((candidate.modDirectory / "manifest.toml").string());
-            bool accepted = false;
-            if (manifest.isOk()) {
-                const auto& directories = loaded.value->loadedDirectories;
-                const auto origin = directories.find(manifest.value->id);
-                if (origin != directories.end()) {
-                    std::error_code originError, candidateError;
-                    const auto loadedDirectory =
-                        std::filesystem::absolute(origin->second, originError).lexically_normal();
-                    const auto candidateDirectory =
-                        std::filesystem::absolute(candidate.modDirectory, candidateError).lexically_normal();
-                    accepted = !originError && !candidateError && loadedDirectory == candidateDirectory;
+            auto decision = acceptanceByDirectory.find(candidate.modDirectory);
+            if (decision == acceptanceByDirectory.end()) {
+                const auto manifest = ShipLua::ParseManifestFile((candidate.modDirectory / "manifest.toml").string());
+                bool accepted = false;
+                if (manifest.isOk()) {
+                    const auto& directories = loaded.value->loadedDirectories;
+                    const auto origin = directories.find(manifest.value->id);
+                    if (origin != directories.end()) {
+                        std::error_code originError, candidateError;
+                        const auto loadedDirectory =
+                            std::filesystem::absolute(origin->second, originError).lexically_normal();
+                        const auto candidateDirectory =
+                            std::filesystem::absolute(candidate.modDirectory, candidateError).lexically_normal();
+                        accepted = !originError && !candidateError && loadedDirectory == candidateDirectory;
+                    }
                 }
+                decision = acceptanceByDirectory
+                               .emplace(candidate.modDirectory,
+                                        std::make_pair(accepted, accepted ? manifest.value->id : std::string{}))
+                               .first;
             }
+            const bool accepted = decision->second.first;
             if (!accepted) {
-                const bool retired = RetirePrivateModArchive(candidate.archive);
-                SPDLOG_INFO("ShipLua: '{}' fora de oot.mods.archives{}: o mod da pasta '{}' não carregou",
-                            candidate.archive.string(), retired ? " e desmontado" : "",
-                            candidate.modDirectory.string());
+                if (candidate.privateArchive)
+                    rejectedArchives.push_back(candidate.privateArchive);
+                SPDLOG_INFO("ShipLua: '{}' fora de oot.mods.archives: o mod da pasta '{}' n\xC3\xA3o carregou",
+                            candidate.archive.string(), candidate.modDirectory.string());
                 continue;
             }
-            owner = manifest.value->id;
+            owner = decision->second.second;
         }
         // Revisão do Codex: o modsRoot pode ser relativo ("./mods"); o contrato promete caminho absoluto.
         std::error_code pathError;
         const auto archivePath = std::filesystem::absolute(candidate.archive, pathError).lexically_normal();
         acceptedArchives.push_back(
             { (pathError ? candidate.archive : archivePath).generic_string(), owner, candidate.privatePrefix });
+    }
+    // Reconciliar mesmo sem observer, antes de anunciar archives ou game.ready.
+    // Sem rejeitados, preservar exatamente a visão usada no Init e evitar reaberturas.
+    if (!rejectedArchives.empty()) {
+        try {
+            const auto manager = NativeResourceManager();
+            const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+            if (!archives)
+                throw std::runtime_error("ArchiveManager indisponivel para reconciliar aliases");
+            const auto expected = archives->GetArchiveSnapshot();
+            auto plan = SohModAssets::PlanAliases(expected.archives, gPrivateModArchives, rejectedArchives,
+                                                  SohModAssets::ReopenArchive);
+            SohModAssets::Archives published, nextPrivate;
+            nextPrivate.reserve(plan.privatePositions.size());
+            if (!manager->PublishArchiveBatch(expected, plan.desired, plan.affected, published))
+                throw std::runtime_error("VFS mudou durante a reconciliacao de aliases");
+            for (const auto position : plan.privatePositions)
+                nextPrivate.push_back(published[position]);
+            gPrivateModArchives.swap(nextPrivate);
+            SPDLOG_INFO("ShipLua reconciliou aliases de assets: {} rejeitado(s), {} wrapper(s) substitu\xC3\xAD"
+                        "do(s)",
+                        rejectedArchives.size(), plan.replacements);
+        } catch (const std::exception& error) {
+            // Nada foi publicado: retirar os rejeitados um a um, sem redistribuir aliases, e seguir com o boot (sem o
+            // return, os mods ficavam sem a API OoT e sem game.ready).
+            SPDLOG_WARN("ShipLua n\xC3\xA3o reconciliou os aliases de assets ({}); os rejeitados saem sem redistribuir",
+                        error.what());
+            for (const auto& rejected : rejectedArchives)
+                RetirePrivateModArchive(rejected->GetPath());
+        }
     }
     if (ShipLuaHost::HasOotHooks(ShipLuaHost::GetOotHookPoints().modsArchives)) {
         // Uma exceção no despacho não deixa a promoção ligada para os mount_archive seguintes.
