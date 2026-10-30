@@ -226,8 +226,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/main.lua")
 endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/manifest.toml")
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/manifest.toml" manifest_text)
-    # Usado pelo DMR (ABI 1.3). Mesmo layout não basta para funções internas.
-    file(WRITE "${CMAKE_BINARY_DIR}/mod/manifest.toml" "${manifest_text}\nhost_fingerprints = [\"${LinkSpanOotSdk_HOST_SHA256}\"]\n")
+    # DMR (ABI 1.4): os nomes públicos dependem só do layout do SDK.
+    file(WRITE "${CMAKE_BINARY_DIR}/mod/manifest.toml" "${manifest_text}\nhost_layout_id = \"${LinkSpanOotSdk_LAYOUT_ID}\"\n")
 endif()
 # Apenas prova de compilação para estes exemplos: assets do DMR não acompanham.
 # Debug usa /MT para reproduzir o contrato Release; o gate é --config Release.

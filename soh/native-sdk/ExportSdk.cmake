@@ -1,3 +1,8 @@
+# Fixture portátil; não depende de layouts/MSVC nem substitui a carga real da DLL.
+add_executable(oot_native_dmr_icon_fixture_tests "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/DmrIconFixtureTests.cpp")
+target_compile_features(oot_native_dmr_icon_fixture_tests PRIVATE cxx_std_20)
+add_test(NAME oot_native_dmr_icon_fixture_tests COMMAND oot_native_dmr_icon_fixture_tests)
+
 # SDK local de headers; o mod é um projeto separado e não linka o jogo.
 # O fingerprint cobre apenas a superfície real da ABI nativa: as structs z64
 # expostas pelo serviço engine (soh/include), os contratos de serviço

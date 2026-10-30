@@ -22,16 +22,15 @@ foreach(config Debug Release RelWithDebInfo MinSizeRel)
         RUNTIME_OUTPUT_DIRECTORY_${upper} "${CMAKE_BINARY_DIR}/mod/provider")
 endforeach()
 configure_file(main.lua "${CMAKE_BINARY_DIR}/mod/main.lua" COPYONLY)
-get_filename_component(host_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
-set(HOST_EXECUTABLE "${host_root}/x64/Release/soh.exe" CACHE FILEPATH "Exact host executable for the icon table")
-if(NOT EXISTS "${HOST_EXECUTABLE}")
-    message(FATAL_ERROR "Provide HOST_EXECUTABLE for the native icon-table binding")
+# ABI 1.4: os dois nomes resolvidos pelo DMR pertencem ao catálogo público.
+# O layout do SDK autoriza a ligação; o mod não instala patches.
+if(NOT OOT_NATIVE_LAYOUT_ID)
+    message(FATAL_ERROR "O SDK precisa fornecer OOT_NATIVE_LAYOUT_ID para a ABI 1.4")
 endif()
-file(SHA256 "${HOST_EXECUTABLE}" host_fingerprint)
-# O manifesto gerado é escrito no configure: sem o manifest.toml como dependência, um bump de versão não chegava ao pacote.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HOST_EXECUTABLE}" manifest.toml)
+# O manifesto é gerado no configure; alterações de versão precisam chegar ao pacote.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS manifest.toml)
 file(READ manifest.toml manifest_text)
-file(WRITE "${CMAKE_BINARY_DIR}/mod/manifest.toml" "${manifest_text}\nhost_fingerprints = [\"${host_fingerprint}\"]\n")
+file(WRITE "${CMAKE_BINARY_DIR}/mod/manifest.toml" "${manifest_text}\nhost_layout_id = \"${OOT_NATIVE_LAYOUT_ID}\"\n")
 # Texturas do mod no formato de recurso do libultraship; o provider monta a pasta no configure.
 file(COPY assets DESTINATION "${CMAKE_BINARY_DIR}/mod")
 # Licença (CC0 do trabalho do Link-Span) e atribuição vão no pacote.

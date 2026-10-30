@@ -1245,13 +1245,12 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     auto* mod = new (std::nothrow) Mod{ engine, movement, resources, registry };
     if (!mod)
         return SHIP_NATIVE_FAILURE;
-    // Host texture table and camera math, protected by the exact executable
-    // fingerprint. No dependency on NEI IDs, its registry, or load order.
-    // Optional: on another executable the selector shows no icons and free look
-    // resumes without syncing from the rendered view, but movement still loads.
+    // ABI 1.4: tabela de ícones e geometria de câmera pelo catálogo público,
+    // autorizadas pelo host_layout_id. Sem dependência de soh.symbols ou NEI.
+    // Se um nome faltar, preserva o fallback sem ícones ou sem sincronizar a câmera.
     uintptr_t icons = 0;
     uintptr_t cameraGeometry = 0;
-    if (runtime->abi_minor >= 3 && runtime->resolve_symbol) {
+    if (runtime->abi_minor >= 4 && runtime->resolve_symbol) {
         if (runtime->resolve_symbol(runtime->context, "gItemIcons", &icons) != SHIP_NATIVE_OK)
             icons = 0;
         if (runtime->resolve_symbol(runtime->context, "OLib_Vec3fDiffToVecSphGeo", &cameraGeometry) != SHIP_NATIVE_OK)
@@ -1368,6 +1367,7 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
 } // namespace
 
 extern "C" SHIP_NATIVE_EXPORT const ShipNativeDescriptor* SHIP_NATIVE_CALL ShipNative_Query() {
+    static_assert(SHIP_NATIVE_ABI_MINOR >= 4u, "DMR requires native ABI 1.4 or newer");
     static const ShipNativeDescriptor descriptor{ sizeof(ShipNativeDescriptor), SHIP_NATIVE_ABI_MAJOR,
                                                   SHIP_NATIVE_ABI_MINOR, Init, Shutdown };
     return &descriptor;

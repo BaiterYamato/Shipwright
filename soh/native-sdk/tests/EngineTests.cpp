@@ -39,6 +39,7 @@
 #include "OotNativeJsonTypes.h"
 #include "OotNativePublicSymbols.h"
 #include "oot_layout_id.h"
+#include "dmr_public_fixture.h"
 #include <shiplua/manifest/ManifestParser.h>
 #include <shiplua/host/ModHost.h>
 #include <algorithm>
@@ -89,12 +90,23 @@ u8 gEquipShifts[4]{ 0, 4, 8, 12 };
 static f32 PublicProbeSinS(s16 angle) {
     return sinf(angle * (3.14159265358979323846f / 32768.0f));
 }
-static void* gPublicProbeIcons[1] = { &gPublicProbeIcons };
+static const void* gPublicProbeIcons[256] = { &gPublicProbeIcons };
+static unsigned gPublicGeometryCalls = 0;
+static VecSph* PublicProbeGeometry(VecSph* pose, Vec3f* at, Vec3f* eye) {
+    ++gPublicGeometryCalls;
+    const float x = eye->x - at->x, y = eye->y - at->y, z = eye->z - at->z;
+    const float horizontal = std::hypot(x, z);
+    pose->r = std::hypot(horizontal, y);
+    pose->yaw = static_cast<s16>(std::atan2(x, z) * (32768.0 / 3.141592653589793));
+    pose->pitch = static_cast<s16>(std::atan2(y, horizontal) * (32768.0 / 3.141592653589793));
+    return pose;
+}
 const LinkSpanPublicSymbol LinkSpan_PublicSymbols[] = {
     { "Math_SinS", (const void*)&PublicProbeSinS, LINKSPAN_PUBLIC_FUNCTION },
+    { "OLib_Vec3fDiffToVecSphGeo", (const void*)&PublicProbeGeometry, LINKSPAN_PUBLIC_FUNCTION },
     { "gItemIcons", (const void*)&gPublicProbeIcons, LINKSPAN_PUBLIC_VARIABLE },
 };
-const size_t LinkSpan_PublicSymbolCount = 2;
+const size_t LinkSpan_PublicSymbolCount = 3;
 u8 gEquipAgeReqs[4][4]{ { LINK_AGE_ADULT, LINK_AGE_CHILD, LINK_AGE_ADULT, LINK_AGE_ADULT },
                         { 9, LINK_AGE_CHILD, 9, LINK_AGE_ADULT },
                         { LINK_AGE_ADULT, 9, LINK_AGE_ADULT, LINK_AGE_ADULT },
@@ -1599,6 +1611,7 @@ assert(require("ship").events.off(damage_subscription))
 }
 
 int main(int argc, char** argv) {
+    FillDmrPublicIcons(gPublicProbeIcons);
     TestActorDamageLuaHostContract();
     for (int bit = 0; bit < 32; ++bit)
         gBitFlags[bit] = uint32_t{ 1 } << bit;
@@ -4668,18 +4681,77 @@ int main(int argc, char** argv) {
               "layout diferente: carrega, mas o caminho público fica UNSUPPORTED");
         return failures ? 1 : 0;
     }
-    if (argc == 3 && std::string(argv[2]) != "public") {
-        const auto manifest = ShipLua::ParseManifestFile((std::filesystem::path(argv[1]) / "manifest.toml").string());
+    if ((argc == 3 || argc == 4) && std::string(argv[2]) != "public") {
+        auto manifest = ShipLua::ParseManifestFile((std::filesystem::path(argv[1]) / "manifest.toml").string());
         if (!manifest.isOk()) {
             std::cerr << manifest.message;
             return 1;
         }
-        auto loaded = ShipLua::NativeProvider::Load(*manifest.value, argv[1], policy);
+        const std::string scenario = argc == 4 ? argv[3] : "public-ok";
+        Check(scenario == "public-ok" || scenario == "no-layout" || scenario == "bad-layout" ||
+                  scenario == "other-fingerprint",
+              "cenário público conhecido");
+        const bool publicExpected = scenario == "public-ok" || scenario == "other-fingerprint";
+        Check(manifest.value->provider && manifest.value->provider->abiVersion == "1.4" &&
+                  manifest.value->provider->hostLayoutId == LINKSPAN_OOT_LAYOUT_ID &&
+                  manifest.value->provider->hostFingerprints.empty(),
+              "DMR 1.4 gerado com layout certo e sem fingerprint");
+        if (scenario == "no-layout")
+            manifest.value->provider->hostLayoutId.clear();
+        if (scenario == "bad-layout")
+            manifest.value->provider->hostLayoutId = std::string(64, LINKSPAN_OOT_LAYOUT_ID[0] == '0' ? '1' : '0');
+        auto dmrPolicy = policy;
+        dmrPolicy.escapeHatch.reset(); // nenhum acesso a soh.symbols ou ao backend privado
+        unsigned privateResolves = 0, fingerprintReads = 0;
+        if (scenario == "other-fingerprint") {
+            manifest.value->provider->hostFingerprints = { std::string(64, 'a') };
+            dmrPolicy.escapeHatch = std::make_shared<ShipLua::NativeEscapeHatch>();
+            dmrPolicy.escapeHatch->fingerprint = [&] {
+                ++fingerprintReads;
+                return std::string(64, 'b');
+            };
+            dmrPolicy.escapeHatch->resolve = [&](const char*, uintptr_t*) {
+                ++privateResolves;
+                return SHIP_NATIVE_FAILURE;
+            };
+        }
+        std::map<std::string, unsigned> resolvedNames;
+        auto catalog = policy.publicSymbols;
+        dmrPolicy.publicSymbols = std::make_shared<ShipLua::NativePublicSymbols>();
+        dmrPolicy.publicSymbols->layoutId = catalog->layoutId;
+        dmrPolicy.publicSymbols->resolve = [&](const char* name, uintptr_t* address) {
+            ++resolvedNames[name];
+            return catalog->resolve(name, address);
+        };
+        auto loaded = ShipLua::NativeProvider::Load(*manifest.value, argv[1], dmrPolicy);
         if (!loaded.isOk()) {
             std::cerr << loaded.message;
             return 1;
         }
         std::array<char, 1024> response{};
+        if (argc == 4) {
+            // A DLL instrumentada encaminha Init/Query e cada resolução do DMR ao core real.
+            const auto binding =
+                (*loaded.value)->Call("test_public_binding", "", 0, response.data(), uint32_t(response.size()));
+            char expectedBinding[256];
+            std::snprintf(expectedBinding, sizeof(expectedBinding), "icons=%d:%d:1 geometry=%d:%d:1 fallback=%d:%d",
+                          int(publicExpected ? SHIP_NATIVE_OK : SHIP_NATIVE_UNSUPPORTED), publicExpected,
+                          int(publicExpected ? SHIP_NATIVE_OK : SHIP_NATIVE_UNSUPPORTED), publicExpected,
+                          !publicExpected, !publicExpected);
+            Check(binding.code == ShipLua::ErrorCode::Ok &&
+                      std::string(response.data(), binding.size) == expectedBinding,
+                  "DMR: dois nomes com OK/endereço ou UNSUPPORTED/zero e fallback registrado");
+            std::cout << "DMR resolução: " << std::string(response.data(), binding.size) << '\n';
+        }
+        Check(publicExpected ? resolvedNames.size() == 2 && resolvedNames["gItemIcons"] == 1 &&
+                                   resolvedNames["OLib_Vec3fDiffToVecSphGeo"] == 1
+                             : resolvedNames.empty(),
+              "somente os dois nomes do DMR entram no catálogo autorizado");
+        Check(privateResolves == 0 && (scenario != "other-fingerprint" || fingerprintReads > 0),
+              "fingerprint divergente foi verificado, sem resolver privado");
+        std::cout << "DMR " << scenario << ' '
+                  << (publicExpected ? "público: ícones e geometria" : "fallback: ícones e câmera") << '\n';
+        response.fill(0);
         player.actor.bgCheckFlags = BGCHECKFLAG_GROUND;
         auto called = (*loaded.value)->Call("jump", "", 0, response.data(), uint32_t(response.size()));
         const float expected = std::strtof(argv[2], nullptr);
@@ -4755,16 +4827,25 @@ int main(int argc, char** argv) {
               "corrida deve manter velocidade mínima com direção");
         gamepadButtons = 0;
         Check(callUpdate() == "idle", "soltar A deve rearmar a sequência");
-        // Câmera principal ativa (CameraCanResume). Sem o soh.symbols deste processo, o DMR liga a câmera
-        // livre sem sincronizar pela vista, como antes da 0.2.14.
+        // Vista válida e câmera deliberadamente antiga: ligar FreeLook sozinho não prova sincronização.
         static Camera mainCamera{};
         mainCamera.status = CAM_STAT_ACTIVE;
         play.cameraPtrs[CAM_ID_MAIN] = &mainCamera;
         play.activeCamera = CAM_ID_MAIN;
+        play.view.lookAt = { 500.0f, 50.0f, 100.0f };
+        play.view.eye = { 380.0f, 100.0f, 100.0f };
+        play.view.fovy = 60.0f;
+        const auto geometryBefore = gPublicGeometryCalls;
         play.state.input[0].rel.right_stick_x = 30;
         play.state.input[0].rel.right_stick_y = 0;
         Check(callUpdate() == "camera-free" && settingValue == 1,
               "mover o analógico direito deve ligar a câmera livre");
+        Check(publicExpected ? gPublicGeometryCalls == geometryBefore + 1 && mainCamera.eye.x == 380.0f &&
+                                   mainCamera.at.x == 500.0f && mainCamera.eyeNext.y == 100.0f &&
+                                   std::abs(mainCamera.dist - 130.0f) < 0.001f && mainCamera.fov == 60.0f &&
+                                   play.camX == -16384 && play.camY > 4100 && play.camY < 4120
+                             : gPublicGeometryCalls == geometryBefore && mainCamera.dist == 0.0f,
+              "retomada usa geometria pública e vista, ou mantém fallback apenas no negativo");
         play.state.input[0].rel.right_stick_x = 0;
         std::this_thread::sleep_for(std::chrono::milliseconds(8));
         Check(callUpdate() == "camera-auto" && settingValue == 0,
@@ -4772,6 +4853,8 @@ int main(int argc, char** argv) {
         play.state.input[0].rel.right_stick_x = 30;
         Check(callUpdate() == "camera-free" && settingValue == 1,
               "mover o analógico direito deve reativar a câmera livre");
+        Check(gPublicGeometryCalls == geometryBefore + (publicExpected ? 2u : 0u),
+              "retomada após câmera automática chama a geometria novamente");
         player.stateFlags1 = PLAYER_STATE1_FIRST_PERSON;
         Check(callUpdate() != "camera-free" && settingValue == 0,
               "em primeira pessoa o analógico direito mira e a câmera livre fica desligada");
@@ -4814,15 +4897,23 @@ int main(int argc, char** argv) {
         gSaveContext.equips.buttonItems[3] = ITEM_HOOKSHOT;
         Check(itemMenuState() == "none", "menu de itens deve ficar fechado sem segurar o R");
         gamepadButtons = uint32_t{ 1 } << 10;
-        // Formato do seletor (DMR 0.2.14+): os três C ficam no lugar, com o caminho do ícone; sem a tabela
-        // de ícones do host o caminho fica vazio.
-        Check(callUpdate() == "item-menu" && itemMenuState() == "1;1:3:\t2:255:\t3:10:" && settingValue == 0,
+        const std::string iconSlots =
+            publicExpected ? "1:3:textures/f5/bow\t2:255:\t3:10:textures/f5/hookshot" : "1:3:\t2:255:\t3:10:";
+        Check(callUpdate() == "item-menu" && itemMenuState() == "1;" + iconSlots && settingValue == 0,
               "segurar R deve abrir o menu no C equipado, com os três C no lugar, e pausar a câmera livre");
+        gSaveContext.equips.buttonItems[1] = 0xA2;
+        gSaveContext.equips.buttonItems[2] = ITEM_OCARINA_FAIRY;
+        const std::string extendedSlots =
+            publicExpected ? "1;1:162:textures/f5/extended\t2:7:textures/f5/ocarina\t3:10:textures/f5/hookshot"
+                           : "1;1:162:\t2:7:\t3:10:";
+        Check(itemMenuState() == extendedSlots, "ícones de ocarina e ID estendido vêm da fixture de 256 posições");
+        gSaveContext.equips.buttonItems[1] = ITEM_BOW;
+        gSaveContext.equips.buttonItems[2] = ITEM_NONE;
         play.state.input[0].rel.right_stick_x = 60;
         callUpdate();
-        Check(itemMenuState() == "3;1:3:\t2:255:\t3:10:", "analógico direito para a direita deve pular o C vazio");
+        Check(itemMenuState() == "3;" + iconSlots, "analógico direito para a direita deve pular o C vazio");
         callUpdate();
-        Check(itemMenuState() == "3;1:3:\t2:255:\t3:10:", "analógico mantido inclinado não deve andar de novo");
+        Check(itemMenuState() == "3;" + iconSlots, "analógico mantido inclinado não deve andar de novo");
         play.state.input[0].rel.right_stick_x = 0;
         gamepadButtons = 0;
         Check(callUpdate() == "item-c-right" && boundAxes.back() == AxisBinding{ BTN_CRIGHT, 5, 1 } &&
