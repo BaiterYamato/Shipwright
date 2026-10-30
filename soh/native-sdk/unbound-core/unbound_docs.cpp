@@ -92,6 +92,19 @@ ManifestCheck CheckManifest(const std::string& json) {
     return check;
 }
 
+bool IsLayerManifest(const std::string& json) {
+    if (json.size() > kMaxLayerManifestBytes || !JsonDepthWithin(json)) {
+        return false;
+    }
+    const auto doc = nlohmann::json::parse(json, nullptr, false);
+    if (doc.is_discarded() || !doc.is_object()) {
+        return false;
+    }
+    const auto format = doc.find("format");
+    const auto version = doc.find("formatVersion");
+    return format != doc.end() && *format == "unbound" && version != doc.end() && *version == kReaderFormatVersion;
+}
+
 std::string DecodeMessageText(const std::string& utf8, uint32_t& replaced) {
     std::string bytes;
     bytes.reserve(utf8.size());
