@@ -34,7 +34,8 @@ void Log(const char* message) {
 }
 ShipNativeStatus SHIP_NATIVE_CALL OnPlayDestroy(void*, const ShipNativeHookCall*) {
     gGameplay.SceneEnded();
-    if (gServer) gServer->Queue().Cancel();
+    if (gServer)
+        gServer->Queue().Cancel();
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus SHIP_NATIVE_CALL OnPad(void*, const ShipNativeHookCall* call) {
@@ -94,14 +95,19 @@ ShipNativeStatus SHIP_NATIVE_CALL OnPad(void*, const ShipNativeHookCall* call) {
         if (payload->port_count)
             gServer->Queue().Apply(gFrame, payload->pads[0]);
         auto* livePlay = destroy == gPlayDestroy && gSave && gSave->gameMode != GAMEMODE_TITLE_SCREEN
-            ? reinterpret_cast<PlayState*>(state) : nullptr;
+                             ? reinterpret_cast<PlayState*>(state)
+                             : nullptr;
         gGameplay.Tick(livePlay, gFrame, *gServer, payload->port_count ? &payload->pads[0] : nullptr);
         j.update(gGameplay.Observation());
         if (livePlay) {
             const auto* actor = livePlay->actorCtx.actorLists[ACTORCAT_PLAYER].head;
             if (actor) {
-                j["position"] = { { "x", actor->world.pos.x }, { "y", actor->world.pos.y }, { "z", actor->world.pos.z } };
-                j["rotation"] = { { "x", actor->shape.rot.x }, { "y", actor->shape.rot.y }, { "z", actor->shape.rot.z } };
+                j["position"] = { { "x", actor->world.pos.x },
+                                  { "y", actor->world.pos.y },
+                                  { "z", actor->world.pos.z } };
+                j["rotation"] = { { "x", actor->shape.rot.x },
+                                  { "y", actor->shape.rot.y },
+                                  { "z", actor->shape.rot.z } };
             }
         }
         j["queue_size"] = gServer->Queue().Size();
@@ -180,8 +186,15 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
         Log("hook oot.input.pad indisponível");
         return result;
     }
-    const ShipNativeHookSpec destroyHook{ sizeof(destroyHook), LINKSPAN_OOT_HOOK_PLAY_DESTROY,
-        LINKSPAN_OOT_HOOKS_VERSION, sizeof(ShipOotPlayHookV1), SHIP_NATIVE_HOOK_OBSERVE, 0, 0, OnPlayDestroy, nullptr };
+    const ShipNativeHookSpec destroyHook{ sizeof(destroyHook),
+                                          LINKSPAN_OOT_HOOK_PLAY_DESTROY,
+                                          LINKSPAN_OOT_HOOKS_VERSION,
+                                          sizeof(ShipOotPlayHookV1),
+                                          SHIP_NATIVE_HOOK_OBSERVE,
+                                          0,
+                                          0,
+                                          OnPlayDestroy,
+                                          nullptr };
     result = runtime->register_hook(runtime->context, &destroyHook, &handle);
     if (result != SHIP_NATIVE_OK) {
         Log("hook público oot.play.destroy indisponível");

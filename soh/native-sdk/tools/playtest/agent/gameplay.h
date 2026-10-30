@@ -16,6 +16,7 @@ class Gameplay {
     void Cleanup();
     void SceneEnded();
     Json Observation() const;
+
   private:
     const ShipOotEngineV1* engine_ = nullptr;
     const ShipOotMovementV1* movement_ = nullptr;

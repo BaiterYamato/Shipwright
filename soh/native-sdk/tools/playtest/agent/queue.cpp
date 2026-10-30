@@ -70,7 +70,8 @@ bool Lease::Release(uint64_t connection) {
 }
 uint64_t Mailbox::Submit(Request request) {
     std::lock_guard lock(mutex_);
-    if (pending_) throw std::runtime_error("busy: operação v2 em andamento");
+    if (pending_)
+        throw std::runtime_error("busy: operação v2 em andamento");
     ticket_ = ++sequence_;
     pending_ = std::move(request);
     result_ = nullptr;
@@ -78,7 +79,8 @@ uint64_t Mailbox::Submit(Request request) {
 }
 Json Mailbox::Result(uint64_t ticket) const {
     std::lock_guard lock(mutex_);
-    if (!ticket_ || ticket != ticket_) throw std::runtime_error("ticket expirado ou cancelado");
+    if (!ticket_ || ticket != ticket_)
+        throw std::runtime_error("ticket expirado ou cancelado");
     return { { "ticket", ticket }, { "status", pending_ ? "pending" : "done" }, { "result", result_ } };
 }
 void Mailbox::Tick(const std::function<std::optional<Json>(Request&)>& handler) {
@@ -87,14 +89,17 @@ void Mailbox::Tick(const std::function<std::optional<Json>(Request&)>& handler) 
 }
 void Mailbox::Tick(const std::function<void()>& cleanup, const std::function<std::optional<Json>(Request&)>& handler) {
     std::lock_guard lock(mutex_);
-    if (std::exchange(cleanup_, false)) cleanup();
+    if (std::exchange(cleanup_, false))
+        cleanup();
     RunLocked(handler);
 }
 void Mailbox::RunLocked(const std::function<std::optional<Json>(Request&)>& handler) {
-    if (!pending_) return;
+    if (!pending_)
+        return;
     try {
         auto result = handler(*pending_);
-        if (!result) return;
+        if (!result)
+            return;
         result_ = std::move(*result);
     } catch (const std::exception& e) {
         result_ = { { "status", "error" }, { "error", e.what() } };
@@ -104,8 +109,17 @@ void Mailbox::RunLocked(const std::function<std::optional<Json>(Request&)>& hand
 }
 void Mailbox::Cancel() {
     std::lock_guard lock(mutex_);
-    pending_.reset(); result_ = nullptr; ticket_ = 0; cleanup_ = true;
+    pending_.reset();
+    result_ = nullptr;
+    ticket_ = 0;
+    cleanup_ = true;
 }
-bool Mailbox::Busy() const { std::lock_guard lock(mutex_); return pending_.has_value(); }
-bool Mailbox::TakeCleanup() { std::lock_guard lock(mutex_); return std::exchange(cleanup_, false); }
+bool Mailbox::Busy() const {
+    std::lock_guard lock(mutex_);
+    return pending_.has_value();
+}
+bool Mailbox::TakeCleanup() {
+    std::lock_guard lock(mutex_);
+    return std::exchange(cleanup_, false);
+}
 } // namespace Playtest

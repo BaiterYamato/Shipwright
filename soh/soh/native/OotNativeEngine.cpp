@@ -1005,8 +1005,8 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     policy.services.push_back(
         { LINKSPAN_OOT_COLLIDERS_SERVICE, LINKSPAN_OOT_COLLIDERS_VERSION_2, sizeof(collidersV2), &collidersV2 });
     const auto& sceneQuery = GetOotSceneQueryService();
-    policy.services.push_back({ LINKSPAN_OOT_SCENE_QUERY_SERVICE, LINKSPAN_OOT_SCENE_QUERY_VERSION,
-                                sizeof(sceneQuery), &sceneQuery });
+    policy.services.push_back(
+        { LINKSPAN_OOT_SCENE_QUERY_SERVICE, LINKSPAN_OOT_SCENE_QUERY_VERSION, sizeof(sceneQuery), &sceneQuery });
     return policy;
 }
 } // namespace ShipLuaHost

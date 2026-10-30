@@ -60,6 +60,7 @@ class Mailbox {
     void Cancel();
     bool Busy() const;
     bool TakeCleanup();
+
   private:
     void RunLocked(const std::function<std::optional<Json>(Request&)>& handler);
     mutable std::mutex mutex_;

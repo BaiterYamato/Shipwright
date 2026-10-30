@@ -43,7 +43,8 @@ struct Server::Impl {
             if (!a.contains("client") || !a["client"].is_string() || a["client"].get<std::string>().empty() ||
                 (a.contains("force") && !a["force"].is_boolean()))
                 return ReplyError(id, "hello inválido");
-            if (a.contains("protocol_version") && (!a["protocol_version"].is_number_integer() || a["protocol_version"] != ProtocolVersion))
+            if (a.contains("protocol_version") &&
+                (!a["protocol_version"].is_number_integer() || a["protocol_version"] != ProtocolVersion))
                 return ReplyError(id, "protocolo incompatível: agente exige protocol_version=2");
             const bool previous = lease.Owner() != 0 && !lease.Owns(connection);
             if (!lease.Acquire(connection, a.value("force", false)))
@@ -52,10 +53,12 @@ struct Server::Impl {
                 queue.Cancel();
                 commands.Cancel();
             }
-            return Reply(
-                id, { { "lease", std::to_string(connection) }, { "agent_version", "0.2.0" }, { "layout_id", layout },
-                      { "protocol_version", ProtocolVersion },
-                      { "capabilities", { "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to" } } });
+            return Reply(id, { { "lease", std::to_string(connection) },
+                               { "agent_version", "0.2.0" },
+                               { "layout_id", layout },
+                               { "protocol_version", ProtocolVersion },
+                               { "capabilities",
+                                 { "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to" } } });
         }
         if (!lease.Owns(connection))
             return ReplyError(id, "lease necessário");
@@ -73,12 +76,14 @@ struct Server::Impl {
         }
         if (request.op != "input") {
             try {
-                if (request.op == "result") return Reply(id, commands.Result(a["ticket"].get<uint64_t>()));
+                if (request.op == "result")
+                    return Reply(id, commands.Result(a["ticket"].get<uint64_t>()));
                 const auto ticket = commands.Submit(request);
                 return Reply(id, { { "ticket", ticket }, { "status", "pending" } });
             } catch (const std::exception& e) { return ReplyError(id, e.what()); }
         }
-        if (commands.Busy()) return ReplyError(id, "busy: operação v2 em andamento");
+        if (commands.Busy())
+            return ReplyError(id, "busy: operação v2 em andamento");
         std::vector<Step> steps;
         if (!a.contains("steps") || !ParseSteps(a["steps"], steps, error))
             return ReplyError(id, error.empty() ? "steps ausente" : error);
@@ -234,5 +239,7 @@ void Server::Publish(Snapshot snapshot) {
 InputQueue& Server::Queue() {
     return impl_->queue;
 }
-Mailbox& Server::Commands() { return impl_->commands; }
+Mailbox& Server::Commands() {
+    return impl_->commands;
+}
 } // namespace Playtest
