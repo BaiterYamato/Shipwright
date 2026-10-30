@@ -368,6 +368,32 @@ void NegativeDirtyAltCache() {
             "alternativo dirty ilegivel deveria virar NotFound");
     std::cout << "PASS: alternativo dirty ilegivel vira NotFound; base limpa preservada sem repetir fabrica\n";
 }
+
+// Caminho de reserva do bootstrap: a redistribuição falhou e os rejeitados saem pelo mesmo lote. A retirada um a um
+// (RetirePrivateModArchive) deixava no cache a leitura de A feita por um owner explícito.
+void RetirementOnly() {
+    Fixture f;
+    auto a = f.Add("a", { { "objects/shared", "A" } });
+    auto b = f.Add("b", { { "objects/shared", "B" }, { "objects/own", "B own" } });
+    auto factory = Register(f.rm);
+    Require(Bytes(f.manager->LoadFile("objects/shared")) == "A", "A deveria ter o alias antes da retirada");
+    f.rm.LoadResourceProcess(Ship::ResourceIdentifier("objects/shared", 77, a), true, InitData());
+    Require(f.rm.GetCachedResource(Ship::ResourceIdentifier("objects/shared", 77, a), true) != nullptr,
+            "leitura de A por owner explicito nao entrou no cache");
+    auto expected = f.manager->GetArchiveSnapshot();
+    auto plan = PlanRetirement(expected.archives, f.privateArchives, { a });
+    Require(plan.replacements == 0 && plan.desired.size() + 1 == expected.archives.size(),
+            "retirada nao deveria reabrir wrappers");
+    Archives published;
+    Require(f.rm.PublishArchiveBatch(expected, plan.desired, plan.affected, published), "publicacao da retirada");
+    Require(!f.manager->HasFile("objects/shared"), "retirada redistribuiu o alias de A");
+    Require(!f.rm.GetCachedResource(Ship::ResourceIdentifier("objects/shared", 77, a), true),
+            "cache de A com owner explicito permaneceu");
+    Require(Bytes(f.manager->LoadFile("objects/own")) == "B own" &&
+                Bytes(f.manager->LoadFile("mod/b/objects/shared")) == "B",
+            "B perdeu alias ou nome privado");
+    std::cout << "PASS: retirada sem redistribuicao invalida o cache de todos os owners\n";
+}
 } // namespace
 int main() {
     try {
@@ -379,6 +405,7 @@ int main() {
         ConcurrentRawRead();
         SidecarCache();
         NegativeDirtyAltCache();
+        RetirementOnly();
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
         return 1;

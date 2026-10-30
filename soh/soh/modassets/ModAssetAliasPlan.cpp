@@ -43,6 +43,8 @@ AliasPlan PlanAliases(const Archives& snapshot, const Archives& privateArchives,
                 reserved.insert(hash);
     std::unordered_map<Ship::Archive*, std::shared_ptr<Ship::Archive>> replacements;
     for (const auto& wrapper : survivors) {
+        if (!reopen)
+            break; // PlanRetirement: sem redistribuição.
         Hashes aliases;
         for (const auto& [hash, name] : wrapper->OriginalFiles())
             if (ModAssetArchive::IsRenderPath(name) && reserved.insert(hash).second)
@@ -92,5 +94,9 @@ AliasPlan PlanAliases(const Archives& snapshot, const Archives& privateArchives,
         if (!before.contains(hash))
             plan.affected.insert(origin.second);
     return plan;
+}
+
+AliasPlan PlanRetirement(const Archives& snapshot, const Archives& privateArchives, const Archives& rejected) {
+    return PlanAliases(snapshot, privateArchives, rejected, {});
 }
 } // namespace SohModAssets

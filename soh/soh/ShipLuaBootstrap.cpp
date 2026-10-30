@@ -3980,14 +3980,14 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     // Reconciliar mesmo sem observer, antes de anunciar archives ou game.ready.
     // Sem rejeitados, preservar exatamente a visão usada no Init e evitar reaberturas.
     if (!rejectedArchives.empty()) {
-        try {
-            const auto manager = NativeResourceManager();
-            const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+        const auto manager = NativeResourceManager();
+        const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+        // Publica pela transação do cache: invalida os nomes para todos os owners/parents e avança o epoch.
+        const auto publish = [&](const auto& makePlan) {
             if (!archives)
                 throw std::runtime_error("ArchiveManager indisponivel para reconciliar aliases");
             const auto expected = archives->GetArchiveSnapshot();
-            auto plan = SohModAssets::PlanAliases(expected.archives, gPrivateModArchives, rejectedArchives,
-                                                  SohModAssets::ReopenArchive);
+            auto plan = makePlan(expected.archives);
             SohModAssets::Archives published, nextPrivate;
             nextPrivate.reserve(plan.privatePositions.size());
             if (!manager->PublishArchiveBatch(expected, plan.desired, plan.affected, published))
@@ -3995,16 +3995,31 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
             for (const auto position : plan.privatePositions)
                 nextPrivate.push_back(published[position]);
             gPrivateModArchives.swap(nextPrivate);
+            return plan.replacements;
+        };
+        try {
+            const auto replaced = publish([&](const SohModAssets::Archives& snapshot) {
+                return SohModAssets::PlanAliases(snapshot, gPrivateModArchives, rejectedArchives,
+                                                 SohModAssets::ReopenArchive);
+            });
             SPDLOG_INFO("ShipLua reconciliou aliases de assets: {} rejeitado(s), {} wrapper(s) substitu\xC3\xAD"
                         "do(s)",
-                        rejectedArchives.size(), plan.replacements);
+                        rejectedArchives.size(), replaced);
         } catch (const std::exception& error) {
-            // Nada foi publicado: retirar os rejeitados um a um, sem redistribuir aliases, e seguir com o boot (sem o
-            // return, os mods ficavam sem a API OoT e sem game.ready).
+            // Nada foi publicado. Os rejeitados saem pelo mesmo lote, sem redistribuir aliases, e o boot segue (sem
+            // isso, os mods ficavam sem a API OoT e sem game.ready).
             SPDLOG_WARN("ShipLua n\xC3\xA3o reconciliou os aliases de assets ({}); os rejeitados saem sem redistribuir",
                         error.what());
-            for (const auto& rejected : rejectedArchives)
-                RetirePrivateModArchive(rejected->GetPath());
+            try {
+                publish([&](const SohModAssets::Archives& snapshot) {
+                    return SohModAssets::PlanRetirement(snapshot, gPrivateModArchives, rejectedArchives);
+                });
+            } catch (const std::exception& retireError) {
+                // Último recurso: retirada um a um, que não invalida caches com owner explícito.
+                SPDLOG_WARN("ShipLua retira os archives rejeitados um a um ({})", retireError.what());
+                for (const auto& rejected : rejectedArchives)
+                    RetirePrivateModArchive(rejected->GetPath());
+            }
         }
     }
     if (ShipLuaHost::HasOotHooks(ShipLuaHost::GetOotHookPoints().modsArchives)) {
