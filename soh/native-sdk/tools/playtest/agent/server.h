@@ -19,6 +19,8 @@ class InputQueue {
     void Cancel();
     void Apply(uint64_t frame, ShipOotInputPadV1& pad);
     size_t Size() const;
+    // O último passo sai da fila no frame em que é aplicado: vazia e sem input neste frame.
+    bool IdleAt(uint64_t frame) const;
 
   private:
     struct Entry {
@@ -29,6 +31,7 @@ class InputQueue {
     mutable std::mutex mutex_;
     std::deque<Entry> steps_;
     uint64_t frame_ = 0;
+    uint64_t appliedFrame_ = UINT64_MAX;
     bool neutral_ = false;
     bool ready_ = false;
 };

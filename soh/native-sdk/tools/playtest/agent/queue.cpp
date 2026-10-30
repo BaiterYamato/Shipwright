@@ -49,12 +49,17 @@ void InputQueue::Apply(uint64_t frame, ShipOotInputPadV1& pad) {
         pad.right_stick_x = step.cstick[0];
     if (!step.merge || step.cstick[1])
         pad.right_stick_y = step.cstick[1];
+    appliedFrame_ = frame;
     if (frame == steps_.front().end)
         steps_.pop_front();
 }
 size_t InputQueue::Size() const {
     std::lock_guard lock(mutex_);
     return steps_.size();
+}
+bool InputQueue::IdleAt(uint64_t frame) const {
+    std::lock_guard lock(mutex_);
+    return steps_.empty() && appliedFrame_ != frame;
 }
 bool Lease::Acquire(uint64_t connection, bool force) {
     if (!connection || (owner_ && owner_ != connection && !force))

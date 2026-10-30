@@ -424,9 +424,12 @@ std::optional<Json> Gameplay::Execute(Request& r, InputQueue& queue, ShipOotInpu
                      { "frame", frame_ },      { "note", "vista reaplicada pelo host no update da câmera" } };
     }
     // Operações longas não retêm ponteiros do jogo; apenas epoch e valores JSON.
-    const bool first = !a.contains("_epoch");
+    // O servidor carimba _epoch no aceite com a cena que o cliente viu: um pedido aceito antes de Play_Destroy não
+    // vale para a cena seguinte. Sem carimbo (chamada direta), vale a cena desta primeira execução.
+    const bool first = !a.contains("_deadline");
     if (first) {
-        a["_epoch"] = epoch_;
+        if (!a.contains("_epoch"))
+            a["_epoch"] = epoch_;
         a["_deadline"] = Now() + a.value("timeout", r.op == "teleport" ? 3.0 : 15.0);
         a["_start_frame"] = frame_;
         if (player_)
@@ -475,6 +478,9 @@ std::optional<Json> Gameplay::Execute(Request& r, InputQueue& queue, ShipOotInpu
         return finish("unsupported", "linkspan.oot.world v1 indisponível");
     if (!a.value("_owns", false) && queue.Size())
         return finish("refused", "fila de input ocupada; aguarde ou cancele antes");
+    // O último passo de um input já saiu da fila, mas foi escrito no pad deste frame: assumir agora o apagaria.
+    if (!a.value("_owns", false) && !queue.IdleAt(frame_))
+        return std::nullopt;
     a["_owns"] = true;
     Neutral(pad);
     auto& actor = player_->actor;

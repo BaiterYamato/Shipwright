@@ -79,6 +79,10 @@ struct Server::Impl {
             try {
                 if (request.op == "result")
                     return Reply(id, commands.Result(a["ticket"].get<uint64_t>()));
+                // Mutação vale para a cena do snapshot que o cliente viu. Carimbar no aceite cobre o pedido que chega
+                // entre o último pad read e Play_Destroy, ou antes do primeiro snapshot da cena nova.
+                if ((request.op == "teleport" || request.op == "walk_to") && snapshot.fields.contains("scene_epoch"))
+                    request.args["_epoch"] = snapshot.fields["scene_epoch"];
                 const auto ticket = commands.Submit(request);
                 return Reply(id, { { "ticket", ticket }, { "status", "pending" } });
             } catch (const std::exception& e) { return ReplyError(id, e.what()); }

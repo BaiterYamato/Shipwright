@@ -180,6 +180,20 @@ void WireTest() {
     server.Commands().Tick([](Request&) -> std::optional<Json> { return Json{ { "input_yaw", 90 } }; });
     Check(exchange(a, { { "id", "4" }, { "op", "result" }, { "ticket", ticket } })["result"]["input_yaw"] == 90);
     Check(exchange(a, { { "id", "5" }, { "op", "scene_map" }, { "limit", 129 } })["ok"] == false);
+    // A2: o aceite carimba a mutação com o epoch do snapshot publicado; o cliente não manda o seu.
+    Snapshot seen;
+    seen.fields["scene_epoch"] = 7;
+    server.Publish(seen);
+    Check(exchange(
+              a, { { "id", "5b" }, { "op", "teleport" }, { "x", 1 }, { "y", 0 }, { "z", 2 }, { "_epoch", 9 } })["ok"] ==
+          false);
+    exchange(a, { { "id", "5c" }, { "op", "teleport" }, { "x", 1 }, { "y", 0 }, { "z", 2 } });
+    Json stamped;
+    server.Commands().Tick([&](Request& r) -> std::optional<Json> {
+        stamped = r.args.value("_epoch", Json(nullptr));
+        return Json::object();
+    });
+    Check(stamped == 7);
     accepted = exchange(a, { { "id", "6" }, { "op", "walk_to" }, { "x", 10 }, { "z", 20 } });
     hello["force"] = true;
     Check(exchange(b, hello)["ok"] == true);
@@ -389,6 +403,33 @@ int main() {
         server.Commands().Cancel();
         tick();
         Check(!owned);
+        // Revisão final (A1): teleporte pedido junto de um input de um frame espera o frame seguinte em vez de
+        // apagar o input já escrito no pad.
+        Step press;
+        press.frames = 1;
+        press.buttons = 0x8000;
+        server.Queue().Push({ press });
+        t = submit(R"({"id":"a","op":"teleport","x":100,"y":0,"z":200})");
+        pad = {};
+        tick();
+        Check(pad.button == 0x8000 && server.Commands().Result(t)["status"] == "pending");
+        tick();
+        Check(pad.button == 0 && player->actor.world.pos.x == 100);
+        player->actor.bgCheckFlags = 1;
+        player->actor.floorPoly = &fakePoly;
+        tick();
+        tick();
+        Check(server.Commands().Result(t)["result"]["status"] == "grounded");
+        // A2: pedido carimbado no aceite com a cena que o cliente viu não teleporta na cena seguinte.
+        Request stale;
+        std::string staleError;
+        Check(ParseRequest(R"({"id":"a","op":"teleport","x":120,"y":0,"z":30})", stale, staleError));
+        stale.args["_epoch"] = game.Observation()["scene_epoch"];
+        t = server.Commands().Submit(stale);
+        game.SceneEnded();
+        server.Queue().Cancel();
+        tick();
+        Check(server.Commands().Result(t)["result"]["status"] == "scene_changed" && player->actor.world.pos.x == 100);
         lists.layout_id = "host sem a proposta";
         Gameplay partial;
         Check(partial.Init(&runtime));
