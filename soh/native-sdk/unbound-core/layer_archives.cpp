@@ -45,7 +45,8 @@ ShipNativeStatus SHIP_NATIVE_CALL CollectOwnManifest(void* user, const ShipOotRe
 // ou se o arquivo passar de kMaxLayerManifestBytes.
 bool ReadPrivateManifest(const ShipOotResourcesV2& resources, const std::string& prefix, const fs::path& archive,
                          std::string& bytes) {
-    OwnManifest own{ archive };
+    OwnManifest own;
+    own.archive = archive;
     if (resources.read_file_layers((prefix + MANIFEST_PATH).c_str(), CollectOwnManifest, &own) != SHIP_NATIVE_OK ||
         !own.found || own.oversized) {
         return false;
