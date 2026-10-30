@@ -128,3 +128,6 @@ add_test(NAME linkspan_nei_extended_tests COMMAND linkspan_nei_extended_tests)
 add_test(NAME linkspan_nei_backend_tests COMMAND linkspan_nei_backend_tests)
 add_test(NAME linkspan_nei_inventory_controls_tests COMMAND linkspan_nei_inventory_controls_tests)
 add_test(NAME linkspan_nei_motion_visuals_tests COMMAND linkspan_nei_motion_visuals_tests)
+# readapt.py refaz resoluções do overlay quando só o host mudou (repositórios git temporários, sem rede).
+add_test(NAME linkspan_nei_readapt_tests COMMAND "${Python3_EXECUTABLE}" -B -m unittest test_readapt
+         WORKING_DIRECTORY "${fork_src}")
