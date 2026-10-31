@@ -459,6 +459,7 @@ def main():
         for c in conflitos:
             print("  " + c)
         print("  resolva em fork/overlay-merges/ (python fork/overlay_conflito.py <host> <arquivo> <função>)")
+        print("  carimbo velho porque só o host mudou: python fork/readapt.py <host> refaz por mescla de três vias")
         if not permitir_conflitos:
             sys.exit(3)
     substituicoes = aplicar_substituicoes(out)
