@@ -1,5 +1,58 @@
 # Ferramenta de playtest do Link-Span OoT
 
+## Camadas do VFS e evidência RC11 (0.2.1, protocolo v2)
+
+`vfs_layers(paths, max_bytes=8388608)` consulta `linkspan.oot.resources` v2 na thread do jogo, no próximo callback
+`oot.input.pad`, inclusive no título. Retorna `frame`, `bytes_hashed`, `instrumentation`, `complete` e `observations`.
+Cada observação contém `path`, `layers`, `hostStatus`, `hasFile` e `complete`; cada camada tem `{archive, sha256}`.
+A ordem é **da menor para a maior prioridade**: a última camada tem prioridade máxima. O SHA-256 cobre os bytes do
+callback, inclusive NUL binário e arquivo vazio; não é o hash do contêiner nem o `content_hash` de 64 bits do host.
+Archives com transform entregam bytes transformados. O identificador do archive é copiado literalmente e pode incluir
+`#linkspan-mount-N` em montagens com prefixo.
+
+Limites por chamada: 1–8 caminhos distintos, 1–1024 bytes UTF-8 por caminho, sem NUL, até 32 camadas no total,
+1024 bytes por identificador de archive e 1–8388608 bytes **processados pelo hash do observador**. O padrão é 8 MiB.
+Ao exceder um limite, o status é 4 e a lista parcial daquele caminho é descartada. Bytes processados antes de um erro
+posterior também consomem o orçamento. O host carrega todas as camadas antes dos callbacks: essa API não permite
+limitar suas alocações, descompressão, I/O ou duração do frame. O observador usa buffers fixos e um hash reutilizável
+BCrypt preparado antes do socket; não acrescenta JSON nem alocação explícita de heap ao callback de frame. A thread
+TCP serializa o resultado. Nenhum ponteiro dos dados do callback é retido; permanece apenas a tabela estática do serviço.
+O protocolo usa lease, ticket pendente e polling por `result`. Cancelamento, destruição de cena, desconexão, troca
+forçada do dono e shutdown invalidam tickets VFS. Falhas não repetem automaticamente a consulta.
+
+Status do host: 0 OK, 1 INVALID_ARGUMENT, 2 UNSUPPORTED, 3 FAILURE e 4 LIMIT. **O status 2 mistura arquivo ausente
+com VFS indisponível**. Ele permanece como `complete=false`, `layers=[]`, acompanhado da sondagem `hasFile`.
+Lista vazia não significa ausência comprovada. `complete=true` confirma a enumeração por callback, mas o próprio host
+pode omitir camadas que não conseguiu carregar. Recibos diagnósticos não devem aprovar automaticamente o gate.
+
+Para gravar o recibo, use `game_vfs_snapshot(case, phase, paths, max_bytes=8388608)`:
+
+```python
+game_vfs_snapshot("alias-A-B", "after-ready", ["private/A/file.json", "B/file.json"])
+# Faça o unload pretendido e confirme sua conclusão externamente.
+game_vfs_snapshot("alias-A-B", "after-unload", ["private/A/file.json", "B/file.json"])
+game_close()
+```
+
+Confirme `game.ready` e unload no log real antes de declarar a fase. A fase vem do chamador; a ferramenta não dispara
+nem certifica esses eventos. `case` aceita 1–80 letras ASCII, números, `_` ou `-`. Cada `(phase,path)` só pode ocorrer
+uma vez por caso; lotes com caminhos diferentes podem ser acumulados.
+O coletor grava `<case>-rc11-vfs-1.pending.json` na pasta da sessão e retorna `status=pending_post_log`.
+Esse rascunho tem `postLogSha256=null` e **não é evidência final do gate**. Após o processo encerrar, `game_close`
+copia o log fechado e grava `<case>-rc11-vfs-1.json` com `schema="rc11-vfs-1"`, `case`, `instrumentation`, `exeSha256`,
+`postLogSha256`, `observations` e `complete`. A resposta inclui os caminhos em `vfs_snapshots`. O `.post.log` adjacente
+contém os bytes exatos usados no hash. O hash do exe vem da medição feita pelo launcher, sem atestar a imagem em memória.
+A revisão do observador é um SHA-256 calculado pelo CMake sobre os fontes nomeados; `mcp_revision` identifica o arquivo
+do gravador de snapshots. Não são commits Git nem hashes da DLL. Recompile o agente; versões v2 anteriores recusam a operação.
+
+A finalização exige o `game-final.log` real; nenhum hash de log é inventado. Falhas preservam os rascunhos.
+Para recuperar offline, chame `linkspan_playtest.vfs.finalize_vfs_snapshots(session)` com sessão encerrada que forneça
+`directory`, `metadata["closed"]` e `process.poll()`. Repetir a finalização confere o log congelado e recusa log
+alterado ou recibo final conflitante. Caminhos ausentes/indisponíveis continuam diagnósticos no recibo final, inclusive
+após unload. Consultar A/B comprova origens e bytes visíveis; regras de alias e donos precisam da fixture e do log.
+Ainda é necessário compilar com MSVC e validar ready → consulta → unload → consulta → close no jogo.
+Os testes Python usam agente simulado.
+
 A ferramenta do SDK controla a porta 0 pelo hook `oot.input.pad` e oferece um agente local ao servidor MCP Python.
 Exige o hook e o carregador `--linkspan-tool` da RFC 0032, ABI 1.4, Windows x64 e SDK exportado do mesmo build do host.
 Mantenha a ferramenta fora de `mods/` e dos pacotes de release. Sua carga não deve ligar o motor alargado.
@@ -19,7 +72,7 @@ python -m unittest discover -s mcp/tests -p "test_*.py"
 O pacote gerado fica em `agent/build/mod/`: manifesto, `main.lua` vazio gerado e
 `provider/linkspan_playtest.dll`. O CMake acrescenta `provider.host_layout_id`, sem fingerprint do exe. Recompile quando
 o layout do host mudar. O JSON nlohmann vem de `OOT_NATIVE_INCLUDE_DIRS`; C++20 e `/utf-8` estão habilitados. O teste
-C++ puro não liga código de socket nem do jogo. Python usa somente `mcp` e a biblioteca padrão; os testes usam
+C++ puro liga BCrypt do Windows para SHA-256, sem código de socket nem do jogo. Python usa somente `mcp` e a biblioteca padrão; os testes usam
 `unittest` (o pytest também os coleta).
 
 Defina `LINKSPAN_PLAYTEST_AGENT` para o pacote gerado quando usar o Python instalado. Na execução pelo código do SDK,

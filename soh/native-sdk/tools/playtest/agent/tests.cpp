@@ -2,11 +2,120 @@
 #include "overview.h"
 #include <iostream>
 #include <stdexcept>
+#include <cstring>
 
 using namespace Playtest;
 void Check(bool value) {
     if (!value)
         throw std::runtime_error("verificação falhou");
+}
+void VfsTests() {
+    ShipOotResourcesV2 resources{};
+    resources.size = sizeof(resources);
+    resources.has_file = [](const char* path) -> uint8_t { return std::strcmp(path, "missing") != 0; };
+    resources.read_file_layers = [](const char* path, ShipOotResourceLayerFn callback, void* user) -> ShipNativeStatus {
+        if (!std::strcmp(path, "missing"))
+            return SHIP_NATIVE_UNSUPPORTED;
+        if (!std::strcmp(path, "many")) {
+            ShipOotResourceLayerV2 info{ sizeof(info), 0, 32, 0, 0, 0, 8 };
+            for (; info.layer_index < info.layer_count; ++info.layer_index) {
+                const auto status = callback(user, &info, "base.o2r", nullptr);
+                if (status != SHIP_NATIVE_OK)
+                    return status;
+            }
+            return SHIP_NATIVE_OK;
+        }
+        char archive[] = "base.o2r";
+        uint8_t data[] = { 'a', 'b', 'c' };
+        if (!std::strcmp(path, "binary")) {
+            data[1] = 0;
+            data[2] = 'b';
+        }
+        ShipOotResourceLayerV2 info{ sizeof(info), 0, 2, 0, 123, 3, 8 };
+        if (!std::strcmp(path, "bad-index"))
+            info.layer_index = 1;
+        if (!std::strcmp(path, "too-many"))
+            info.layer_count = 33;
+        if (!std::strcmp(path, "long-archive"))
+            info.archive_path_length = VfsMaxArchive + 1;
+        auto status = callback(user, &info, archive, data);
+        if (status != SHIP_NATIVE_OK)
+            return status;
+        if (!std::strcmp(path, "partial-error"))
+            return SHIP_NATIVE_FAILURE;
+        info.layer_index = 1;
+        info.data_size = 0;
+        char overrideArchive[] = "override.shipmod";
+        info.archive_path_length = 16;
+        status = callback(user, &info, overrideArchive, nullptr);
+        // Os buffers do host deixam de existir; o resultado deve conter cópias e hashes independentes.
+        std::memset(archive, '?', 8);
+        std::memset(overrideArchive, '?', 16);
+        std::memset(data, 0, 3);
+        return status;
+    };
+    VfsLayers vfs;
+    Check(vfs.Init(&resources));
+    auto ticket = vfs.Submit({ { "paths", { "good" } } });
+    Check(vfs.Result(ticket)["status"] == "pending" && vfs.Busy());
+    bool busy = false;
+    try {
+        vfs.Submit({ { "paths", { "other" } } });
+    } catch (...) { busy = true; }
+    Check(busy);
+    vfs.Tick(42);
+    auto result = vfs.Result(ticket)["result"];
+    Check(result["frame"] == 42 && result["complete"] == true && result["bytes_hashed"] == 3);
+    auto layers = result["observations"][0]["layers"];
+    Check(layers[0]["archive"] == "base.o2r" && layers[1]["archive"] == "override.shipmod");
+    Check(layers[0]["sha256"] == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    Check(layers[1]["sha256"] == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    ticket = vfs.Submit({ { "paths", { "binary" } } });
+    vfs.Tick(42);
+    Check(vfs.Result(ticket)["result"]["observations"][0]["layers"][0]["sha256"] ==
+          "59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138");
+    ticket = vfs.Submit({ { "paths", { "good", "other" } }, { "max_bytes", 5 } });
+    vfs.Tick(43);
+    result = vfs.Result(ticket)["result"];
+    Check(result["complete"] == false && result["observations"][1]["hostStatus"] == SHIP_NATIVE_LIMIT);
+    Check(result["observations"][1]["layers"].empty() && result["bytes_hashed"] == 3);
+    ticket = vfs.Submit({ { "paths", { "many", "other" } } });
+    vfs.Tick(43);
+    result = vfs.Result(ticket)["result"];
+    Check(result["observations"][0]["layers"].size() == 32);
+    Check(result["observations"][1]["hostStatus"] == SHIP_NATIVE_LIMIT);
+    for (auto path : { "missing", "bad-index", "too-many", "long-archive", "partial-error" }) {
+        ticket = vfs.Submit({ { "paths", { path } } });
+        vfs.Tick(44);
+        result = vfs.Result(ticket)["result"];
+        Check(result["complete"] == false && result["observations"][0]["layers"].empty());
+    }
+    ticket = vfs.Submit({ { "paths", { "good" } } });
+    vfs.Cancel();
+    vfs.Tick(45);
+    bool expired = false;
+    try {
+        vfs.Result(ticket);
+    } catch (...) { expired = true; }
+    Check(expired && !vfs.Busy());
+    VfsLayers unavailable;
+    ticket = unavailable.Submit({ { "paths", { "good" } } });
+    unavailable.Tick(1);
+    Check(unavailable.Result(ticket)["result"]["observations"][0]["hostStatus"] == SHIP_NATIVE_UNSUPPORTED);
+    Request request;
+    std::string error;
+    Check(ParseRequest(R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":8388608})", request, error));
+    for (auto text :
+         { R"({"id":"vfs","op":"vfs_layers","paths":[]})", R"({"id":"vfs","op":"vfs_layers","paths":["x","x"]})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x\u0000y"]})", R"({"id":"vfs","op":"vfs_layers","paths":[1]})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":true})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":8388609})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x"],"phase":"after-ready"})" })
+        Check(!ParseRequest(text, request, error));
+    Request longRequest{ "vfs", "vfs_layers", { { "paths", { std::string(VfsMaxPath + 1, 'x') } } } };
+    Check(!ValidateV2(longRequest, error));
+    longRequest.args = { { "paths", { "1", "2", "3", "4", "5", "6", "7", "8", "9" } } };
+    Check(!ValidateV2(longRequest, error));
 }
 // Small SDK-shaped doubles exercise the same extraction used by Gameplay.
 void OverviewTests() {
@@ -99,6 +208,7 @@ void OverviewTests() {
 }
 int main() {
     try {
+        VfsTests();
         OverviewTests();
         uint16_t buttons = 0;
         std::string error;

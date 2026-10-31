@@ -9,6 +9,7 @@ from . import launcher
 from .capture import capture_window
 from .overview import collect_overview, render_overview, overview_summary
 from .conditions import wait_for as wait_for_state
+from .vfs import query_vfs, save_vfs_snapshot, finalize_vfs_snapshots, MAX_BYTES
 
 mcp = FastMCP("linkspan-playtest")
 _session = None
@@ -53,6 +54,7 @@ def game_close() -> dict:
         if _session is None:
             raise RuntimeError("nenhuma sessão aberta")
         result = _session.close()
+        result["vfs_snapshots"] = finalize_vfs_snapshots(_session)
         _session = None
         return result
 
@@ -64,6 +66,36 @@ def game_state() -> dict:
         session = _active()
         session.record("game_state", {})
         return session.client.state()
+
+
+@mcp.tool()
+def vfs_layers(paths: list[str], max_bytes: int = MAX_BYTES) -> dict:
+    """Camadas de 1..8 caminhos VFS: archive e SHA-256 dos bytes, da menor à maior prioridade.
+
+    Até 8 MiB somados e 32 camadas por chamada. complete=false preserva falhas/ausência ambígua.
+    Sem repetição automática; executa uma vez na thread do jogo, mesmo no título.
+    """
+    with _lock:
+        session = _active()
+        session.record("vfs_layers", {"paths": paths, "max_bytes": max_bytes})
+        result = query_vfs(session.client, paths, max_bytes)
+        session.record("vfs_layers_result", result)
+        return result
+
+
+@mcp.tool()
+def game_vfs_snapshot(case: str, phase: str, paths: list[str], max_bytes: int = MAX_BYTES) -> dict:
+    """Grava uma fase RC11. Espere ready/unload real antes de declarar a fase.
+
+    Retorna pending_post_log; game_close sela o rc11-vfs-1 com SHA do log posterior ao unload.
+    complete=false é diagnóstico e não prova um gate aprovado.
+    """
+    with _lock:
+        session = _active()
+        session.record("game_vfs_snapshot", {"case": case, "phase": phase, "paths": paths, "max_bytes": max_bytes})
+        result = save_vfs_snapshot(session, case, phase, paths, max_bytes)
+        session.record("game_vfs_snapshot_result", result)
+        return result
 
 
 def _v2(op, **arguments):
