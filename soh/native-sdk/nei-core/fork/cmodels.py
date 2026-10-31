@@ -37,6 +37,18 @@ MODEL_FILES = [
 ]
 CONVERTED_ROOT = "objects/object_nei_cmodels"
 
+# Texturas que o fork copiou do jogo para os modelos em C. O build-nei-assets.py tira do pacote a textura igual à do
+# oot.o2r e reescreve as display lists do archive, mas não alcança o caminho compilado na DLL: o C pede direto o
+# recurso do jogo, e a cópia nem é convertida. O gerador reprova (code_replaced) se faltar uma aqui.
+GAME_TEXTURES = {
+    "gDampeShovelDL_mesh_001_object_tk_009C80_Tex_i8_png_001_i8": "objects/object_in/gIngoPitchforkTex",
+    "gDampeShovelDL_mesh_001_object_tk_009CC0_Tex_rgba16_png_001_rgba16": "objects/object_tk/object_tkTex_009CC0",
+    "gDampeShovelDL_mesh_001_object_tk_009D40_Tex_i4_png_001_i4": "objects/object_tk/object_tkTex_009D40",
+    "gShovelGiveDL_object_tk_009C80_Tex_i8_png_001_i8": "objects/object_in/gIngoPitchforkTex",
+    "gShovelGiveDL_object_tk_009CC0_Tex_rgba16_png_001_rgba16": "objects/object_tk/object_tkTex_009CC0",
+    "gShovelGiveDL_object_tk_009D40_Tex_i4_png_001_i4": "objects/object_tk/object_tkTex_009D40",
+}
+
 ARRAY = re.compile(r"^[ \t]*(?:static\s+)?(?:const\s+)?(?:ALIGN_ASSET\(\d+\)\s+)?(u64|u32|u16|u8|Vtx|Gfx)\s+(\w+)"
                    r"\s*\[[^\]]*\]\s*=\s*\{(.*?)^\};", re.S | re.M)
 
@@ -88,7 +100,9 @@ def plan(texts, asset_paths):
         mapping.update(parse_path_refs(text))
         for ctype, name, _ in parse_arrays(text):
             found = by_name.get(name, [])
-            if len(found) == 1:
+            if name in GAME_TEXTURES:
+                mapping[name] = GAME_TEXTURES[name]
+            elif len(found) == 1:
                 mapping[name] = found[0]
             else:
                 mapping[name] = "%s/%s/%s" % (CONVERTED_ROOT, folder_of(model_file), name)
