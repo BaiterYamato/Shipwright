@@ -189,12 +189,44 @@ Esta fatia ainda não conecta o resultado a uma scene factory do
 cena/sala e o adapter que materializa o recurso pertencem aos recortes
 seguintes do Unbound.
 
-### Camadas Unbound sem o framework
+### Camadas Unbound (HOST-SLIM-001 F4)
 
-Uma camada Unbound (`.o2r` com `unbound.json` formato 2), solta em `mods/` ou
-dentro da pasta de um mod, só entra na raiz do VFS com o framework
-`linkspan.unbound.framework` carregado. Sem ele, o log diz `ShipLua ignorou a
-camada Unbound '…': o framework Unbound (…) não carregou` e o jogo segue sem ela.
+No boot, o host monta todo `.o2r`/`.otr` de `mods/` e `mods/<pasta>/assets/` de forma privada sob
+`mod/<stem>/` (`<stem>` é o nome do arquivo sem a extensão). Entradas de `objects/` e `textures/`
+também ganham aliases nos caminhos originais quando esses caminhos estão livres.
+
+Depois da carga dos mods, archives de pastas cujo mod não carregou saem do VFS e ficam fora do hook
+OBSERVE `oot.mods.archives`, com o log
+`ShipLua: '<archive>' fora de oot.mods.archives e desmontado: ...`.
+Um alias que ocuparam no boot não passa a outro archive: essa limitação conhecida já valia para
+qualquer archive de pasta de mod antes da F4. O hook lista os archives aceitos na ordem de montagem:
+os soltos em `mods/` e os de mods carregados.
+
+Durante o despacho do hook, `mount_archive` de `linkspan.oot.resources` promove um archive dessa lista:
+monta primeiro na raiz do VFS e depois remove a montagem privada (`mod/<stem>/` e seus aliases), com o log
+`Link-Span trocou a montagem privada de '...' pela montagem na raiz`. Se a montagem na raiz falhar, a
+privada continua. Fora do despacho, `mount_archive` só acrescenta uma montagem: um provider que monta o
+próprio archive na raiz no Init também mantém `mod/<stem>/`.
+
+O `linkspan.unbound.framework` usa essa promoção para as camadas, depois da carga dos providers e
+consumidores e antes do `game.ready`. Uma camada é um `.o2r` cujo `unbound.json`, lido pela montagem
+privada e vindo do próprio archive, tem até 64 KiB e é um objeto JSON estrito com `"format": "unbound"` e
+`"formatVersion": 2`, dentro do limite de aninhamento do framework. Um archive de mesmo nome em outra
+pasta não interfere. Um archive que já fornece o `unbound.json` da raiz é pulado.
+No shutdown, o framework desmonta as camadas que montou em ordem inversa.
+
+Sem o framework, uma camada é um archive comum e fica só na montagem privada, com os aliases descritos
+acima. O host não emite aviso.
+
+O framework registra estas mensagens em `logs/linkspan-unbound.log`:
+
+- `camada montada na raiz: <caminho>`
+- `camada já na raiz: <caminho>`
+- `camada não montada (<status>): <caminho>`
+- `camadas: montadas=N ja_na_raiz=N falhas=N`
+
+O mesmo resumo aparece na linha `camadas:` do `unbound_report` e no log do jogo como
+`unbound-json: ... | camadas: ...`.
 
 <a id="service-movement"></a>
 

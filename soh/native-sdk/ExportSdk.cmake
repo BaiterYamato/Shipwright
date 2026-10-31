@@ -31,7 +31,7 @@ file(WRITE "${native_sdk_dir}/oot_layout_id.h"
     "#pragma once\n#define LINKSPAN_OOT_LAYOUT_ID \"${layout_id}\"\n")
 target_include_directories(soh PRIVATE "${native_sdk_dir}")
 file(GENERATE OUTPUT "${native_sdk_dir}/$<CONFIG>/OotNativeSdk.cmake" CONTENT
-"set(OOT_NATIVE_INCLUDE_DIRS [==[$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>;${CMAKE_SOURCE_DIR}/soh/soh/native]==])
+"set(OOT_NATIVE_INCLUDE_DIRS [==[$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>;${CMAKE_SOURCE_DIR}/soh/soh/native;${CMAKE_SOURCE_DIR}/soh/native-sdk/include]==])
 set(OOT_NATIVE_COMPILE_DEFINITIONS [==[$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS>]==])
 set(OOT_NATIVE_LAYOUT_ID [==[${layout_id}]==])
 ")
@@ -39,6 +39,7 @@ set(OOT_NATIVE_LAYOUT_ID [==[${layout_id}]==])
 add_executable(oot_native_engine_tests
     "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/EngineTests.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeEngine.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeSceneQuery.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeRegistry.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeScenes.cpp"
     "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeHooks.cpp"
@@ -187,3 +188,14 @@ add_test(NAME linkspan_host_keep_generator
     COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_SOURCE_DIR}/tools/tests" -v)
 add_test(NAME linkspan_host_keep_sync
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/gen-host-keep.py" --root "${CMAKE_SOURCE_DIR}" --check)
+
+# PLAYTEST-MCP-002: contagens/epoch sem ROM, no mesmo SDK do host.
+add_executable(oot_native_scene_query_tests
+    "${CMAKE_SOURCE_DIR}/soh/native-sdk/tests/SceneQueryTests.cpp"
+    "${CMAKE_SOURCE_DIR}/soh/soh/native/OotNativeSceneQuery.cpp")
+target_include_directories(oot_native_scene_query_tests PRIVATE "$<TARGET_PROPERTY:soh,INCLUDE_DIRECTORIES>")
+target_compile_definitions(oot_native_scene_query_tests PRIVATE "$<TARGET_PROPERTY:soh,COMPILE_DEFINITIONS>")
+if(MSVC)
+    set_property(TARGET oot_native_scene_query_tests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+add_test(NAME oot_native_scene_query_tests COMMAND oot_native_scene_query_tests)

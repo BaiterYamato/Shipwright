@@ -4,8 +4,10 @@
 `roborich/Shipwright` fork, `unbound-docs/SPEC.md`) on the Shipwright 9.3.0 Link-Span host. It does not link
 against `soh.exe`: it uses only the `linkspan.oot.*` services.
 
-Unbound layers (`.o2r` files with `unbound.json`), placed directly in `mods/` or inside a mod, only enter the game
-with this framework loaded. Without it, the host ignores the layer and logs the reason.
+Unbound layers (`.o2r` files with `unbound.json`), placed directly in `mods/` or inside a mod, only enter the root
+VFS with this framework loaded. Since HOST-SLIM-001 F4 the framework mounts them through the `oot.mods.archives`
+hook, not the host. Without it, the layer stays only in the host's private mount (`mod/<filename>/`) and shadows
+nothing. Rule, order and log lines: [Unbound layers](../../../docs/native-mods.md#unbound-layers-host-slim-001-f4).
 
 ## What version 0.6.0 does
 
@@ -262,7 +264,7 @@ registered names, game resources, `collision.bin`, or limits that depend on anot
 |---|---|---|
 | `ready` | `game.ready` | base, registry, mod conflicts, and resource references with the current layers (calling again repeats the work) |
 | `apply_text` | first `game.frame` | text; SoH only loads message tables after `game.ready` |
-| `unbound_report` | anytime | base status, document count, and the latest notes |
+| `unbound_report` | anytime | base status, layer summary (`camadas:`), document count, and the latest notes |
 | `load_scene_registry` | 0.2/0.3 compatibility | registry only |
 | `room_report` | 0.3 compatibility | rooms seen by the actor patch |
 

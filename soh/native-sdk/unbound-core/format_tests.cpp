@@ -361,6 +361,34 @@ void TestManifest() {
     }
 }
 
+// HOST-SLIM-001 F4: a regra de camada que saiu do host, com os mesmos casos de aceite e recusa.
+void TestLayerManifest() {
+    CHECK(IsLayerManifest(R"({"format":"unbound","formatVersion":2})"));
+    CHECK(IsLayerManifest(R"({"formatVersion":2,"features":["text"],"format":"unbound"})"));
+    CHECK(IsLayerManifest(R"({"format":"unbound","formatVersion":2.0})"));   // o host comparava como número
+    CHECK(!IsLayerManifest(R"({"formatVersion":2,"features":["scenes"]})")); // CheckManifest aceita, o host não
+    CHECK(!IsLayerManifest(R"({"format":"unbound"})"));
+    CHECK(!IsLayerManifest(R"({"format":"unbound","formatVersion":1})"));
+    CHECK(!IsLayerManifest(R"({"format":"unbound","formatVersion":"2"})"));
+    CHECK(!IsLayerManifest(R"({"format":"Unbound","formatVersion":2})"));
+    CHECK(!IsLayerManifest(R"({"format":"unbound","formatVersion":2} lixo)"));
+    CHECK(!IsLayerManifest("// camada\n{\"format\":\"unbound\",\"formatVersion\":2}")); // sem comentários
+    CHECK(!IsLayerManifest(R"([{"format":"unbound","formatVersion":2}])"));
+    CHECK(!IsLayerManifest(""));
+    std::string padded = R"({"format":"unbound","formatVersion":2,"x":")";
+    padded += std::string(kMaxLayerManifestBytes - padded.size() - 2, 'a') + "\"}";
+    CHECK(padded.size() == kMaxLayerManifestBytes && IsLayerManifest(padded));
+    padded.insert(padded.size() - 2, "a");
+    CHECK(!IsLayerManifest(padded));
+    // Limite a mais que o host não tinha: aninhamento acima de kMaxJsonDepth.
+    const auto nested = [](int depth) {
+        return R"({"format":"unbound","formatVersion":2,"x":)" + std::string(depth - 1, '[') +
+               std::string(depth - 1, ']') + "}";
+    };
+    CHECK(IsLayerManifest(nested(kMaxJsonDepth)));
+    CHECK(!IsLayerManifest(nested(kMaxJsonDepth + 1)));
+}
+
 TextTable Text(std::vector<std::string> jsons) {
     std::vector<LayerDocument> layers;
     int n = 0;
@@ -419,6 +447,7 @@ int main() {
     TestCollision();
     TestPaths();
     TestManifest();
+    TestLayerManifest();
     TestText();
     if (gFailures) {
         std::fprintf(stderr, "unbound format: %d falhas\n", gFailures);

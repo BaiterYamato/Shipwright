@@ -185,13 +185,44 @@ factory. `null`, `$replace`, `$order`, scene/room factories and the resource
 materialization adapter belonged to later Unbound slices. The current resources
 v3 bridge is described below.
 
-### Unbound layers without the framework
+### Unbound layers (HOST-SLIM-001 F4)
 
-An Unbound layer (`.o2r` containing format-2 `unbound.json`), placed directly in
-`mods/` or inside a mod directory, enters the root VFS only when
-`linkspan.unbound.framework` is loaded. Otherwise the log says
-`ShipLua ignorou a camada Unbound '…': o framework Unbound (…) não carregou`
-and the game continues without the layer.
+At boot, the host mounts every `.o2r`/`.otr` in `mods/` and `mods/<folder>/assets/` privately under
+`mod/<stem>/` (`<stem>` is the filename without its extension). Entries in `objects/` and `textures/`
+also get aliases at their original paths when those paths are free.
+
+After mods load, archives from mod folders whose mod did not load are removed from the VFS and excluded
+from the OBSERVE hook `oot.mods.archives`, with the log
+`ShipLua: '<archive>' fora de oot.mods.archives e desmontado: ...`.
+An alias they occupied at boot is not reassigned to another archive: this known limitation already
+applied to all mod-folder archives before F4. The hook lists accepted archives in mounting order:
+those directly in `mods/` and those from loaded mods.
+
+During hook dispatch, `mount_archive` from `linkspan.oot.resources` promotes an archive on that list:
+it mounts at the VFS root first, then removes the private mount (`mod/<stem>/` and its aliases), logging
+`Link-Span trocou a montagem privada de '...' pela montagem na raiz`. If the root mount fails, the
+private mount remains. Outside dispatch, `mount_archive` only adds a mount: a provider mounting its own
+archive at the root in Init also keeps `mod/<stem>/`.
+
+`linkspan.unbound.framework` uses this promotion for layers, after providers and consumers load and
+before `game.ready`. A layer is an `.o2r` whose `unbound.json`, read through the private mount and from
+that archive itself, is at most 64 KiB and is a strict JSON object with `"format": "unbound"` and
+`"formatVersion": 2`, within the framework's nesting limit. An archive with the same filename in another
+folder does not interfere. An archive already supplying the root `unbound.json` is skipped.
+At shutdown, the framework unmounts the layers it mounted in reverse order.
+
+Without the framework, a layer is an ordinary archive and stays only in its private mount, with the
+aliases described above. The host emits no warning.
+
+The framework records these messages in `logs/linkspan-unbound.log`:
+
+- `camada montada na raiz: <caminho>`
+- `camada já na raiz: <caminho>`
+- `camada não montada (<status>): <caminho>`
+- `camadas: montadas=N ja_na_raiz=N falhas=N`
+
+The same summary appears on the `camadas:` line of `unbound_report` and in the game log as
+`unbound-json: ... | camadas: ...`.
 
 <a id="service-movement"></a>
 

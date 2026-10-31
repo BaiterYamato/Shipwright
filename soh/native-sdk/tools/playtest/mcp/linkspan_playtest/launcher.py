@@ -12,7 +12,7 @@ import socket
 import subprocess
 import time
 
-from .agent_client import AgentClient
+from .agent_client import AgentClient, ProtocolError
 from .capture import close_window
 from .sail import Sail
 
@@ -217,6 +217,8 @@ def launch(runtime, console=False):
                 client.hello()
                 client.timeout = 5.0
                 break
+            except ProtocolError:
+                raise
             except (OSError, RuntimeError, ValueError):
                 if time.monotonic() >= deadline:
                     raise TimeoutError("agente não respondeu hello em 90 s") from None
