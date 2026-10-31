@@ -120,6 +120,8 @@ try {
     $roots = @(
         @{ source = (Join-Path $HostRoot 'soh/include'); dest = 'include/host/include' },
         @{ source = (Join-Path $HostRoot 'soh/soh/native'); dest = 'include/oot-native' },
+        # Serviços versionados fora do layout id (oot_scene_query.h).
+        @{ source = (Join-Path $HostRoot 'soh/native-sdk/include'); dest = 'include/oot-native' },
         @{ source = (Join-Path $coreRoot 'include'); dest = 'include' },
         @{ source = (Join-Path $HostRoot 'libultraship/include'); dest = 'include/lus' },
         @{ source = (Join-Path $HostRoot 'soh'); dest = 'include/host' },
@@ -131,6 +133,7 @@ try {
     $seeds = @((Join-Path $HostRoot 'soh/include/z64.h'), (Join-Path $coreRoot 'include/shiplua/native/ship_native_abi.h'),
         (Join-Path $HostRoot 'soh/native-sdk/nei-core/include/linkspan/nei/nei_items.h'), $layoutFile)
     $seeds += @(Get-ChildItem -LiteralPath (Join-Path $HostRoot 'soh/soh/native') -Filter 'oot_*.h' -File | ForEach-Object FullName)
+    $seeds += @(Get-ChildItem -LiteralPath (Join-Path $HostRoot 'soh/native-sdk/include') -Filter 'oot_*.h' -File | ForEach-Object FullName)
     foreach ($seed in $seeds) { $queue.Enqueue((Require-File $seed)) }
     # Apenas headers do C/C++ e Windows SDK podem ficar por conta do toolchain.
     $systemHeaders = '^(algorithm|array|atomic|bit|cassert|cctype|cerrno|chrono|cmath|cstddef|cstdint|cstdio|cstdlib|cstring|filesystem|functional|iterator|limits|map|memory|mutex|new|optional|set|span|string|string_view|system_error|thread|tuple|type_traits|unordered_map|utility|vector|assert\.h|float\.h|limits\.h|math\.h|stdarg\.h|stdbool\.h|stddef\.h|stdint\.h|stdio\.h|stdlib\.h|string\.h|windows\.h)$'

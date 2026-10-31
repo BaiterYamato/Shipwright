@@ -19,6 +19,7 @@
 #include "OotNativeText.h"
 #include "OotNativePublicSymbols.h"
 #include "oot_engine.h"
+#include "../../native-sdk/include/oot_scene_query.h"
 #include "oot_layout_id.h"
 #include "oot_ocarina.h"
 #include <algorithm>
@@ -57,6 +58,8 @@ extern u8 gEquipAgeReqs[][4];
 }
 
 namespace ShipLuaHost {
+void InitializeOotSceneQuery(std::thread::id thread);
+const ShipOotSceneQueryV1& GetOotSceneQueryService();
 namespace {
 thread_local uint32_t archiveTransformDepth = 0;
 }
@@ -865,6 +868,7 @@ void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {
 ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     gameThread = std::this_thread::get_id();
     InitializeOotPlayerAction(gameThread);
+    InitializeOotSceneQuery(gameThread);
     InitializeOotPlayerBody(gameThread);
     InitializeOotPlayerQuads(gameThread);
     lensKeptWithoutButton = false;
@@ -1000,6 +1004,9 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& collidersV2 = GetOotNativeCollidersServiceV2();
     policy.services.push_back(
         { LINKSPAN_OOT_COLLIDERS_SERVICE, LINKSPAN_OOT_COLLIDERS_VERSION_2, sizeof(collidersV2), &collidersV2 });
+    const auto& sceneQuery = GetOotSceneQueryService();
+    policy.services.push_back(
+        { LINKSPAN_OOT_SCENE_QUERY_SERVICE, LINKSPAN_OOT_SCENE_QUERY_VERSION, sizeof(sceneQuery), &sceneQuery });
     return policy;
 }
 } // namespace ShipLuaHost

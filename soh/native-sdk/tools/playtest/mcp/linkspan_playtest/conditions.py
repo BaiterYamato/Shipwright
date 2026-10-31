@@ -7,7 +7,8 @@ import time
 
 FIELDS = frozenset(("frame", "game_state", "scene", "room", "entrance", "age", "health", "max_health",
                     "magic", "rupees", "pause", "textbox", "queue_size", "sail",
-                    "position.x", "position.y", "position.z", "rotation.x", "rotation.y", "rotation.z"))
+                    "position.x", "position.y", "position.z", "rotation.x", "rotation.y", "rotation.z",
+                    "scene_epoch", "grounded", "controllable", "camera.yaw", "camera.input_yaw", "camera.mode"))
 CLAUSE = re.compile(r'\s*([a-z_][a-z_0-9.]*)\s*(==|!=|<=|>=|<|>)\s*'
                     r'("(?:[^"\\\x00-\x1f]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})*"|true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)')
 OPS = {"==": operator.eq, "!=": operator.ne, "<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}

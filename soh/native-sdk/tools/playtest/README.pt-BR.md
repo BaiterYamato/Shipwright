@@ -103,3 +103,96 @@ comprova controle físico, microfone nem giroscópio.
 
 O CTest `oot_native_playtest_tool` compila contra o SDK exportado, executa os testes C++ puros e os testes Python com
 `unittest`. Esses testes não substituem a prova em título → seleção de arquivo → gameplay → transição → captura.
+
+## v2 — PLAYTEST-MCP-002 (0.2.0)
+
+As nove ferramentas anteriores mantêm assinaturas e comportamento. A v2 acrescenta:
+
+| Ferramenta | Contrato |
+| --- | --- |
+| `scene_map(offset=0, limit=128)` | Cena viva: spawns, entradas locais, exits, salas e transition actors com posição, `rotY`, parâmetros, salas e plano de cruzamento. |
+| `scene_overview(y_min=null, y_max=null, bbox=null, include_actors=false, include_ceiling=false, stride=1, limit=128, max_pages=32, size=960, ...)` | Planta PNG vista de cima da colisão estática, mais um resumo em texto: chão em cinza pela altura, paredes, água, Link com seta do yaw, planos de transição com as salas de cada lado e atores. |
+| `actors(radius=null, category=null, offset=0, limit=128)` | Atores vivos, ordenados por distância 3D, categoria/id/nome/posição/sala. Categorias numéricas 0..11; NPC=4, prop=6, porta=10. |
+| `teleport(x,y,z,yaw=null,timeout=3)` | Verifica chão/parede e Player; escreve posição atual, anterior e home, zera velocidade, espera dois updates e bgcheck. |
+| `camera_state()` | `eye`, `at`, yaw/pitch/distância, `input_yaw` real, modo, frame e epoch. |
+| `camera_set(mode="free",yaw=null,pitch=null,distance=null,eye=null,at=null)` | Use yaw+pitch+distance, opcionalmente at, ou eye+at. `mode="normal"` libera a câmera. |
+| `walk_to(x,z,tolerance=20,timeout=15)` | Controle por pad read em linha reta, compensando o yaw de input. Para em parede, queda, timeout ou 1,5 s sem se aproximar do alvo. Retorna progresso. |
+
+Ângulos das ferramentas novas usam **graus**: yaw 0 olha +Z, +90 olha +X; pitch negativo olha para baixo.
+`eye` e `at` de entrada são listas `[x,y,z]`; as posições retornadas são objetos `{x,y,z}`.
+`rotY`/rotation do mapa e rotation de `game_state` continuam em unidades binárias do jogo (16384 = 90 graus).
+`camera_state.yaw` é a direção visual eye→at; `input_yaw` é `Camera_GetInputDirYaw`, usado por `walk_to`.
+
+O mapa usa `PlayState` e o cabeçalho alternativo que o jogo realmente executou. O `PlayState` não guarda contagens
+de spawns/entradas/exits; o host as captura dos comandos de cena executados e as serve pelo `linkspan.oot.scene_query`
+v1 (`soh/native-sdk/include/oot_scene_query.h`, exportado com o SDK). Esse header é um contrato de serviço versionado
+fora dos globs do layout id, então acrescentá-lo não invalida mods compilados; o consumidor ainda confere `layout_id`
+e o stride antes de indexar. Num host sem o serviço o agente devolve `complete=false`, listas desconhecidas `null` e
+aviso explícito; salas, transições e spawn selecionado continuam disponíveis. Não procura nem abre O2Rs.
+
+`scene_map.entrance_index` é a entrada global; `current_entrance` é o índice local de `setupEntranceList` (`curSpawn`).
+Spawns e entradas são listas diferentes: `entrances[i].spawn` indexa `spawns`. Exits são índices da tabela global,
+sem inventar coordenadas que não existem nessa lista. Salas são identificadas por id e estado atual/anterior,
+sem geometria de piso inferida. `counts` dá totais; avance `offset += limit` enquanto `has_more=true`.
+`complete` indica disponibilidade das listas, independentemente da paginação. Refaça páginas se `scene_epoch` mudar.
+
+`transitions[].crossing` traz normal unitária, eixo (`x`, `y`, `z` ou `oblique_xz`) e salas dos sinais negativo/positivo.
+O sinal é `dot(Link - transition.position, normal)`. EnHoll horizontal usa normal `(sin(rotY),0,cos(rotY))`;
+tipos verticais 1/2/5 usam Y. Tipos 2/5 têm lado 0 acima; tipo 1 tem destino fixo no lado 1.
+Tipo 0 antecipa a sala oposta durante o carregamento; tipo 3 depende de switch. Os horizontais 4/6 só trocam a sala
+com `50 < |sinal| < 100`, então atravesse o plano em vez de parar nele. `Door_Shutter` usa a semântica
+local-Z verificada no host. Outros tipos retornam `semantics="orientation_only"` e salas de sinal `null`, pois
+orientação geométrica não prova sua regra de ativação. Os parâmetros permanecem disponíveis para inspeção.
+
+`scene_overview` lê `colCtx.colHeader` dentro do callback do jogo e pagina os polígonos com cursores brutos (até 4096
+polígonos lidos e 128 devolvidos por página); o MCP junta até `max_pages` páginas do mesmo `scene_epoch` e desenha o
+PNG só com a biblioteca padrão. Chão, parede e teto seguem os limiares de normal do `z_bgcheck.c`. A faixa Y padrão é
+Link-200..Link+300 e fica fixa desde a primeira página; estreite-a em mapas com vários andares ou passe
+`bbox=[x_min,z_min,x_max,z_max]`. Polígonos não têm sala, então as salas aparecem só por transições, atores e água. A
+colisão dinâmica (`DynaPoly`, plataformas) não é desenhada. A imagem fica na pasta da sessão e volta como conteúdo de
+imagem do MCP; `partial=true` e `next_offsets` indicam que faltam páginas. Não calcula rota nem prova que uma área é
+transitável. Em jogo, Kokiri Forest (1692 polígonos) levou 12 páginas e menos de 1 s.
+
+`actors` aceita raio 0 (só coincidentes), não aceita negativos e usa limite 1..128. Nomes vêm de
+`tables/actor_table.h`; tipos dinâmicos podem ter `name=null`. A varredura protege contra ciclos e limita 4096 atores,
+informando `truncated`. Páginas representam instantes diferentes; atores podem nascer/desaparecer entre elas.
+
+Teleporte recusa pausa/texto, cutscene, caminhada automática, transição, porta, rolamento, água, escalada e Player
+incompatível, inclusive na Epona; não troca action function. Exige Player no chão. Sonda de chão começa em `y+50`, exige chão a até
+200 unidades de `y`, normal Y >= 0,5 e destino sem parede. Ajusta Y para chão+1, zera o impulso de esteira e
+reinicia a altura de queda no destino. Só `status="grounded"` confirma
+posição após bgcheck; `refused`, `timeout`, `scene_changed` ou `unsupported` são resultados distintos. `mutated=true`
+informa que houve escrita/controle mesmo quando a confirmação posterior falha; não há rollback nem repetição.
+Recusa antes de a operação assumir o pad preserva a fila de `input` pendente.
+
+Câmera usa `linkspan.oot.camera` com posse exclusiva e reaplicação pelo host. Perde a posse em cutscene/troca de
+cena; cancel/release, desconexão e shutdown a liberam. A limpeza pendente roda na mesma seção crítica do pedido
+seguinte, então um cancel seguido de `camera_set` novo não solta a vista nova. `camera_set` confirma aceitação pelo serviço; consulte
+`camera_state` no frame seguinte para verificar a vista efetiva. Não escreve na memória da câmera.
+`walk_to` usa input substitutivo neutro entre frames, verifica parede/chão e espera carregamento de sala; a espera
+não conta no prazo de 1,5 s, e um pedido que chega durante a carga começa quando ela acaba. Troca de cena/Player
+interrompe. Ser empurrado de lado (esteira, ator em movimento) não conta como progresso. Não calcula rotas, não abre portas nem resolve obstáculos. `arrived`, `blocked`,
+`refused`, `timeout` e `scene_changed` incluem posição/progresso; sucesso instantâneo não elimina inércia residual.
+
+O retrato ganha `scene_epoch`, `grounded`, `controllable`, `blocked_reason` e `camera`; `wait_for` aceita esses
+escalares e `camera.yaw`, `camera.input_yaw`, `camera.mode` (exceto o texto `blocked_reason`).
+
+### Protocolo JSON v2
+
+JSON por linha mantém `{id,op,...}` e `{id,ok,...}`. `hello` do MCP envia `protocol_version:2`; resposta inclui
+`protocol_version:2`, `agent_version:"0.2.0"`, `layout_id` e capabilities. O MCP novo recusa agentes sem v2,
+incluindo em attach, sem esperar 90 s por uma incompatibilidade permanente. O agente novo aceita hello v1 sem
+esse campo para clientes antigos; se informado, o número deve ser inteiro 2.
+
+Operações novas são executadas na thread do jogo. A thread TCP devolve `{ticket,status:"pending"}`; consulte
+`{id,op:"result",ticket}` até `{status:"done",result:{...}}`. Há uma operação pendente por vez; conflito retorna
+`ok:false` com busy. Último resultado vive até novo pedido/cancelamento. O MCP já faz o polling e registra pedido
+e resultado nas evidências. `input` fica busy enquanto uma operação v2 está pendente. Cancelamento, mudança de dono
+e desconexão invalidam o ticket e deixam input neutro; limpeza da câmera acontece no próximo callback do jogo.
+Sem callback, o cliente cancela após timeout+5 s. Não há replay de mutações em falha de socket.
+
+Argumentos desconhecidos/internos, booleanos no lugar de números, não finitos, timeout fora de 0,1..120 s,
+coordenadas além de ±10.000.000, pitch fora de -89..89 e combinações inválidas de câmera são recusados.
+Os testes CMake incluem `playtest_gameplay_tests` (serviços simulados + servidor TCP real, com as regressões da revisão
+adversarial), além dos testes puros do protocolo/fila/lease. A prova em jogo (Kokiri Forest, pelo EnHoll das salas 0
+e 1 e de volta, só com as ferramentas novas) passou no host `2E11252A`.

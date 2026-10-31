@@ -4,6 +4,8 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <functional>
+#include <optional>
 
 namespace Playtest {
 struct Queued {
@@ -17,6 +19,8 @@ class InputQueue {
     void Cancel();
     void Apply(uint64_t frame, ShipOotInputPadV1& pad);
     size_t Size() const;
+    // O último passo sai da fila no frame em que é aplicado: vazia e sem input neste frame.
+    bool IdleAt(uint64_t frame) const;
 
   private:
     struct Entry {
@@ -27,6 +31,7 @@ class InputQueue {
     mutable std::mutex mutex_;
     std::deque<Entry> steps_;
     uint64_t frame_ = 0;
+    uint64_t appliedFrame_ = UINT64_MAX;
     bool neutral_ = false;
     bool ready_ = false;
 };
@@ -45,6 +50,28 @@ class Lease {
   private:
     uint64_t owner_ = 0;
 };
+// Uma operação por vez. Socket só publica pedidos; o jogo executa e copia JSON.
+// Cancelar, trocar dono ou desconectar invalida também resultados da geração anterior.
+class Mailbox {
+  public:
+    uint64_t Submit(Request request);
+    Json Result(uint64_t ticket) const;
+    void Tick(const std::function<std::optional<Json>(Request&)>& handler);
+    // Consome a limpeza pendente e executa o pedido sob o mesmo mutex: um Cancel+Submit entre as duas etapas não
+    // pode fazer a limpeza antiga desfazer o pedido novo (por exemplo, soltar a câmera recém-aplicada).
+    void Tick(const std::function<void()>& cleanup, const std::function<std::optional<Json>(Request&)>& handler);
+    void Cancel();
+    bool Busy() const;
+    bool TakeCleanup();
+
+  private:
+    void RunLocked(const std::function<std::optional<Json>(Request&)>& handler);
+    mutable std::mutex mutex_;
+    uint64_t sequence_ = 0, ticket_ = 0;
+    std::optional<Request> pending_;
+    Json result_;
+    bool cleanup_ = false;
+};
 struct Snapshot {
     Json fields = { { "frame", 0 },          { "game_state", "other" }, { "queue_size", 0 },
                     { "sail", false },       { "scene", nullptr },      { "room", nullptr },
@@ -61,6 +88,7 @@ class Server {
     void Stop();
     void Publish(Snapshot snapshot);
     InputQueue& Queue();
+    Mailbox& Commands();
 
   private:
     struct Impl;
