@@ -27,14 +27,33 @@ int main() {
     CHECK(NeiMapping_Logical(&map, 0xA1) == 0);
     for (unsigned family = 0; family < NEI_POWER_COUNT; ++family) {
         uint8_t mask = 0;
-        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i)
-            mask = NeiProgress_NextMask(family, i, mask);
+        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i) {
+            const int next = NeiProgress_NextMask(family, i, mask);
+            if (NeiProgress_ValidMask(family) & (1u << i)) {
+                CHECK(next >= 0);
+                mask = (uint8_t)next;
+            } else {
+                CHECK(next == -1);
+            }
+        }
         CHECK(mask == NeiProgress_ValidMask(family));
-        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i)
-            mask = NeiProgress_NextMask(family, i, mask);
+        for (unsigned i = 0; i < NeiProgress_Limit(family); ++i) {
+            const int next = NeiProgress_NextMask(family, i, mask);
+            if (NeiProgress_ValidMask(family) & (1u << i)) {
+                CHECK(next >= 0);
+                mask = (uint8_t)next;
+            } else {
+                CHECK(next == -1);
+            }
+        }
         CHECK(mask == 0);
         CHECK(NeiProgress_NextMask(family, NeiProgress_Limit(family), mask) == -1);
     }
+    CHECK(NeiProgress_ValidMask(NEI_POWER_WAND) == 0x1F);
+    CHECK(NeiProgress_ValidMask(NEI_POWER_CANE) == 0x3E);
+    CHECK(NeiProgress_NextMask(NEI_POWER_WAND, 5, 0x20) == -1);
+    CHECK(NeiProgress_NextMask(NEI_POWER_CANE, 0, 1) == -1);
+    CHECK(NeiProgress_NextMask(NEI_POWER_CANE, 1, 0x81) == 0x83);
     CHECK(NeiProgress_Limit(NEI_POWER_SLATE) == 5);
     CHECK(NeiProgress_NextMask(99, 0, 0) == -1);
     CHECK(NeiProgress_NextMask(NEI_POWER_SLATE, 0, 0xFF) == 0xFE); // preserve unavailable/imported flags

@@ -1,0 +1,25 @@
+# Exceções do perfil oot (RC11) para a auditoria de código do tools/build-nei-assets.py (--code-allow).
+# Formato: <arquivo do fecho da DLL> ::: <prefixo do caminho> ::: <motivo>. Cada linha cobre só referências desse
+# arquivo com esse prefixo; um usuário vivo do mesmo caminho em outro arquivo continua reprovando, e linha que não
+# cobre mais nada reprova a geração. O fecho sai do tools/nei-code-closure.py.
+
+# Página de quest do MM no kaleido (KaleidoScope_DrawMmQuestStatus e os fundos dela): o extracted-fixes.txt trava o
+# L que a abre, os dois pontos que a escolhem e a sonda do fundo.
+build/extracted/z_kaleido_collect.c ::: item_name_static/ ::: página de quest do MM, travada fora pelo extracted-fixes.txt
+build/extracted/z_kaleido_collect.c ::: icon_item_static_yar/ ::: página de quest do MM, travada fora pelo extracted-fixes.txt
+build/extracted/z_kaleido_scope_PAL.c ::: icon_item_static_yar/gPauseQuestStatus ::: fundo da página de quest do MM, travada fora pelo extracted-fixes.txt
+build/extracted/z_kaleido_scope_PAL.c ::: icon_item_jpn_static/gPauseQuestStatus ::: fundo da página de quest do MM, travada fora pelo extracted-fixes.txt
+
+# Seletores do kaleido que só desenham com o item; o patch 0013 faz Picto_IsOwned e PowerKeg_IsOwned devolverem 0.
+build/extracted/z_kaleido_item.c ::: icon_item_static_yar/gItemIconPictographBoxTex ::: seletor Lens/Pictograph Box, só com Picto_IsOwned (0 no patch 0013)
+build/extracted/z_kaleido_item.c ::: icon_item_static_yar/gItemIconPowderKegTex ::: seletor Bomb/Powder Keg, só com PowerKeg_IsOwned (0 no patch 0013)
+
+# Fora do registro de itens no perfil oot.
+build/nei_item_models.c ::: objects/object_nei_mario_mask/ ::: modelo de get-item da Mario Mask (expansion.sm64, fora do perfil oot); o item não entra no registro
+build/extracted/z_en_rd.c ::: objects/object_rd/gGibdoRedead ::: dança dos ReDead com a Gibdo Mask do MM; máscaras do MM desligadas
+
+# Nome dos upgrades de espada do MM no kaleido (KaleidoScope_GetWeaponUpgradeNameOverride): só com WeaponUpgrade_*,
+# que o patch 0013 faz devolver 0.
+build/extracted/z_kaleido_scope_PAL.c ::: item_name_static/gItemNameRazorSwordENGTex ::: upgrade Razor Sword, WeaponUpgrade_KokiriLevel devolve 0 no patch 0013
+build/extracted/z_kaleido_scope_PAL.c ::: item_name_static/gItemNameGildedSwordENGTex ::: upgrade Gilded Sword, WeaponUpgrade_HasGilded devolve 0 no patch 0013
+build/extracted/z_kaleido_scope_PAL.c ::: item_name_static/gItemNameGreatFairysSwordENGTex ::: upgrade Great Fairy's Sword, WeaponUpgrade_HasGreatFairy devolve 0 no patch 0013

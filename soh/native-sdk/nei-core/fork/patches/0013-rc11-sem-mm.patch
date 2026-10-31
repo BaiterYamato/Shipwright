@@ -1,0 +1,2029 @@
+diff --git a/soh/mods/actors/somaria_cubes.c b/soh/mods/actors/somaria_cubes.c
+index 208baa8..b895b92 100644
+--- a/soh/mods/actors/somaria_cubes.c
++++ b/soh/mods/actors/somaria_cubes.c
+@@ -66,25 +66,6 @@ static u8 CaneSummon_CapFor(CaneSummonKind kind) {
+ // ELEGY SHELL DISPLAY LISTS (indexed by form)
+ // ============================================================================
+ 
+-static const char* sShellDLists[ELEGY_FORM_MAX] = {
+-    gElegyShellHumanDL, // ELEGY_FORM_HUMAN
+-    gElegyShellGoronDL, // ELEGY_FORM_GORON
+-    gElegyShellZoraDL,  // ELEGY_FORM_ZORA
+-    gElegyShellDekuDL,  // ELEGY_FORM_DEKU
+-    gElegyShellHumanDL, // ELEGY_FORM_FD (Fierce Deity uses the human shell)
+-};
+-
+-// MM's EnTorch2_Draw sets segment 0x0C to no-op DLists via Scene_SetRenderModeXlu.
+-// The elegy DLs call gsSPDisplayList(0x0C000000/0x0C000010), which then become
+-// no-ops. Setting real cull modes here instead would ADD cull bits on top of the
+-// DLs' own, leaving CULL_BACK+CULL_FRONT both active = nothing drawn.
+-static Gfx sSegment0xC_Noop[] = {
+-    gsSPEndDisplayList(), // offset 0x00 (called by 0x0C000000)
+-    gsSPEndDisplayList(), // offset 0x08
+-    gsSPEndDisplayList(), // offset 0x10 (called by 0x0C000010)
+-    gsSPEndDisplayList(), // offset 0x18
+-};
+-
+ // ============================================================================
+ // COLLIDER (AC for hookshot only — no AT, no OC)
+ // ============================================================================
+@@ -357,20 +338,8 @@ static void SomariaStatue_Update(Actor* thisx, PlayState* play) {
+ }
+ 
+ static void SomariaStatue_Draw(Actor* thisx, PlayState* play) {
+-    if (thisx->scale.x <= 0.001f) {
+-        return;
+-    }
+-
+-    u8 form = SomariaCube_GetForm(thisx);
+-    if (form >= ELEGY_FORM_MAX) {
+-        form = ELEGY_FORM_HUMAN;
+-    }
+-
+-    OPEN_DISPS(play->state.gfxCtx);
+-    gSPSegment(POLY_OPA_DISP++, 0x0C, sSegment0xC_Noop);
+-    gDPSetEnvColor(POLY_OPA_DISP++, 255, 255, 255, 255);
+-    Gfx_DrawDListOpa(play, (Gfx*)sShellDLists[form]);
+-    CLOSE_DISPS(play->state.gfxCtx);
++    (void)thisx;
++    (void)play; // RC11: no Elegy shell is drawn.
+ }
+ 
+ static void SomariaStatue_DestroyFunc(Actor* thisx, PlayState* play) {
+@@ -674,6 +643,8 @@ static Actor* CaneSummon_SpawnPlatform(PlayState* play, Vec3f* pos, s16 yaw) {
+ // ============================================================================
+ 
+ Actor* CaneSummon_Spawn(PlayState* play, CaneSummonKind kind, Vec3f* pos, s16 yaw) {
++    if (kind == CANE_SUMMON_STATUE)
++        return NULL; // RC11: the Statue ability needs deferred MM resources.
+     Actor* summon = NULL;
+ 
+     switch (kind) {
+@@ -741,45 +712,11 @@ u8 SomariaCube_IsRemoteCube(Actor* actor) {
+ }
+ 
+ Actor* SomariaCube_SpawnRemote(PlayState* play, Vec3f* pos, s16 yaw, u8 form) {
+-    Actor* cube = Actor_Spawn(&play->actorCtx, play, ACTOR_EN_LIGHTBOX, pos->x, pos->y, pos->z, 0, yaw, 0, 0);
+-
+-    if (cube == NULL) {
+-        return NULL;
+-    }
+-
+-    EnLightbox* lightbox = (EnLightbox*)cube;
+-
+-    if (sOriginalDestroy == NULL) {
+-        sOriginalDestroy = cube->destroy;
+-    }
+-
+-    cube->update = SomariaStatue_UpdateRemote;
+-    cube->draw = SomariaStatue_Draw;
+-    cube->destroy = SomariaStatue_DestroyFunc;
+-
+-    if (lightbox->dyna.bgId != BGACTOR_NEG_ONE) {
+-        DynaPoly_DeleteBgActor(play, &play->colCtx.dyna, lightbox->dyna.bgId);
+-        lightbox->dyna.bgId = BGACTOR_NEG_ONE;
+-    }
+-
+-    SomariaCube_AllocCollider(play, cube);
+-
+-    cube->gravity = SOMARIA_GRAVITY;
+-    cube->minVelocityY = SOMARIA_MIN_VEL_Y;
+-    cube->flags |= ACTOR_FLAG_HOOKSHOT_PULLS_PLAYER;
+-    cube->flags |= ACTOR_FLAG_SWITCHHOOKABLE;
+-    cube->shape.shadowDraw = NULL;
+-    cube->shape.shadowScale = 0.0f;
+-    cube->room = -1;
+-
+-    if (form >= ELEGY_FORM_MAX) {
+-        form = ELEGY_FORM_HUMAN;
+-    }
+-    SOMARIA_SET_FORM(cube, form);
+-    SOMARIA_SET_STATE(cube, SOMARIA_STATUE_IDLE);
+-    Actor_SetScale(cube, SOMARIA_CUBE_SCALE);
+-
+-    return cube;
++    (void)play;
++    (void)pos;
++    (void)yaw;
++    (void)form;
++    return NULL; // RC11: deferred statues cannot be spawned remotely.
+ }
+ 
+ void SomariaCube_UpdateRemotePos(Actor* cube, Vec3f* pos, f32 scale, s16 rotY) {
+diff --git a/soh/mods/actors/somaria_cubes.h b/soh/mods/actors/somaria_cubes.h
+index 912a331..c2b0bb2 100644
+--- a/soh/mods/actors/somaria_cubes.h
++++ b/soh/mods/actors/somaria_cubes.h
+@@ -24,7 +24,13 @@
+ #define SOMARIA_CUBES_H
+ 
+ #include "z64.h"
+-#include "elegy_shell_assets.h"
++// RC11: form indices remain ABI-compatible; no Elegy asset header.
++#define ELEGY_FORM_HUMAN 0
++#define ELEGY_FORM_GORON 1
++#define ELEGY_FORM_ZORA 2
++#define ELEGY_FORM_DEKU 3
++#define ELEGY_FORM_FD 4
++#define ELEGY_FORM_MAX 5
+ 
+ // ============================================================================
+ // SUMMON KINDS
+diff --git a/soh/mods/equipment/ext_equip_names.c b/soh/mods/equipment/ext_equip_names.c
+index 1ba79a3..e4ebf14 100644
+--- a/soh/mods/equipment/ext_equip_names.c
++++ b/soh/mods/equipment/ext_equip_names.c
+@@ -44,7 +44,7 @@ static void* ExtEquip_LookupNameTex(u16 itemId, u8 language) {
+             // Shared id: the grid slot is the Climb Boots, the inventory/trade-wheel item with this id
+             // is still the Pendant of Memories (mm.o2r name texture). Skijer 2026-07-29
+             return gExtEquipGridNameContext ? (void*)gClimbBootsNameTex
+-                                            : (void*)"__OTR__item_name_static/gItemNamePendantOfMemoriesENGTex";
++                                            : NULL;
+         case ITEM_EXT_BOOTS_3:
+             return (void*)gRocBootsNameTex;
+ 
+diff --git a/soh/mods/extended_equipment.c b/soh/mods/extended_equipment.c
+index 576dddd..a1fd34b 100644
+--- a/soh/mods/extended_equipment.c
++++ b/soh/mods/extended_equipment.c
+@@ -12,7 +12,6 @@
+ #include "extended_equipment.h"
+ #include "nei_save.h" // Skijer's NEI
+ #include "transformation_masks/transformation_masks.h"
+-#include "transformation_masks/assets/mm_asset_loader.h"
+ #include "pak_loader/pak_loader.h"
+ 
+ // trade_items.c ships no header; declared locally, as randomizer.cpp and debugSaveEditor.cpp do.
+@@ -201,7 +200,7 @@ void ExtEquip_Init(void) {
+ 
+     // Load equipped state from save data (per-file, persisted only on game save) // Skijer's NEI
+     gExtEquipState.currentExtSword = Nei_Save()->extEquipSword;
+-    gExtEquipState.currentExtShield = Nei_Save()->extEquipShield;
++    gExtEquipState.currentExtShield = Nei_Save()->extEquipShield == 3 ? 0 : Nei_Save()->extEquipShield;
+     gExtEquipState.currentExtTunic = Nei_Save()->extEquipTunic;
+     gExtEquipState.currentExtBoots = Nei_Save()->extEquipBoots;
+ 
+@@ -235,7 +234,8 @@ void ExtEquip_Init(void) {
+     // so it can't read as "owns the Roc Boots". Equipped implies owned.
+     if (Nei_Save()->extBootsLayoutVersion < 1) {
+         if (ExtEquip_HasItem(EQUIP_TYPE_BOOTS, 2) || gExtEquipState.currentExtBoots == 2) {
+-            TradeAdult_GiveIndex(TRADE_ADULT_PENDANT);
++            // RC11: TradeAdult_GiveIndex refuses MM trade items; keep the fork's hand-off in the save.
++            Nei_Save()->tradeAdultOwned |= (1u << TRADE_ADULT_PENDANT);
+         }
+         ExtEquip_RemoveItem(EQUIP_TYPE_BOOTS, 2);
+         ExtEquip_RemoveItem(EQUIP_TYPE_BOOTS, 3);
+@@ -322,6 +322,8 @@ u8 ExtEquip_IsEnabled(void) {
+ // ---------------------------------------------------------------------------
+ 
+ static void ExtEquip_SetCurrentByType(s16 equipType, u8 index) {
++    if (equipType == EQUIP_TYPE_SHIELD && index == 3)
++        return;
+     switch (equipType) {
+         case EQUIP_TYPE_SWORD:
+             gExtEquipState.currentExtSword = index;
+@@ -351,13 +353,13 @@ static u32 ExtEquip_GetBit(s16 equipType, u8 index) {
+ }
+ 
+ u8 ExtEquip_HasItem(s16 equipType, u8 index) {
+-    if (index == 0 || index > 3 || equipType < 0 || equipType > 3)
++    if ((equipType == EQUIP_TYPE_SHIELD && index == 3) || index == 0 || index > 3 || equipType < 0 || equipType > 3)
+         return 0;
+     return (Nei_Save()->extEquipOwnedBits & ExtEquip_GetBit(equipType, index)) != 0; // Skijer's NEI
+ }
+ 
+ void ExtEquip_GiveItem(s16 equipType, u8 index) {
+-    if (index == 0 || index > 3 || equipType < 0 || equipType > 3)
++    if ((equipType == EQUIP_TYPE_SHIELD && index == 3) || index == 0 || index > 3 || equipType < 0 || equipType > 3)
+         return;
+     Nei_Save()->extEquipOwnedBits |= ExtEquip_GetBit(equipType, index); // Skijer's NEI
+ }
+@@ -473,7 +475,7 @@ static void ExtEquip_ApplyTridentShieldPolicy(void) {
+ void ExtEquip_SetSlot(s16 equipType, u8 index) {
+     u8 old;
+ 
+-    if (equipType < 0 || equipType > 3 || index > 3) {
++    if (equipType < 0 || equipType > 3 || index > 3 || (equipType == EQUIP_TYPE_SHIELD && index == 3)) {
+         return;
+     }
+     old = ExtEquip_GetCurrent(equipType);
+@@ -507,14 +509,14 @@ void ExtEquip_ValidateForAge(void) {
+ // predicate/draw reads, without re-applying bases (the peer already did).
+ void ExtEquip_ResyncFromSave(void) {
+     gExtEquipState.currentExtSword = Nei_Save()->extEquipSword;
+-    gExtEquipState.currentExtShield = Nei_Save()->extEquipShield;
++    gExtEquipState.currentExtShield = Nei_Save()->extEquipShield == 3 ? 0 : Nei_Save()->extEquipShield;
+     gExtEquipState.currentExtTunic = Nei_Save()->extEquipTunic;
+     gExtEquipState.currentExtBoots = Nei_Save()->extEquipBoots;
+     ExtEquip_RefreshPlayer();
+ }
+ 
+ void ExtEquip_RemoveItem(s16 equipType, u8 index) {
+-    if (index == 0 || index > 3 || equipType < 0 || equipType > 3)
++    if ((equipType == EQUIP_TYPE_SHIELD && index == 3) || index == 0 || index > 3 || equipType < 0 || equipType > 3)
+         return;
+     Nei_Save()->extEquipOwnedBits &= ~ExtEquip_GetBit(equipType, index); // Skijer's NEI
+     if (ExtEquip_GetCurrent(equipType) == index) {
+@@ -531,10 +533,9 @@ void ExtEquip_RemoveItem(s16 equipType, u8 index) {
+ // re-used by the Champion's Tunic), BOOTS 2 (Pendant of Memories -> left column, slot re-used by the
+ // CLIMB BOOTS), BOOTS 3 (Water Dragon Scale deleted, Zora swim is the Zora Tunic's effect; slot
+ // re-used by the ROC BOOTS). Kept as a function so the call sites stay put if a slot is ever parked.
++// RC11 parks the Shield of Ikana (MM) without touching its saved bit.
+ u8 ExtEquip_SlotRetired(s16 equipType, u8 index) {
+-    (void)equipType;
+-    (void)index;
+-    return false;
++    return equipType == EQUIP_TYPE_SHIELD && index == 3; // RC11: Ikana is unavailable.
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -577,16 +578,12 @@ void ExtEquip_ToggleCapeVisibility(void) {
+ // the equipment flag instead of BEING it. (pendantOwned already existed in NeiSaveData and was
+ // serialized; it just had no reader.)
+ void ExtEquip_GivePendant(void) {
+-    Nei_Save()->pendantOwned = 1;
++    // RC11: preserve deferred Pendant ownership without enabling it.
+ }
+ 
+ u8 ExtEquip_PendantOwned(void) {
+-    // Latch on observation: this catches every acquisition path (trade grant, rando, save load,
+-    // FleetSync) without having to hook each one. Idempotent, and it never clears.
+-    if (!Nei_Save()->pendantOwned && TradeAdult_IsOwnedIndex(TRADE_ADULT_PENDANT)) {
+-        ExtEquip_GivePendant();
+-    }
+-    return Nei_Save()->pendantOwned;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+ u8 ExtEquip_PendantActive(void) {
+@@ -594,7 +591,7 @@ u8 ExtEquip_PendantActive(void) {
+ }
+ 
+ void ExtEquip_TogglePendantEffect(void) {
+-    Nei_Save()->pendantEffectOff = !Nei_Save()->pendantEffectOff;
++    // RC11: preserve deferred Pendant settings.
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -611,7 +608,7 @@ void* ExtEquip_GetCapeIcon(void) {
+     return (void*)dgItemIconMagicCapeTex;
+ }
+ void* ExtEquip_GetPendantIcon(void) {
+-    return (void*)"__OTR__icon_item_static_yar/gItemIconPendantOfMemoriesTex";
++    return NULL;
+ }
+ 
+ u8 ExtEquip_IsChampionTunic(void) {
+@@ -854,8 +851,7 @@ static const char* sExtEquipIconPaths[4][3] = {
+     // Swords
+     { dgItemIconCaneOfByrnaTex, dgItemIconFourSwordTex, dgItemIconTridentTex },
+     // Shields
+-    { dgItemIconGoddessShieldTex, dgItemIconKiteShieldTex,
+-      "__OTR__icon_item_static_yar/gItemIconMirrorShieldTex" }, // Shield of Ikana (MM mirror shield)
++    { dgItemIconGoddessShieldTex, dgItemIconKiteShieldTex, NULL }, // Ikana is deferred in RC11.
+     // Tunics
+     { dgItemIconChampionsTunicTex, dgItemIconMagicTunicTex, dgItemIconSagesTunicTex },
+     // Boots
+@@ -1343,44 +1339,12 @@ const char* ExtEquip_GetShieldDLOverride(void) {
+         return NULL;
+ 
+     // Divine (1), Kite (2), Shield of Ikana (3): hide OOT shield, draw custom in PostLimbDraw
+-    if (gExtEquipState.currentExtShield >= 1 && gExtEquipState.currentExtShield <= 3)
++    if (gExtEquipState.currentExtShield >= 1 && gExtEquipState.currentExtShield <= 2)
+         return "HIDE";
+ 
+     return NULL;
+ }
+ 
+-// Cached MM Mirror Shield DLs (loaded once from mm.o2r with hash pre-resolution)
+-static Gfx* sCachedMmShieldHandDL = NULL;
+-static Gfx* sCachedMmShieldBackDL = NULL;
+-static u8 sMmShieldLoadAttempted = 0;
+-
+-static void ExtEquip_LoadMmShieldDLs(void) {
+-    if (sMmShieldLoadAttempted)
+-        return;
+-    sMmShieldLoadAttempted = 1;
+-
+-    sCachedMmShieldHandDL =
+-        (Gfx*)TransformMasks_LoadMmDL("objects/object_link_child/gLinkHumanRightHandHoldingMirrorShieldDL");
+-    // Use the plain shield DL (no embedded matrix) for back — we control the transform
+-    sCachedMmShieldBackDL = (Gfx*)TransformMasks_LoadMmDL("objects/object_link_child/gLinkHumanMirrorShieldDL");
+-}
+-
+-// Shared draw for the cached MM Mirror Shield DLs (hand + back differ only in
+-// which cached DL is passed). Drawn on XLU to avoid corrupting the OPA pipeline
+-// (prevents black tint on the tunic).
+-static void DrawCachedShieldDL(void* playVoid, Gfx* dl) {
+-    PlayState* play = (PlayState*)playVoid;
+-
+-    OPEN_DISPS(play->state.gfxCtx);
+-
+-    Matrix_Push();
+-    gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+-    gSPDisplayList(POLY_XLU_DISP++, dl);
+-    Matrix_Pop();
+-
+-    CLOSE_DISPS(play->state.gfxCtx);
+-}
+-
+ // Custom soh.o2r shield models (brought in from kite_shield.blend via the
+ // blend_to_nei -> c2obj_nei pipeline). Cached gated loads.
+ //   slot 1 = Divine Shield (object_nei_divine_shield)
+@@ -1461,13 +1425,6 @@ static void ExtEquip_DrawShieldCommon(void* playVoid, u8 onBack) {
+         case 2: // Kite Shield: custom soh.o2r model
+             DrawCustomShieldDL(playVoid, ExtEquip_GetKiteShieldDL());
+             break;
+-        case 3: { // Shield of Ikana: MM Mirror Shield from mm.o2r
+-            ExtEquip_LoadMmShieldDLs();
+-            Gfx* mmDL = onBack ? sCachedMmShieldBackDL : sCachedMmShieldHandDL;
+-            if (mmDL != NULL)
+-                DrawCachedShieldDL(playVoid, mmDL);
+-            break;
+-        }
+     }
+ }
+ 
+diff --git a/soh/mods/extended_inventory.c b/soh/mods/extended_inventory.c
+index 281de8c..93f7792 100644
+--- a/soh/mods/extended_inventory.c
++++ b/soh/mods/extended_inventory.c
+@@ -16,13 +16,17 @@
+ #include "assets/soh_assets.h"
+ #include "transformation_masks/transformation_masks.h"
+ #include "transformation_masks/kafei_form.h"
+-#include "transformation_masks/assets/mm_asset_loader.h"
+ #include "items/logic/weapon_upgrades.h" // NEI weapon-upgrade icon overrides
+ #include "expansions/sw97/sw97_config.h" // SW97_MEDALLIONS_ENABLED
+ #include "variables.h"                   // gItemIcons[158] con su tamaño REAL (aquí se declaraba incompleto y el
+                                          // corte de abajo tenía que ir a mano, que es como se desfasó)
+ extern uint8_t gItemSlots[];
+ static ExtendedInventoryState sExtInvState = { .currentPage = 0, .pageSwitchTimer = 0 };
++uint16_t gExtInvSessionItems[72];
++uint8_t gExtInvSessionValid[72];
++void ExtInv_ResetSessionItems(void) {
++    memset(gExtInvSessionValid, 0, sizeof(gExtInvSessionValid));
++}
+ 
+ // Page 2 item layout (slots 24-47)
+ // Note: ITEM_ROCS_FEATHER_SKIJER at slot 24 is progressive - becomes ITEM_ROCS_CAPE when upgraded (shares slot)
+@@ -147,8 +151,8 @@ bool ExtInv_IsCustomItemsEnabled(void) {
+     return CVarGetInteger("gMods.CustomItems.Enabled", 1) != 0;
+ }
+ bool ExtInv_IsMmMasksEnabled(void) {
+-    // Default ON — NEI features are enabled by default.
+-    return CVarGetInteger("gMods.MmMasks.InventoryEnabled", 1) != 0;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ bool ExtInv_IsOnlyTransformation(void) {
+     return CVarGetInteger("gMods.MmMasks.OnlyTransformation", 0) != 0;
+@@ -271,9 +275,6 @@ uint8_t ExtInv_GetEquipAgeReq(uint8_t row, uint8_t col) {
+     return gEquipAgeReqs[row][col];
+ }
+ 
+-extern void* MmMasks_LoadNameTex(uint16_t itemId);
+-extern const char* MmMasks_GetNamePath(uint16_t itemId);
+-
+ // Single source of truth for page-2 custom item icon + name-texture art.
+ // Both ExtInv_GetItemIcon and ExtInv_GetCustomItemNameTex index this table so
+ // the two associations can no longer drift apart.
+@@ -381,61 +382,6 @@ void* ExtInv_GetCustomItemNameTex(uint16_t itemId, uint8_t language) {
+                 break;
+         }
+     }
+-    // MM Mask items: return OTR path string so the RSP resolves actual texture
+-    // dimensions from resource metadata (HD mod textures render at native resolution).
+-    if (itemId >= ITEM_MM_MASK_POSTMAN && itemId <= ITEM_MM_MASK_FIERCE_DEITY) {
+-        const char* path = MmMasks_GetNamePath(itemId);
+-        if (path)
+-            return (void*)path;
+-        return NULL;
+-    }
+-    // Chateau Romani: name texture from mm.o2r
+-    if (itemId == ITEM_CHATEAU_ROMANI) {
+-        if (MmAssets_GetChateauIconPath()) // checks availability
+-            return (void*)"__OTR__item_name_static/gItemNameChateauRomaniENGTex";
+-        return NULL;
+-    }
+-    // MM bottle-content custom items: name textures from mm.o2r (item_name_static), like Chateau.
+-    // Hylian Loach + Obaba's Drink only exist as JPN textures in MM. Skijer's NEI
+-    switch (itemId) {
+-        case ITEM_GOLD_DUST:
+-            return (void*)"__OTR__item_name_static/gItemNameGoldDustENGTex";
+-        case ITEM_HOT_SPRING_WATER:
+-            return (void*)"__OTR__item_name_static/gItemNameHotSpringWaterENGTex";
+-        case ITEM_DEKU_PRINCESS:
+-            return (void*)"__OTR__item_name_static/gItemNameDekuPrincessENGTex";
+-        case ITEM_SEAHORSE:
+-            return (void*)"__OTR__item_name_static/gItemNameSeaHorseENGTex";
+-        case ITEM_SPRING_WATER:
+-            return (void*)"__OTR__item_name_static/gItemNameSpringWaterENGTex";
+-        case ITEM_ZORA_EGG:
+-            return (void*)"__OTR__item_name_static/gItemNameZoraEggENGTex";
+-        case ITEM_HYLIAN_LOACH:
+-            return (void*)"__OTR__item_name_static/gItemNameHylianLoachJPNTex";
+-        case ITEM_OBABA_DRINK:
+-            return (void*)"__OTR__item_name_static/gItemNameObabasDrinkJPNTex";
+-        case ITEM_MAGIC_MUSHROOM:
+-            return (void*)"__OTR__item_name_static/gItemNameMagicalMushroomENGTex";
+-        // MM adult trade-quest items (Skijer's NEI) — names from mm.o2r item_name_static.
+-        case ITEM_MM_MOONS_TEAR:
+-            return (void*)"__OTR__item_name_static/gItemNameMoonsTearENGTex";
+-        case ITEM_MM_DEED_LAND:
+-            return (void*)"__OTR__item_name_static/gItemNameLandTitleDeedENGTex";
+-        case ITEM_MM_DEED_SWAMP:
+-            return (void*)"__OTR__item_name_static/gItemNameSwampTitleDeedENGTex";
+-        case ITEM_MM_DEED_MOUNTAIN:
+-            return (void*)"__OTR__item_name_static/gItemNameMountainTitleDeedENGTex";
+-        case ITEM_MM_DEED_OCEAN:
+-            return (void*)"__OTR__item_name_static/gItemNameOceanTitleDeedENGTex";
+-        case ITEM_MM_ROOM_KEY:
+-            return (void*)"__OTR__item_name_static/gItemNameRoomKeyENGTex";
+-        case ITEM_MM_LETTER_KAFEI:
+-            return (void*)"__OTR__item_name_static/gItemNameLetterToKafeiENGTex";
+-        case ITEM_MM_SPECIAL_DELIVERY:
+-            return (void*)"__OTR__item_name_static/gItemNameSpecialDeliveryToMamaENGTex";
+-        default:
+-            break;
+-    }
+     // All page-2 custom item name textures live in the shared asset table.
+     const CustomItemAsset* asset = ExtInv_FindCustomItemAsset(itemId);
+     if (asset) {
+@@ -443,11 +389,6 @@ void* ExtInv_GetCustomItemNameTex(uint16_t itemId, uint8_t language) {
+     }
+     return NULL;
+ }
+-extern void* MmMasks_LoadIcon(uint16_t itemId);
+-extern const char* MmMasks_GetIconPath(uint16_t itemId);
+-extern void* MmAssets_LoadFDSwordIcon(void);
+-extern const char* MmAssets_GetChateauIconPath(void);
+-
+ // SM64 Mario caps — direct icon lookup, decoupled from the OOT spells. The caps
+ // are their own custom behavior (D-pad → Sm64Mario_HandleCapDpad), not an
+ // extension of Din's/Nayru's/Farore's. cap: 0 = Vanish, 1 = Metal, 2 = Wing,
+@@ -537,31 +478,6 @@ static void* ExtInv_GetItemIconImpl(uint16_t itemId, bool useHostRuntimeIcon) {
+         }
+     }
+ 
+-    // FD skin mode: show FD sword icon for any equipped sword
+-    if (TransformMasks_IsFDSkinMode() && (itemId == ITEM_SWORD_KOKIRI || itemId == ITEM_SWORD_MASTER ||
+-                                          itemId == ITEM_SWORD_BGS || itemId == ITEM_SWORD_KNIFE)) {
+-        // Return the OTR PATH (HD-mod-aware); the loader call is just the mm.o2r existence probe.
+-        if (MmAssets_LoadFDSwordIcon())
+-            return (void*)"__OTR__icon_item_static_yar/gItemIconFierceDeitySwordTex";
+-    }
+-
+-    // NEI weapon upgrades — show the MM upgrade icon when the upgrade is owned and the matching
+-    // base weapon is equipped. The Kokiri top level (Gilded) and the BGS upgrade (GFS) each have
+-    // a display toggle in the Custom Items menu. Falls through to the vanilla icon (gItemIcons)
+-    // if mm.o2r lacks the asset. Real Master Sword keeps the vanilla Master icon (a glow is
+-    // applied at render time, not here).
+-    if (itemId == ITEM_SWORD_KOKIRI && WeaponUpgrade_KokiriLevel() >= 1) {
+-        u8 showGilded = WeaponUpgrade_HasGilded() && CVarGetInteger("gEnhancements.SkijerNEI.GildedUsesGildedLook", 1);
+-        const char* p = showGilded ? "__OTR__icon_item_static_yar/gItemIconGildedSwordTex"
+-                                   : "__OTR__icon_item_static_yar/gItemIconRazorSwordTex";
+-        if (MmAssets_LoadResource(p)) // probe; return the PATH so the HD pack applies
+-            return (void*)p;
+-    }
+-    if (itemId == ITEM_SWORD_BGS && WeaponUpgrade_HasGreatFairy() &&
+-        CVarGetInteger("gEnhancements.SkijerNEI.BgsUsesGfsLook", 1)) {
+-        if (MmAssets_LoadResource("__OTR__icon_item_static_yar/gItemIconGreatFairysSwordTex"))
+-            return (void*)"__OTR__icon_item_static_yar/gItemIconGreatFairysSwordTex";
+-    }
+     // Hammer → Iron Knuckle's Axe: show the axe icon while the upgrade is owned.
+     if (itemId == ITEM_HAMMER && WeaponUpgrade_HasHammerAxe()) {
+         return (void*)gItemIconDrillshaftTex;
+@@ -583,18 +499,10 @@ static void* ExtInv_GetItemIconImpl(uint16_t itemId, bool useHostRuntimeIcon) {
+     // (persistent toggle via A in kaleido), swap hookshot/longshot/
+     // boomerang icons to the upgraded variant.
+     //
+-    // Clawshot specifically uses the MM (Majora's Mask) hookshot icon
+-    // straight from mm.o2r so the visual is 1:1 with TP's clawshot. The
+-    // local placeholder PNG (gItemIconClawshotTex) is only used if mm.o2r
+-    // isn't loaded — keeps the rest of the system working in environments
+-    // without the MM archive. Gale boomerang still uses its local
+-    // placeholder; no MM equivalent ported yet.
+     {
+         extern unsigned char TwilightUpgrade_IsClawshotActive(void);
+         extern unsigned char TwilightUpgrade_IsGaleBoomerangActive(void);
+         if ((itemId == ITEM_HOOKSHOT || itemId == ITEM_LONGSHOT) && TwilightUpgrade_IsClawshotActive()) {
+-            if (MmAssets_LoadHookshotIcon())
+-                return (void*)"__OTR__icon_item_static_yar/gItemIconHookshotTex";
+             return (void*)gItemIconClawshotTex;
+         }
+         if (itemId == ITEM_BOOMERANG && TwilightUpgrade_IsGaleBoomerangActive()) {
+@@ -602,105 +510,6 @@ static void* ExtInv_GetItemIconImpl(uint16_t itemId, bool useHostRuntimeIcon) {
+         }
+     }
+ 
+-    // Pictograph Box shares the Lens of Truth slot. When the slot's pictobox mode is selected (kaleido
+-    // A-toggle), show the pictobox icon in the slot instead of the Lens — clear feedback for the swap,
+-    // mirroring the Clawshot/Gale overrides above. Skijer's NEI
+-    {
+-        extern unsigned char Picto_IsOwned(void);
+-        extern unsigned char Picto_IsOnLensActive(void);
+-        if (itemId == ITEM_LENS && Picto_IsOwned() && Picto_IsOnLensActive()) {
+-            // Return the OTR PATH (not the resolved MmAssets_LoadResource pointer) so gDPLoadTextureBlock
+-            // gets the name and Fast3D can substitute an MM HD texture pack (MM_Reloaded etc.) — a
+-            // resolved pointer draws base data at the wrong size and went blank under an HD pack. The
+-            // MmAssets_LoadResource call stays as the mm.o2r existence probe (falls through if absent).
+-            if (MmAssets_LoadResource("__OTR__icon_item_static_yar/gItemIconPictographBoxTex")) {
+-                return (void*)"__OTR__icon_item_static_yar/gItemIconPictographBoxTex";
+-            }
+-        }
+-    }
+-
+-    // Power Keg shares the Bomb slot. When power-keg mode is selected (kaleido A-toggle), show the
+-    // Power Keg icon in the slot instead of the Bomb. Skijer's NEI
+-    {
+-        extern unsigned char PowerKeg_IsOwned(void);
+-        extern unsigned char PowerKeg_IsOnBombActive(void);
+-        if (itemId == ITEM_BOMB && PowerKeg_IsOwned() && PowerKeg_IsOnBombActive()) {
+-            // Return the OTR PATH (see the pictobox note above) so the MM HD texture pack applies.
+-            if (MmAssets_LoadResource("__OTR__icon_item_static_yar/gItemIconPowderKegTex")) {
+-                return (void*)"__OTR__icon_item_static_yar/gItemIconPowderKegTex";
+-            }
+-        }
+-    }
+-
+-    // MM bottle-content custom items (Bottle Randomizer) — load the content icon from mm.o2r.
+-    // Placeholder texture names for now (TODO: swap to the exact mm.o2r names on test). Falls
+-    // through to the registry/fallback if mm.o2r isn't loaded. (Chateau Romani 0xB6 keeps its own
+-    // gItemIconChateauRomaniTex; Magic Mushroom 0xDD keeps its own.) Skijer's NEI
+-    {
+-        const char* p = NULL;
+-        if (itemId == ITEM_GOLD_DUST)
+-            p = "__OTR__icon_item_static_yar/gItemIconBottledGoldDustTex";
+-        else if (itemId == ITEM_HOT_SPRING_WATER)
+-            p = "__OTR__icon_item_static_yar/gItemIconHotSpringWaterTex";
+-        else if (itemId == ITEM_DEKU_PRINCESS)
+-            p = "__OTR__icon_item_static_yar/gItemIconBottledDekuPrincessTex";
+-        else if (itemId == ITEM_SEAHORSE)
+-            p = "__OTR__icon_item_static_yar/gItemIconBottledSeahorseTex";
+-        else if (itemId == ITEM_SPRING_WATER)
+-            p = "__OTR__icon_item_static_yar/gItemIconSpringWaterTex";
+-        else if (itemId == ITEM_ZORA_EGG)
+-            p = "__OTR__icon_item_static_yar/gItemIconBottledZoraEggTex";
+-        else if (itemId == ITEM_HYLIAN_LOACH)
+-            p = "__OTR__icon_item_static_yar/gItemIconBottledHylianLoachTex";
+-        else if (itemId == ITEM_OBABA_DRINK)
+-            p = "__OTR__icon_item_static_yar/gItemIconEmptyBottle2Tex";
+-        if (p && MmAssets_LoadResource(p))
+-            return (void*)p; // PATH -> HD-pack aware
+-    }
+-
+-    // MM adult trade-quest items (Skijer's NEI) — shown in the SLOT_TRADE_ADULT 2D-grid wheel. Icons
+-    // from mm.o2r. The Pendant of Memories (ITEM_EXT_BOOTS_2) is the combat item, so it gets its icon
+-    // from the ext-equipment block below. Special Delivery to Mama reuses MM's "Letter to Mama" icon.
+-    {
+-        const char* p = NULL;
+-        if (itemId == ITEM_MM_MOONS_TEAR)
+-            p = "__OTR__icon_item_static_yar/gItemIconMoonsTearTex";
+-        else if (itemId == ITEM_MM_DEED_LAND)
+-            p = "__OTR__icon_item_static_yar/gItemIconLandDeedTex";
+-        else if (itemId == ITEM_MM_DEED_SWAMP)
+-            p = "__OTR__icon_item_static_yar/gItemIconSwampDeedTex";
+-        else if (itemId == ITEM_MM_DEED_MOUNTAIN)
+-            p = "__OTR__icon_item_static_yar/gItemIconMountainDeedTex";
+-        else if (itemId == ITEM_MM_DEED_OCEAN)
+-            p = "__OTR__icon_item_static_yar/gItemIconOceanDeedTex";
+-        else if (itemId == ITEM_MM_ROOM_KEY)
+-            p = "__OTR__icon_item_static_yar/gItemIconRoomKeyTex";
+-        else if (itemId == ITEM_MM_LETTER_KAFEI)
+-            p = "__OTR__icon_item_static_yar/gItemIconLetterToKafeiTex";
+-        else if (itemId == ITEM_MM_SPECIAL_DELIVERY)
+-            p = "__OTR__icon_item_static_yar/gItemIconLetterToMamaTex";
+-        if (p && MmAssets_LoadResource(p))
+-            return (void*)p; // PATH -> HD-pack aware
+-    }
+-
+-    // Skijer's NEI boss_remains: MUST be resolved BEFORE the `itemId < 156` vanilla-array shortcut
+-    // below. Three of the four remains ids reclaim low slots (Odolwa 0x80=128, Goht 0x81=129,
+-    // Twinmold 0x89=137) that fall inside that range, so the shortcut used to hand back an unrelated
+-    // gItemIcons[] entry — which is why only Gyorg (0x9C = 156, just past the cutoff) looked right.
+-    // Their art exists only in mm.o2r; returning the PATH keeps HD packs working.
+-    switch (itemId) {
+-        case ITEM_MM_REMAINS_ODOLWA:
+-            return (void*)"__OTR__icon_item_static_yar/gItemIconOdolwasRemainsTex";
+-        case ITEM_MM_REMAINS_GOHT:
+-            return (void*)"__OTR__icon_item_static_yar/gItemIconGohtsRemainsTex";
+-        case ITEM_MM_REMAINS_GYORG:
+-            return (void*)"__OTR__icon_item_static_yar/gItemIconGyorgsRemainsTex";
+-        case ITEM_MM_REMAINS_TWINMOLD:
+-            return (void*)"__OTR__icon_item_static_yar/gItemIconTwinmoldsRemainsTex";
+-        default:
+-            break;
+-    }
+-
+     // El corte estaba escrito a mano como `< 156`, pero gItemIcons tiene 158 entradas: la pluma
+     // SHIP-VANILLA (ITEM_ROCS_FEATHER = 0x9D = 157) quedaba JUSTO fuera, se escapaba a las ramas de
+     // abajo, no encajaba en ninguna y acababa en el `gItemIcons[0]` de fallback — por eso se veía
+@@ -729,18 +538,6 @@ static void* ExtInv_GetItemIconImpl(uint16_t itemId, bool useHostRuntimeIcon) {
+             return icon;
+         return gItemIcons[0];
+     }
+-    // MM Mask items: return OTR path string so the RSP resolves actual texture
+-    // dimensions from resource metadata (HD mod textures render at native resolution).
+-    if (itemId >= ITEM_MM_MASK_POSTMAN && itemId <= ITEM_MM_MASK_FIERCE_DEITY) {
+-        // Bunny Hood: use OOT icon (same appearance, enables OOT behavior)
+-        if (itemId == ITEM_MM_MASK_BUNNY) {
+-            return gItemIcons[ITEM_MASK_BUNNY];
+-        }
+-        const char* path = MmMasks_GetIconPath(itemId);
+-        if (path)
+-            return (void*)path;
+-        return gItemIcons[0]; // Fallback
+-    }
+     // Page-2 custom items with a constant icon: unified NEI registry. Skijer's NEI
+     // (ITEM_LANTERN has a NULL iconTex because its icon is dynamic; it falls
+     // through to the dedicated case in the switch below.)
+@@ -809,12 +606,8 @@ static void* ExtInv_GetItemIconImpl(uint16_t itemId, bool useHostRuntimeIcon) {
+         case ITEM_ELEMENTAL_WAND:
+             return Wand_ModeIcon(Wand_GetMode());
+ 
+-        case ITEM_CHATEAU_ROMANI: { // 0xB5
+-            const char* path = MmAssets_GetChateauIconPath();
+-            if (path)
+-                return (void*)path;
+-            return gItemIcons[ITEM_MILK_BOTTLE]; // Fallback to milk icon
+-        }
++        case ITEM_CHATEAU_ROMANI:
++            return NULL; // RC11: deferred MM bottle content.
+         default:
+             return gItemIcons[0];
+     }
+@@ -1134,12 +927,12 @@ uint16_t Wand_ModeMedallion(uint8_t mode) {
+ // Which rods are usable. All three randomizer treatments share the SAME slot flag; they differ only
+ // in what unlocks an individual mode.
+ uint8_t Wand_ModeOwned(uint8_t mode) {
+-    if (mode >= WAND_MODE_COUNT) {
++    if (mode >= WAND_MODE_COUNT || mode == WAND_MODE_SCEPTER) {
+         return 0;
+     }
+     switch (Wand_RandoMode()) {
+         case WAND_RANDO_SINGLE:
+-            return Nei_Save()->wandRodsOwned != 0; // one item lights all six
++            return (Nei_Save()->wandRodsOwned & 0x1F) != 0; // RC11: native rods only
+         case WAND_RANDO_ELEMENTAL:
+             return (Nei_Save()->wandRodsOwned & (1 << mode)) != 0;
+         case WAND_RANDO_MEDALLIONS:
+@@ -1152,11 +945,11 @@ uint8_t Wand_ModeOwned(uint8_t mode) {
+ }
+ 
+ void Wand_GrantMode(uint8_t mode) {
+-    if (mode >= WAND_MODE_COUNT) {
++    if (mode >= WAND_MODE_COUNT || mode == WAND_MODE_SCEPTER) {
+         return;
+     }
+     if (Wand_RandoMode() == WAND_RANDO_SINGLE) {
+-        Nei_Save()->wandRodsOwned = (1 << WAND_MODE_COUNT) - 1;
++        Nei_Save()->wandRodsOwned |= ((1 << WAND_MODE_COUNT) - 1) & ~(1 << WAND_MODE_SCEPTER);
+     } else {
+         Nei_Save()->wandRodsOwned |= (1 << mode);
+     }
+@@ -1168,7 +961,7 @@ void Wand_GrantMode(uint8_t mode) {
+ // write the field the ACTIVE treatment reads. Writing only wandRodsOwned looks like it works and
+ // then changes nothing under the default Medallions rule, which reads the quest medallion instead.
+ void Wand_SetModeOwned(uint8_t mode, uint8_t owned) {
+-    if (mode >= WAND_MODE_COUNT) {
++    if (mode >= WAND_MODE_COUNT || mode == WAND_MODE_SCEPTER) {
+         return;
+     }
+ 
+@@ -1186,7 +979,7 @@ void Wand_SetModeOwned(uint8_t mode, uint8_t owned) {
+             gSaveContext.inventory.questItems &= ~gBitFlags[sWandQuest[mode]];
+         }
+     } else if (rule == WAND_RANDO_SINGLE) {
+-        Nei_Save()->wandRodsOwned = 0; // one flag lights all six, so it only clears wholesale
++        Nei_Save()->wandRodsOwned &= (uint8_t)~0x1F; // Preserve deferred/unknown rods.
+     } else {
+         Nei_Save()->wandRodsOwned &= (uint8_t) ~(1 << mode);
+     }
+@@ -1225,7 +1018,7 @@ uint8_t Wand_GetMode(void) {
+     uint8_t m = Nei_Save()->wandMode;
+     if (!Wand_ModeOwned(m)) {
+         m = Wand_ModeAt(0);
+-        Nei_Save()->wandMode = m;
++        // The effective fallback must not replace the saved selection.
+     }
+     return m;
+ }
+diff --git a/soh/mods/extended_inventory.h b/soh/mods/extended_inventory.h
+index 8bc10b7..8d75327 100644
+--- a/soh/mods/extended_inventory.h
++++ b/soh/mods/extended_inventory.h
+@@ -14,6 +14,7 @@
+ #include <stdbool.h>
+ #include "z64item.h"
+ #include "nei_save.h" // Skijer's NEI — custom-slot storage (24..71)
++#include "extended_equipment.h" // ITEM_EXT_* ids of the RC11 deferred list below
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -35,10 +36,56 @@ extern "C" {
+ // u16, not u8: page-2 slots live in the widened NeiSaveData.ownedItems and can hold an EXT id above
+ // 0xFF. Page-1 slots (0..23) are still u8 values from the vanilla inventory, just returned widened.
+ // Skijer's NEI
+-static inline uint16_t ExtInv_GetSlotItem(int slot) {
++// RC11: keep deferred MM ids in saves, but never expose or grant them.
++static inline bool ExtInv_IsDeferredMmItem(uint16_t item) {
++    switch (item) {
++        case ITEM_CHATEAU_ROMANI:
++        case ITEM_MAGIC_MUSHROOM:
++        case ITEM_BOTTLE_WITH_MAGIC_MUSHROOM:
++        case ITEM_GOLD_DUST:
++        case ITEM_HOT_SPRING_WATER:
++        case ITEM_DEKU_PRINCESS:
++        case ITEM_SEAHORSE:
++        case ITEM_SPRING_WATER:
++        case ITEM_ZORA_EGG:
++        case ITEM_HYLIAN_LOACH:
++        case ITEM_OBABA_DRINK:
++        case ITEM_MM_MOONS_TEAR:
++        case ITEM_MM_DEED_LAND:
++        case ITEM_MM_DEED_SWAMP:
++        case ITEM_MM_DEED_MOUNTAIN:
++        case ITEM_MM_DEED_OCEAN:
++        case ITEM_MM_ROOM_KEY:
++        case ITEM_MM_LETTER_KAFEI:
++        case ITEM_MM_SPECIAL_DELIVERY:
++        case ITEM_EXT_BOOTS_2: // Trade Pendant, not the Climb Boots grid entry.
++        case ITEM_EXT_SHIELD_3:
++        case ITEM_MM_REMAINS_ODOLWA:
++        case ITEM_MM_REMAINS_GOHT:
++        case ITEM_MM_REMAINS_GYORG:
++        case ITEM_MM_REMAINS_TWINMOLD:
++            return true;
++        default:
++            return false;
++    }
++}
++
++// Session projections never replace the imported physical slot.
++extern uint16_t gExtInvSessionItems[72];
++extern uint8_t gExtInvSessionValid[72];
++void ExtInv_ResetSessionItems(void);
++static inline uint16_t ExtInv_GetPhysicalSlotItem(int slot) {
+     extern SaveContext gSaveContext;
++    if (slot >= 0 && slot < 24)
++        return gSaveContext.inventory.items[slot];
++    return slot >= 24 && slot < 72 ? Nei_GetOwnedItem((uint8_t)slot) : ITEM_NONE;
++}
++static inline uint16_t ExtInv_GetSlotItem(int slot) {
++    uint16_t physical = ExtInv_GetPhysicalSlotItem(slot);
++    if (ExtInv_IsDeferredMmItem(physical))
++        return slot >= 0 && slot < 72 && gExtInvSessionValid[slot] ? gExtInvSessionItems[slot] : ITEM_NONE;
+     if (slot >= 0 && slot < 24) {
+-        uint16_t item = gSaveContext.inventory.items[slot];
++        uint16_t item = physical;
+         // Pictograph Box shares the Lens of Truth slot: when owned, the slot is selectable AND
+         // equippable even without the real Lens (the in-game C-button routes to the pictobox, and the
+         // icon swaps via ExtInv_GetItemIcon). Without this, an empty Lens slot can't be equipped at all.
+@@ -63,10 +110,19 @@ static inline uint16_t ExtInv_GetSlotItem(int slot) {
+         }
+         return item;
+     }
+-    return Nei_GetOwnedItem((uint8_t)slot);
++    uint16_t item = Nei_GetOwnedItem((uint8_t)slot);
++    return ExtInv_IsDeferredMmItem(item) ? ITEM_NONE : item;
+ }
+ // An EXT id (>0xFF) only fits in a page-2 slot; the vanilla range truncates, hence the explicit cast.
+ static inline void ExtInv_SetSlotItem(int slot, uint16_t itemId) {
++    if (slot < 0 || slot >= 72 || ExtInv_IsDeferredMmItem(itemId))
++        return;
++    if (ExtInv_IsDeferredMmItem(ExtInv_GetPhysicalSlotItem(slot))) {
++        gExtInvSessionItems[slot] = itemId;
++        gExtInvSessionValid[slot] = 1;
++        return;
++    }
++    gExtInvSessionValid[slot] = 0;
+     extern SaveContext gSaveContext;
+     if (slot >= 0 && slot < 24) {
+         gSaveContext.inventory.items[slot] = (uint8_t)itemId;
+diff --git a/soh/mods/extended_player.c b/soh/mods/extended_player.c
+index b8fbce3..8755b83 100644
+--- a/soh/mods/extended_player.c
++++ b/soh/mods/extended_player.c
+@@ -1529,6 +1529,8 @@ static const NeiItem sNeiItems[] = {
+ 
+ // Skijer's NEI
+ const NeiItem* Nei_FindByItem(int32_t item) {
++    if (ExtInv_IsDeferredMmItem((uint16_t)item))
++        return NULL;
+     for (size_t i = 0; i < NEI_ITEMS_COUNT; i++) {
+         if (sNeiItems[i].item != NEI_NO_ITEM && sNeiItems[i].item == item) {
+             return &sNeiItems[i];
+@@ -1576,6 +1578,8 @@ static const NeiItem* ExtPlayer_FindByIA(int32_t itemAction) {
+  * Get the PLAYER_IA_xxx value for a given ITEM_xxx value.
+  */
+ int8_t ExtPlayer_GetItemAction(int32_t item) {
++    if (ExtInv_IsDeferredMmItem((uint16_t)item))
++        return PLAYER_IA_NONE;
+     // Handle special cases first
+     if (item >= ITEM_NONE_FE) {
+         return PLAYER_IA_NONE;
+diff --git a/soh/mods/items/custom_bottles.cpp b/soh/mods/items/custom_bottles.cpp
+index 1dc9bfc..60b523b 100644
+--- a/soh/mods/items/custom_bottles.cpp
++++ b/soh/mods/items/custom_bottles.cpp
+@@ -33,6 +33,7 @@
+ #define BC_ITEM_OBABA_DRINK 0xF3
+ #define BC_ITEM_CHATEAU 0xB6        // pre-existing ITEM_CHATEAU_ROMANI
+ #define BC_ITEM_MAGIC_MUSHROOM 0xDD // pre-existing ITEM_MAGIC_MUSHROOM
++#define BC_ITEM_BOTTLE_MAGIC_MUSHROOM 0xDE
+ 
+ // Order MUST match the BottleContent enum.
+ static const uint16_t sContentItem[BOTTLE_C_COUNT] = {
+@@ -59,14 +60,26 @@ static const uint16_t sContentItem[BOTTLE_C_COUNT] = {
+     /* MAGIC_MUSHROOM  */ BC_ITEM_MAGIC_MUSHROOM,
+ };
+ 
++static bool Bottle_DeferredMmContent(uint16_t item) {
++    return (item >= BC_ITEM_GOLD_DUST && item <= BC_ITEM_OBABA_DRINK) ||
++           item == BC_ITEM_CHATEAU || item == BC_ITEM_MAGIC_MUSHROOM || item == BC_ITEM_BOTTLE_MAGIC_MUSHROOM;
++}
++
++static void Bottle_ReadSlots(uint8_t out[8]) {
++    for (int i = 0; i < 8; ++i) {
++        uint8_t item = Nei_Save()->bottleSlots[i];
++        out[i] = Bottle_DeferredMmContent(item) ? BOTTLE_SLOT_EMPTY : item;
++    }
++}
++
+ extern "C" uint16_t Bottle_ContentItemId(BottleContent c) {
+-    if (c < 0 || c >= BOTTLE_C_COUNT)
++    if (c < 0 || c >= BOTTLE_C_COUNT || c >= BOTTLE_C_GOLD_DUST)
+         return BC_ITEM_NONE;
+     return sContentItem[c];
+ }
+ 
+ extern "C" BottleContent Bottle_ContentFromItemId(uint16_t itemId) {
+-    if (itemId == BC_ITEM_NONE)
++    if (itemId == BC_ITEM_NONE || Bottle_DeferredMmContent(itemId))
+         return BOTTLE_C_COUNT;
+     for (int i = 0; i < BOTTLE_C_COUNT; i++) {
+         if (sContentItem[i] == itemId)
+@@ -78,11 +91,12 @@ extern "C" BottleContent Bottle_ContentFromItemId(uint16_t itemId) {
+ extern "C" uint8_t Bottle_GetSlot(uint8_t slotIndex) {
+     if (slotIndex >= 8)
+         return BOTTLE_SLOT_EMPTY;
+-    return Nei_Save()->bottleSlots[slotIndex];
++    uint8_t item = Nei_Save()->bottleSlots[slotIndex];
++    return Bottle_DeferredMmContent(item) ? BOTTLE_SLOT_EMPTY : item;
+ }
+ 
+ extern "C" void Bottle_SetSlot(uint8_t slotIndex, uint8_t item) {
+-    if (slotIndex >= 8)
++    if (slotIndex >= 8 || Bottle_DeferredMmContent(item) || Bottle_DeferredMmContent(Nei_Save()->bottleSlots[slotIndex]))
+         return;
+     Nei_Save()->bottleSlots[slotIndex] = item;
+ }
+@@ -90,7 +104,8 @@ extern "C" void Bottle_SetSlot(uint8_t slotIndex, uint8_t item) {
+ // Build the wheel's non-empty bottle item list (slots wheel*4 .. +3). Returns the count.
+ static int Bottle_BuildWheelList(uint8_t wheel, uint16_t out[4]) {
+     int base = (wheel == BOTTLE_WHEEL_B) ? 4 : 0;
+-    const uint8_t* slots = Nei_Save()->bottleSlots;
++    uint8_t slots[8];
++    Bottle_ReadSlots(slots);
+     int n = 0;
+     for (int i = 0; i < 4; i++) {
+         uint8_t it = slots[base + i];
+@@ -139,7 +154,8 @@ static uint16_t sBottleLastSet[2] = { BOTTLE_SLOT_EMPTY, BOTTLE_SLOT_EMPTY };
+ // Count of BOTTLES in the wheel (slots holding ITEM_BOTTLE or a content; truly-empty slots don't count).
+ extern "C" uint8_t Bottle_WheelBottleCount(uint8_t wheel) {
+     int base = (wheel == BOTTLE_WHEEL_B) ? 4 : 0;
+-    const uint8_t* slots = Nei_Save()->bottleSlots;
++    uint8_t slots[8];
++    Bottle_ReadSlots(slots);
+     uint8_t n = 0;
+     for (int i = 0; i < 4; i++) {
+         if (slots[base + i] != BOTTLE_SLOT_EMPTY)
+@@ -150,7 +166,8 @@ extern "C" uint8_t Bottle_WheelBottleCount(uint8_t wheel) {
+ 
+ // Snap the active index onto a bottle slot if it currently points at a truly-empty slot.
+ static void Bottle_WheelClampActive(uint8_t w) {
+-    const uint8_t* slots = Nei_Save()->bottleSlots;
++    uint8_t slots[8];
++    Bottle_ReadSlots(slots);
+     int base = w * 4;
+     if (slots[base + sBottleActive[w]] != BOTTLE_SLOT_EMPTY) {
+         return;
+@@ -168,7 +185,8 @@ static void Bottle_WheelClampActive(uint8_t w) {
+ extern "C" uint16_t Bottle_WheelPeek(uint8_t wheel, int8_t dir) {
+     uint8_t w = (wheel == BOTTLE_WHEEL_B) ? 1 : 0;
+     int base = w * 4;
+-    const uint8_t* slots = Nei_Save()->bottleSlots;
++    uint8_t slots[8];
++    Bottle_ReadSlots(slots);
+     Bottle_WheelClampActive(w);
+     int idx = sBottleActive[w];
+     for (int step = 0; step < 4; step++) {
+@@ -188,7 +206,8 @@ extern "C" uint16_t Bottle_WheelPeek(uint8_t wheel, int8_t dir) {
+ extern "C" uint16_t Bottle_WheelStep(uint8_t wheel, int8_t dir) {
+     uint8_t w = (wheel == BOTTLE_WHEEL_B) ? 1 : 0;
+     int base = w * 4;
+-    uint8_t* slots = Nei_Save()->bottleSlots;
++    uint8_t slots[8];
++    Bottle_ReadSlots(slots);
+     Bottle_WheelClampActive(w);
+     int idx = sBottleActive[w];
+     for (int step = 0; step < 4; step++) {
+@@ -212,7 +231,8 @@ extern "C" void Bottle_WheelPersist(uint8_t wheel, uint16_t slotItem) {
+     uint8_t* slots = Nei_Save()->bottleSlots;
+     if (slotItem != sBottleLastSet[w] && sBottleLastSet[w] != BOTTLE_SLOT_EMPTY && slotItem != BOTTLE_SLOT_EMPTY &&
+         sBottleActive[w] < 4) {
+-        slots[base + sBottleActive[w]] = (uint8_t)slotItem;
++        if (!Bottle_DeferredMmContent(slotItem) && !Bottle_DeferredMmContent(slots[base + sBottleActive[w]]))
++            slots[base + sBottleActive[w]] = (uint8_t)slotItem;
+     }
+ }
+ 
+@@ -226,7 +246,8 @@ extern "C" void Bottle_WheelResetTracking(void) {
+ extern "C" void Bottle_WheelRecordActive(uint8_t wheel, uint16_t slotItem) {
+     uint8_t w = (wheel == BOTTLE_WHEEL_B) ? 1 : 0;
+     int base = w * 4;
+-    const uint8_t* slots = Nei_Save()->bottleSlots;
++    uint8_t slots[8];
++    Bottle_ReadSlots(slots);
+     if (slotItem != BOTTLE_SLOT_EMPTY && (sBottleActive[w] >= 4 || slots[base + sBottleActive[w]] != slotItem)) {
+         for (int i = 0; i < 4; i++) {
+             if (slots[base + i] == slotItem) {
+@@ -303,7 +324,7 @@ extern "C" uint8_t Bottle_BottomlessOwned(void) {
+ extern "C" void Bottle_SetBottomlessOwned(uint8_t owned) {
+     NeiSaveData* s = Nei_Save();
+     s->bottomlessBottleMode = owned ? 1 : 0;
+-    if (!owned) {
++    if (!owned && !Bottle_DeferredMmContent(s->bottomlessContent)) {
+         // Wipe the content on un-own so nothing lingers: otherwise the leftover content sits in
+         // SLOT_BOTTLE_4 as a vanilla-looking bottle and the residue killer migrates it (a "free
+         // bottle") AND re-grants Bottomless. The slot itself is cleared by the caller. Skijer's NEI
+@@ -313,16 +334,21 @@ extern "C" void Bottle_SetBottomlessOwned(uint8_t owned) {
+ }
+ 
+ extern "C" uint8_t Bottle_BottomlessContent(void) {
+-    return Nei_Save()->bottomlessContent;
++    uint8_t content = Nei_Save()->bottomlessContent;
++    return Bottle_DeferredMmContent(content) ? BC_ITEM_BOTTLE : content;
+ }
+ extern "C" uint8_t Bottle_BottomlessCount(void) {
+-    return Nei_Save()->bottomlessCount;
++    return Bottle_DeferredMmContent(Nei_Save()->bottomlessContent) ? 0 : Nei_Save()->bottomlessCount;
+ }
+ extern "C" uint8_t Bottle_BottomlessIsEmpty(void) {
+     NeiSaveData* s = Nei_Save();
+-    return (!Bottle_ContentIsReal(s->bottomlessContent) || s->bottomlessCount == 0) ? 1 : 0;
++    return (!Bottle_ContentIsReal(s->bottomlessContent) || Bottle_DeferredMmContent(s->bottomlessContent) || s->bottomlessCount == 0) ? 1 : 0;
+ }
+ extern "C" void Bottle_BottomlessFill(uint16_t contentItem) {
++    if (Bottle_DeferredMmContent(Nei_Save()->bottomlessContent))
++        return; // RC11: preserve imported MM content.
++    if (Bottle_DeferredMmContent(contentItem))
++        return; // RC11: no new MM content.
+     NeiSaveData* s = Nei_Save();
+     if (!Bottle_ContentIsReal((uint8_t)contentItem)) { // filling with "empty" just empties
+         Bottle_BottomlessEmpty();
+@@ -332,11 +358,15 @@ extern "C" void Bottle_BottomlessFill(uint16_t contentItem) {
+     s->bottomlessCount = Bottle_ContentMaxUses(contentItem);
+ }
+ extern "C" void Bottle_BottomlessEmpty(void) {
++    if (Bottle_DeferredMmContent(Nei_Save()->bottomlessContent))
++        return; // RC11: preserve imported MM content.
+     NeiSaveData* s = Nei_Save();
+     s->bottomlessContent = BC_ITEM_BOTTLE;
+     s->bottomlessCount = 0;
+ }
+ extern "C" void Bottle_BottomlessSetCount(uint8_t count) {
++    if (Bottle_DeferredMmContent(Nei_Save()->bottomlessContent))
++        return; // RC11: preserve imported MM content.
+     NeiSaveData* s = Nei_Save();
+     s->bottomlessCount = count;
+     if (count == 0) {
+@@ -344,6 +374,8 @@ extern "C" void Bottle_BottomlessSetCount(uint8_t count) {
+     }
+ }
+ extern "C" uint8_t Bottle_BottomlessConsume(void) {
++    if (Bottle_DeferredMmContent(Nei_Save()->bottomlessContent))
++        return 0; // RC11: preserve imported MM content.
+     NeiSaveData* s = Nei_Save();
+     if (s->bottomlessCount > 0) {
+         s->bottomlessCount--;
+@@ -371,12 +403,15 @@ extern "C" uint8_t Bottle_ConsumeCatchSync(uint8_t* outWheel, uint8_t* outItem)
+ }
+ 
+ extern "C" uint8_t Bottle_CatchIntoEmpty(uint16_t content) {
++    if (Bottle_DeferredMmContent(content))
++        return 0; // RC11: no new MM content.
+     if (!Bottle_ContentIsReal((uint8_t)content)) {
+         return 0;
+     }
+     // 1) Bottomless Bottle FIRST when owned and empty — "si existe, la reemplaza": the per-frame
+     //    enforcer projects the new content into SLOT_BOTTLE_4 + its C-button immediately.
+-    if (Bottle_BottomlessOwned() && Bottle_BottomlessIsEmpty()) {
++    if (Bottle_BottomlessOwned() && !Bottle_DeferredMmContent(Nei_Save()->bottomlessContent) &&
++        Bottle_BottomlessIsEmpty()) {
+         Bottle_BottomlessFill(content);
+         return 1;
+     }
+@@ -417,6 +452,7 @@ extern "C" uint16_t Bottle_WheelPrevItem(uint8_t wheel, uint16_t curItem) {
+ }
+ 
+ extern "C" uint8_t Bottle_HasFreeSlot(void) {
++    // Hidden contents still occupy physical storage.
+     const uint8_t* slots = Nei_Save()->bottleSlots;
+     for (int i = 0; i < 8; i++) {
+         if (slots[i] == BOTTLE_SLOT_EMPTY) {
+@@ -432,6 +468,8 @@ extern "C" uint8_t Bottle_HasFreeSlot(void) {
+ // content-item give that only FILLS an already-empty bottle and is silently lost when none exists.
+ // Kept in sync with the MM side (mm/mods/items/custom_bottles.cpp).
+ extern "C" uint8_t Bottle_GiveBottle(uint16_t contentItem) {
++    if (Bottle_DeferredMmContent(contentItem))
++        return 0; // RC11: no new MM content.
+     uint8_t* slots = Nei_Save()->bottleSlots;
+     for (int i = 0; i < 8; i++) {
+         if (slots[i] == BOTTLE_SLOT_EMPTY) {
+diff --git a/soh/mods/items/helpers/mailbox_actor.c b/soh/mods/items/helpers/mailbox_actor.c
+index 407e6a5..d564ed4 100644
+--- a/soh/mods/items/helpers/mailbox_actor.c
++++ b/soh/mods/items/helpers/mailbox_actor.c
+@@ -18,7 +18,6 @@
+ #include "../custom_items.h"
+ #include "../logic/item_postman_hat.h"
+ #include "overlays/actors/ovl_En_Lightbox/z_en_lightbox.h"
+-#include "mods/transformation_masks/assets/mm_asset_loader.h"
+ 
+ extern Gfx* ResourceMgr_LoadGfxByName(const char* path);
+ 
+@@ -111,23 +110,10 @@ static s32 sMailboxAssetsChecked = 0;
+ static s32 sMailboxAssetsAvailable = 0;
+ 
+ static void Mailbox_EnsureAssets(void) {
+-    if (sMailboxAssetsChecked)
+-        return;
++    // RC11: Postman mailboxes need deferred MM resources.
+     sMailboxAssetsChecked = 1;
+-    // object_pst lives in mm.o2r — without it, ResourceMgr_LoadGfxByName crashes
+-    // dereferencing an empty Instructions vector.
+-    if (!MmAssets_IsLoaded()) {
+-        sMailboxFrameDL = NULL;
+-        sMailboxAssetsAvailable = 0;
+-        return;
+-    }
+-    sMailboxFrameDL = ResourceMgr_LoadGfxByName("__OTR__objects/object_pst/gPostboxFrameDL");
+-    if (sMailboxFrameDL == NULL || ((const char*)sMailboxFrameDL)[0] == '_') {
+-        sMailboxFrameDL = NULL;
+-        sMailboxAssetsAvailable = 0;
+-    } else {
+-        sMailboxAssetsAvailable = 1;
+-    }
++    sMailboxAssetsAvailable = 0;
++    sMailboxFrameDL = NULL;
+ }
+ 
+ // ============================================================================
+diff --git a/soh/mods/items/helpers/mushroom_spot_actor.c b/soh/mods/items/helpers/mushroom_spot_actor.c
+index ab9eda4..8f11fe7 100644
+--- a/soh/mods/items/helpers/mushroom_spot_actor.c
++++ b/soh/mods/items/helpers/mushroom_spot_actor.c
+@@ -17,7 +17,6 @@
+ #include "mushroom_spot_actor.h"
+ #include "../custom_items.h"
+ #include "overlays/actors/ovl_En_Lightbox/z_en_lightbox.h"
+-#include "mods/transformation_masks/assets/mm_asset_loader.h"
+ #include "mods/transformation_masks/mm_mask_wear.h"
+ #include "soh/Enhancements/randomizer/randomizerTypes.h"
+ 
+@@ -119,14 +118,6 @@ static void MushroomSpot_EnsureAssets(void) {
+     if (sMushroomAssetsChecked)
+         return;
+     sMushroomAssetsChecked = 1;
+-    // Prefer MM's mask_bu_san asset (the mushroom prop visual used on the
+-    // Mask of Scents itself). Fall back to OOT object_gi_mushroom DL.
+-    if (MmAssets_IsLoaded()) {
+-        sMushroomDL = ResourceMgr_LoadGfxByName("__OTR__objects/object_mask_bu_san/object_mask_bu_san_DL_000710");
+-        if (sMushroomDL != NULL && ((const char*)sMushroomDL)[0] != '_') {
+-            return;
+-        }
+-    }
+     sMushroomDL = ResourceMgr_LoadGfxByName("__OTR__objects/object_gi_mushroom/gGiOddMushroomDL");
+     if (sMushroomDL == NULL || ((const char*)sMushroomDL)[0] == '_') {
+         sMushroomDL = NULL;
+@@ -281,22 +272,5 @@ Actor* MushroomSpot_Spawn(PlayState* play, const Vec3f* pos, s16 yaw, s32 spotId
+ 
+ // ────────── Scene-load tick (per-frame from case 10 of MmMaskWear_Update) ──────────
+ void MushroomSpots_Tick(PlayState* play) {
+-    static s16 sLastScene = -1;
+-    static u32 sLastFrames = 0;
+-
+-    if (!MmAssets_IsLoaded()) {
+-        sLastScene = -1; // force re-check next time mm.o2r becomes available
+-        return;
+-    }
+-
+-    s32 sceneLoaded = (play->sceneNum != sLastScene) || (play->state.frames < sLastFrames);
+-    if (sceneLoaded) {
+-        sLastScene = play->sceneNum;
+-        for (s32 i = 0; i < MUSHROOM_SPOT_COUNT; i++) {
+-            if (sMushroomSpots[i].sceneId == play->sceneNum) {
+-                MushroomSpot_Spawn(play, &sMushroomSpots[i].pos, 0, i);
+-            }
+-        }
+-    }
+-    sLastFrames = play->state.frames;
++    (void)play; // RC11: the Mask of Scents activity remains deferred.
+ }
+diff --git a/soh/mods/items/helpers/postman_kaleido.c b/soh/mods/items/helpers/postman_kaleido.c
+index edec884..52445bd 100644
+--- a/soh/mods/items/helpers/postman_kaleido.c
++++ b/soh/mods/items/helpers/postman_kaleido.c
+@@ -26,7 +26,7 @@
+ // MM Letter-to-Kafei icon (RGBA32, 32x32) from mm.o2r (icon_item_static_yar).
+ // Used as the selector icon in the postman kaleido, mirroring how the Minish
+ // Cap kaleido uses gItemIconPecoriTex for its selector.
+-#include "mods/mm_sources/archives/icon_item_static_yar.h"
++#include "assets/soh_assets.h" // RC11: use local selector art only.
+ 
+ // ============================================================
+ // MAP page frame (same as z_kaleido_scope_PAL sPostmanMapENGTexs)
+@@ -460,7 +460,7 @@ void PostmanKaleido_Draw(PlayState* play) {
+             s32 iDsdx = 32 * 4096 / (iXH - iXL);
+             s32 iDtdy = 32 * 4096 / (iYH - iYL);
+ 
+-            gDPLoadTextureBlock(OVERLAY_DISP++, gItemIconLetterToKafeiTex, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
++            gDPLoadTextureBlock(OVERLAY_DISP++, gItemIconPecoriTex, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                                 G_TX_WRAP | G_TX_NOMIRROR, G_TX_WRAP | G_TX_NOMIRROR, G_TX_NOMASK, G_TX_NOMASK,
+                                 G_TX_NOLOD, G_TX_NOLOD);
+             gSPWideTextureRectangle(OVERLAY_DISP++, iXL, iYL, iXH, iYH, G_TX_RENDERTILE, 0, 0, iDsdx, iDtdy);
+diff --git a/soh/mods/items/logic/custom_items.c b/soh/mods/items/logic/custom_items.c
+index f624889..add814d 100644
+--- a/soh/mods/items/logic/custom_items.c
++++ b/soh/mods/items/logic/custom_items.c
+@@ -33,8 +33,7 @@
+ #include "../custom_items_common.c"
+ #include "../objects/object_custom_items.c"
+ 
+-// MM Animation Loader (must be before item_rocscape.c which uses it)
+-#include "mods/anim_translator/mm_anim_loader.c"
++// RC11: Roc items use native OoT animations.
+ 
+ // Item implementations
+ #include "item_rocsfeather.c"
+diff --git a/soh/mods/items/logic/item_cane_of_somaria.c b/soh/mods/items/logic/item_cane_of_somaria.c
+index ca9c762..3705e87 100644
+--- a/soh/mods/items/logic/item_cane_of_somaria.c
++++ b/soh/mods/items/logic/item_cane_of_somaria.c
+@@ -95,7 +95,7 @@ u8 Cane_GetActiveSkill(void) {
+ }
+ 
+ u8 Cane_GiveSkill(u8 skill) {
+-    if (skill >= CANE_SKILL_MAX) {
++    if (skill >= CANE_SKILL_MAX || skill == CANE_SKILL_SOMARIA_STATUE) {
+         return 0;
+     }
+     if (Nei_CaneHasSkill(skill)) {
+@@ -108,9 +108,11 @@ u8 Cane_GiveSkill(u8 skill) {
+     // The first skill of ANY kind is what puts the cane itself in the player's
+     // hands — the six pickups can arrive in any order, so "first one wins".
+     if (!hadCane) {
+-        Nei_SetOwnedItem(SLOT_CANE_OF_SOMARIA, ITEM_CANE_OF_SOMARIA);
+-        Nei_CaneSetType(CANE_SKILL_TYPE(skill));
+-        Nei_CaneSetSkillSlot(CANE_SKILL_TYPE(skill), CANE_SKILL_SLOT(skill));
++        ExtInv_SetSlotItem(SLOT_CANE_OF_SOMARIA, ITEM_CANE_OF_SOMARIA);
++        if (!(Nei_Save()->caneSkills & CANE_SKILL_BIT(CANE_SKILL_SOMARIA_STATUE))) {
++            Nei_CaneSetType(CANE_SKILL_TYPE(skill));
++            Nei_CaneSetSkillSlot(CANE_SKILL_TYPE(skill), CANE_SKILL_SLOT(skill));
++        }
+     }
+     return 1;
+ }
+@@ -540,7 +542,7 @@ void Handle_CaneOfSomaria(Player* p, PlayState* play) {
+     // Cane rework, or a bulk "give all" that filled the slot directly. Rather than
+     // hand the player a cane that does nothing, self-heal to the base skill.
+     if (!Nei_CaneOwned()) {
+-        Cane_GiveSkill(CANE_SKILL_SOMARIA_STATUE);
++        Cane_GiveSkill(CANE_SKILL_SOMARIA_BLOCK); // RC11: first usable native ability.
+     }
+ 
+     // Blocking checks.
+diff --git a/soh/mods/items/logic/item_dekuleaf.c b/soh/mods/items/logic/item_dekuleaf.c
+index 2f256be..71614bc 100644
+--- a/soh/mods/items/logic/item_dekuleaf.c
++++ b/soh/mods/items/logic/item_dekuleaf.c
+@@ -18,7 +18,6 @@
+ #include "../helpers/equip_helper.h"
+ #include "../helpers/fx_helper.h"
+ #include "transformation_masks/transformation_masks.h"
+-#include "transformation_masks/assets/mm_asset_loader.h"
+ #include "sound_translator/mm_sfx_ids.h"
+ #include "macros.h"
+ #include "functions.h"
+@@ -68,7 +67,8 @@ static void DekuLeaf_InitCollider(PlayState* play, Player* p) {
+ // defaults that match MM's. Any remaining "feels off" perception against
+ // real MM is now a bridge / sample-bank issue, not a call-site issue.
+ static void DekuLeaf_PlayMmSfx(u16 sfxId, Vec3f* pos) {
+-    MmSfx_PlayAtPos(sfxId, pos);
++    (void)sfxId;
++    (void)pos; // RC11: deferred MM audio is never requested.
+ }
+ 
+ static void DekuLeaf_Stop(Player* p, PlayState* play) {
+@@ -89,7 +89,6 @@ static void DekuLeaf_Stop(Player* p, PlayState* play) {
+     // Stop looping sounds — legacy OOT wind + the MM Deku propeller hum.
+     Audio_StopSfxById(DEKULEAF_SOUND_WIND);
+     Audio_StopSfxById(DEKULEAF_SOUND_BLOW);
+-    MmSfx_Stop(MM_NA_SE_IT_DEKUNUTS_FLOWER_ROLL);
+ 
+     // MM verbatim: closing the Deku flower at end-of-flight fires a one-shot
+     // "flower close" SFX (mm_player_form.cpp:8684, 2Ship z_player.c:6401).
+diff --git a/soh/mods/items/logic/item_elemental_wand.c b/soh/mods/items/logic/item_elemental_wand.c
+index 167ea77..b48dc17 100644
+--- a/soh/mods/items/logic/item_elemental_wand.c
++++ b/soh/mods/items/logic/item_elemental_wand.c
+@@ -48,7 +48,11 @@ u8 Wand_IsDrawn(void) {
+ #include "wand/wand_water.c"
+ #include "wand/wand_meteor.c"
+ #include "wand/wand_storm.c"
+-#include "wand/wand_shadow.c"
++// RC11: Shadow Scepter requires deferred MM resources.
++static void WandShadow_Forget(void) {}
++static void WandShadow_Tick(PlayState* play) { (void)play; }
++static void WandShadow_Draw(PlayState* play) { (void)play; }
++static u8 WandShadow_Cast(Player* player, PlayState* play) { (void)player; (void)play; return 0; }
+ 
+ // Magic per cast, indexed by WAND_MODE_*. Sand and Water undercut the elemental rods' 3
+ // (item_rod_fire.h) because they are movement and get spammed; Storm costs the most because it
+diff --git a/soh/mods/items/logic/item_rocscape.c b/soh/mods/items/logic/item_rocscape.c
+index 1c1c0c3..0b2b783 100644
+--- a/soh/mods/items/logic/item_rocscape.c
++++ b/soh/mods/items/logic/item_rocscape.c
+@@ -22,14 +22,13 @@
+ #include "variables.h"
+ 
+ // MM Animation API
+-#include "mods/anim_translator/mm_anim_loader.h"
+ #include "mods/transformation_masks/transformation_masks.h"
+ 
+ // Pending animation type (stored when waiting for delay)
+ static s32 sPendingAnimType = 0; // 0=none, 1=backflip, 2=roll jump
+ 
+ static s32 RocsCape_MmAnimEnabled(void) {
+-    return CVarGetInteger(ROCS_MM_ANIM_CVAR, 0) && MmAnim_IsAvailable();
++    return 0; // RC11: only native OoT animations are available.
+ }
+ 
+ void Handle_RocsCape(Player* p, PlayState* play) {
+@@ -61,10 +60,6 @@ void Handle_RocsCape(Player* p, PlayState* play) {
+             if (sPendingAnimType == 3) {
+                 // OoT's native backflip: no MM archive, transform or sword action.
+                 mmAnim = (LinkAnimationHeader*)gPlayerAnim_link_fighter_backturn_jump;
+-            } else if (sPendingAnimType == 1) {
+-                mmAnim = MmAnim_Load(MM_ANIM_LINK_FIGHTER_BACKTURN_JUMP);
+-            } else if (sPendingAnimType == 2) {
+-                mmAnim = MmAnim_Load(MM_ANIM_LINK_NORMAL_NEWROLL_JUMP_20F);
+             }
+             if (mmAnim != NULL) {
+                 LinkAnimation_PlayOnce(play, &p->skelAnime, mmAnim);
+@@ -109,8 +104,6 @@ void Handle_RocsCape(Player* p, PlayState* play) {
+ 
+         // Schedule MM animation after 2 frame delay
+         rcMmAnimTimer = -2;
+-        sPendingAnimType = RocsCape_MmAnimEnabled()
+-            ? (CVarGetInteger("gMods.RocsItems.InvertAnims", 0) ? 1 : 2)
+-            : 3; // OoT fallback is always available for the second jump.
++        sPendingAnimType = 3; // Native OoT backflip for the second jump.
+     }
+ }
+diff --git a/soh/mods/items/logic/item_rocsfeather.c b/soh/mods/items/logic/item_rocsfeather.c
+index 5870319..e758e51 100644
+--- a/soh/mods/items/logic/item_rocsfeather.c
++++ b/soh/mods/items/logic/item_rocsfeather.c
+@@ -28,14 +28,13 @@
+ #include "variables.h"
+ 
+ // MM Animation API
+-#include "mods/anim_translator/mm_anim_loader.h"
+ #include "mods/transformation_masks/transformation_masks.h"
+ 
+ // Pending animation type (stored when waiting for delay)
+ static s32 sRfPendingAnimType = 0; // 0=none, 1=backflip, 2=roll jump
+ 
+ static s32 RocsFeather_MmAnimEnabled(void) {
+-    return CVarGetInteger(ROCS_MM_ANIM_CVAR, 0) && MmAnim_IsAvailable();
++    return 0; // RC11: only native OoT animations are available.
+ }
+ 
+ void Handle_RocsFeather(Player* p, PlayState* play) {
+@@ -61,15 +60,6 @@ void Handle_RocsFeather(Player* p, PlayState* play) {
+         rfMmAnimTimer++; // Count towards 0
+         if (rfMmAnimTimer == 0) {
+             // Delay finished, play the animation now
+-            LinkAnimationHeader* mmAnim = NULL;
+-            if (sRfPendingAnimType == 1) {
+-                mmAnim = MmAnim_Load(MM_ANIM_LINK_FIGHTER_BACKTURN_JUMP);
+-            } else if (sRfPendingAnimType == 2) {
+-                mmAnim = MmAnim_Load(MM_ANIM_LINK_NORMAL_NEWROLL_JUMP_20F);
+-            }
+-            if (mmAnim != NULL) {
+-                LinkAnimation_PlayOnce(play, &p->skelAnime, mmAnim);
+-            }
+             sRfPendingAnimType = 0;
+             rfMmAnimTimer = 999; // Now in "air by Roc's" state
+         }
+diff --git a/soh/mods/items/logic/picto_box.c b/soh/mods/items/logic/picto_box.c
+index 5007e2b..1abbd2f 100644
+--- a/soh/mods/items/logic/picto_box.c
++++ b/soh/mods/items/logic/picto_box.c
+@@ -18,7 +18,6 @@
+ #include "../helpers/camera_helper.h" // FirstPerson_* for the aim mode
+ 
+ extern void FB_WriteFramebufferSliceToCPU(Gfx** gfxp, void* buffer, u8 byteSwap);
+-extern void* MmAssets_LoadResource(const char* path); // MM viewfinder textures from mm.o2r
+ extern void Picto_SyncWrite(void);                    // mirror the kept photo to the OoT<->MM shared sidecar
+ extern void Picto_SyncClear(void);                    // delete it again when the picture is thrown away
+ // The COLOUR half of the print. The I5 buffer both games exchange is greyscale by construction, so
+@@ -26,22 +25,6 @@ extern void Picto_SyncClear(void);                    // delete it again when th
+ extern void Picto_SyncWriteColor(const void* rgba16, int size);
+ extern int Picto_SyncReadColor(void* rgba16, int size);
+ 
+-// MM viewfinder textures (parameter_static): corner border (IA4 16x16), crosshair (I4 32x16),
+-// "PICTBOX" label (I4 32x8). Loaded once; NULL falls back to a code-drawn bracket viewfinder.
+-static void* sVfBorder = NULL;
+-static void* sVfIcon = NULL;
+-static void* sVfText = NULL;
+-static u8 sVfTried = 0;
+-static void Picto_LoadViewfinderTextures(void) {
+-    if (sVfTried) {
+-        return;
+-    }
+-    sVfTried = 1;
+-    sVfBorder = MmAssets_LoadResource("__OTR__parameter_static/gPictoBoxFocusBorderTex");
+-    sVfIcon = MmAssets_LoadResource("__OTR__parameter_static/gPictoBoxFocusIconTex");
+-    sVfText = MmAssets_LoadResource("__OTR__parameter_static/gPictoBoxFocusTextTex");
+-}
+-
+ // --- MM intensity/color macros (verbatim from MM z_play.c / color.h) ---
+ #define PLAY_INTENSITY_RED 2
+ #define PLAY_INTENSITY_GREEN 4
+@@ -200,8 +183,6 @@ static void Picto_HudRestore(PlayState* play) {
+ // subjects on that frozen frame, remember the previous flags for a possible discard, and queue the
+ // framebuffer readback.
+ static void Picto_Shutter(PlayState* play) {
+-    extern s32 MmSfx_IsAvailable(void);
+-    extern s32 MmSfx_PlayAtPos(u16 sfxId, Vec3f * pos);
+     // MM stops EVERY actor the instant the shutter fires and only resumes once the keep/discard
+     // choice is made — the world behind the photo is dead still. OoT has the exact same switch
+     // (z_play.c gates Actor_UpdateAll on it), so this is the real thing, not a player-state trick.
+@@ -210,20 +191,14 @@ static void Picto_Shutter(PlayState* play) {
+     sPictoPrevFlags0 = Nei_Save()->pictoFlags0;
+     sPictoPrevFlags1 = Nei_Save()->pictoFlags1;
+     Snap_RecordPictographedActors(play); // writes pictoFlags0/1
+-    Nei_Save()->pictoboxOwned = 1;
++    // RC11: no ownership is granted by the shutter.
+     sPictoCapState = PICTO_CAP_EMIT;
+-    // MM camera-shutter sfx (NA_SE_SY_CAMERA_SHUTTER = 0x4850 in mm_sources/audio/sfx/systembank_table.h)
+-    // — an MM-only sfx, played through the MM audio engine (not in the OOT sfx banks). No-ops if mm.o2r
+-    // isn't loaded.
+-    if (MmSfx_IsAvailable()) {
+-        MmSfx_PlayAtPos(0x4850, &GET_PLAYER(play)->actor.world.pos);
+-    }
+ }
+ 
+ // Fire the shutter from outside the viewfinder (menu/debug). The capture state machine raises the
+ // photo display once the readback completes.
+ void Picto_TakePhoto(PlayState* play) {
+-    Picto_Shutter(play);
++    (void)play; // RC11: direct capture cannot grant or mutate deferred photo data.
+ }
+ 
+ // DRAW hook: emit the framebuffer readback into the GBI list when a capture is queued (native-endian
+@@ -306,48 +281,7 @@ void Picto_DrawPhoto(PlayState* play, Gfx** gfxp) {
+         s32 iconX = 142, iconY = 108; // R_PICTO_FOCUS_ICON_X / _Y
+         s32 textX = 204, textY = 177; // R_PICTO_FOCUS_TEXT_X / _Y
+ 
+-        Picto_LoadViewfinderTextures();
+-
+-        if (sVfBorder != NULL && sVfIcon != NULL && sVfText != NULL) {
+-            gDPPipeSync(g++);
+-            gDPSetCycleType(g++, G_CYC_1CYCLE);
+-            gDPSetAlphaCompare(g++, G_AC_THRESHOLD);
+-            gDPSetRenderMode(g++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+-            gDPSetCombineMode(g++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+-            gDPSetTextureFilter(g++, G_TF_BILERP);
+-            gDPSetPrimColor(g++, 0, 0, 255, 255, 155, 255);
+-
+-            // 4 corner borders (IA4 16x16, mirrored: s/t = 512 = one 16px mirror period).
+-            // Pass the OTR PATH (not the resolved sVfBorder pointer) so an MM HD texture pack applies
+-            // — sVf* stay only as the mm.o2r availability gate above.
+-            gDPLoadTextureBlock_4b(g++, "__OTR__parameter_static/gPictoBoxFocusBorderTex", G_IM_FMT_IA, 16, 16, 0,
+-                                   G_TX_MIRROR | G_TX_WRAP, G_TX_MIRROR | G_TX_WRAP, 4, 4, G_TX_NOLOD, G_TX_NOLOD);
+-            // Each corner is drawn 16x16 from its own register position (MM draws all four the same
+-            // way; the mirror s/t offsets flip the same texture into each corner).
+-            gSPTextureRectangle(g++, lx << 2, ty << 2, (lx + 16) << 2, (ty + 16) << 2, G_TX_RENDERTILE, 0, 0, 1 << 10,
+-                                1 << 10);
+-            gSPTextureRectangle(g++, rx << 2, ty << 2, (rx + 16) << 2, (ty + 16) << 2, G_TX_RENDERTILE, 512, 0, 1 << 10,
+-                                1 << 10);
+-            gSPTextureRectangle(g++, lx << 2, by << 2, (lx + 16) << 2, (by + 16) << 2, G_TX_RENDERTILE, 0, 512, 1 << 10,
+-                                1 << 10);
+-            gSPTextureRectangle(g++, rx << 2, by << 2, (rx + 16) << 2, (by + 16) << 2, G_TX_RENDERTILE, 512, 512,
+-                                1 << 10, 1 << 10);
+-
+-            // Crosshair (I4 32x16) at R_PICTO_FOCUS_ICON_X/Y
+-            gDPLoadTextureBlock_4b(g++, "__OTR__parameter_static/gPictoBoxFocusIconTex", G_IM_FMT_I, 32, 16, 0,
+-                                   G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+-                                   G_TX_NOLOD, G_TX_NOLOD);
+-            gSPTextureRectangle(g++, iconX << 2, iconY << 2, (iconX + 32) << 2, (iconY + 16) << 2, G_TX_RENDERTILE, 0,
+-                                0, 1 << 10, 1 << 10);
+-
+-            // "PICTBOX" label (I4 32x8) at R_PICTO_FOCUS_TEXT_X/Y — bottom right, like MM
+-            gDPLoadTextureBlock_4b(g++, "__OTR__parameter_static/gPictoBoxFocusTextTex", G_IM_FMT_I, 32, 8, 0,
+-                                   G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+-                                   G_TX_NOLOD, G_TX_NOLOD);
+-            gSPTextureRectangle(g++, textX << 2, textY << 2, (textX + 32) << 2, (textY + 8) << 2, G_TX_RENDERTILE, 0, 0,
+-                                1 << 10, 1 << 10);
+-            gDPPipeSync(g++);
+-        } else {
++        {
+             // Fallback (no mm.o2r): code-drawn brackets on MM's four corner positions + a crosshair
+             // where MM's icon goes. The frame spans lx..rx+16 horizontally and ty..by+16 vertically.
+             s32 b = 16;
+@@ -464,7 +398,7 @@ static void Picto_ShowStoredPhoto(PlayState* play) {
+ // states. Skijer's NEI
+ void Picto_EnterAimMode(PlayState* play) {
+     Player* player = GET_PLAYER(play);
+-    if (sPictoAimActive || sPictoPhotoActive || !Nei_Save()->pictoboxOwned) {
++    if (sPictoAimActive || sPictoPhotoActive || !Picto_IsOwned()) {
+         return;
+     }
+     if (player->meleeWeaponState != 0 ||
+@@ -487,7 +421,7 @@ static void Picto_UpdateState(PlayState* play) {
+     Player* player = GET_PLAYER(play);
+     Input* input = &play->state.input[0];
+ 
+-    if (!Nei_Save()->pictoboxOwned) {
++    if (!Picto_IsOwned()) {
+         if (sPictoAimActive || sPictoPhotoActive) {
+             FirstPerson_Exit(player, play);
+             Picto_HudRestore(play);
+@@ -632,43 +566,38 @@ static void Picto_UpdateState(PlayState* play) {
+ // When active, the Lens slot represents the Pictograph Box; the in-game trigger lets the player aim.
+ // (sPictoOnLens is declared up top so the aim trigger sees it.)
+ u8 Picto_IsOnLensActive(void) {
+-    // Without the real Lens of Truth, the shared slot is ALWAYS the pictobox — you can't be in "Lens
+-    // mode" for an item you don't own (so the equipped C-button routes to the camera, not the lens).
+-    // With the Lens owned, the kaleido wheel's sPictoOnLens decides.
+-    if (Nei_Save()->pictoboxOwned && gSaveContext.inventory.items[SLOT_LENS] != ITEM_LENS) {
+-        return 1;
+-    }
+-    return sPictoOnLens;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+ void Picto_SetOnLensActive(u8 on) {
+-    sPictoOnLens = on ? 1 : 0;
++    (void)on; // RC11: preserve deferred MM save data.
+ }
+ 
+ // --- Item ownership + debug shutter (menu/save-editor accessors) ---
+ u8 Picto_IsOwned(void) {
+-    return Nei_Save()->pictoboxOwned;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+ // Photo counter shown on the shared Lens slot: 1 once a picture is kept, 0 otherwise. Skijer's NEI
+ u8 Picto_HasPhoto(void) {
+-    return Nei_Save()->pictoHasPhoto;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+ void Picto_SetOwned(u8 on) {
+-    Nei_Save()->pictoboxOwned = on ? 1 : 0;
++    (void)on; // RC11: preserve deferred MM save data.
+ }
+ 
+ // Throw the stored picture away from outside the prompt (menu). Same thing answering "No" does: with
+ // no picture stored, the pictograph button goes straight to the lens instead of showing you the old
+ // photo — which is MM's behaviour, and the quickest way to tell the two apart while testing.
+ void Picto_ClearPhoto(void) {
+-    Picto_SyncClear();
++    // RC11: retain the old photo and its flags.
+ }
+ 
+ // Fire the shutter from the menu without the kaleido wheel (for testing capture + validation).
+ void Picto_TakePhotoNow(void) {
+-    if (gPlayState != NULL) {
+-        Picto_TakePhoto(gPlayState);
+-    }
++    // RC11: the Pictograph Box is deferred.
+ }
+diff --git a/soh/mods/items/logic/power_keg.c b/soh/mods/items/logic/power_keg.c
+index d24faaf..5bc3885 100644
+--- a/soh/mods/items/logic/power_keg.c
++++ b/soh/mods/items/logic/power_keg.c
+@@ -31,7 +31,6 @@ extern void EffectSsBlast_SpawnWhiteShockwave(PlayState* play, Vec3f* pos, Vec3f
+ 
+ // MM asset loader: pulls the real Powder Keg get-item model out of mm.o2r so the dropped bomb LOOKS
+ // like the keg barrel instead of an OOT bomb (En_Bom delegates its Draw to PowerKeg_DrawKegModel).
+-extern void* MmAssets_LoadResource(const char* path);
+ 
+ #define POWER_KEG_RADIUS 250.0f          // enemy-damage reach
+ #define POWER_KEG_OBSTACLE_RADIUS 350.0f // boulder + heavy-block reach (clears a cluster/wall)
+@@ -45,13 +44,15 @@ static Actor* sKegBomb = NULL; // the En_Bom we spawned as the keg (held or drop
+ 
+ // Ownership + ammo (granted via menu / save editor), persisted in the NEI save like the pictobox.
+ u8 PowerKeg_IsOwned(void) {
+-    return Nei_Save()->powerKegOwned;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ void PowerKeg_SetOwned(u8 on) {
+-    Nei_Save()->powerKegOwned = on ? 1 : 0;
++    (void)on; // RC11: preserve deferred MM save data.
+ }
+ u8 PowerKeg_GetCount(void) {
+-    return Nei_Save()->powerKegCount;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ // The Infinite-ammo cheat is the "infinite bomb bag": unlimited kegs (no cap, never depletes).
+ static u8 PowerKeg_Infinite(void) {
+@@ -67,31 +68,24 @@ u8 PowerKeg_MaxCount(void) {
+     return 5;
+ }
+ void PowerKeg_SetCount(u8 n) {
+-    u8 max = PowerKeg_MaxCount();
+-    Nei_Save()->powerKegCount = (n > max) ? max : n;
++    (void)n; // RC11: preserve deferred MM save data.
+ }
+ 
+ // Power-keg mode on the Bomb slot (toggled by the kaleido wheel in z_kaleido_item.c). Persisted in the
+ // NEI save so the slot stays in keg mode across reloads (instead of reverting to bombs).
+ u8 PowerKeg_IsOnBombActive(void) {
+-    return Nei_Save()->powerKegMode;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ void PowerKeg_SetOnBombActive(u8 on) {
+-    Nei_Save()->powerKegMode = on ? 1 : 0;
++    (void)on; // RC11: preserve deferred MM save data.
+ }
+ 
+ // The form/strength requirement: Fierce Deity / Goron / Gerudo can heft it with just Strength 1 (Goron
+ // Bracelet); base Link (Human) needs Silver Gauntlets (Strength 2). The weaker forms (Deku/Zora/Pikachu/
+ // Garo) can't lift a keg at all.
+ u8 PowerKeg_CanUse(void) {
+-    int form = MmForm_GetCurrentForm();
+-    int str = CUR_UPG_VALUE(UPG_STRENGTH);
+-    if (form == PK_FORM_FIERCE_DEITY || form == PK_FORM_GORON || form == PK_FORM_GERUDO) {
+-        return (str >= 1) ? 1 : 0;
+-    }
+-    if (form == PK_FORM_HUMAN) {
+-        return (str >= 2) ? 1 : 0;
+-    }
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
+     return 0;
+ }
+ 
+@@ -185,39 +179,9 @@ void PowerKeg_Update(PlayState* play) {
+ // GetItem_DrawOpa0Xlu1) using the actor's already-set transform, and skip the vanilla bomb model.
+ // Returns 1 if it drew the keg (caller should return), 0 to let the vanilla bomb draw run. Skijer's NEI
+ u8 PowerKeg_DrawKegModel(Actor* thisx, PlayState* play) {
+-    static void* sBarrelDL = NULL;
+-    static void* sSkullFuseDL = NULL;
+-    static u8 sTried = 0;
+-
+-    if (thisx != sKegBomb || thisx->params != BOMB_BODY) {
+-        return 0; // not our keg, or it's already in the explosion state — let the bomb draw run
+-    }
+-    if (!sTried) {
+-        sTried = 1;
+-        sBarrelDL = MmAssets_LoadResource("__OTR__objects/object_gi_bigbomb/gGiPowderKegBarrelDL");
+-        sSkullFuseDL = MmAssets_LoadResource("__OTR__objects/object_gi_bigbomb/gGiPowderKegGoronSkullAndFuseDL");
+-    }
+-    if (sBarrelDL == NULL) {
+-        return 0; // mm.o2r missing the model — fall back to the vanilla bomb
+-    }
+-
+-    OPEN_DISPS(play->state.gfxCtx);
+-    // Fresh world transform at the keg's position (decoupled from the actor's collision scale).
+-    Matrix_SetTranslateRotateYXZ(thisx->world.pos.x, thisx->world.pos.y, thisx->world.pos.z, &thisx->shape.rot);
+-    Matrix_Scale(PK_KEG_SCALE, PK_KEG_SCALE, PK_KEG_SCALE, MTXMODE_APPLY);
+-
+-    Gfx_SetupDL_25Opa(play->state.gfxCtx);
+-    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+-    gSPDisplayList(POLY_OPA_DISP++, (Gfx*)sBarrelDL);
+-
+-    if (sSkullFuseDL != NULL) {
+-        Gfx_SetupDL_25Xlu(play->state.gfxCtx);
+-        gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+-        gSPDisplayList(POLY_XLU_DISP++, (Gfx*)sSkullFuseDL);
+-    }
+-
+-    CLOSE_DISPS(play->state.gfxCtx);
+-    return 1;
++    (void)thisx;
++    (void)play;
++    return 0; // RC11: leave the vanilla bomb model alone.
+ }
+ 
+ // In-game use (hooked into Player_InitExplosiveIA for base Link, and TransformMasks for the MM forms):
+diff --git a/soh/mods/items/logic/trade_items.c b/soh/mods/items/logic/trade_items.c
+index d9d9c88..c3bec71 100644
+--- a/soh/mods/items/logic/trade_items.c
++++ b/soh/mods/items/logic/trade_items.c
+@@ -61,7 +61,7 @@ s32 TradeAdult_IndexOfItem(u8 item) {
+ }
+ 
+ u8 TradeAdult_IsOwnedIndex(s32 index) {
+-    if (index < 0 || index >= TRADE_ADULT_COUNT) {
++    if (index < 0 || index >= TRADE_ADULT_COUNT || (index >= 11 && index <= 19)) {
+         return 0;
+     }
+     // The pendant used to also count as owned via the ext BOOTS-2 grid bit. That bit is retired and
+@@ -76,7 +76,7 @@ u8 TradeAdult_IsOwnedItem(u8 item) {
+ }
+ 
+ void TradeAdult_GiveIndex(s32 index) {
+-    if (index < 0 || index >= TRADE_ADULT_COUNT) {
++    if (index < 0 || index >= TRADE_ADULT_COUNT || (index >= 11 && index <= 19)) {
+         return;
+     }
+     Nei_Save()->tradeAdultOwned |= (1u << index); // trade flag: wheel + MM sync (Anju exchange)
+@@ -95,7 +95,7 @@ void TradeAdult_GiveItem(u8 item) {
+ // Set or clear an item's "obtained" flag (the save-editor toggle). Clearing the Pendant also drops its
+ // Ext Boots 2 combat ownership so the two stay in lockstep.
+ void TradeAdult_SetOwnedIndex(s32 index, u8 on) {
+-    if (index < 0 || index >= TRADE_ADULT_COUNT) {
++    if (index < 0 || index >= TRADE_ADULT_COUNT || (index >= 11 && index <= 19)) {
+         return;
+     }
+     if (on) {
+@@ -175,7 +175,7 @@ u8 TradeAdult_PrevItem(u8 cur) {
+ // into the owned set so it joins the wheel alongside the granted MM items.
+ void TradeAdult_FoldCurrent(u8 item) {
+     s32 idx = TradeAdult_IndexOfItem(item);
+-    if (idx >= 0 && !TradeAdult_IsOwnedIndex(idx)) {
++    if (idx >= 0 && !(idx >= 11 && idx <= 19) && !TradeAdult_IsOwnedIndex(idx)) {
+         Nei_Save()->tradeAdultOwned |= (1u << idx);
+     }
+ }
+@@ -184,37 +184,10 @@ void TradeAdult_FoldCurrent(u8 item) {
+ // Special Delivery). The OoT items (0-10) keep their vanilla behavior; the Pendant (19 = Ext Boots 2)
+ // keeps its combat moveset. Using one of these just presents it + pops the gag message.
+ u8 TradeAdult_IsMmTradeUseItem(s32 item) {
+-    if (item < 0) {
+-        return 0;
+-    }
+-    s32 idx = TradeAdult_IndexOfItem((u8)item);
+-    return (idx >= 11 && idx <= 18);
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+-extern void* MmAssets_LoadResource(const char* path); // MM GI models (object_gi_*) from mm.o2r
+-
+-// Presented item -> its MM GI display list(s) from mm.o2r. NULL = nothing in that render bucket. (Room
+-// Key / letters are XLU; deeds are OPA; Moon's Tear uses a segmented tex-anim, so it may render rough.)
+-typedef struct {
+-    u8 item;
+-    const char* opaPath;
+-    const char* xluPath;
+-} TradePresentModel;
+-
+-static const TradePresentModel sTradePresentModels[] = {
+-    { ITEM_MM_MOONS_TEAR, "__OTR__objects/object_gi_reserve00/gGiMoonsTearItemDL",
+-      "__OTR__objects/object_gi_reserve00/gGiMoonsTearGlowDL" },
+-    { ITEM_MM_DEED_LAND, "__OTR__objects/object_gi_reserve01/gGiTitleDeedLandColorDL", NULL },
+-    { ITEM_MM_DEED_SWAMP, "__OTR__objects/object_gi_reserve01/gGiTitleDeedSwampColorDL", NULL },
+-    { ITEM_MM_DEED_MOUNTAIN, "__OTR__objects/object_gi_reserve01/gGiTitleDeedMountainColorDL", NULL },
+-    { ITEM_MM_DEED_OCEAN, "__OTR__objects/object_gi_reserve01/gGiTitleDeedOceanColorDL", NULL },
+-    { ITEM_MM_ROOM_KEY, NULL, "__OTR__objects/object_gi_reserve_b_00/gGiRoomKeyDL" },
+-    { ITEM_MM_LETTER_KAFEI, "__OTR__objects/object_gi_reserve_c_00/gGiLetterToKafeiEnvelopeLetterDL",
+-      "__OTR__objects/object_gi_reserve_c_00/gGiLetterToKafeiInscriptionsDL" },
+-    { ITEM_MM_SPECIAL_DELIVERY, "__OTR__objects/object_gi_reserve_b_01/gGiLetterToMamaEnvelopeLetterDL",
+-      "__OTR__objects/object_gi_reserve_b_01/gGiLetterToMamaInscriptionsDL" },
+-};
+-
+ static u8 sTradePresentState = 0; // 0 idle, 1 waiting for the textbox to open, 2 textbox open
+ static u8 sTradePresentItem = ITEM_NONE;
+ 
+@@ -224,23 +197,7 @@ static Gfx* sTradeLoadedOpa = NULL;
+ static Gfx* sTradeLoadedXlu = NULL;
+ 
+ static void TradeAdult_LoadPresentModel(void) {
+-    if (sTradeLoadedItem == sTradePresentItem) {
+-        return;
+-    }
+-    sTradeLoadedItem = sTradePresentItem;
+-    sTradeLoadedOpa = NULL;
+-    sTradeLoadedXlu = NULL;
+-    for (s32 i = 0; i < (s32)(sizeof(sTradePresentModels) / sizeof(sTradePresentModels[0])); i++) {
+-        if (sTradePresentModels[i].item == sTradePresentItem) {
+-            if (sTradePresentModels[i].opaPath != NULL) {
+-                sTradeLoadedOpa = (Gfx*)MmAssets_LoadResource(sTradePresentModels[i].opaPath);
+-            }
+-            if (sTradePresentModels[i].xluPath != NULL) {
+-                sTradeLoadedXlu = (Gfx*)MmAssets_LoadResource(sTradePresentModels[i].xluPath);
+-            }
+-            break;
+-        }
+-    }
++    // RC11: deferred MM trade models are not loaded.
+ }
+ 
+ // Force the "hold up item" pose held at its last frame (Link's normal action would otherwise override
+@@ -257,17 +214,9 @@ static void TradeAdult_HoldPose(PlayState* play, Player* player) {
+ // gag message. We do NOT use the vanilla trade present (unk_6AD = 4): that routes to
+ // Player_Action_ExchangeItem and pops a SECOND textbox. Release + model draw run in the two funcs below.
+ void TradeAdult_PresentAndMessage(PlayState* play, Player* player, s32 item) {
+-    sTradePresentItem = (u8)item;
+-    // Play the MM "hold up cutscene item" anim (settles onto the presented pose).
+-    LinkAnimation_Change(play, &player->skelAnime, &gPlayerAnim_link_normal_take_out, 1.0f, 0.0f,
+-                         Animation_GetLastFrame(&gPlayerAnim_link_normal_take_out), ANIMMODE_ONCE, -6.0f);
+-    // Full vanilla-present freeze: halts every actor category except player/NPC (Actor_UpdateAll's
+-    // D_80116068 gates on these three flags).
+-    player->stateFlags1 |= PLAYER_STATE1_TALKING | PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_IN_CUTSCENE;
+-    // Present camera (swings around to face Link), same setting the vanilla trade present uses.
+-    Camera_RequestSetting(Play_GetCamera(play, 0), CAM_SET_TURN_AROUND);
+-    Message_StartTextbox(play, MM_TRADE_USE_TEXTID, NULL);
+-    sTradePresentState = 1;
++    (void)play;
++    (void)player;
++    (void)item;
+ }
+ 
+ // Per-frame (called from z_player next to Picto_Update): hold the pose + Link still until the textbox
+@@ -295,30 +244,5 @@ void TradeAdult_PresentUpdate(PlayState* play) {
+ // Player_DrawGetItemImpl placement: leftHandPos + 3.3 forward, +6 up, 0.2 scale, slow Y spin). Called
+ // from the player draw path after the limbs so leftHandPos is fresh.
+ void TradeAdult_PresentDraw(PlayState* play) {
+-    if (sTradePresentState == 0) {
+-        return;
+-    }
+-    TradeAdult_LoadPresentModel();
+-    if (sTradeLoadedOpa == NULL && sTradeLoadedXlu == NULL) {
+-        return;
+-    }
+-    Player* player = GET_PLAYER(play);
+-    Vec3f* hand = &player->leftHandPos;
+-
+-    OPEN_DISPS(play->state.gfxCtx);
+-    Matrix_Translate(hand->x + (3.3f * Math_SinS(player->actor.shape.rot.y)), hand->y + 6.0f,
+-                     hand->z + (3.3f * Math_CosS(player->actor.shape.rot.y)), MTXMODE_NEW);
+-    Matrix_RotateZYX(0, play->gameplayFrames * 1000, 0, MTXMODE_APPLY); // slow Y spin, like the vanilla present
+-    Matrix_Scale(0.2f, 0.2f, 0.2f, MTXMODE_APPLY);
+-    if (sTradeLoadedOpa != NULL) {
+-        Gfx_SetupDL_25Opa(play->state.gfxCtx);
+-        gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+-        gSPDisplayList(POLY_OPA_DISP++, sTradeLoadedOpa);
+-    }
+-    if (sTradeLoadedXlu != NULL) {
+-        Gfx_SetupDL_25Xlu(play->state.gfxCtx);
+-        gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+-        gSPDisplayList(POLY_XLU_DISP++, sTradeLoadedXlu);
+-    }
+-    CLOSE_DISPS(play->state.gfxCtx);
++    (void)play; // RC11: no deferred trade model is drawn.
+ }
+diff --git a/soh/mods/items/logic/twilight_upgrade.c b/soh/mods/items/logic/twilight_upgrade.c
+index 6690201..91ff878 100644
+--- a/soh/mods/items/logic/twilight_upgrade.c
++++ b/soh/mods/items/logic/twilight_upgrade.c
+@@ -111,24 +111,6 @@ void TwilightUpgrade_SetGaleBoomerangActive(u8 active) {
+ // Clawshot-mode R-hand DL: compound the resolved OOT closed-hand DL (ootHand) with MM's hookshot
+ // body, rebuilt only when the pointers change. No-op (leaves *dList) unless clawshot active. Skijer's NEI
+ void TwilightUpgrade_ApplyClawshotHandDL(Gfx** dList, void* ootHand) {
+-    if (!TwilightUpgrade_IsClawshotActive()) {
+-        return;
+-    }
+-    extern void* MmAssets_LoadHookshotBodyDL(void);
+-    void* mmBody = MmAssets_LoadHookshotBodyDL();
+-    if (mmBody == NULL) {
+-        return;
+-    }
+-    static Gfx sClawshotHandBodyDL[3];
+-    static void* sLastOotHand = NULL;
+-    static void* sLastMmBody = NULL;
+-    if (sLastOotHand != ootHand || sLastMmBody != mmBody) {
+-        Gfx* dl = sClawshotHandBodyDL;
+-        gSPDisplayList(dl++, ootHand);
+-        gSPDisplayList(dl++, mmBody);
+-        gSPEndDisplayList(dl);
+-        sLastOotHand = ootHand;
+-        sLastMmBody = mmBody;
+-    }
+-    *dList = sClawshotHandBodyDL;
++    (void)dList;
++    (void)ootHand; // RC11: keep the native hookshot hand; mechanics remain available.
+ }
+diff --git a/soh/mods/items/logic/weapon_upgrades.c b/soh/mods/items/logic/weapon_upgrades.c
+index 77c45b1..1ba4704 100644
+--- a/soh/mods/items/logic/weapon_upgrades.c
++++ b/soh/mods/items/logic/weapon_upgrades.c
+@@ -16,11 +16,13 @@ u8 WeaponUpgrade_HasHammerAxe(void) {
+ }
+ 
+ u8 WeaponUpgrade_HasRazor(void) {
+-    return (Nei_Save()->weaponUpgrades & WEAPON_UPGRADE_KOKIRI_RAZOR) != 0;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+ u8 WeaponUpgrade_HasGilded(void) {
+-    return (Nei_Save()->weaponUpgrades & WEAPON_UPGRADE_KOKIRI_GILDED) != 0;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+ u8 WeaponUpgrade_HasTrueMaster(void) {
+@@ -28,16 +30,12 @@ u8 WeaponUpgrade_HasTrueMaster(void) {
+ }
+ 
+ u8 WeaponUpgrade_HasGreatFairy(void) {
+-    return (Nei_Save()->weaponUpgrades & WEAPON_UPGRADE_BGS_GREAT_FAIRY) != 0;
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
++    return 0;
+ }
+ 
+ u8 WeaponUpgrade_KokiriLevel(void) {
+-    if (Nei_Save()->weaponUpgrades & WEAPON_UPGRADE_KOKIRI_GILDED) {
+-        return 2;
+-    }
+-    if (Nei_Save()->weaponUpgrades & WEAPON_UPGRADE_KOKIRI_RAZOR) {
+-        return 1;
+-    }
++    // RC11: MM-dependent content is unavailable; keep saved flags intact.
+     return 0;
+ }
+ 
+@@ -54,11 +52,11 @@ void WeaponUpgrade_SetHammerAxe(u8 on) {
+ }
+ 
+ void WeaponUpgrade_SetRazor(u8 on) {
+-    WeaponUpgrade_SetBit(WEAPON_UPGRADE_KOKIRI_RAZOR, on);
++    (void)on; // RC11: preserve deferred MM save data.
+ }
+ 
+ void WeaponUpgrade_SetGilded(u8 on) {
+-    WeaponUpgrade_SetBit(WEAPON_UPGRADE_KOKIRI_GILDED, on);
++    (void)on; // RC11: preserve deferred MM save data.
+ }
+ 
+ void WeaponUpgrade_SetTrueMaster(u8 on) {
+@@ -66,20 +64,15 @@ void WeaponUpgrade_SetTrueMaster(u8 on) {
+ }
+ 
+ void WeaponUpgrade_SetGreatFairy(u8 on) {
+-    WeaponUpgrade_SetBit(WEAPON_UPGRADE_BGS_GREAT_FAIRY, on);
++    (void)on; // RC11: preserve deferred MM save data.
+ }
+ 
+ void WeaponUpgrade_GiveProgressiveKokiri(void) {
+-    // First give → Razor, second give → Gilded. Gilded implies Razor was earned.
+-    if (!(Nei_Save()->weaponUpgrades & WEAPON_UPGRADE_KOKIRI_RAZOR)) {
+-        Nei_Save()->weaponUpgrades |= WEAPON_UPGRADE_KOKIRI_RAZOR;
+-    } else {
+-        Nei_Save()->weaponUpgrades |= WEAPON_UPGRADE_KOKIRI_GILDED;
+-    }
++    // RC11: Razor and Gilded Sword require deferred MM resources.
+ }
+ 
+ void WeaponUpgrade_GrantAll(void) {
+-    Nei_Save()->weaponUpgrades |= WEAPON_UPGRADE_ALL;
++    Nei_Save()->weaponUpgrades |= WEAPON_UPGRADE_HAMMER_AXE | WEAPON_UPGRADE_MASTER_TRUE;
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -141,15 +134,6 @@ static IKAxePropState* IKAxe_PropSlot(Actor* actor) {
+ // Twilight clawshot. `ootHand` is the resolved OOT hand DL for this limb/LOD; returns 1 if it set
+ // *dList (caller leaves the vanilla DL otherwise).
+ u8 WeaponUpgrade_ApplyHeldSwordDL(Gfx** dList, void* ootHand, Player* player, u8 bodyEnvR, u8 bodyEnvG, u8 bodyEnvB) {
+-    extern void* MmAssets_LoadResource(const char* path);
+-    extern s32 CVarGetInteger(const char* name, s32 defaultValue);
+-    // Cached loaded pieces per variant.
+-    static void* sRazorBlade = NULL;
+-    static void* sRazorHandle = NULL;
+-    static void* sGildedBlade = NULL;
+-    static void* sGildedHandle = NULL;
+-    static void* sGfs = NULL;
+-    static u8 sRazorTried = 0, sGildedTried = 0, sGfsTried = 0;
+     static Gfx sCompound[8];
+ 
+     if (dList == NULL || ootHand == NULL || player == NULL) {
+@@ -166,33 +150,6 @@ u8 WeaponUpgrade_ApplyHeldSwordDL(Gfx** dList, void* ootHand, Player* player, u8
+     if ((player->heldItemAction >= PLAYER_IA_SWORD_MASTER && player->heldItemAction <= PLAYER_IA_SWORD_BIGGORON) &&
+         FourSword_HeldSwordDL(&blade, &handle)) {
+         // fall through to the compound-DL builder with the Four Sword pieces
+-    } else if (player->heldItemAction == PLAYER_IA_SWORD_KOKIRI && WeaponUpgrade_KokiriLevel() >= 1) {
+-        u8 gilded = WeaponUpgrade_HasGilded() && CVarGetInteger("gEnhancements.SkijerNEI.GildedUsesGildedLook", 1);
+-        if (gilded) {
+-            if (!sGildedTried) {
+-                sGildedTried = 1;
+-                sGildedBlade = MmAssets_LoadResource("__OTR__objects/object_link_child/gLinkHumanGildedSwordBladeDL");
+-                sGildedHandle = MmAssets_LoadResource("__OTR__objects/object_link_child/gLinkHumanGildedSwordHandleDL");
+-            }
+-            blade = sGildedBlade;
+-            handle = sGildedHandle;
+-        } else {
+-            if (!sRazorTried) {
+-                sRazorTried = 1;
+-                sRazorBlade = MmAssets_LoadResource("__OTR__objects/gameplay_keep/gRazorSwordBladeDL");
+-                sRazorHandle = MmAssets_LoadResource("__OTR__objects/gameplay_keep/gRazorSwordHandleDL");
+-            }
+-            blade = sRazorBlade;
+-            handle = sRazorHandle;
+-        }
+-    } else if (player->heldItemAction == PLAYER_IA_SWORD_BIGGORON && WeaponUpgrade_HasGreatFairy() &&
+-               CVarGetInteger("gEnhancements.SkijerNEI.BgsUsesGfsLook", 1)) {
+-        if (!sGfsTried) {
+-            sGfsTried = 1;
+-            sGfs = MmAssets_LoadResource("__OTR__objects/object_link_child/gLinkHumanGreatFairysSwordDL");
+-        }
+-        blade = sGfs; // single combined blade+hilt DL
+-        handle = NULL;
+     } else {
+         return 0;
+     }
+diff --git a/soh/mods/nei_save.cpp b/soh/mods/nei_save.cpp
+index ddada6c..5a01725 100644
+--- a/soh/mods/nei_save.cpp
++++ b/soh/mods/nei_save.cpp
+@@ -13,6 +13,8 @@
+ #include <soh/OTRGlobals.h>                // gSaveContext
+ #include <libultraship/libultraship.h>     // Ship::Context (full def for GetPathRelativeToAppDirectory)
+ 
++#include "extended_inventory.h"
++
+ static NeiSaveData gNeiSave;
+ 
+ extern "C" SaveContext gSaveContext;
+@@ -252,6 +254,7 @@ void NeiSave_Init(bool isDebug) {
+     gNeiSave.bottomlessContent = 0xFF; // empty (0 would read as ITEM_STICK)
+     // Session wheel trackers must not leak across files (per-frame reconcile would ghost-write).
+     Bottle_WheelResetTracking();
++    ExtInv_ResetSessionItems();
+ }
+ 
+ void NeiSave_Save(SaveContext* saveContext, int sectionID, bool fullSave) {
+@@ -462,6 +465,7 @@ void NeiSave_Load() {
+     TradeItems_SyncRead(); // merge MM trade-item ownership from the cross-game sidecar
+     // Session wheel trackers must not leak across files (per-frame reconcile would ghost-write).
+     Bottle_WheelResetTracking();
++    ExtInv_ResetSessionItems();
+ }
+ 
+ void Register() {
+@@ -500,25 +504,25 @@ static uint8_t Nei_CaneTypeMask(uint8_t type) {
+ }
+ 
+ extern "C" uint8_t Nei_CaneSkillMask(void) {
+-    return Nei_Save()->caneSkills;
++    return Nei_Save()->caneSkills & 0x3E; // RC11: native skills only.
+ }
+ 
+ extern "C" uint8_t Nei_CaneHasSkill(uint8_t skill) {
+-    if (skill >= NEI_CANE_SKILL_MAX) {
++    if (skill >= NEI_CANE_SKILL_MAX || skill == 0) {
+         return 0;
+     }
+     return (Nei_Save()->caneSkills & (1 << skill)) ? 1 : 0;
+ }
+ 
+ extern "C" void Nei_CaneGrantSkill(uint8_t skill) {
+-    if (skill >= NEI_CANE_SKILL_MAX) {
++    if (skill >= NEI_CANE_SKILL_MAX || skill == 0) {
+         return;
+     }
+     Nei_Save()->caneSkills |= (uint8_t)(1 << skill);
+ }
+ 
+ extern "C" uint8_t Nei_CaneOwned(void) {
+-    return Nei_Save()->caneSkills != 0;
++    return (Nei_Save()->caneSkills & 0x3E) != 0;
+ }
+ 
+ // Four cane entries, each gated by one skill bit: Somaria(bit0), Trirod(bit2),
+@@ -542,7 +546,9 @@ extern "C" uint8_t Nei_CaneTypeOwned(uint8_t type) {
+     if (type >= NEI_CANE_TYPE_MAX) {
+         return 0;
+     }
+-    return (Nei_Save()->caneSkills & (1 << Nei_CaneTypeGateBit(type))) ? 1 : 0;
++    if (type == 0)
++        return Nei_CaneHasSkill(1); // RC11: native Block unlocks Somaria.
++    return Nei_CaneHasSkill(Nei_CaneTypeGateBit(type));
+ }
+ 
+ // ── Wheel configuration (user 2026-08-06): which of the four ride the wheel ──
+@@ -641,7 +647,7 @@ static uint8_t Nei_SomariaSummonOwned(uint8_t slot) {
+ 
+     switch (slot) {
+         case 0:
+-            return (skills & (1 << 0)) ? 1 : 0; // Statue
++            return 0; // RC11: keep the saved Statue selection, use a native fallback.
+         case 1:
+         case 2:
+             return (skills & (1 << 1)) ? 1 : 0; // Block + Platform, same level

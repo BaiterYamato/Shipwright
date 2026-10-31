@@ -1,6 +1,7 @@
 // Rotinas do fork ativadas pelos controles próprios do NEI. Saves vanilla continuam com suas garrafas.
 #include "backend_unit.h"
 #include "mods/extended_equipment.h"
+#include "mods/extended_inventory.h"
 #include "mods/items/custom_bottles.h"
 #include "mods/nei_save.h"
 #include <stdio.h>
@@ -64,9 +65,11 @@ static u8 IsBottle(u8 item) {
     return item >= ITEM_BOTTLE && item <= ITEM_POE;
 }
 static void SyncSlot(PlayState* play, u8 slot, u8 item) {
-    gSaveContext.inventory.items[slot] = item;
+    ExtInv_SetSlotItem(slot, item);
     for (u8 button = 1; button <= 3; ++button) {
-        if (gSaveContext.equips.cButtonSlots[button - 1] == slot && gSaveContext.equips.buttonItems[button] != item) {
+        if (gSaveContext.equips.cButtonSlots[button - 1] == slot &&
+            !ExtInv_IsDeferredMmItem(gSaveContext.equips.buttonItems[button]) &&
+            gSaveContext.equips.buttonItems[button] != item) {
             gSaveContext.equips.buttonItems[button] = item;
             if (play)
                 Interface_LoadItemIcon1(play, button);
@@ -76,9 +79,9 @@ static void SyncSlot(PlayState* play, u8 slot, u8 item) {
 static u8 MigrateBottle(u8 item, u8 wheel) {
     for (u8 k = 0; k < 4; ++k) {
         u8 i = (u8)(wheel * 4 + k);
-        if (Bottle_GetSlot(i) == BOTTLE_SLOT_EMPTY) {
+        if (Nei_Save()->bottleSlots[i] == BOTTLE_SLOT_EMPTY) {
             Bottle_SetSlot(i, item);
-            return 1;
+            return Nei_Save()->bottleSlots[i] == item;
         }
     }
     return 0;
@@ -91,7 +94,7 @@ void NeiBottles_Project(void* state) {
     if (NeiBottles_WheelsEnabled() && (!play || play->pauseCtx.state == 0))
         for (u8 w = 0; w < 2; ++w) {
             u8 slot = w ? SLOT_BOTTLE_2 : SLOT_BOTTLE_1;
-            u8 current = gSaveContext.inventory.items[slot];
+            u8 current = (u8)ExtInv_GetSlotItem(slot);
             Bottle_WheelPersist(w, current);
             u8 unmanaged = IsBottle(current) && !Bottle_WheelContains(w, current);
             if (unmanaged && MigrateBottle(current, w))
@@ -103,8 +106,8 @@ void NeiBottles_Project(void* state) {
             }
             Bottle_WheelRecordActive(w, current);
         }
-    if (Bottle_BottomlessOwned()) {
-        u8 current = gSaveContext.inventory.items[SLOT_BOTTLE_4];
+    if (Bottle_BottomlessOwned() && !ExtInv_IsDeferredMmItem(Nei_Save()->bottomlessContent)) {
+        u8 current = (u8)ExtInv_GetSlotItem(SLOT_BOTTLE_4);
         if (IsBottle(current) && current != ITEM_BOTTLE && current != Bottle_BottomlessContent())
             Bottle_BottomlessFill(current);
         SyncSlot(play, SLOT_BOTTLE_4, Bottle_BottomlessIsEmpty() ? ITEM_BOTTLE : Bottle_BottomlessContent());
@@ -112,7 +115,7 @@ void NeiBottles_Project(void* state) {
 }
 u8 NeiBottles_UpdateItem(u8 item, u8 button) {
     if (button < 1 || button > 3 || gSaveContext.equips.cButtonSlots[button - 1] != SLOT_BOTTLE_4 ||
-        !Bottle_BottomlessOwned())
+        !Bottle_BottomlessOwned() || ExtInv_IsDeferredMmItem(Nei_Save()->bottomlessContent))
         return item;
     if (item == ITEM_BOTTLE) {
         if (Bottle_BottomlessConsume() > 0)

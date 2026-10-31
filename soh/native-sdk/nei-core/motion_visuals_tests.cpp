@@ -131,7 +131,9 @@ int main() {
     nextInput.isPressed = false;
     Handle_RocsCape(&p, &play);
     Handle_RocsCape(&p, &play);
-    CHECK(plays == 2 && p.skelAnime.animation == &mmAnimation);
+    // RC11 (patch 0013): mesmo com o MM disponível e o CVar ligado, o segundo salto usa o backflip do OoT.
+    CHECK(plays == 2 &&
+          p.skelAnime.animation == reinterpret_cast<LinkAnimationHeader*>(gPlayerAnim_link_fighter_backturn_jump));
     p.stateFlags1 = PLAYER_STATE1_IN_WATER;
     nextInput.isPressed = true;
     Handle_RocsCape(&p, &play);

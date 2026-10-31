@@ -1,6 +1,7 @@
 #include "fork/inventory_controls.h"
 #include <cstdio>
 #include <cstdlib>
+#include "rc11_inventory_fixture.h"
 
 static void Check(bool condition, const char* label) {
     if (!condition) {
@@ -9,6 +10,7 @@ static void Check(bool condition, const char* label) {
     }
 }
 int main() {
+    RunRc11InventoryRegressions();
     NeiInventoryGesture a{};
     Check(NeiInventoryInput(&a, true, 46, 100) == NEI_INVENTORY_NONE, "press waits for tap/hold");
     Check(NeiInventoryInput(&a, false, 46, 250) == NEI_INVENTORY_EQUIP, "tap opens hotbar on release");
@@ -27,5 +29,5 @@ int main() {
     NeiInventoryInput(&a, false, 47, 4700);
     NeiInventoryInput(&a, true, 47, 4800);
     Check(NeiInventoryInput(&a, false, 47, 4900) == NEI_INVENTORY_EQUIP, "fresh tap works after cancel");
-    std::puts("Inventory controls: A tap, hold, release, slot change and cancel passed.");
+    std::puts("Controles do inventário e regressões RC11 concluídos.");
 }
