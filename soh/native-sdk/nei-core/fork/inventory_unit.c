@@ -16,6 +16,7 @@
 #undef ExtInv_GetItemIcon
 #undef ExtInv_GetInventoryItemIcon
 #include "progression.h"
+#include "mods/items/logic/item_cane_of_somaria.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <stdio.h>
 #include <string.h>
@@ -78,8 +79,6 @@ uint32_t NeiInv_OccupiedSlots(void) {
 /* Posse na página do NEI, pelo mesmo caminho que o Item_Give do fork usa (ExtInv_SetItemById). A célula do Roc's
  * Feather é progressiva: o Cape a toma, e o Feather dado depois do Cape não volta para ela. Item sem célula
  * própria (0xFF) não tem o que pôr aqui. */
-u8 Cane_GiveSkill(u8 skill); /* item_cane_of_somaria.c, no player_unit.c */
-
 static uint8_t LogicalSlot(uint16_t logicalId) {
     switch (logicalId) {
         case EXT_ITEM_SHEIKAH_SLATE:
@@ -101,13 +100,13 @@ void NeiInv_PlaceItem(uint16_t logicalId) {
         Slate_GrantRune(SLATE_RUNE_BOMB);
     if (logicalId == EXT_ITEM_ROD_OF_SEASONS && !Nei_Save()->seasonsOwned)
         Seasons_GrantSeason(SEASON_SPRING);
-    if (logicalId == ITEM_ELEMENTAL_WAND && !Nei_Save()->wandRodsOwned)
+    if (logicalId == ITEM_ELEMENTAL_WAND && !(Nei_Save()->wandRodsOwned & NeiProgress_ValidMask(NEI_POWER_WAND)))
         Wand_GrantMode(WAND_MODE_SAND);
     /* A Cane é seis skills numa célula só, e a posse é o bit da skill: o Cane_GiveSkill da primeira é que põe a
      * Cane na célula. Sem skill, a Cane na célula não lança nada. */
     if (logicalId == ITEM_CANE_OF_SOMARIA) {
         if (!Nei_CaneOwned()) {
-            Cane_GiveSkill(0);
+            Cane_GiveSkill(CANE_SKILL_SOMARIA_BLOCK);
         }
         return;
     }
@@ -119,11 +118,12 @@ void NeiInv_PlaceItem(uint16_t logicalId) {
 }
 
 /* Cada get-item do registro (callback `received`). É o RG_CANE_OF_SOMARIA do randomizer do fork: cada cópia
- * recebida acende a próxima skill, alternando as duas canes (Statue, Flip, Block, Stone, Platform, Ultrahand). */
+ * recebida acende a próxima skill, alternando habilidades nativas (Block, Flip, Stone, Platform, Ultrahand). */
 void NeiInv_ReceiveItem(uint16_t logicalId) {
     if (logicalId == ITEM_CANE_OF_SOMARIA) {
-        static const u8 kCaneOrder[6] = { 0, 3, 1, 4, 2, 5 };
-        for (int i = 0; i < 6; i++) {
+        static const u8 kCaneOrder[] = { CANE_SKILL_SOMARIA_BLOCK, CANE_SKILL_PACCI_FLIP, CANE_SKILL_PACCI_STONE,
+                                         CANE_SKILL_SOMARIA_PLATFORM, CANE_SKILL_PACCI_ULTRAHAND };
+        for (unsigned i = 0; i < sizeof(kCaneOrder) / sizeof(kCaneOrder[0]); i++) {
             if (Cane_GiveSkill(kCaneOrder[i])) {
                 break;
             }
@@ -137,7 +137,7 @@ void NeiInv_ReceiveItem(uint16_t logicalId) {
                                                                       : NEI_POWER_SEASONS;
         const uint8_t mask = NeiProgress_GetMask(family);
         for (unsigned i = 0; i < NeiProgress_Limit(family); ++i) {
-            if (!(mask & (1u << i))) {
+            if ((NeiProgress_ValidMask(family) & (1u << i)) && !(mask & (1u << i))) {
                 NeiProgress_SetMask(family, mask | (1u << i));
                 break;
             }
@@ -147,13 +147,12 @@ void NeiInv_ReceiveItem(uint16_t logicalId) {
 }
 
 void NeiInv_RemoveItem(uint16_t logicalId) {
-    /* A Cane guarda a posse em bits além da célula. Zerar esses bits permite concedê-la de novo depois
-     * da desativação; a seleção da habilidade deixa de ter efeito enquanto a máscara estiver vazia. */
+    /* Remove só a posse nativa; Statue/Shadow e seleções importadas ficam preservados. */
     if (logicalId == ITEM_CANE_OF_SOMARIA) {
-        Nei_Save()->caneSkills = 0;
+        Nei_Save()->caneSkills &= (uint8_t)~NeiProgress_ValidMask(NEI_POWER_CANE);
     }
     if (logicalId == ITEM_ELEMENTAL_WAND)
-        Nei_Save()->wandRodsOwned = 0;
+        Nei_Save()->wandRodsOwned &= (uint8_t)~NeiProgress_ValidMask(NEI_POWER_WAND);
     if (logicalId == EXT_ITEM_SHEIKAH_SLATE)
         Nei_Save()->slateRunesOwned = 0;
     if (logicalId == EXT_ITEM_ROD_OF_SEASONS) {

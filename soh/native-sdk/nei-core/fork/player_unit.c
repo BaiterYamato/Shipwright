@@ -78,6 +78,7 @@ void NeiLantern_RestoreFire(u8 fireType) {
     gCustomItemState.lanternEquipped = 0;
     gCustomItemState.lanternSwinging = 0;
     Bottle_WheelResetTracking();
+    ExtInv_ResetSessionItems();
     // A captura pendente também pertence ao arquivo anterior, não ao novo save.
     u8 pendingWheel, pendingItem;
     Bottle_ConsumeCatchSync(&pendingWheel, &pendingItem);

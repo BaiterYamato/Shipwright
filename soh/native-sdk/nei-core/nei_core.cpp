@@ -362,7 +362,7 @@ ShipNativeStatus SHIP_NATIVE_CALL PowerToggle(void*, const char* request, uint32
         uint64_t item = 0;
         if (registry->Find(NeiProgress_ItemId(family), &item) != SHIP_NATIVE_OK)
             return SHIP_NATIVE_UNSUPPORTED;
-        const auto status = mask ? registry->Grant(item) : registry->Revoke(item);
+        const auto status = (mask & NeiProgress_ValidMask(family)) ? registry->Grant(item) : registry->Revoke(item);
         if (status != SHIP_NATIVE_OK)
             return status;
         NeiProgress_SetMask(family, (uint8_t)mask);

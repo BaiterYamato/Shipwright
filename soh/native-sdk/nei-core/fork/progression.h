@@ -11,11 +11,14 @@ static inline uint8_t NeiProgress_Limit(unsigned family) {
     return family < NEI_POWER_COUNT ? limits[family] : 0;
 }
 static inline uint8_t NeiProgress_ValidMask(unsigned family) {
-    const unsigned count = NeiProgress_Limit(family);
-    return count ? (uint8_t)((1u << count) - 1u) : 0;
+    // Máscaras RC11: Shadow e Statue ficam reservados no save.
+    static const uint8_t masks[] = { 0x1F, 0x1F, 0x0F, 0x3E };
+    return family < NEI_POWER_COUNT ? masks[family] : 0;
 }
 static inline int NeiProgress_NextMask(unsigned family, unsigned index, uint8_t current) {
-    return index < NeiProgress_Limit(family) ? (current ^ (1u << index)) : -1;
+    return index < NeiProgress_Limit(family) && (NeiProgress_ValidMask(family) & (1u << index))
+               ? (current ^ (1u << index))
+               : -1;
 }
 uint8_t NeiProgress_GetMask(unsigned family);
 void NeiProgress_SetMask(unsigned family, uint8_t mask);

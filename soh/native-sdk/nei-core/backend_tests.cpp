@@ -59,5 +59,38 @@ int main() {
     Bottle_SetSlot(0, 0x15);
     Bottle_WheelPersist(0, 0x14);
     assert(Bottle_GetSlot(0) == 0x15);
+    // P1-04/P2-01/P2-02/P2-06: cada conteúdo adiado continua ocupando espaço físico.
+    const uint8_t deferred[] = { 0xB6, 0xDD, 0xDE, 0xEC, 0xED, 0xEE, 0xEF, 0xF0, 0xF1, 0xF2, 0xF3 };
+    for (uint8_t mm : deferred) {
+        Reset();
+        save.bottleSlots[0] = mm;
+        for (unsigned i = 1; i < 8; ++i)
+            save.bottleSlots[i] = 0x14;
+        assert(Bottle_GetSlot(0) == 0xFF && Bottle_WheelBottleCount(0) == 3);
+        assert(!Bottle_HasFreeSlot() && !Bottle_GiveBottle(0x15));
+        Bottle_SetSlot(0, 0x15);
+        assert(save.bottleSlots[0] == mm);
+        save.bottleSlots[2] = 0xFF;
+        assert(Bottle_HasFreeSlot() && Bottle_GiveBottle(0x15));
+        assert(save.bottleSlots[0] == mm && save.bottleSlots[2] == 0x15);
+        save.bottomlessContent = mm;
+        save.bottomlessCount = 7;
+        Bottle_SetBottomlessOwned(1);
+        Bottle_BottomlessFill(0x15);
+        Bottle_BottomlessEmpty();
+        Bottle_BottomlessSetCount(0);
+        assert(Bottle_BottomlessConsume() == 0);
+        Bottle_SetBottomlessOwned(0);
+        assert(!Bottle_BottomlessOwned() && save.bottomlessContent == mm && save.bottomlessCount == 7);
+        Bottle_SetBottomlessOwned(1);
+        Bottle_WheelRecordActive(0, 0x14);
+        assert(Bottle_CatchIntoEmpty(0x19));
+        assert(save.bottleSlots[1] == 0x19 && save.bottomlessContent == mm && save.bottomlessCount == 7);
+        for (unsigned i = 1; i < 8; ++i)
+            save.bottleSlots[i] = 0x15;
+        assert(!Bottle_CatchIntoEmpty(0x19));
+        assert(Bottle_ContentFromItemId(mm) == BOTTLE_C_COUNT);
+        assert(!Bottle_GiveBottle(mm) && !Bottle_CatchIntoEmpty(mm));
+    }
     return 0;
 }

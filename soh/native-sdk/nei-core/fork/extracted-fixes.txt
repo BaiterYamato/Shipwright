@@ -41,3 +41,24 @@ z_kaleido_scope_PAL.c ::: const char* twilightOverrideDraw = KaleidoScope_GetTwi
 # A troca de página do NEI marca moveCursorResult = 2, que pula a releitura do item sob o cursor: nome e alvo de equipar
 # ficavam os do slot da página anterior.
 z_kaleido_item.c ::: ExtInv_SwitchPage(); ::: ExtInv_SwitchPage(); cursorItem = ExtInv_GetSlotItem(ExtInv_GetInventorySlot(pauseCtx->cursorPoint[PAUSE_ITEM]));
+
+# RC11 sem assets do MM (patch 0013): a página de quest do MM do kaleido fica travada fora, mesmo com o CVar ligado
+# na config de uma sessão antiga. O L não alterna mais a página (nem toca o som), e os dois pontos que a escolhem
+# leem 0.
+z_kaleido_collect.c ::: if ((play->pauseCtx.pageIndex == PAUSE_QUEST) && (play->pauseCtx.cursorSpecialPos == 0) && ::: if (0 && (play->pauseCtx.pageIndex == PAUSE_QUEST) && (play->pauseCtx.cursorSpecialPos == 0) &&
+z_kaleido_collect.c ::: if (CVarGetInteger(CVAR_ENHANCEMENT("SkijerNEI.MmQuestPage"), 0)) { ::: if (0) { /* RC11: MM quest page off */
+z_kaleido_scope_PAL.c ::: if (sHasMmQuestBg && CVarGetInteger(CVAR_ENHANCEMENT("SkijerNEI.MmQuestPage"), 0)) { ::: if (0 && sHasMmQuestBg) { /* RC11: MM quest page off */
+z_kaleido_scope_PAL.c ::: if (sHasMmQuestBg == -1) { ::: if (0 && sHasMmQuestBg == -1) { /* RC11: no MM texture probe */
+
+# RC11: consumo/concessão de um item nativo projetado não substitui o slot físico MM.
+z_parameter.c ::: gSaveContext.inventory.items[slot] = item; ::: ExtInv_SetSlotItem(slot, item);
+z_parameter.c ::: gSaveContext.inventory.items[gSaveContext.equips.cButtonSlots[button - 1]] = item; ::: ExtInv_SetSlotItem(gSaveContext.equips.cButtonSlots[button - 1], item);
+z_parameter.c ::: (gSaveContext.inventory.items[gSaveContext.equips.cButtonSlots[button - 1]] == ITEM_MILK_BOTTLE) ::: (ExtInv_GetSlotItem(gSaveContext.equips.cButtonSlots[button - 1]) == ITEM_MILK_BOTTLE)
+z_parameter.c ::: (gSaveContext.inventory.items[gSaveContext.equips.cButtonSlots[button - 1]] == ITEM_CHATEAU_ROMANI) ::: (ExtInv_GetSlotItem(gSaveContext.equips.cButtonSlots[button - 1]) == ITEM_CHATEAU_ROMANI)
+z_parameter.c ::: gSaveContext.equips.buttonItems[button] = item; ::: if (!ExtInv_IsDeferredMmItem(gSaveContext.equips.buttonItems[button])) gSaveContext.equips.buttonItems[button] = item;
+# RC11: a DLL compila o nei_save.c extraído do blob do fork, não o nei_save.cpp do 0013. A Statue (bit 0) fica no save, mas não conta como posse nem seleção efetiva.
+nei_save.c ::: return (Nei_Save()->caneSkills & (1 << skill)) ? 1 : 0; ::: return (skill != 0 && (Nei_Save()->caneSkills & (1 << skill))) ? 1 : 0; /* RC11: Statue reservada */
+nei_save.c ::: Nei_Save()->caneSkills |= (uint8_t)(1 << skill); ::: if (skill != 0) Nei_Save()->caneSkills |= (uint8_t)(1 << skill); /* RC11: Statue não é concedida */
+nei_save.c ::: return Nei_Save()->caneSkills != 0; ::: return (Nei_Save()->caneSkills & 0x3E) != 0; /* RC11: só habilidades nativas */
+nei_save.c ::: return (Nei_Save()->caneSkills & (1 << Nei_CaneTypeGateBit(type))) ? 1 : 0; ::: return Nei_CaneHasSkill(type == 0 ? 1 : Nei_CaneTypeGateBit(type)); /* RC11: Block abre a Somaria */
+nei_save.c ::: return (skills & (1 << 0)) ? 1 : 0; // Statue ::: return 0; /* RC11: a seleção Statue salva fica; o efetivo cai no Block */

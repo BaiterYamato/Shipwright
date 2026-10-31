@@ -20,15 +20,13 @@ uint8_t NeiProgress_GetMask(unsigned family) {
 }
 void NeiProgress_SetMask(unsigned family, uint8_t mask) {
     const uint8_t supported = NeiProgress_ValidMask(family);
-    // Keep flags belonging to unavailable/future abilities in imported saves.
+    // Preserva os bits indisponíveis e futuros do save importado.
     mask = (NeiProgress_GetMask(family) & ~supported) | (mask & supported);
     switch (family) {
         case NEI_POWER_WAND:
             Nei_Save()->wandRodsOwned = mask;
-            if (mask) {
+            if (mask & supported)
                 ExtInv_SetSlotItem(SLOT_ELEMENTAL_WAND, ITEM_ELEMENTAL_WAND);
-                Wand_SetMode(Wand_GetMode());
-            }
             break;
         case NEI_POWER_SLATE:
             Nei_Save()->slateRunesOwned = mask;
@@ -47,10 +45,8 @@ void NeiProgress_SetMask(unsigned family, uint8_t mask) {
             break;
         case NEI_POWER_CANE:
             Nei_Save()->caneSkills = mask;
-            if (mask) {
+            if (mask & supported)
                 ExtInv_SetSlotItem(SLOT_CANE_OF_SOMARIA, ITEM_CANE_OF_SOMARIA);
-                Nei_CaneSetType(Nei_CaneGetType());
-            }
             break;
     }
 }
@@ -72,6 +68,8 @@ uint32_t NeiProgress_Catalog(char* output, uint32_t capacity) {
     output[0] = 0;
     for (unsigned family = 0; family < NEI_POWER_COUNT; ++family) {
         for (unsigned i = 0; i < NeiProgress_Limit(family); ++i) {
+            if (!(NeiProgress_ValidMask(family) & (1u << i)))
+                continue;
             const char* icon = family == NEI_POWER_WAND    ? (const char*)Wand_ModeIcon(i)
                                : family == NEI_POWER_SLATE ? (const char*)Slate_RuneIcon(i)
                                : family == NEI_POWER_SEASONS
