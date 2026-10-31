@@ -22,3 +22,7 @@ FrameAdvance_IsEnabled    # idem, nota do combo
 arquivo code_800EC960.c   # AudioOcarina_* e as tabelas de notas/botões das músicas novas
 Message_StartOcarina      # lê sOcarinaSongBitFlags estendido para as músicas do MM
 sOcarinaSongBitFlags      # idem
+
+# RC11 sem assets do MM: a versão do fork pede o frustum da Song of Time do mm.o2r e não desenha sem ele, então o
+# efeito do Zelda's Lullaby e da Song of Time sumia. A do host desenha com o sFrustumVtx/sMaterialDL do oot.o2r.
+OceffWipe_Draw        # assets do MM (sSongOfTimeFrustum*)
