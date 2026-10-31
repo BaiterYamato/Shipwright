@@ -170,9 +170,9 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     gSail = sail && std::strcmp(sail, "1") == 0;
     try {
         gServer = std::make_unique<Playtest::Server>(PLAYTEST_LAYOUT_ID);
-        const auto* resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
-            runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
-            sizeof(ShipOotResourcesV2)));
+        const auto* resources = static_cast<const ShipOotResourcesV2*>(
+            runtime->get_service(runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
+                                 sizeof(ShipOotResourcesV2)));
         if (!gServer->Vfs().Init(resources))
             Log("VFS v2/SHA-256 indisponível; consultas retornarão complete=false");
     } catch (...) { return SHIP_NATIVE_FAILURE; }

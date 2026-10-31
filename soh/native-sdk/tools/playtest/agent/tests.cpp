@@ -27,7 +27,10 @@ void VfsTests() {
         }
         char archive[] = "base.o2r";
         uint8_t data[] = { 'a', 'b', 'c' };
-        if (!std::strcmp(path, "binary")) { data[1] = 0; data[2] = 'b'; }
+        if (!std::strcmp(path, "binary")) {
+            data[1] = 0;
+            data[2] = 'b';
+        }
         ShipOotResourceLayerV2 info{ sizeof(info), 0, 2, 0, 123, 3, 8 };
         if (!std::strcmp(path, "bad-index"))
             info.layer_index = 1;
@@ -56,7 +59,9 @@ void VfsTests() {
     auto ticket = vfs.Submit({ { "paths", { "good" } } });
     Check(vfs.Result(ticket)["status"] == "pending" && vfs.Busy());
     bool busy = false;
-    try { vfs.Submit({ { "paths", { "other" } } }); } catch (...) { busy = true; }
+    try {
+        vfs.Submit({ { "paths", { "other" } } });
+    } catch (...) { busy = true; }
     Check(busy);
     vfs.Tick(42);
     auto result = vfs.Result(ticket)["result"];
@@ -89,7 +94,9 @@ void VfsTests() {
     vfs.Cancel();
     vfs.Tick(45);
     bool expired = false;
-    try { vfs.Result(ticket); } catch (...) { expired = true; }
+    try {
+        vfs.Result(ticket);
+    } catch (...) { expired = true; }
     Check(expired && !vfs.Busy());
     VfsLayers unavailable;
     ticket = unavailable.Submit({ { "paths", { "good" } } });
@@ -98,13 +105,12 @@ void VfsTests() {
     Request request;
     std::string error;
     Check(ParseRequest(R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":8388608})", request, error));
-    for (auto text : { R"({"id":"vfs","op":"vfs_layers","paths":[]})",
-                       R"({"id":"vfs","op":"vfs_layers","paths":["x","x"]})",
-                       R"({"id":"vfs","op":"vfs_layers","paths":["x\u0000y"]})",
-                       R"({"id":"vfs","op":"vfs_layers","paths":[1]})",
-                       R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":true})",
-                       R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":8388609})",
-                       R"({"id":"vfs","op":"vfs_layers","paths":["x"],"phase":"after-ready"})" })
+    for (auto text :
+         { R"({"id":"vfs","op":"vfs_layers","paths":[]})", R"({"id":"vfs","op":"vfs_layers","paths":["x","x"]})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x\u0000y"]})", R"({"id":"vfs","op":"vfs_layers","paths":[1]})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":true})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x"],"max_bytes":8388609})",
+           R"({"id":"vfs","op":"vfs_layers","paths":["x"],"phase":"after-ready"})" })
         Check(!ParseRequest(text, request, error));
     Request longRequest{ "vfs", "vfs_layers", { { "paths", { std::string(VfsMaxPath + 1, 'x') } } } };
     Check(!ValidateV2(longRequest, error));

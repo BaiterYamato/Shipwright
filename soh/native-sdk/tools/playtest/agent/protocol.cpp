@@ -152,10 +152,16 @@ bool ValidateV2(const Request& request, std::string& error) {
         if (valid) {
             std::set<std::string> unique;
             for (const auto& item : a["paths"]) {
-                if (!item.is_string()) { valid = false; break; }
+                if (!item.is_string()) {
+                    valid = false;
+                    break;
+                }
                 const auto& path = item.get_ref<const std::string&>();
                 if (path.empty() || path.size() > VfsMaxPath || path.find('\0') != std::string::npos ||
-                    !unique.insert(path).second) { valid = false; break; }
+                    !unique.insert(path).second) {
+                    valid = false;
+                    break;
+                }
             }
         }
     } else if (op == "result") {

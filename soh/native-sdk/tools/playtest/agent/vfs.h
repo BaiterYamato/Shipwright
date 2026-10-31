@@ -18,6 +18,7 @@ class VfsLayers {
     void Tick(uint64_t frame);
     void Cancel();
     bool Busy() const;
+
   private:
     struct Path {
         std::array<char, VfsMaxPath + 1> text{};

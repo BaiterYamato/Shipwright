@@ -17,8 +17,9 @@ bool VfsLayers::Init(const ShipOotResourcesV2* resources) {
     if (BCryptOpenAlgorithmProvider(&algorithm_, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
         return false;
     DWORD bytes = 0, length = 0;
-    if (BCryptGetProperty(algorithm_, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&length), sizeof(length),
-                          &bytes, 0) < 0 || bytes != sizeof(length) || !length)
+    if (BCryptGetProperty(algorithm_, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&length), sizeof(length), &bytes,
+                          0) < 0 ||
+        bytes != sizeof(length) || !length)
         return false;
     hashObject_.resize(length);
     if (BCryptCreateHash(algorithm_, &hash_, hashObject_.data(), length, nullptr, 0, BCRYPT_HASH_REUSABLE_FLAG) < 0)
@@ -51,12 +52,11 @@ uint64_t VfsLayers::Submit(const Json& args) {
     return ticket_;
 }
 ShipNativeStatus SHIP_NATIVE_CALL VfsLayers::Collect(void* user, const ShipOotResourceLayerV2* info,
-                                                   const char* archive, const uint8_t* data) {
+                                                     const char* archive, const uint8_t* data) {
     auto& self = *static_cast<VfsLayers*>(user);
     auto& path = self.paths_[self.current_];
     if (!info || info->size < sizeof(*info) || !info->layer_count || info->layer_index != path.count ||
-        info->layer_index >= info->layer_count || !archive || !info->archive_path_length ||
-        (info->data_size && !data))
+        info->layer_index >= info->layer_count || !archive || !info->archive_path_length || (info->data_size && !data))
         return SHIP_NATIVE_FAILURE;
     if (info->layer_count > VfsMaxLayers - path.first || self.layerCount_ >= VfsMaxLayers ||
         info->archive_path_length > VfsMaxArchive || info->data_size > self.budget_ - self.bytes_)
@@ -96,8 +96,7 @@ void VfsLayers::Tick(uint64_t frame) {
         try {
             path.hasFile = resources_->has_file(path.text.data()) != 0;
             path.status = resources_->read_file_layers(path.text.data(), Collect, this);
-            if (path.status == SHIP_NATIVE_OK &&
-                (!path.count || path.count != layers_[path.first].count))
+            if (path.status == SHIP_NATIVE_OK && (!path.count || path.count != layers_[path.first].count))
                 path.status = SHIP_NATIVE_FAILURE;
         } catch (...) { path.status = SHIP_NATIVE_FAILURE; }
         // Retém o status, mas nunca publica um prefixo como se fosse a lista completa.
@@ -125,23 +124,31 @@ Json VfsLayers::Result(uint64_t ticket) const {
             const auto& layer = layers_[path.first + j];
             std::string digest(64, '0');
             for (size_t k = 0; k < layer.digest.size(); ++k) {
-                digest[2*k] = hex[layer.digest[k] >> 4];
-                digest[2*k+1] = hex[layer.digest[k] & 15];
+                digest[2 * k] = hex[layer.digest[k] >> 4];
+                digest[2 * k + 1] = hex[layer.digest[k] & 15];
             }
-            layers.push_back({ { "archive", std::string(layer.archive.data(), layer.archiveLength) },
-                               { "sha256", digest } });
+            layers.push_back(
+                { { "archive", std::string(layer.archive.data(), layer.archiveLength) }, { "sha256", digest } });
         }
         complete = complete && path.status == SHIP_NATIVE_OK;
-        observations.push_back({ { "path", path.text.data() }, { "layers", std::move(layers) },
-                                 { "hostStatus", path.status }, { "hasFile", path.hasFile },
+        observations.push_back({ { "path", path.text.data() },
+                                 { "layers", std::move(layers) },
+                                 { "hostStatus", path.status },
+                                 { "hasFile", path.hasFile },
                                  { "complete", path.status == SHIP_NATIVE_OK } });
     }
-    Json body = { { "status", "observed" }, { "complete", complete }, { "frame", frame_ },
-                  { "bytes_hashed", bytes_ }, { "observations", std::move(observations) },
-                  { "instrumentation", { { "observer", "linkspan.tool.playtest/vfs_layers" },
-                    { "revision", PLAYTEST_VFS_REVISION }, { "agent_version", "0.2.1" },
-                    { "layout_id", PLAYTEST_LAYOUT_ID }, { "resources_version", 2 },
-                    { "layer_order", "low-to-high" } } } };
+    Json body = { { "status", "observed" },
+                  { "complete", complete },
+                  { "frame", frame_ },
+                  { "bytes_hashed", bytes_ },
+                  { "observations", std::move(observations) },
+                  { "instrumentation",
+                    { { "observer", "linkspan.tool.playtest/vfs_layers" },
+                      { "revision", PLAYTEST_VFS_REVISION },
+                      { "agent_version", "0.2.1" },
+                      { "layout_id", PLAYTEST_LAYOUT_ID },
+                      { "resources_version", 2 },
+                      { "layer_order", "low-to-high" } } } };
     return { { "ticket", ticket }, { "status", "done" }, { "result", std::move(body) } };
 }
 void VfsLayers::Cancel() {
