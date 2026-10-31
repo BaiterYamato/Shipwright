@@ -144,6 +144,13 @@ class VerifyTests(Fixtures):
             with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, 'SHA-256'):
                 A.verify_archives(self.root, manifest, self.bases)
 
+    def test_xml_resource_with_trailing_nul(self):
+        # Como os vértices do landmine do fork: o LUS lê o XML até o NUL.
+        xml = b'<Vertex Version="0"><Vtx X="0" Y="0" Z="0"/></Vertex>\x00'
+        self.assertEqual(A.resource_refs(xml), [])
+        with self.assertRaises(ValueError):
+            A.resource_refs(b'<Vertex><Vtx X="0"/></Vertex>\x00junk')
+
     def test_overrides_portversion_and_truncated_dl(self):
         for name, data in [('objects/base/texture', b'shadow'), ('portVersion', b'0.3.9'),
                            ('objects/model/dl', b'\0\0\0\0TLDO')]:
@@ -167,11 +174,15 @@ class VerifyTests(Fixtures):
 
 
 class GeneratorTests(Fixtures):
-    def generate(self, profile='oot', extra_code='', packed_extra=None, inactive_mm=False):
+    def generate(self, profile='oot', extra_code='', packed_extra=None, inactive_mm=False, extra_files=None,
+                 allow=None):
         source = self.root / 'fork'
         file = source / 'soh/mods/items/test.c'
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text('const char *base = "__OTR__objects/base/texture";\n' + extra_code, encoding='utf-8')
+        for name, text in (extra_files or {}).items():
+            (source / name).parent.mkdir(parents=True, exist_ok=True)
+            (source / name).write_text(text, encoding='utf-8')
         if inactive_mm:
             optional = source / 'soh/mods/mm_sources/optional.c'
             optional.parent.mkdir(parents=True)
@@ -195,6 +206,10 @@ class GeneratorTests(Fixtures):
                 '--base', str(self.oot), '--base', str(self.soh), '--fork-source', str(source), '--out', str(out)]
         if profile is not None:
             argv += ['--profile', profile]
+        if allow is not None:
+            allow_file = self.root / 'allow.txt'
+            allow_file.write_text(allow, encoding='utf-8')
+            argv += ['--code-allow', str(allow_file)]
         with patch.object(sys, 'argv', argv), patch.object(A, 'fork_files', return_value=list(blobs)), \
                 patch.object(A, 'read_blobs', side_effect=lambda _, __, paths: {p: blobs[p] for p in paths}), \
                 patch.object(A.importlib, 'import_module', return_value=cm), patch.object(A.subprocess, 'run', side_effect=pack), \
@@ -227,6 +242,41 @@ class GeneratorTests(Fixtures):
         status, manifest, _ = self.generate(extra_code='TransformMasks_LoadMmDL("objects/object_link_child/gLinkHumanMirrorShieldDL");')
         self.assertEqual(status, 1)
         self.assertEqual(len(manifest['code_audit']['reachable_mm']), 1)
+
+    MM_PAGE = {'build/extracted/z_kaleido_collect.c': 'char *p = "__OTR__icon_item_static_yar/gItemIconQuiver30Tex";\n'}
+    MM_PAGE_ALLOW = 'build/extracted/z_kaleido_collect.c ::: icon_item_static_yar/ ::: página MM travada\n'
+
+    def test_code_allow_moves_inactive_mm_reference(self):
+        status, manifest, _ = self.generate(extra_files=self.MM_PAGE, allow=self.MM_PAGE_ALLOW)
+        self.assertEqual(status, 0)
+        audit = manifest['code_audit']
+        self.assertEqual(audit['reachable_mm'], [])
+        self.assertEqual(audit['inactive'][0]['motivo'], ['página MM travada'])
+
+    def test_code_allow_does_not_cover_a_live_user(self):
+        files = dict(self.MM_PAGE)
+        files['soh/mods/items/live.c'] = 'char *p = "__OTR__icon_item_static_yar/gItemIconQuiver30Tex";\n'
+        status, manifest, _ = self.generate(extra_files=files, allow=self.MM_PAGE_ALLOW)
+        self.assertEqual(status, 1)
+        self.assertEqual(len(manifest['code_audit']['reachable_mm']), 1)
+
+    def test_code_allow_unused_entry_fails(self):
+        status, manifest, _ = self.generate(allow=self.MM_PAGE_ALLOW)
+        self.assertEqual(status, 1)
+        self.assertIn('--code-allow sem uso', manifest['code_audit']['missing'][0]['error'])
+
+    def test_code_allow_covers_inactive_missing_path(self):
+        files = {'build/extracted/z_en_rd.c': 'char *a = "__OTR__objects/object_rd/gGibdoRedeadPirouetteAnim";\n'}
+        allow = 'build/extracted/z_en_rd.c ::: objects/object_rd/gGibdoRedead ::: Gibdo Mask do MM desligada\n'
+        status, manifest, _ = self.generate(extra_files=files, allow=allow)
+        self.assertEqual(status, 0)
+        self.assertEqual(manifest['code_audit']['missing'], [])
+        self.assertEqual(manifest['code_audit']['inactive'][0]['path'], 'objects/object_rd/gGibdoRedeadPirouetteAnim')
+
+    def test_game_header_include_is_not_an_asset(self):
+        status, manifest, _ = self.generate(extra_code='#include "objects/object_poh/object_poh.h"\n')
+        self.assertEqual(status, 0)
+        self.assertEqual(manifest['code_audit']['missing'], [])
 
     def test_arbitrary_otr_namespace_is_still_checked(self):
         status, manifest, _ = self.generate(extra_code='char *bad = "__OTR__misc/unavailable";')

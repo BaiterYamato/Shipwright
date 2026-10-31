@@ -355,6 +355,9 @@ def code_references(source, include_bare=False):
             path = os.path.join(root, file)
             with open(path, encoding="utf-8", errors="replace") as f:
                 text = f.read()
+                # `#include "objects/x/x.h"` é header do jogo, não asset: só o caminho nu de uma chamada conta.
+                if include_bare:
+                    text = re.sub(r'(?m)^\s*#\s*include\s+"[^"]*"', "", text)
                 for pattern in patterns:
                     for match in pattern.finditer(text):
                         refs.setdefault(match.group(1), set()).add(os.path.relpath(path, source).replace("\\", "/"))
@@ -362,6 +365,35 @@ def code_references(source, include_bare=False):
 
 
 OOT_COMPONENTS = ("core", "expansion.ssbb")
+
+
+def read_code_allow(path):
+    """'<arquivo do fecho> ::: <prefixo do caminho> ::: <motivo>'; # comenta. Par repetido ou sem motivo é erro."""
+    allow = {}
+    with open(path, encoding="utf-8") as stream:
+        for number, line in enumerate(stream, 1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [part.strip() for part in line.split(":::")]
+            if len(parts) != 3 or not all(parts) or (parts[0], parts[1]) in allow:
+                raise ValueError("%s:%d: esperado '<arquivo> ::: <prefixo> ::: <motivo>', um por par" % (path, number))
+            allow[(parts[0], parts[1])] = parts[2]
+    return allow
+
+
+def split_inactive(items, allow, used):
+    """Referência fica inativa só se todo usuário incluído dela tem exceção para o caminho; um usuário vivo reprova."""
+    live, inactive = [], []
+    for item in items:
+        users = [u for u in item["usado_em"] if user_component(u) in OOT_COMPONENTS]
+        keys = [next((k for k in allow if k[0] == u and item["path"].startswith(k[1])), None) for u in users]
+        if users and all(keys):
+            used.update(keys)
+            inactive.append(dict(item, motivo=sorted({allow[k] for k in keys})))
+        else:
+            live.append(item)
+    return live, inactive
 
 
 def exclusion_reason(component):
@@ -412,7 +444,8 @@ def resource_refs(data):
     """Referências reais de ODLT/XML, inclusive após conversão PNG do packer."""
     if data.lstrip().startswith(b"<"):
         try:
-            tree = ET.fromstring(data)
+            # O LUS lê o XML como string C (tinyxml2): o NUL final de alguns recursos do fork termina o texto.
+            tree = ET.fromstring(data.rstrip(b"\x00"))
         except ET.ParseError as error:
             raise ValueError("XML inválido: " + str(error)) from error
         return [("path", value.removeprefix("__OTR__")) for node in tree.iter()
@@ -530,7 +563,10 @@ def main():
     parser.add_argument("--base", action="append", default=[], help="oot.o2r, soh.o2r (conferência)")
     parser.add_argument("--mm", action="append", default=[],
                         help="mm.o2r do usuário: caminhos dele contam como dependência do adapter do MM")
-    parser.add_argument("--fork-source", help="fonte do fork preparado pelo sync.py (referências __OTR__)")
+    parser.add_argument("--fork-source", help="fonte do fork preparado pelo sync.py (referências __OTR__); no "
+                        "perfil oot, o fecho da DLL montado por tools/nei-code-closure.py")
+    parser.add_argument("--code-allow", help="perfil oot: '<arquivo do fecho> ::: <prefixo> ::: <motivo>' por linha; "
+                        "referência MM ou ausente que só esses pares cobrem vai para code_audit.inactive, com o motivo")
     parser.add_argument("--out", default="build/nei-assets")
     parser.add_argument("--gbi-include", help="include do libultraship (gbi.h) para os modelos em C; padrão: "
                         "<repo>/libultraship/include")
@@ -550,6 +586,13 @@ def main():
         parser.error("perfil oot exige --fork-source para conferir referências de código")
     if args.profile == "oot" and not os.path.isdir(args.fork_source):
         parser.error("--fork-source não é um diretório existente")
+    if args.code_allow:
+        if args.profile != "oot":
+            parser.error("--code-allow só vale no perfil oot")
+        try:
+            read_code_allow(args.code_allow)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
     global cmodels
     sys.path.insert(0, os.path.join(os.path.abspath(args.repo), "soh", "native-sdk", "nei-core", "fork"))
     cmodels = importlib.import_module("cmodels")
@@ -779,16 +822,28 @@ def main():
     if args.profile == "oot":
         # Conservador: uma string MM em usuário incluído reprova, mesmo que tenha guard em runtime.
         # Fontes opcionais excluídos continuam no relatório como evidência, sem virar dependência ativa.
-        report["reachable_mm"] = [item for item in report.get("code_mm", [])
-                                  if set(item["componentes"]) & set(OOT_COMPONENTS)]
+        allow = read_code_allow(args.code_allow) if args.code_allow else {}
+        used = set()
+        included_mm = [item for item in report.get("code_mm", []) if set(item["componentes"]) & set(OOT_COMPONENTS)]
+        report["reachable_mm"], inactive_mm = split_inactive(included_mm, allow, used)
         report["included_code_missing"] = [item for item in report.get("code_optional", [])
                                           if set(item["componentes"]) & set(OOT_COMPONENTS)]
+        missing, inactive_missing = split_inactive(report.get("code_missing", []) + report["included_code_missing"],
+                                                   allow, used)
+        # O ausente coberto por exceção sai da lista que reprova a geração; fica em code_audit.inactive.
+        inactive_paths = {item["path"] for item in inactive_missing}
+        report["code_missing"] = [i for i in report.get("code_missing", []) if i["path"] not in inactive_paths]
+        report["code_inactive"] = inactive_mm + inactive_missing
         manifest["code_audit"] = {"policy": "conservative-source-strings/1",
                                   "reachable_mm": report["reachable_mm"],
-                                  "missing": report.get("code_missing", []) + report["included_code_missing"],
+                                  "inactive": inactive_mm + inactive_missing,
+                                  "missing": missing,
                                   "replaced": report.get("code_replaced", [])}
         if not code:
             manifest["code_audit"]["missing"].append({"error": "nenhuma referência de código encontrada"})
+        # Exceção que não cobre mais nada sai da lista, para ela não virar licença permanente.
+        for name, prefix in sorted(set(allow) - used):
+            manifest["code_audit"]["missing"].append({"error": "--code-allow sem uso: %s ::: %s" % (name, prefix)})
         report["profile_errors"] = []
         try:
             verify_archives(out, manifest, args.base)
@@ -816,6 +871,8 @@ def main():
                                          len(report["code_optional"]), len(report["code_missing"])))
         for item in report["code_missing"]:
             print("  ausente no núcleo: %s (%s)" % (item["path"], ", ".join(item["usado_em"][:2])))
+        if "code_inactive" in report:
+            print("referências inativas cobertas por --code-allow: %d" % len(report["code_inactive"]))
     core_dangling = [d for d in report["dangling"] if d["componente"] == "core"]
     for item in report["dangling"]:
         print("  sem destino (%s): %s -> %s" % (item["componente"], item["recurso"], item.get("caminho", item.get("hash"))))
