@@ -302,8 +302,11 @@ class GeneratorTests(Fixtures):
 @unittest.skipUnless(shutil.which('powershell'), 'PowerShell não disponível')
 class PowerShellTests(Fixtures):
     def ps(self, code):
+        # Sob o pwsh 7 (CTest da CI), o PSModulePath herdado esconde do Windows PowerShell os módulos dele
+        # (Get-FileHash some). Sem a variável, o powershell.exe refaz o caminho padrão.
+        env = {key: value for key, value in os.environ.items() if key.upper() != 'PSMODULEPATH'}
         return subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', code],
-                              cwd=self.root, capture_output=True)
+                              cwd=self.root, capture_output=True, env=env)
 
     def test_parser(self):
         path = str(PACKAGE).replace("'", "''")
