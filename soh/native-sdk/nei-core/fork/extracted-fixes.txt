@@ -62,3 +62,8 @@ nei_save.c ::: Nei_Save()->caneSkills |= (uint8_t)(1 << skill); ::: if (skill !=
 nei_save.c ::: return Nei_Save()->caneSkills != 0; ::: return (Nei_Save()->caneSkills & 0x3E) != 0; /* RC11: só habilidades nativas */
 nei_save.c ::: return (Nei_Save()->caneSkills & (1 << Nei_CaneTypeGateBit(type))) ? 1 : 0; ::: return Nei_CaneHasSkill(type == 0 ? 1 : Nei_CaneTypeGateBit(type)); /* RC11: Block abre a Somaria */
 nei_save.c ::: return (skills & (1 << 0)) ? 1 : 0; // Statue ::: return 0; /* RC11: a seleção Statue salva fica; o efetivo cai no Block */
+# RC11: a dança dos ReDead pede três animações do MM por nome (só com a Gibdo Mask, desligada). O gate de
+# conteúdo recusa caminho MM dentro da DLL mesmo inativo; sem o nome, EnRd_SetupFriendlyDance cai no idle do OoT.
+z_en_rd.c ::: ResourceMgr_LoadAnimByName("__OTR__objects/object_rd/gGibdoRedeadSquattingDanceAnim") ::: NULL /* RC11: animação do MM fora do pacote */
+z_en_rd.c ::: ResourceMgr_LoadAnimByName("__OTR__objects/object_rd/gGibdoRedeadClappingDanceAnim") ::: NULL /* RC11: animação do MM fora do pacote */
+z_en_rd.c ::: ResourceMgr_LoadAnimByName("__OTR__objects/object_rd/gGibdoRedeadPirouetteAnim") ::: NULL /* RC11: animação do MM fora do pacote */

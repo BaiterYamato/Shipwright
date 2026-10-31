@@ -16,7 +16,6 @@ build/extracted/z_kaleido_item.c ::: icon_item_static_yar/gItemIconPowderKegTex 
 
 # Fora do registro de itens no perfil oot.
 build/nei_item_models.c ::: objects/object_nei_mario_mask/ ::: modelo de get-item da Mario Mask (expansion.sm64, fora do perfil oot); o item não entra no registro
-build/extracted/z_en_rd.c ::: objects/object_rd/gGibdoRedead ::: dança dos ReDead com a Gibdo Mask do MM; máscaras do MM desligadas
 
 # Nome dos upgrades de espada do MM no kaleido (KaleidoScope_GetWeaponUpgradeNameOverride): só com WeaponUpgrade_*,
 # que o patch 0013 faz devolver 0.
