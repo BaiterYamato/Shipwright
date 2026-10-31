@@ -12,9 +12,22 @@ void Check(bool value) {
 void VfsTests() {
     ShipOotResourcesV2 resources{};
     resources.size = sizeof(resources);
-    resources.has_file = [](const char* path) -> uint8_t { return std::strcmp(path, "missing") != 0; };
+    static const auto unread = [](const char* path) {
+        for (auto name : { "missing", "no-vfs", "listed-missing", "glob*missing" })
+            if (!std::strcmp(path, name))
+                return true;
+        return false;
+    };
+    resources.has_file = [](const char* path) -> uint8_t { return !unread(path); };
+    resources.list_files = [](const char* mask, ShipOotResourcePathFn callback, void* user) -> ShipNativeStatus {
+        if (!std::strcmp(mask, "no-vfs"))
+            return SHIP_NATIVE_UNSUPPORTED;
+        if (!std::strcmp(mask, "listed-missing"))
+            return callback(user, mask, static_cast<uint32_t>(std::strlen(mask)));
+        return SHIP_NATIVE_OK;
+    };
     resources.read_file_layers = [](const char* path, ShipOotResourceLayerFn callback, void* user) -> ShipNativeStatus {
-        if (!std::strcmp(path, "missing"))
+        if (unread(path))
             return SHIP_NATIVE_UNSUPPORTED;
         if (!std::strcmp(path, "many")) {
             ShipOotResourceLayerV2 info{ sizeof(info), 0, 32, 0, 0, 0, 8 };
@@ -84,12 +97,21 @@ void VfsTests() {
     result = vfs.Result(ticket)["result"];
     Check(result["observations"][0]["layers"].size() == 32);
     Check(result["observations"][1]["hostStatus"] == SHIP_NATIVE_LIMIT);
-    for (auto path : { "missing", "bad-index", "too-many", "long-archive", "partial-error" }) {
+    for (auto path :
+         { "no-vfs", "listed-missing", "glob*missing", "bad-index", "too-many", "long-archive", "partial-error" }) {
         ticket = vfs.Submit({ { "paths", { path } } });
         vfs.Tick(44);
         result = vfs.Result(ticket)["result"];
-        Check(result["complete"] == false && result["observations"][0]["layers"].empty());
+        Check(result["complete"] == false && result["observations"][0]["layers"].empty() &&
+              result["observations"][0]["absent"] == false);
     }
+    // Ausência certificada: VFS vivo, nenhum índice com o caminho.
+    ticket = vfs.Submit({ { "paths", { "missing", "good" } } });
+    vfs.Tick(44);
+    result = vfs.Result(ticket)["result"];
+    Check(result["complete"] == true && result["observations"][0]["absent"] == true &&
+          result["observations"][0]["hostStatus"] == SHIP_NATIVE_UNSUPPORTED &&
+          result["observations"][0]["layers"].empty() && result["observations"][1]["absent"] == false);
     ticket = vfs.Submit({ { "paths", { "good" } } });
     vfs.Cancel();
     vfs.Tick(45);

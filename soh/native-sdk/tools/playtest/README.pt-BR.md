@@ -1,10 +1,11 @@
 # Ferramenta de playtest do Link-Span OoT
 
-## Camadas do VFS e evidência RC11 (0.2.1, protocolo v2)
+## Camadas do VFS e evidência RC11 (0.2.2, protocolo v2)
 
 `vfs_layers(paths, max_bytes=8388608)` consulta `linkspan.oot.resources` v2 na thread do jogo, no próximo callback
 `oot.input.pad`, inclusive no título. Retorna `frame`, `bytes_hashed`, `instrumentation`, `complete` e `observations`.
-Cada observação contém `path`, `layers`, `hostStatus`, `hasFile` e `complete`; cada camada tem `{archive, sha256}`.
+Cada observação contém `path`, `layers`, `hostStatus`, `hasFile`, `absent` e `complete`; cada camada tem
+`{archive, sha256}`.
 A ordem é **da menor para a maior prioridade**: a última camada tem prioridade máxima. O SHA-256 cobre os bytes do
 callback, inclusive NUL binário e arquivo vazio; não é o hash do contêiner nem o `content_hash` de 64 bits do host.
 Archives com transform entregam bytes transformados. O identificador do archive é copiado literalmente e pode incluir
@@ -20,10 +21,13 @@ TCP serializa o resultado. Nenhum ponteiro dos dados do callback é retido; perm
 O protocolo usa lease, ticket pendente e polling por `result`. Cancelamento, destruição de cena, desconexão, troca
 forçada do dono e shutdown invalidam tickets VFS. Falhas não repetem automaticamente a consulta.
 
-Status do host: 0 OK, 1 INVALID_ARGUMENT, 2 UNSUPPORTED, 3 FAILURE e 4 LIMIT. **O status 2 mistura arquivo ausente
-com VFS indisponível**. Ele permanece como `complete=false`, `layers=[]`, acompanhado da sondagem `hasFile`.
-Lista vazia não significa ausência comprovada. `complete=true` confirma a enumeração por callback, mas o próprio host
-pode omitir camadas que não conseguiu carregar. Recibos diagnósticos não devem aprovar automaticamente o gate.
+Status do host: 0 OK, 1 INVALID_ARGUMENT, 2 UNSUPPORTED, 3 FAILURE e 4 LIMIT. **O status 2 sozinho mistura
+arquivo ausente com VFS indisponível.** Desde a 0.2.2 o agente certifica a ausência no mesmo frame: quando
+`read_file_layers` devolve 2, `has_file` é falso, o caminho não tem metacaractere de glob (`* ? [ \`) e
+`list_files(caminho)` devolve OK sem nenhuma entrada (só devolve OK com o gerenciador de archives vivo), a observação
+sai com `absent=true`, `complete=true`, `layers=[]` e mantém `hostStatus=2`. Qualquer outro status 2 continua
+`complete=false`, `absent=false`. Fora isso, `complete=true` é status 0 com pelo menos uma camada; o próprio host pode
+omitir camadas que não conseguiu carregar. Recibos diagnósticos (`complete=false`) não aprovam o gate sozinhos.
 
 Para gravar o recibo, use `game_vfs_snapshot(case, phase, paths, max_bytes=8388608)`:
 
@@ -48,7 +52,7 @@ do gravador de snapshots. Não são commits Git nem hashes da DLL. Recompile o a
 A finalização exige o `game-final.log` real; nenhum hash de log é inventado. Falhas preservam os rascunhos.
 Para recuperar offline, chame `linkspan_playtest.vfs.finalize_vfs_snapshots(session)` com sessão encerrada que forneça
 `directory`, `metadata["closed"]` e `process.poll()`. Repetir a finalização confere o log congelado e recusa log
-alterado ou recibo final conflitante. Caminhos ausentes/indisponíveis continuam diagnósticos no recibo final, inclusive
+alterado ou recibo final conflitante. Caminhos sem ausência certificada continuam diagnósticos no recibo final, inclusive
 após unload. Consultar A/B comprova origens e bytes visíveis; regras de alias e donos precisam da fixture e do log.
 Ainda é necessário compilar com MSVC e validar ready → consulta → unload → consulta → close no jogo.
 Os testes Python usam agente simulado.
