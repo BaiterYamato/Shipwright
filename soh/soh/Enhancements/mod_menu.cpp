@@ -9,6 +9,7 @@
 
 #include "mod_menu.h"
 #include "soh/Enhancements/audio/OotrsArchive.h"
+#include "soh/modassets/ModAssetArchive.h"
 #include "soh/OTRGlobals.h"
 #include "soh/util.h"
 #include "soh/SohGui/MenuTypes.h"
@@ -209,6 +210,26 @@ bool IsOotrsExtension(std::string extension) {
     return StringHelper::IEquals(extension, ".ootrs");
 }
 
+// Link-Span (HOST-SLIM-001): o mesmo arquivo já montado na raiz pelo modloader (camada do framework Unbound promovida
+// pelo oot.mods.archives) não entra de novo. No SoH 9.3.0 esta leitura vem depois do ShipLua, e a segunda montagem
+// duplicava a camada na raiz. A montagem privada sob mod/<nome>/ não conta: pacote solto sem framework segue na raiz.
+bool IsMountedAtRoot(const std::filesystem::path& path) {
+    const auto archives = GetArchiveManager()->GetArchives();
+    if (archives == nullptr) {
+        return false;
+    }
+    for (const auto& archive : *archives) {
+        if (archive == nullptr || std::dynamic_pointer_cast<SohModAssets::ModAssetArchive>(archive) != nullptr) {
+            continue;
+        }
+        std::error_code error;
+        if (std::filesystem::equivalent(archive->GetPath(), path, error)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void UpdateModFiles(bool init = false, bool reset = false) {
     if (init || reset) {
         enabledModFiles.clear();
@@ -272,7 +293,9 @@ void UpdateModFiles(bool init = false, bool reset = false) {
                 std::vector<std::string> enabledTemp(enabledModFiles);
                 for (std::string mod : enabledTemp) {
                     if (filePaths.contains(mod)) {
-                        GetArchiveManager()->AddArchive(filePaths.at(mod).generic_string());
+                        if (!IsMountedAtRoot(filePaths.at(mod))) {
+                            GetArchiveManager()->AddArchive(filePaths.at(mod).generic_string());
+                        }
                     } else {
                         enabledModFiles.erase(std::find(enabledModFiles.begin(), enabledModFiles.end(), mod));
                         changed = true;
