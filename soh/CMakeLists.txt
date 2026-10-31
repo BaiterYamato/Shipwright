@@ -241,6 +241,25 @@ set(ALL_FILES
 add_executable(${PROJECT_NAME} ${ALL_FILES})
 
 enable_testing()
+# HOST-SLIM-001 F4: usa wrappers/planejador e managers reais, sem linkar o jogo.
+# Os fontes modassets do host entram também pelo GLOB_RECURSE soh__ acima.
+add_executable(oot_mod_asset_alias_tests
+    tests/ModAssetAliasTests.cpp
+    soh/modassets/ModAssetArchive.cpp
+    soh/modassets/ModAssetAliasPlan.cpp
+)
+target_include_directories(oot_mod_asset_alias_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+find_package(libzip REQUIRED)
+target_link_libraries(oot_mod_asset_alias_tests PRIVATE libultraship libzip::zip)
+target_compile_features(oot_mod_asset_alias_tests PRIVATE cxx_std_20)
+if(MSVC)
+    set_property(TARGET oot_mod_asset_alias_tests PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(oot_mod_asset_alias_tests PRIVATE /EHsc)
+endif()
+add_test(NAME oot_mod_asset_alias_tests COMMAND oot_mod_asset_alias_tests)
+set_tests_properties(oot_mod_asset_alias_tests PROPERTIES TIMEOUT 30)
+
 add_executable(oot_actor_provider_tests
     tests/OotActorProviderTests.cpp
     soh/OotActorProvider.cpp
