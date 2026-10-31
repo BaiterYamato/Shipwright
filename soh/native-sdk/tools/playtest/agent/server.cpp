@@ -23,6 +23,7 @@ struct Server::Impl {
     Snapshot snapshot;
     InputQueue queue;
     Mailbox commands;
+    VfsLayers vfs;
     Lease lease;
     std::string layout, token;
     SOCKET listener = INVALID_SOCKET;
@@ -52,14 +53,15 @@ struct Server::Impl {
             if (previous) {
                 queue.Cancel();
                 commands.Cancel();
+                vfs.Cancel();
             }
             return Reply(id, { { "lease", std::to_string(connection) },
-                               { "agent_version", "0.2.0" },
+                               { "agent_version", "0.2.1" },
                                { "layout_id", layout },
                                { "protocol_version", ProtocolVersion },
                                { "capabilities",
                                  { "scene_overview", "scene_map", "actors", "teleport", "camera_state", "camera_set",
-                                   "walk_to" } } });
+                                   "walk_to", "vfs_layers" } } });
         }
         if (!lease.Owns(connection))
             return ReplyError(id, "lease necessário");
@@ -71,14 +73,23 @@ struct Server::Impl {
         if (request.op == "cancel" || request.op == "release") {
             queue.Cancel();
             commands.Cancel();
+            vfs.Cancel();
             if (request.op == "release")
                 lease.Release(connection);
             return Reply(id, { { "cancelled", true } });
         }
         if (request.op != "input") {
             try {
-                if (request.op == "result")
-                    return Reply(id, commands.Result(a["ticket"].get<uint64_t>()));
+                if (request.op == "result") {
+                    const auto ticket = a["ticket"].get<uint64_t>();
+                    return Reply(id, ticket >= VfsTicketBase ? vfs.Result(ticket) : commands.Result(ticket));
+                }
+                if (vfs.Busy() || (request.op == "vfs_layers" && commands.Busy()))
+                    return ReplyError(id, "busy: operação em andamento");
+                if (request.op == "vfs_layers") {
+                    const auto ticket = vfs.Submit(a);
+                    return Reply(id, { { "ticket", ticket }, { "status", "pending" } });
+                }
                 // Mutação vale para a cena do snapshot que o cliente viu. Carimbar no aceite cobre o pedido que chega
                 // entre o último pad read e Play_Destroy, ou antes do primeiro snapshot da cena nova.
                 if ((request.op == "teleport" || request.op == "walk_to") && snapshot.fields.contains("scene_epoch"))
@@ -87,7 +98,7 @@ struct Server::Impl {
                 return Reply(id, { { "ticket", ticket }, { "status", "pending" } });
             } catch (const std::exception& e) { return ReplyError(id, e.what()); }
         }
-        if (commands.Busy())
+        if (commands.Busy() || vfs.Busy())
             return ReplyError(id, "busy: operação v2 em andamento");
         std::vector<Step> steps;
         if (!a.contains("steps") || !ParseSteps(a["steps"], steps, error))
@@ -104,6 +115,7 @@ struct Server::Impl {
         if (lease.Release(connection)) {
             queue.Cancel();
             commands.Cancel();
+            vfs.Cancel();
         }
     }
     void Run() {
@@ -236,6 +248,7 @@ void Server::Stop() {
     impl_->token.clear();
     impl_->queue.Cancel();
     impl_->commands.Cancel();
+    impl_->vfs.Cancel();
 }
 void Server::Publish(Snapshot snapshot) {
     std::lock_guard lock(impl_->mutex);
@@ -246,5 +259,8 @@ InputQueue& Server::Queue() {
 }
 Mailbox& Server::Commands() {
     return impl_->commands;
+}
+VfsLayers& Server::Vfs() {
+    return impl_->vfs;
 }
 } // namespace Playtest

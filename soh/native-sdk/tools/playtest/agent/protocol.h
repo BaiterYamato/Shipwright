@@ -10,6 +10,9 @@ namespace Playtest {
 using Json = nlohmann::json;
 inline constexpr size_t MaxLine = 256 * 1024;
 inline constexpr int ProtocolVersion = 2;
+inline constexpr size_t VfsMaxPaths = 8, VfsMaxPath = 1024, VfsMaxLayers = 32, VfsMaxArchive = 1024;
+inline constexpr uint32_t VfsMaxBytes = 8 * 1024 * 1024;
+inline constexpr uint64_t VfsTicketBase = uint64_t{ 1 } << 52;
 struct Step {
     uint16_t buttons = 0;
     int8_t stick[2]{};

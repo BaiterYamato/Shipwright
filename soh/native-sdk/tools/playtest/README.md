@@ -1,5 +1,60 @@
 # Link-Span OoT playtest tool
 
+## VFS layers and RC11 evidence (0.2.1, protocol v2)
+
+`vfs_layers(paths, max_bytes=8388608)` queries `linkspan.oot.resources` v2 on the game thread, at the
+next `oot.input.pad` callback, including the title screen. It returns `frame`, `bytes_hashed`,
+`instrumentation`, `complete`, and `observations`. Each observation contains `path`, `layers`,
+`hostStatus`, `hasFile`, and `complete`; each layer is `{archive, sha256}`. Order is **low to high priority**;
+the last layer has the highest priority. SHA-256 covers the callback bytes, including binary NULs and empty files,
+not the archive container and not the host's 64-bit `content_hash`. Transformed archives expose transformed bytes.
+Archive identifiers are copied verbatim; prefixed mounts may include `#linkspan-mount-N`.
+
+Limits per call: 1–8 distinct paths, 1–1024 UTF-8 bytes per path, no embedded NUL, at most 32 layers total,
+1024 bytes per archive identifier, and 1–8388608 bytes **hashed by the observer** (default 8 MiB).
+`max_bytes` is a byte count, so values below 1 MiB are also accepted. Exceeding a limit yields host status 4;
+that path's partial layer list is discarded. The budget includes bytes hashed before a later error.
+The host loads all matching layers before invoking callbacks, so this API cannot bound host allocations,
+decompression, I/O or frame duration. The observer uses fixed buffers and a BCrypt reusable hash initialized before
+the socket starts; it adds no JSON construction or explicit heap allocation to the frame callback. JSON serialization
+runs on the TCP thread. No callback-owned pointer survives the call; only the static service table is retained.
+Operations use the existing lease, pending ticket and `result` polling. Cancel, scene destruction, disconnect,
+takeover and shutdown invalidate VFS tickets. Requests are not automatically replayed.
+
+Host status codes: 0 OK, 1 INVALID_ARGUMENT, 2 UNSUPPORTED, 3 FAILURE, 4 LIMIT. **Status 2 conflates a missing file
+and an unavailable VFS**; the observer preserves it with `complete=false`, `layers=[]` and the separate `hasFile`
+probe. An empty list is never advertised as a successful absence proof. `complete=true` means successful callback
+enumeration; the host itself can omit unreadable layers. These diagnostic receipts must not automatically pass a gate.
+
+Use `game_vfs_snapshot(case, phase, paths, max_bytes=8388608)` to save the gate receipt:
+
+```python
+game_vfs_snapshot("alias-A-B", "after-ready", ["private/A/file.json", "B/file.json"])
+# Perform the intended mod unload and confirm its completion externally.
+game_vfs_snapshot("alias-A-B", "after-unload", ["private/A/file.json", "B/file.json"])
+game_close()
+```
+
+Confirm `game.ready` and unload in the real host log before naming each phase. `phase` is supplied by the caller;
+these tools do not trigger or certify either event. `case` accepts 1–80 ASCII letters, digits, `_` or `-`.
+Each `(phase,path)` can occur once per case; several disjoint path batches can be accumulated.
+The collector writes `<case>-rc11-vfs-1.pending.json` in the session evidence directory and returns
+`status=pending_post_log`. This draft has `postLogSha256=null` and is **not final gate evidence**.
+After the process exits, `game_close` copies the closed session log and writes `<case>-rc11-vfs-1.json` with
+`schema="rc11-vfs-1"`, `case`, `instrumentation`, `exeSha256`, `postLogSha256`, `observations`, and `complete`.
+Its `vfs_snapshots` result lists final paths. The adjacent `.post.log` contains the exact hashed bytes.
+The exe hash is the launch-time SHA from session metadata, not an in-memory executable attestation.
+Observer revision is a CMake SHA-256 over the named observer sources; `mcp_revision` hashes the snapshot writer.
+Neither revision is a Git commit or a DLL hash. Rebuild the agent for this operation; older v2 agents reject it.
+
+Finalization requires the actual `game-final.log`; it never invents a log hash. Failed finalization preserves drafts.
+For offline recovery, call `linkspan_playtest.vfs.finalize_vfs_snapshots(session)` with an exited session whose
+`directory`, `metadata["closed"]`, and `process.poll()` are available. Repeated finalization verifies the frozen log.
+It rejects a changed frozen log or conflicting final receipt. Missing/unavailable paths remain diagnostics in the final
+receipt, including after unload. Alias A/B queries prove visible origins and bytes; alias rules and owner identities
+must be corroborated by the fixture and host log. C++/MSVC and live ready → query → unload → query → close validation
+are still required. Python tests simulate the agent only.
+
 This SDK tool controls port 0 through `oot.input.pad` and exposes a local agent to a Python MCP server. It requires
 the RFC 0032 host hook and `--linkspan-tool` loader, ABI 1.4, Windows x64, and a matching exported host SDK. It is
 development tooling: keep it outside `mods/` and release packages. Loading it must not enable the extended engine.
@@ -20,7 +75,7 @@ python -m unittest discover -s mcp/tests -p "test_*.py"
 The generated package is `agent/build/mod/` (manifest, generated empty `main.lua`, and
 `provider/linkspan_playtest.dll`). CMake writes `provider.host_layout_id`; no executable fingerprint is required.
 Rebuild after a host layout change. nlohmann JSON comes from `OOT_NATIVE_INCLUDE_DIRS`; C++20 and `/utf-8` are enabled.
-The pure C++ test executable does not link socket or game code. Python runtime dependencies are `mcp` and the standard
+The pure C++ test executable links Windows BCrypt for SHA-256, but no socket or game code. Python runtime dependencies are `mcp` and the standard
 library; the tests use `unittest` (pytest can also collect them).
 
 Set `LINKSPAN_PLAYTEST_AGENT` to the generated package when using an installed Python package. When running directly
