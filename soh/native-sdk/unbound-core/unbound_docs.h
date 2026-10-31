@@ -24,6 +24,13 @@ struct ManifestCheck {
 // Manifesto de uma camada. Os manifestos não mesclam (§6).
 ManifestCheck CheckManifest(const std::string& json);
 
+// HOST-SLIM-001 F4 (RFC 0029): um archive de mod entra na raiz do VFS como camada quando o unbound.json dele, de até
+// kMaxLayerManifestBytes, é um objeto JSON estrito (sem comentários) com "format": "unbound" e "formatVersion": 2. É
+// a regra que o host aplicava até a F4, com um limite a mais: como os outros leitores do framework, recusa aninhamento
+// acima de kMaxJsonDepth. Mais estreita que CheckManifest, que aceita formatVersion ausente.
+constexpr uint32_t kMaxLayerManifestBytes = 64 * 1024;
+bool IsLayerManifest(const std::string& json);
+
 struct TextMessage {
     uint32_t id = 0;
     uint8_t box = 0;

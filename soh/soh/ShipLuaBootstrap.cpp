@@ -203,10 +203,40 @@ std::shared_ptr<OotHotkeyRegistry> gHotkeys;
 std::shared_ptr<SohGui::SohMenuModRegistry> gMenuRegistry;
 std::map<uint64_t, std::shared_ptr<Ship::Archive>> gNativeResourceArchives;
 uint64_t gNextNativeResourceArchive = 1;
+// Archives de mod que o host montou com prefixo (mod/<nome>/) no boot e que continuam no VFS.
+std::vector<std::shared_ptr<Ship::Archive>> gPrivateModArchives;
+// Verdadeiro durante o despacho do oot.mods.archives: o mount_archive de um archive da lista ali promove o archive
+// (sai a montagem privada). Fora do despacho o mount_archive só acrescenta, como antes da F4.
+bool gPromotingModArchives = false;
 
 std::shared_ptr<Ship::ResourceManager> NativeResourceManager() {
     auto* context = Ship::Context::GetRawInstance();
     return context ? context->GetResourceManager() : nullptr;
+}
+
+// HOST-SLIM-001 F4 (RFC 0029): tira do VFS a montagem privada de um archive de mod. Serve ao mod que não carregou e ao
+// archive promovido à raiz no oot.mods.archives: com as duas montagens, o mesmo arquivo aparecia duas vezes nas
+// leituras por camada. O RemoveArchive remove a primeira montagem com o mesmo caminho em texto, e a privada, montada no
+// boot, vem antes de qualquer raiz.
+bool RetirePrivateModArchive(const std::filesystem::path& path) {
+    const auto manager = NativeResourceManager();
+    const auto archives = manager ? manager->GetArchiveManager() : nullptr;
+    if (!archives)
+        return false;
+    for (auto it = gPrivateModArchives.begin(); it != gPrivateModArchives.end(); ++it) {
+        std::error_code error;
+        if (!std::filesystem::equivalent((*it)->GetPath(), path, error))
+            continue;
+        const auto files = *(*it)->ListFiles();
+        archives->RemoveArchive(*it);
+        for (const auto& [hash, file] : files) {
+            (void)hash;
+            manager->UnloadResource(file);
+        }
+        gPrivateModArchives.erase(it);
+        return true;
+    }
+    return false;
 }
 
 uint8_t NativeHasResourceFile(const char* path) {
@@ -287,6 +317,10 @@ ShipNativeStatus NativeMountResourceArchive(const char* archivePath, uint64_t* h
         (void)hash;
         manager->UnloadResource(path);
     }
+    // Promovido no oot.mods.archives, o archive deixa de valer sob mod/<nome>/ (as camadas do Unbound eram montadas só
+    // na raiz até a F4). Só depois da raiz montada: se ela falhar, a privada continua.
+    if (gPromotingModArchives && RetirePrivateModArchive(absolute))
+        SPDLOG_INFO("Link-Span trocou a montagem privada de '{}' pela montagem na raiz", absolute.string());
     const uint64_t next = gNextNativeResourceArchive++;
     if (!next)
         return SHIP_NATIVE_LIMIT;
@@ -3738,39 +3772,14 @@ void InstallOotApi(lua_State* state) {
 }
 
 // PASSO 1 — assets próprios de mod.
-// Camada Unbound e a pasta do mod que a contém (vazia para .o2r solto na raiz de mods/).
-struct PendingUnboundArchive {
-    std::filesystem::path archive;
-    std::filesystem::path modDirectory;
-};
-std::vector<PendingUnboundArchive> gPendingUnboundArchives;
 // HOST-SLIM-001: todo .o2r/.otr achado em mods/ e mods/<pasta>/assets/, na ordem de montagem, para
-// oot.mods.archives. `privatePrefix` vazio quando o host não montou (camada adiada ou falha).
+// oot.mods.archives. `privatePrefix` vazio quando o host não montou (falha).
 struct ModArchiveCandidate {
     std::filesystem::path archive;
     std::filesystem::path modDirectory;
     std::string privatePrefix;
 };
 std::vector<ModArchiveCandidate> gModArchiveCandidates;
-// Leitor das camadas Unbound v2. Sem ele, nada lê os documentos da camada: montá-la seria carga parcial
-// (plano §10.4, recusa com diagnóstico no host sem o framework).
-constexpr const char* kUnboundFrameworkId = "linkspan.unbound.framework";
-
-bool IsUnboundLayerArchive(const std::filesystem::path& path) {
-    const auto archive = std::make_shared<Ship::O2rArchive>(path.generic_string());
-    archive->Load();
-    if (!archive->IsLoaded() || !archive->HasFile("unbound.json")) {
-        return false;
-    }
-    const auto file = archive->LoadFile("unbound.json");
-    if (!file || !file->IsLoaded || !file->Buffer || file->Buffer->size() > 64 * 1024) {
-        return false;
-    }
-    const auto& bytes = *file->Buffer;
-    const auto manifest = nlohmann::json::parse(bytes.begin(), bytes.end(), nullptr, false);
-    return manifest.is_object() && manifest.contains("format") && manifest["format"] == "unbound" &&
-           manifest.contains("formatVersion") && manifest["formatVersion"] == 2;
-}
 
 // Archive de assets de um mod: toda entrada fica sob "mod/<id>/" e as de objects/ e textures/ cujo caminho
 // original está livre no VFS ganham também alias no hash original, para as referências internas (DL→textura,
@@ -3846,12 +3855,12 @@ class ModAssetArchive final : public Ship::Archive {
     std::shared_ptr<std::unordered_map<uint64_t, std::string>> mOwnIndex;
 };
 
-// Archives de assets comuns ficam sob "mod/<nome>/", sem colidir com o jogo.
-// Camadas Unbound v2 precisam preservar os caminhos originais para que cenas,
-// colisões e entradas sejam mescladas; elas são montadas após o provider.
+// Archives de assets ficam sob "mod/<nome>/", sem colidir com o jogo. Quem precisa de um deles com os caminhos
+// originais (as camadas do framework Unbound) monta na raiz pelo oot.mods.archives, depois dos providers
+// (HOST-SLIM-001 F4, RFC 0029).
 void MountModAssetArchives() {
-    gPendingUnboundArchives.clear();
     gModArchiveCandidates.clear();
+    gPrivateModArchives.clear();
     Ship::Context* shipContext = Ship::Context::GetRawInstance();
     if (shipContext == nullptr || shipContext->GetResourceManager() == nullptr) {
         return;
@@ -3894,20 +3903,11 @@ void MountModAssetArchives() {
     std::size_t mounted = 0;
     std::sort(archives.begin(), archives.end());
     for (const std::filesystem::path& archivePath : archives) {
-        // A base Unbound é convertida no Init do provider. Só depois dele uma
-        // camada Unbound pode entrar na raiz: ela precisa mesclar cenas e exits
-        // por caminho original antes do game.ready, sem contaminar a conversão.
         const auto ownerEntry = archiveModDirectory.find(archivePath);
         gModArchiveCandidates.push_back(
             { archivePath,
               ownerEntry == archiveModDirectory.end() ? std::filesystem::path{} : ownerEntry->second,
               {} });
-        if (archivePath.extension() == ".o2r" && IsUnboundLayerArchive(archivePath)) {
-            const auto owner = archiveModDirectory.find(archivePath);
-            gPendingUnboundArchives.push_back(
-                { archivePath, owner == archiveModDirectory.end() ? std::filesystem::path{} : owner->second });
-            continue;
-        }
         const std::string id = archivePath.stem().string();
         const auto modArchive =
             std::make_shared<ModAssetArchive>(archivePath.string(), archiveManager.get(), "mod/" + id + "/");
@@ -3916,6 +3916,7 @@ void MountModAssetArchives() {
             ++mounted;
             SPDLOG_INFO("ShipLua montou assets do mod '{}' sob 'mod/{}/': {}", id, id, archivePath.string());
             gModArchiveCandidates.back().privatePrefix = "mod/" + id + "/";
+            gPrivateModArchives.push_back(modArchive);
         } else {
             SPDLOG_WARN("ShipLua n\xC3\xA3o conseguiu montar os assets de mod '{}'", archivePath.string());
         }
@@ -3992,72 +3993,53 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
     for (const auto& [modId, reason] : loaded.value->rejected) {
         SPDLOG_WARN("ShipLua rejeitou o mod '{}': {}", modId, reason);
     }
-    const bool unboundReader = std::find(loaded.value->loadedIds.begin(), loaded.value->loadedIds.end(),
-                                         kUnboundFrameworkId) != loaded.value->loadedIds.end();
-    for (const auto& [archivePath, modDirectory] : gPendingUnboundArchives) {
-        // Camada dentro da pasta de um mod só entra na raiz do VFS se esse mod carregou: um mod rejeitado não
-        // pode sombrear cenas do jogo. O .o2r solto em mods/ é data mod e não tem manifesto.
-        if (!modDirectory.empty()) {
-            const auto manifest = ShipLua::ParseManifestFile((modDirectory / "manifest.toml").string());
-            const bool accepted =
-                manifest.isOk() && std::find(loaded.value->loadedIds.begin(), loaded.value->loadedIds.end(),
-                                             manifest.value->id) != loaded.value->loadedIds.end();
+    // HOST-SLIM-001 (RFC 0029): archives aceitos para quem monta camadas, como o framework Unbound desde a F4. Archive
+    // da pasta de um mod que não carregou sai do VFS e fica fora do hook: um mod rejeitado não pode sombrear cenas do
+    // jogo nem ficar com alias. A origem deve ser a pasta efetivamente carregada, não apenas outro mod com o mesmo id.
+    // O .o2r solto em mods/ é data mod e não tem manifesto.
+    std::vector<ShipLuaHost::OotModArchive> acceptedArchives;
+    for (const auto& candidate : gModArchiveCandidates) {
+        std::string owner;
+        if (!candidate.modDirectory.empty()) {
+            const auto manifest = ShipLua::ParseManifestFile((candidate.modDirectory / "manifest.toml").string());
+            bool accepted = false;
+            if (manifest.isOk()) {
+                const auto& directories = loaded.value->loadedDirectories;
+                const auto origin = directories.find(manifest.value->id);
+                if (origin != directories.end()) {
+                    std::error_code originError, candidateError;
+                    const auto loadedDirectory =
+                        std::filesystem::absolute(origin->second, originError).lexically_normal();
+                    const auto candidateDirectory =
+                        std::filesystem::absolute(candidate.modDirectory, candidateError).lexically_normal();
+                    accepted = !originError && !candidateError && loadedDirectory == candidateDirectory;
+                }
+            }
             if (!accepted) {
-                SPDLOG_WARN("ShipLua ignorou a camada Unbound '{}': o mod da pasta '{}' n\xC3\xA3o carregou",
-                            archivePath.string(), modDirectory.string());
+                const bool retired = RetirePrivateModArchive(candidate.archive);
+                SPDLOG_INFO("ShipLua: '{}' fora de oot.mods.archives{}: o mod da pasta '{}' não carregou",
+                            candidate.archive.string(), retired ? " e desmontado" : "",
+                            candidate.modDirectory.string());
                 continue;
             }
+            owner = manifest.value->id;
         }
-        if (!unboundReader) {
-            SPDLOG_WARN("ShipLua ignorou a camada Unbound '{}': o framework Unbound ('{}') n\xC3\xA3o carregou",
-                        archivePath.string(), kUnboundFrameworkId);
-            continue;
-        }
-        uint64_t handle = 0;
-        const auto status = NativeMountResourceArchive(archivePath.string().c_str(), &handle);
-        if (status == SHIP_NATIVE_OK) {
-            SPDLOG_INFO("ShipLua montou camada Unbound '{}' na raiz do VFS", archivePath.string());
-        } else {
-            SPDLOG_WARN("ShipLua não conseguiu montar camada Unbound '{}' (status {})", archivePath.string(),
-                        static_cast<int>(status));
-        }
+        // Revisão do Codex: o modsRoot pode ser relativo ("./mods"); o contrato promete caminho absoluto.
+        std::error_code pathError;
+        const auto archivePath = std::filesystem::absolute(candidate.archive, pathError).lexically_normal();
+        acceptedArchives.push_back(
+            { (pathError ? candidate.archive : archivePath).generic_string(), owner, candidate.privatePrefix });
     }
-    gPendingUnboundArchives.clear();
-    // HOST-SLIM-001 (RFC 0029): archives aceitos para quem monta camadas (o Unbound, na F4). Pasta de mod rejeitado
-    // fica fora. A origem deve ser a pasta efetivamente carregada, não apenas outro mod com o mesmo id.
-    // Sem observer (o caso sem mod de camadas), nada de reler manifestos nem logar: o boot fica como antes.
     if (ShipLuaHost::HasOotHooks(ShipLuaHost::GetOotHookPoints().modsArchives)) {
-        std::vector<ShipLuaHost::OotModArchive> acceptedArchives;
-        for (const auto& candidate : gModArchiveCandidates) {
-            std::string owner;
-            if (!candidate.modDirectory.empty()) {
-                const auto manifest = ShipLua::ParseManifestFile((candidate.modDirectory / "manifest.toml").string());
-                bool accepted = false;
-                if (manifest.isOk()) {
-                    const auto& directories = loaded.value->loadedDirectories;
-                    const auto origin = directories.find(manifest.value->id);
-                    if (origin != directories.end()) {
-                        std::error_code originError, candidateError;
-                        const auto loadedDirectory =
-                            std::filesystem::absolute(origin->second, originError).lexically_normal();
-                        const auto candidateDirectory =
-                            std::filesystem::absolute(candidate.modDirectory, candidateError).lexically_normal();
-                        accepted = !originError && !candidateError && loadedDirectory == candidateDirectory;
-                    }
-                }
-                if (!accepted) {
-                    SPDLOG_INFO("ShipLua: '{}' fora de oot.mods.archives: o mod da pasta '{}' não carregou",
-                                candidate.archive.string(), candidate.modDirectory.string());
-                    continue;
-                }
-                owner = manifest.value->id;
+        // Uma exceção no despacho não deixa a promoção ligada para os mount_archive seguintes.
+        struct PromotionWindow {
+            PromotionWindow() {
+                gPromotingModArchives = true;
             }
-            // Revisão do Codex: o modsRoot pode ser relativo ("./mods"); o contrato promete caminho absoluto.
-            std::error_code pathError;
-            const auto archivePath = std::filesystem::absolute(candidate.archive, pathError).lexically_normal();
-            acceptedArchives.push_back(
-                { (pathError ? candidate.archive : archivePath).generic_string(), owner, candidate.privatePrefix });
-        }
+            ~PromotionWindow() {
+                gPromotingModArchives = false;
+            }
+        } window;
         ShipLuaHost::DispatchOotModArchives(acceptedArchives);
     }
     gModArchiveCandidates.clear();

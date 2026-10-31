@@ -11,10 +11,12 @@ include("${OOT_NATIVE_SDK}")
 
 add_library(linkspan_unbound_core SHARED unbound_core.cpp json_merge.cpp scene_registry.cpp room_actors.cpp
     unbound_format.cpp transcode.cpp converter.cpp unbound_docs.cpp actor_registry.cpp scene_conflicts.cpp
-    scene_references.cpp)
+    scene_references.cpp layer_archives.cpp)
 add_library(linkspan_unbound_consumer SHARED unbound_consumer.cpp)
 add_executable(linkspan_unbound_json_tests tests.cpp json_merge.cpp scene_registry.cpp room_actors.cpp unbound_format.cpp actor_registry.cpp)
 add_executable(linkspan_unbound_format_tests format_tests.cpp unbound_format.cpp transcode.cpp unbound_docs.cpp actor_registry.cpp)
+add_executable(linkspan_unbound_archives_tests archives_tests.cpp layer_archives.cpp unbound_docs.cpp
+    unbound_format.cpp json_merge.cpp)
 add_executable(linkspan_unbound_convert converter_cli.cpp converter.cpp unbound_format.cpp transcode.cpp unbound_docs.cpp
     json_merge.cpp scene_registry.cpp actor_registry.cpp)
 add_executable(linkspan_unbound_converter_tests converter_tests.cpp converter.cpp unbound_format.cpp transcode.cpp actor_registry.cpp)
@@ -31,7 +33,7 @@ target_include_directories(linkspan_unbound_e_fixtures PRIVATE "${CMAKE_CURRENT_
 
 foreach(target linkspan_unbound_core linkspan_unbound_consumer linkspan_unbound_json_tests linkspan_unbound_format_tests
                linkspan_unbound_actor_tests linkspan_unbound_conflict_tests linkspan_unbound_reference_tests
-               linkspan_unbound_limits_tests
+               linkspan_unbound_limits_tests linkspan_unbound_archives_tests
                linkspan_unbound_converter_tests linkspan_unbound_convert
                linkspan_unbound_e_fixtures)
     target_include_directories(${target} PRIVATE ${OOT_NATIVE_INCLUDE_DIRS} "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -59,3 +61,4 @@ add_test(NAME linkspan_unbound_actor_tests COMMAND linkspan_unbound_actor_tests)
 add_test(NAME linkspan_unbound_conflict_tests COMMAND linkspan_unbound_conflict_tests)
 add_test(NAME linkspan_unbound_reference_tests COMMAND linkspan_unbound_reference_tests)
 add_test(NAME linkspan_unbound_limits_tests COMMAND linkspan_unbound_limits_tests)
+add_test(NAME linkspan_unbound_archives_tests COMMAND linkspan_unbound_archives_tests)

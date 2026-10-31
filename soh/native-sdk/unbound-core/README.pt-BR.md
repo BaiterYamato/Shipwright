@@ -6,8 +6,10 @@
 `roborich/Shipwright`, `unbound-docs/SPEC.md`) sobre o host Link-Span do Shipwright 9.3.0. Não linka
 `soh.exe`: usa só os serviços `linkspan.oot.*`.
 
-Camadas Unbound (`.o2r` com `unbound.json`), soltas em `mods/` ou dentro de um mod, só entram no jogo com este
-framework carregado. Sem ele, o host ignora a camada e grava o motivo no log.
+Camadas Unbound (`.o2r` com `unbound.json`), soltas em `mods/` ou dentro de um mod, só entram na raiz do VFS com
+este framework carregado. Desde a HOST-SLIM-001 F4 quem as monta é o framework, pelo hook `oot.mods.archives`, e não
+mais o host. Sem ele, a camada fica só na montagem privada do host (`mod/<nome-do-arquivo>/`) e não sombreia nada.
+Regra, ordem e mensagens de log: [Camadas Unbound](../../../docs/native-mods.pt-BR.md#camadas-unbound-host-slim-001-f4).
 
 ## O que a versão 0.6.0 faz
 
@@ -254,7 +256,7 @@ nomes registrados, recursos do jogo, `collision.bin` nem limites que dependem de
 |---|---|---|
 | `ready` | `game.ready` | base, registro, conflitos entre mods e referências de recurso com as camadas atuais (chamar de novo refaz) |
 | `apply_text` | primeiro `game.frame` | texto; o SoH só carrega as tabelas de mensagens depois do `game.ready` |
-| `unbound_report` | a qualquer momento | estado da base, contagem de documentos e as últimas notas |
+| `unbound_report` | a qualquer momento | estado da base, resumo de camadas (`camadas:`), documentos e últimas notas |
 | `load_scene_registry` | compatibilidade 0.2/0.3 | só o registro |
 | `room_report` | compatibilidade 0.3 | salas vistas pelo patch de atores |
 

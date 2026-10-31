@@ -25,6 +25,7 @@
 #include "actor_registry.h"
 #include "include/linkspan/unbound/json_factory.h"
 #include "json_merge.h"
+#include "layer_archives.h"
 #include "oot_hooks.h"
 #include "oot_resources.h"
 #include "oot_scenes.h"
@@ -41,14 +42,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
-constexpr uint32_t MAX_LAYERS = 64;
-// unbound.json de cada camada: um por mod Unbound, então o teto de documento (64) desligava a base e a checagem
-// de conflitos a partir do 64º mod.
-constexpr uint32_t MAX_MANIFEST_LAYERS = 1024;
-constexpr uint32_t MAX_TOTAL_INPUT = 4 * 1024 * 1024;
-// Documentos de cena, colisão e texto: uma sala grande passa fácil dos 64 KiB da factory JSON.
-constexpr uint32_t MAX_DOCUMENT_LAYER = 64 * 1024 * 1024;
-constexpr uint32_t MAX_DOCUMENT_TOTAL = 256 * 1024 * 1024;
+using LinkSpanUnbound::MANIFEST_PATH;
+using LinkSpanUnbound::MAX_LAYERS;
 constexpr uint32_t MAX_HANDLES = 1024;
 constexpr size_t MAX_NOTES = 12;
 // Deltas mescláveis entre mods no texto do ready; o resto fica só em logs/linkspan-unbound.log.
@@ -59,7 +54,6 @@ constexpr size_t MAX_WARNING_LINES = 64;
 constexpr size_t MAX_REFERENCE_DOCUMENTS = 4096;
 constexpr const char* ACTOR_PATCH_SCHEMA = "linkspan.unbound.actor-patch/v1";
 constexpr const char* SCENE_REGISTRY_PATH = "unbound/scenes.json";
-constexpr const char* MANIFEST_PATH = "unbound.json";
 constexpr const char* BASE_ARCHIVE = "oot-unbound.o2r";
 constexpr const char* BASE_STAMP = "oot-unbound.o2r.source.json";
 constexpr const char* TEXT_LANGUAGES[LINKSPAN_OOT_TEXT_LANGUAGES] = { "eng", "ger", "fra", "jpn", "staff" };
@@ -130,6 +124,10 @@ struct State {
     uint32_t roomsPatched = 0;
     std::string lastRoom;
     std::string lastPatch;
+    // oot.mods.archives (HOST-SLIM-001 F4): camadas que o framework montou na raiz do VFS, na ordem de montagem.
+    bool archivesHook = false;
+    std::vector<uint64_t> layerArchives;
+    std::string layersReport = "sem oot.mods.archives";
     std::thread::id ownerThread;
     std::vector<Schema> schemas;
     std::map<uint64_t, Result> results;
@@ -174,46 +172,11 @@ ShipNativeStatus SHIP_NATIVE_CALL ListSchemas(void* context, LinkSpanUnboundJson
     return SHIP_NATIVE_OK;
 }
 
-struct LayerCollector {
-    std::vector<LinkSpanUnbound::LayerDocument> layers;
-    uint32_t totalBytes = 0;
-    uint32_t maxLayer = SHIP_NATIVE_MAX_BYTES;
-    uint32_t maxTotal = MAX_TOTAL_INPUT;
-    uint32_t maxLayers = MAX_LAYERS;
-};
-
-LayerCollector DocumentCollector() {
-    LayerCollector collector;
-    collector.maxLayer = MAX_DOCUMENT_LAYER;
-    collector.maxTotal = MAX_DOCUMENT_TOTAL;
-    return collector;
-}
-
-LayerCollector ManifestCollector() {
-    LayerCollector collector = DocumentCollector();
-    collector.maxLayers = MAX_MANIFEST_LAYERS;
-    return collector;
-}
-
-ShipNativeStatus SHIP_NATIVE_CALL CollectLayer(void* user, const ShipOotResourceLayerV2* layer, const char* archivePath,
-                                               const uint8_t* data) {
-    auto* collector = static_cast<LayerCollector*>(user);
-    if (!collector || !layer || layer->size < sizeof(ShipOotResourceLayerV2) || !archivePath ||
-        (!data && layer->data_size) || layer->layer_index != collector->layers.size() ||
-        layer->layer_count > collector->maxLayers || layer->data_size > collector->maxLayer ||
-        collector->totalBytes > collector->maxTotal - layer->data_size) {
-        return SHIP_NATIVE_LIMIT;
-    }
-    try {
-        collector->layers.push_back({
-            std::string(archivePath, layer->archive_path_length),
-            data ? std::string(reinterpret_cast<const char*>(data), layer->data_size) : std::string{},
-            layer->content_hash,
-        });
-        collector->totalBytes += layer->data_size;
-        return SHIP_NATIVE_OK;
-    } catch (...) { return SHIP_NATIVE_FAILURE; }
-}
+using LinkSpanUnbound::CollectLayer;
+using LinkSpanUnbound::DocumentCollector;
+using LinkSpanUnbound::LayerCollector;
+using LinkSpanUnbound::ManifestCollector;
+using LinkSpanUnbound::StatusName;
 
 ShipNativeStatus SHIP_NATIVE_CALL LoadMerged(void* context, const char* schemaName, const char* path,
                                              uint64_t* handle) {
@@ -319,19 +282,6 @@ void UnregisterScenes(State& state) {
         }
     }
     state.sceneHandles.clear();
-}
-
-const char* StatusName(ShipNativeStatus status) {
-    switch (status) {
-        case SHIP_NATIVE_INVALID_ARGUMENT:
-            return "invalid";
-        case SHIP_NATIVE_UNSUPPORTED:
-            return "unsupported";
-        case SHIP_NATIVE_LIMIT:
-            return "limit";
-        default:
-            return "failure";
-    }
 }
 
 ShipNativeStatus WriteText(ShipNativeWriteFn write, void* writer, std::string text) {
@@ -711,7 +661,8 @@ std::string BaseProvenance(const ShipNativeRuntime* runtime, const State& state,
     source["converter"] = LinkSpanUnbound::kConverterVersion;
     source["formatVersion"] = LinkSpanUnbound::kReaderFormatVersion;
     source["baseVersion"] = LinkSpanUnbound::kBaseVersion;
-    // No Init só os archives do jogo estão montados. O host já validou sua major no boot;
+    // No Init, além dos archives do jogo, só há as montagens privadas dos mods (mod/<nome>/, sem versão de jogo).
+    // O host já validou sua major no boot;
     // a ABI de recursos expõe portVersion, não uma versão semântica do executável.
     uint8_t portVersion[7] = {};
     uint32_t portSize = 0;
@@ -786,7 +737,8 @@ bool WriteAtomically(const fs::path& path, const std::string& bytes, std::string
     return true;
 }
 
-// Cenas vanilla presentes no VFS agora (só os archives do jogo estão montados no Init).
+// Cenas vanilla presentes no VFS agora. No Init, os mods só têm montagem privada (mod/<nome>/), com alias apenas em
+// caminho livre de objects/ e textures/, então nenhuma cena de mod aparece aqui.
 std::vector<LinkSpanUnbound::SceneSource> VanillaScenes(const State& state) {
     std::vector<LinkSpanUnbound::SceneSource> scenes;
     const int32_t count = state.scenesV2->get_scene_count();
@@ -806,8 +758,8 @@ std::vector<LinkSpanUnbound::SceneSource> VanillaScenes(const State& state) {
     return scenes;
 }
 
-// UNBOUND-006: gera (ou reaproveita) oot-unbound.o2r ao lado do oot.o2r e monta. No Init só os archives do
-// jogo estão montados, então a base lê o vanilla e fica abaixo dos mods que o SoH monta depois.
+// UNBOUND-006: gera (ou reaproveita) oot-unbound.o2r ao lado do oot.o2r e monta. No Init as camadas ainda não estão
+// na raiz, então a base lê o vanilla e fica abaixo delas, que entram pelo oot.mods.archives.
 void PrepareBase(const ShipNativeRuntime* runtime, State& state) {
     const auto started = std::chrono::steady_clock::now();
     const fs::path gameDir = GameDirectory();
@@ -1517,6 +1469,7 @@ ShipNativeStatus SHIP_NATIVE_CALL UnboundReport(void* user, const char*, uint32_
             " recusados=" + std::to_string(state->transcodeFailures);
         text += "\natores: tipos=" + std::to_string(state->actorTypesLoaded) +
                 " nomes=" + std::to_string(state->actorNames.size());
+        text += "\ncamadas: " + state->layersReport;
         for (const auto& note : state->notes) {
             text += "\nnota: " + note;
         }
@@ -1557,6 +1510,37 @@ void UnregisterJsonTypes(State& state) {
         }
     }
     state.jsonTypes.clear();
+}
+
+// HOST-SLIM-001 F4 (RFC 0029): a política das camadas saiu do bootstrap do host. O host lista os archives de mod
+// aceitos (soltos em mods/ e os de mods carregados) e o framework escolhe as camadas: .o2r cujo unbound.json passa em
+// IsLayerManifest. Cada uma entra na raiz do VFS com os caminhos originais, depois dos providers e dos consumidores e
+// antes do game.ready, para mesclar cenas e exits sem contaminar a base convertida no Init. Sem o framework, a camada
+// fica só na montagem privada e não sombreia nada. Um archive que já fornece o unbound.json da raiz (host anterior à
+// F4, que montava sozinho) não é montado de novo.
+ShipNativeStatus SHIP_NATIVE_CALL OnModArchives(void* user, const ShipNativeHookCall* call) {
+    auto* state = static_cast<State*>(user);
+    if (!IsOwner(state) || !call || !call->payload || call->payload_size < sizeof(ShipOotModArchivesHookV1)) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    const auto* payload = static_cast<const ShipOotModArchivesHookV1*>(call->payload);
+    if (payload->size < sizeof(ShipOotModArchivesHookV1) || payload->size > call->payload_size ||
+        (payload->count && (!payload->archives || payload->archive_stride < sizeof(ShipOotModArchiveV1)))) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    try {
+        LinkSpanUnbound::LayerMountSummary summary;
+        std::vector<std::string> log;
+        const auto status =
+            LinkSpanUnbound::MountLayerArchives(*state->resources, *payload, state->layerArchives, log, summary);
+        for (const auto& line : log) {
+            AppendLog(*state, line);
+        }
+        if (status == SHIP_NATIVE_OK) {
+            state->layersReport = summary.Report();
+        }
+        return status;
+    } catch (...) { return SHIP_NATIVE_FAILURE; }
 }
 
 ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** instance) {
@@ -1629,6 +1613,22 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
                                        state };
         uint64_t handle = 0;
         state->roomHook = runtime->register_hook(runtime->context, &spec, &handle) == SHIP_NATIVE_OK;
+        // Host sem oot.mods.archives (anterior à HOST-SLIM-001 F2h) ainda monta as camadas sozinho.
+        const ShipNativeHookSpec archivesSpec{ sizeof(ShipNativeHookSpec),
+                                               LINKSPAN_OOT_HOOK_MODS_ARCHIVES,
+                                               1,
+                                               sizeof(ShipOotModArchivesHookV1),
+                                               SHIP_NATIVE_HOOK_OBSERVE,
+                                               SHIP_NATIVE_HOOK_AFTER,
+                                               0,
+                                               OnModArchives,
+                                               state };
+        uint64_t archivesHandle = 0;
+        state->archivesHook =
+            runtime->register_hook(runtime->context, &archivesSpec, &archivesHandle) == SHIP_NATIVE_OK;
+        if (state->archivesHook) {
+            state->layersReport = "aguardando oot.mods.archives";
+        }
     }
     try {
         state->schemas.push_back(
@@ -1671,6 +1671,8 @@ void SHIP_NATIVE_CALL Shutdown(void* instance) {
         ClearOverrides(*state);
         UnregisterScenes(*state);
         UnregisterJsonTypes(*state);
+        // Camadas por cima da base: saem antes dela, na ordem inversa da montagem.
+        LinkSpanUnbound::UnmountLayerArchives(*state->resources, state->layerArchives);
         if (state->baseArchive) {
             state->resources->unmount_archive(state->baseArchive);
         }
