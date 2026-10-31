@@ -17,7 +17,8 @@ static inline uint8_t NeiProgress_ValidMask(unsigned family) {
 }
 static inline int NeiProgress_NextMask(unsigned family, unsigned index, uint8_t current) {
     return index < NeiProgress_Limit(family) && (NeiProgress_ValidMask(family) & (1u << index))
-               ? (current ^ (1u << index)) : -1;
+               ? (current ^ (1u << index))
+               : -1;
 }
 uint8_t NeiProgress_GetMask(unsigned family);
 void NeiProgress_SetMask(unsigned family, uint8_t mask);

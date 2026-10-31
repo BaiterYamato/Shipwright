@@ -121,9 +121,8 @@ void NeiInv_PlaceItem(uint16_t logicalId) {
  * recebida acende a próxima skill, alternando habilidades nativas (Block, Flip, Stone, Platform, Ultrahand). */
 void NeiInv_ReceiveItem(uint16_t logicalId) {
     if (logicalId == ITEM_CANE_OF_SOMARIA) {
-        static const u8 kCaneOrder[] = { CANE_SKILL_SOMARIA_BLOCK, CANE_SKILL_PACCI_FLIP,
-                                       CANE_SKILL_PACCI_STONE, CANE_SKILL_SOMARIA_PLATFORM,
-                                       CANE_SKILL_PACCI_ULTRAHAND };
+        static const u8 kCaneOrder[] = { CANE_SKILL_SOMARIA_BLOCK, CANE_SKILL_PACCI_FLIP, CANE_SKILL_PACCI_STONE,
+                                         CANE_SKILL_SOMARIA_PLATFORM, CANE_SKILL_PACCI_ULTRAHAND };
         for (unsigned i = 0; i < sizeof(kCaneOrder) / sizeof(kCaneOrder[0]); i++) {
             if (Cane_GiveSkill(kCaneOrder[i])) {
                 break;

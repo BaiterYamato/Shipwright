@@ -16,10 +16,20 @@ using u16 = uint16_t;
 using u32 = uint32_t;
 using s16 = int16_t;
 struct SaveContext {
-    struct { u8 items[24]; u32 questItems; } inventory;
-    struct { u8 cButtonSlots[3]; u8 buttonItems[4]; } equips;
+    struct {
+        u8 items[24];
+        u32 questItems;
+    } inventory;
+    struct {
+        u8 cButtonSlots[3];
+        u8 buttonItems[4];
+    } equips;
 } gSaveContext;
-struct PlayState { struct { int state; } pauseCtx; };
+struct PlayState {
+    struct {
+        int state;
+    } pauseCtx;
+};
 static PlayState* gPlayState;
 static NeiSaveData sRc11Save;
 static u8 sRc11Rule = WAND_RANDO_ELEMENTAL;
@@ -30,42 +40,75 @@ static bool sRc11Rando;
 #define CVAR_EXT_EQUIP_ENABLED "gCheats.ExtEquip.Enabled"
 static const u8 sWandQuest[WAND_MODE_COUNT] = { 0, 1, 2, 3, 4, 5 };
 static const u32 gBitFlags[] = { 1, 2, 4, 8, 16, 32 };
-extern "C" NeiSaveData* Nei_Save(void) { return &sRc11Save; }
+extern "C" NeiSaveData* Nei_Save(void) {
+    return &sRc11Save;
+}
 extern "C" u16 Nei_GetOwnedItem(u8 slot) {
     return slot >= 24 && slot < 72 ? sRc11Save.ownedItems[slot - 24] : ITEM_NONE;
 }
 extern "C" void Nei_SetOwnedItem(u8 slot, u16 item) {
-    if (slot >= 24 && slot < 72) sRc11Save.ownedItems[slot - 24] = item;
+    if (slot >= 24 && slot < 72)
+        sRc11Save.ownedItems[slot - 24] = item;
 }
-extern "C" u8 Picto_IsOwned(void) { return 0; }
-extern "C" u8 PowerKeg_IsOwned(void) { return 0; }
+extern "C" u8 Picto_IsOwned(void) {
+    return 0;
+}
+extern "C" u8 PowerKeg_IsOwned(void) {
+    return 0;
+}
 static int CVarGetInteger(const char* key, int fallback) {
     return !std::strcmp(key, "gRandoSettings.ElementalWandShuffle") ? sRc11Rule : fallback;
 }
-u8 Wand_RandoMode(void) { return (u8)CVarGetInteger("gRandoSettings.ElementalWandShuffle", WAND_RANDO_MEDALLIONS); }
-static void CVarSetInteger(const char*, int) {}
-static void CVarSave(void) {}
-static void Interface_LoadItemIcon1(PlayState*, u8) {}
+u8 Wand_RandoMode(void) {
+    return (u8)CVarGetInteger("gRandoSettings.ElementalWandShuffle", WAND_RANDO_MEDALLIONS);
+}
+static void CVarSetInteger(const char*, int) {
+}
+static void CVarSave(void) {
+}
+static void Interface_LoadItemIcon1(PlayState*, u8) {
+}
 u8 Wand_ModeOwned(u8);
 u8 Wand_ModeCount(void);
 u8 Wand_ModeAt(u8);
 u8 Wand_GetMode(void);
 void Wand_SetMode(u8);
-static void* Wand_ModeIcon(u8) { return (void*)"native"; }
-static void* Slate_RuneIcon(u8) { return (void*)"native"; }
-static void* Seasons_SeasonIcon(u8) { return (void*)"native"; }
-static void* ExtInv_GetInventoryItemIcon(u16) { return (void*)"native"; }
-static void Slate_GrantRune(u8 rune) { sRc11Save.slateRunesOwned |= (u8)(1u << rune); }
-static void Seasons_GrantSeason(u8 season) { sRc11Save.seasonsOwned |= (u8)(1u << season); }
-static u8 Slate_GetRune(void) { return 0; }
-static void Slate_SetRune(u8) {}
-static u8 Seasons_GetSeason(void) { return 0; }
-static void Seasons_SetSeason(u8) {}
+static void* Wand_ModeIcon(u8) {
+    return (void*)"native";
+}
+static void* Slate_RuneIcon(u8) {
+    return (void*)"native";
+}
+static void* Seasons_SeasonIcon(u8) {
+    return (void*)"native";
+}
+static void* ExtInv_GetInventoryItemIcon(u16) {
+    return (void*)"native";
+}
+static void Slate_GrantRune(u8 rune) {
+    sRc11Save.slateRunesOwned |= (u8)(1u << rune);
+}
+static void Seasons_GrantSeason(u8 season) {
+    sRc11Save.seasonsOwned |= (u8)(1u << season);
+}
+static u8 Slate_GetRune(void) {
+    return 0;
+}
+static void Slate_SetRune(u8) {
+}
+static u8 Seasons_GetSeason(void) {
+    return 0;
+}
+static void Seasons_SetSeason(u8) {
+}
 static u8 ExtInv_GetItemSlot(u16 item) {
     switch (item) {
-        case ITEM_CANE_OF_SOMARIA: return SLOT_CANE_OF_SOMARIA;
-        case ITEM_ELEMENTAL_WAND: return SLOT_ELEMENTAL_WAND;
-        default: return 0xFF;
+        case ITEM_CANE_OF_SOMARIA:
+            return SLOT_CANE_OF_SOMARIA;
+        case ITEM_ELEMENTAL_WAND:
+            return SLOT_ELEMENTAL_WAND;
+        default:
+            return 0xFF;
     }
 }
 struct {
@@ -73,19 +116,31 @@ struct {
 } gExtEquipState;
 static u8 ExtEquip_GetCurrent(s16 type) {
     switch (type) {
-        case EQUIP_TYPE_SWORD: return gExtEquipState.currentExtSword;
-        case EQUIP_TYPE_SHIELD: return gExtEquipState.currentExtShield;
-        case EQUIP_TYPE_TUNIC: return gExtEquipState.currentExtTunic;
-        default: return gExtEquipState.currentExtBoots;
+        case EQUIP_TYPE_SWORD:
+            return gExtEquipState.currentExtSword;
+        case EQUIP_TYPE_SHIELD:
+            return gExtEquipState.currentExtShield;
+        case EQUIP_TYPE_TUNIC:
+            return gExtEquipState.currentExtTunic;
+        default:
+            return gExtEquipState.currentExtBoots;
     }
 }
 void ExtEquip_SetSlot(s16, u8);
-static void ExtEquip_CleanupSlot(s16, u8) {}
-static void ExtEquip_ApplyVanillaBase(s16, u8, u8) {}
-static void ExtEquip_ApplyTridentShieldPolicy(void) {}
-static void ExtEquip_RefreshPlayer(void) {}
-static int ExtEquip_CheckAgeReq(s16, u8) { return 1; }
-static void* ExtEquip_GetIcon(s16, u8) { return (void*)"native"; }
+static void ExtEquip_CleanupSlot(s16, u8) {
+}
+static void ExtEquip_ApplyVanillaBase(s16, u8, u8) {
+}
+static void ExtEquip_ApplyTridentShieldPolicy(void) {
+}
+static void ExtEquip_RefreshPlayer(void) {
+}
+static int ExtEquip_CheckAgeReq(s16, u8) {
+    return 1;
+}
+static void* ExtEquip_GetIcon(s16, u8) {
+    return (void*)"native";
+}
 static void ExtEquip_Init(void);
 #include "rc11_inventory_under_test.inc"
 // Só o trecho de ExtEquip_Init que migra o layout antigo das botas.
@@ -96,7 +151,8 @@ static void ExtEquip_Init(void) {
 
 static void Rc11Reset() {
     std::memset(&sRc11Save, 0, sizeof(sRc11Save));
-    for (auto& item : sRc11Save.ownedItems) item = ITEM_NONE;
+    for (auto& item : sRc11Save.ownedItems)
+        item = ITEM_NONE;
     std::memset(sRc11Save.bottleSlots, 0xFF, sizeof(sRc11Save.bottleSlots));
     sRc11Save.bottomlessContent = 0xFF;
     std::memset(&gSaveContext, 0xFF, sizeof(gSaveContext));
@@ -142,7 +198,8 @@ static void RunRc11InventoryRegressions() {
     assert(sRc11Save.bottleSlots[0] == ITEM_CHATEAU_ROMANI);
     assert(sRc11Save.bottleSlots[2] == ITEM_POTION_RED);
     assert(gSaveContext.inventory.items[SLOT_BOTTLE_1] == ITEM_POTION_RED);
-    for (unsigned i = 2; i < 4; ++i) sRc11Save.bottleSlots[i] = ITEM_FISH;
+    for (unsigned i = 2; i < 4; ++i)
+        sRc11Save.bottleSlots[i] = ITEM_FISH;
     assert(!MigrateBottle(ITEM_POTION_BLUE, 0));
 
     Rc11Reset();
