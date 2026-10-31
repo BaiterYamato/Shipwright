@@ -109,6 +109,7 @@ class ReadaptTest(unittest.TestCase):
         for nome in ("overlay.py", "extract_additions.py"):
             shutil.copyfile(self.modulos / nome, self.fork_dir / nome)
         (self.repo.pasta / "soh/hookable_sources.txt").write_text("src/code/exemplo.c\n", encoding="utf-8")
+        (self.fork_dir / "overlay-exclude.txt").write_text("", encoding="utf-8")
         self.base = self.repo.commit(corpo())
         self.fork = self.repo.commit(corpo(b=80), self.base, cabeca=False)
         self.velha = self.repo.commit(corpo(a=2), self.base)
@@ -194,10 +195,25 @@ class ReadaptTest(unittest.TestCase):
         r = self.executar(caminho)
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertEqual(caminho.read_bytes(), antes)
-        dados = caminho.with_suffix(".conflito.c").read_bytes()
+        diagnostico = caminho.with_suffix(".conflito.txt")
+        dados = diagnostico.read_bytes()
         self.assertIn(b"<<<<<<< host atual", dados)
         self.assertIn(b">>>>>>> resolu", dados)
         self.assertNotIn(b"\n", dados.replace(b"\r\n", b""))
+        # O diagnóstico fica fora de *.c: nem o overlay.py nem a varredura do readapt o tratam como resolução.
+        self.assertEqual(list(caminho.parent.glob("*.conflito.c")), [])
+        r = self.executar("--verificar")
+        self.assertNotIn(diagnostico.name, r.stdout + r.stderr)
+
+    def test_sem_lista_de_exclusoes_falha_antes_de_gravar(self):
+        (self.fork_dir / "overlay-exclude.txt").unlink()
+        caminho = self.resolucao()
+        antes = caminho.read_bytes()
+        for opcoes in (("--verificar",), ()):
+            r = self.executar(*opcoes)
+            self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+            self.assertIn("overlay-exclude.txt ausente", r.stderr)
+        self.assertEqual(antes, caminho.read_bytes())
 
     def test_saida_limpa_nao_altera_origem(self):
         caminho = self.resolucao()
@@ -216,7 +232,7 @@ class ReadaptTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertEqual(caminho.read_bytes(), antes)
         self.assertFalse((saida / caminho.name).exists())
-        self.assertTrue((saida / caminho.with_suffix(".conflito.c").name).is_file())
+        self.assertTrue((saida / caminho.with_suffix(".conflito.txt").name).is_file())
 
     def test_carimbo_sem_revisao(self):
         caminho = self.resolucao(assinatura="0123456789ab da39a3ee5e6b da39a3ee5e6b")
@@ -267,7 +283,7 @@ class ReadaptTest(unittest.TestCase):
                 self.assertEqual(r.returncode, 2)
                 self.assertIn(tipo + " também mudou", r.stderr)
                 self.assertEqual(caminho.read_bytes(), antes)
-                self.assertFalse(caminho.with_suffix(".conflito.c").exists())
+                self.assertFalse(caminho.with_suffix(".conflito.txt").exists())
                 v = self.executar(caminho, "--verificar")
                 self.assertEqual(v.returncode, 1, v.stderr)
 
@@ -275,7 +291,7 @@ class ReadaptTest(unittest.TestCase):
         em_dia = self.resolucao("extra", atual=True)
         velho = self.resolucao("merge")
         antes = em_dia.read_bytes(), em_dia.stat().st_mtime_ns
-        velho.with_suffix(".conflito.c").write_text("marcadores antigos", encoding="utf-8")
+        velho.with_suffix(".conflito.txt").write_text("marcadores antigos", encoding="utf-8")
         r = self.executar()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("em dia", r.stdout)

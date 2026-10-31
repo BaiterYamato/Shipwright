@@ -82,10 +82,7 @@ def localizar_fonte(overlay, repo, caminho):
 
 def excluida(overlay, arquivo, nome):
     """Fonte ou função fora do overlay (overlay-exclude.txt): a resolução não entra na DLL."""
-    try:
-        excluir, _ = overlay.ler_excluir()
-    except FileNotFoundError:
-        return None
+    excluir, _ = overlay.ler_excluir()
     for chave in ("arquivo " + Path(arquivo).name, nome):
         if chave in excluir:
             return chave
@@ -171,7 +168,8 @@ def readaptar(args, caminho, overlay, sync):
     texto, conflitos = mesclar(host, host_antigo, adaptada)
     destino = (args.saida / caminho.name) if args.saida else caminho
     if conflitos:
-        destino = destino.with_suffix(".conflito.c")
+        # Fora de *.c: o overlay.py lê toda resolução .c da pasta, e um diagnóstico ali travaria o configure.
+        destino = destino.with_suffix(".conflito.txt")
     if args.saida and destino.resolve() == caminho.resolve():
         raise ErroReadapt("--saida aponta para a resolução original; escolha outra pasta")
     if destino.resolve() == caminho.resolve() and conflitos:
@@ -203,9 +201,11 @@ def main(argv=None):
     pasta = (args.fork_dir or args.repo / PASTA_FORK).resolve()
     try:
         overlay, sync = carregar_modulos(pasta)
+        # Sem a lista de exclusões, uma resolução fora da DLL seria regravada como se valesse; o sync.py também a exige.
+        if not (pasta / "overlay-exclude.txt").is_file():
+            raise ErroReadapt("overlay-exclude.txt ausente em %s" % pasta)
         caminhos = sorted(set(p.resolve() for p in args.arquivos)) if args.arquivos else sorted(
-            p for sub in ("overlay-extra", "overlay-merges") for p in (pasta / sub).glob("*.c")
-            if not p.name.endswith(".conflito.c"))
+            p for sub in ("overlay-extra", "overlay-merges") for p in (pasta / sub).glob("*.c"))
         # --saida usa nomes simples: não deixe duas entradas disputarem o mesmo arquivo.
         if args.saida and len({p.name for p in caminhos}) != len(caminhos):
             raise ErroReadapt("nomes de saída duplicados; processe as resoluções em pastas separadas")
