@@ -9,6 +9,12 @@ param(
     [string]$HostSymbols = 'x64\Release\soh.symbols',
     # Saída do tools/build-nei-assets.py: nei-assets-<componente>.o2r e nei-assets-manifest.json.
     [string]$AssetsDirectory = 'build\nei-assets',
+    # full: core+SM64+SSBB, conferido contra oot.o2r e mm.o2r. oot (RC11): core+SSBB, sem MM.
+    [ValidateSet('full', 'oot')]
+    [string]$Profile = 'full',
+    # No perfil oot, reconferir os bytes contra as mesmas bases; nunca recebe MM.
+    [string[]]$BaseArchive = @(),
+    [string]$Python = 'python',
     # O mod de exemplo como pacote próprio, para testar o serviço em jogo; o fonte dele já vai no .shipmod.
     [switch]$Demo
 )
@@ -47,11 +53,11 @@ function New-DeterministicZip([string]$Source, [string]$Destination) {
 $version = '0.3.26'
 $coreDll = Resolve-InputFile (Join-Path $ProviderDirectory 'linkspan_nei_core.dll') 'NEI core DLL'
 
-# Assets: o manifesto tem de ser da versão atual do gerador, conferido contra o oot.o2r e o mm.o2r (textura igual à
-# do jogo vira referência ao caminho do jogo, não cópia) e cada .o2r tem de bater com o SHA-256 dele. Uma pasta velha
+# Assets: manifesto da versão/perfil atual; full confere oot.o2r + mm.o2r, oot só as bases OoT. Textura igual à
+# do jogo vira referência ao caminho do jogo, não cópia; cada .o2r deve bater com o SHA-256. Uma pasta velha
 # ou gerada sem os arquivos do jogo falha aqui, não no jogo.
 # Só vão os componentes que a DLL usa (ComponentOf em fork/fork_items.c): formas e rede não entram na DLL.
-$bundledComponents = @('core', 'expansion.sm64', 'expansion.ssbb')
+$bundledComponents = if ($Profile -eq 'oot') { @('core', 'expansion.ssbb') } else { @('core', 'expansion.sm64', 'expansion.ssbb') }
 $assetsManifestFile = Resolve-InputFile (Join-Path $AssetsDirectory 'nei-assets-manifest.json') 'NEI assets manifest'
 $assetsManifest = [System.IO.File]::ReadAllText($assetsManifestFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 $generatorText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'build-nei-assets.py') -Raw
@@ -59,8 +65,21 @@ $generatorVersion = [regex]::Match($generatorText, '(?m)^VERSION = "([^"]+)"').G
 if ($assetsManifest.version -ne $generatorVersion) {
     throw "Assets do NEI na versão $($assetsManifest.version); o gerador está na $generatorVersion. Gere de novo: $AssetsDirectory"
 }
+if ($assetsManifest.profile -cne $Profile) {
+    throw "Perfil de assets $($assetsManifest.profile) diverge do pacote $Profile"
+}
+if ($Profile -eq 'oot') {
+    # Gate independente sobre os .o2r finais: hashes por recurso, cópias, overrides e fechamento
+    # transitivo. Não confia em game_copies=[] nem esconde code_mm do relatório.
+    $verifyArgs = @('-B', (Join-Path $PSScriptRoot 'build-nei-assets.py'), '--profile', 'oot',
+                    '--verify-assets', $AssetsDirectory)
+    foreach ($base in $BaseArchive) { $verifyArgs += @('--base', (Resolve-InputFile $base 'Base OoT')) }
+    & $Python @verifyArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Assets do perfil oot recusados pela verificação independente' }
+}
 $checked = @($assetsManifest.game_data.checked_against)
-foreach ($game in @('oot.o2r', 'mm.o2r')) {
+$requiredGames = if ($Profile -eq 'oot') { @('oot.o2r') } else { @('oot.o2r', 'mm.o2r') }
+foreach ($game in $requiredGames) {
     if ($checked -notcontains $game) {
         throw "Assets do NEI gerados sem conferir o $game (--base/--mm do build-nei-assets.py): $AssetsDirectory"
     }
@@ -88,12 +107,28 @@ $packageManifest = [ordered]@{
     version = $assetsManifest.version
     source = $assetsManifest.source
     license = $assetsManifest.license
-    game_data = $assetsManifest.game_data
+    profile = $Profile
+    bases = @($assetsManifest.bases)
+    excluded_components = @($assetsManifest.excluded_components)
+    game_data = [ordered]@{
+        checked_against = $checked
+        replaced = @($assetsManifest.game_data.replaced | Where-Object { $bundledComponents -contains $_.component })
+    }
     components = [ordered]@{}
     files = @($assetsManifest.files | Where-Object { $bundledComponents -contains $_.component })
 }
 foreach ($name in $bundledComponents) {
     $packageManifest.components[$name] = $assetsManifest.components.$name
+}
+if ($Profile -eq 'oot') { $packageManifest.code_audit = $assetsManifest.code_audit }
+# As formas e rede geradas no perfil full também não fazem parte deste pacote.
+foreach ($entry in $assetsManifest.components.PSObject.Properties) {
+    if ($bundledComponents -notcontains $entry.Name -and
+        -not @($packageManifest.excluded_components | Where-Object { $_.component -eq $entry.Name }).Count) {
+        $packageManifest.excluded_components += [pscustomobject]@{
+            component = $entry.Name; reason = 'fora do ComponentOf da DLL; não empacotado'
+        }
+    }
 }
 $validatorExe = Resolve-InputFile $Validator 'Link-Span validator'
 $jsonCopyright = Resolve-InputFile $JsonLicense 'nlohmann/json license'
@@ -151,6 +186,13 @@ Write-Utf8NoBom (Join-Path $coreStage 'assets\nei-assets-manifest.json') ($packa
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'include\linkspan\nei\nei_items.h') `
     -Destination (Join-Path $coreStage 'include\linkspan\nei\nei_items.h')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'README.md') -Destination (Join-Path $coreStage 'docs\README.md')
+if ($Profile -eq 'oot') {
+    $readme = Join-Path $coreStage 'docs\README.md'
+    $profileNote = "> **Package profile: oot (RC11).** It bundles the core and expansion.ssbb assets only. The SM64 (Mario) " +
+        "expansion, the MM forms and every item that needs Majora's Mask assets are left out. Where this guide mentions " +
+        "MM or SM64, it describes the full profile; see docs/components.json and the assets manifest.`n`n"
+    Write-Utf8NoBom $readme ($profileNote + [IO.File]::ReadAllText($readme, [Text.Encoding]::UTF8))
+}
 # Licença (CC0 do trabalho do Link-Span) e atribuição do que o pacote porta.
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\docs\licensing\LICENSE-PACKAGE.txt') -Destination (Join-Path $coreStage 'LICENSE')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'NOTICE.md') -Destination (Join-Path $coreStage 'NOTICE.md')
@@ -178,6 +220,7 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'demo\nei_demo.cpp') -Destination 
 
 # Componentes: os assets vão no pacote; a ROM do SM64 nunca.
 $components = [ordered]@{
+    profile = $Profile
     version = 2
     components = @(
         [ordered]@{
@@ -222,6 +265,16 @@ $components = [ordered]@{
         }
     )
 }
+if ($Profile -eq 'oot') {
+    $components.components = @(
+        [ordered]@{ id = 'nei-assets-core'; path = 'assets/nei-assets-core.o2r'; bundled = $true },
+        [ordered]@{ id = 'nei-assets-expansion.ssbb'; path = 'assets/nei-assets-expansion.ssbb.o2r'; bundled = $true },
+        [ordered]@{ id = 'nei-assets-expansion.sm64'; bundled = $false;
+                    without = 'Mario Mask fora do registro: depende de texturas MM' },
+        [ordered]@{ id = 'oot.o2r'; bundled = $false; source = 'base do próprio usuário, conferida por SHA-256' }
+    )
+    $components.excluded_components = $packageManifest.excluded_components
+}
 Write-Utf8NoBom (Join-Path $coreStage 'docs\components.json') ($components | ConvertTo-Json -Depth 4)
 
 $notice = @"
@@ -241,6 +294,9 @@ $notice = @"
 ## nlohmann/json (compilado na DLL)
 
 "@
+if ($Profile -eq 'oot') {
+    $notice = $notice.Replace('no `oot.o2r` ou no `mm.o2r` do jogador', 'nas bases OoT do jogador (perfil oot; MM excluído)')
+}
 Write-Utf8NoBom (Join-Path $coreStage 'docs\LICENSES.md') ($notice + (Get-Content -LiteralPath $jsonCopyright -Raw))
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -257,6 +313,7 @@ $contents = Get-ChildItem -LiteralPath $coreStage -Recurse -File | Sort-Object F
     }
 }
 $report = [ordered]@{
+    profile = $Profile
     package = [System.IO.Path]::GetFileName($package)
     size = (Get-Item -LiteralPath $package).Length
     sha256 = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash

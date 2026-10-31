@@ -22,6 +22,12 @@ Uso:
   python tools/build-nei-assets.py --repo . --packer build/x64/Release/soh-o2r-packer.exe \
       --base <oot.o2r> --base <soh.o2r> --fork-source build/nei-core-native/nei-fork/fork --out build/nei-assets
 
+Perfil RC11: --profile oot --base <oot.o2r> [--base <soh.o2r>], sem --mm; exige --fork-source.
+Só seleciona core e expansion.ssbb e reprova dependências MM/não resolvidas nos bytes finais e no código
+incluído (análise conservadora de strings, não um grafo de chamadas C). O padrão continua full.
+Conferência independente: --profile oot --verify-assets <pasta> --base <oot.o2r> [--base <soh.o2r>].
+Não carrega cmodels nem executa packer nesse modo.
+
 Precisa do commit do fork no git do repositório (git fetch https://github.com/skijer/Shipwright c29262b76ead6f00786885ae4be68916cbee77f5).
 """
 import argparse
@@ -34,15 +40,17 @@ import struct
 import subprocess
 import sys
 import zipfile
+import importlib
+import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "soh", "native-sdk", "nei-core", "fork"))
-import cmodels  # noqa: E402
+cmodels = None  # Carregado pelo --repo apenas para geração, não na verificação.
 
 FORK_COMMIT = "c29262b"
 FORK_COMMIT_FULL = "c29262b76ead6f00786885ae4be68916cbee77f5"
 FORK_BASE = "783139310"
-PREFIX = cmodels.ASSET_PREFIX
-VERSION = "0.3.8"
+PREFIX = "soh/assets/custom/"
+VERSION = "0.3.9"
 SPINNER_TEXTURE = "objects/object_nei_spinner/sSpinnerTex"
 SPINNER_REPAIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "soh", "native-sdk",
                               "nei-core", "assets", "spinner-bronze.otex")
@@ -119,14 +127,14 @@ def crc64(text):
 
 
 def git(repo, *args, binary=False):
-    result = subprocess.run(["git", "-C", repo, *args], capture_output=True, check=True)
+    result = subprocess.run(["git", "-c", "safe.directory=" + os.path.abspath(repo), "-C", repo, *args], capture_output=True, check=True)
     return result.stdout if binary else result.stdout.decode("utf-8", errors="replace")
 
 
 def read_blobs(repo, commit, paths):
     """Lê vários arquivos de um commit numa chamada só (git cat-file --batch)."""
     request = "".join("%s:%s\n" % (commit, p) for p in paths).encode("utf-8")
-    raw = subprocess.run(["git", "-C", repo, "cat-file", "--batch"], input=request, capture_output=True,
+    raw = subprocess.run(["git", "-c", "safe.directory=" + os.path.abspath(repo), "-C", repo, "cat-file", "--batch"], input=request, capture_output=True,
                          check=True).stdout
     out = {}
     pos = 0
@@ -156,7 +164,11 @@ def association_of(rel):
     return "outro"
 
 
-archive_path = cmodels.archive_path
+def archive_path(rel):
+    name = os.path.basename(rel)
+    if rel.endswith(".png") and name.count(".") >= 2:
+        return rel[:-4].rsplit(".", 1)[0]
+    return rel
 
 
 def fork_files(repo):
@@ -331,24 +343,190 @@ def user_component(path):
     return "core"
 
 
-def code_references(source):
+def code_references(source, include_bare=False):
     refs = {}
-    pattern = re.compile(r'"__OTR__([^"]+)"')
+    patterns = [re.compile(r'"__OTR__([^"]+)"')]
+    if include_bare:
+        patterns.append(re.compile(r'"((?:objects|textures|icon_item_static_yar|item_name_static|parameter_static)/[^"]+)"'))
     for root, _, files in os.walk(source):
         for file in files:
             if not file.endswith((".c", ".h", ".cpp", ".inc", ".inc.c")):
                 continue
             path = os.path.join(root, file)
             with open(path, encoding="utf-8", errors="replace") as f:
-                for match in pattern.finditer(f.read()):
-                    refs.setdefault(match.group(1), set()).add(os.path.relpath(path, source).replace("\\", "/"))
+                text = f.read()
+                for pattern in patterns:
+                    for match in pattern.finditer(text):
+                        refs.setdefault(match.group(1), set()).add(os.path.relpath(path, source).replace("\\", "/"))
     return refs
+
+
+OOT_COMPONENTS = ("core", "expansion.ssbb")
+
+
+def exclusion_reason(component):
+    if component == "expansion.sm64":
+        return "Mario Mask: duas texturas do Vendedor de Máscaras do MM; MM adiado no RC11"
+    if component.startswith("form."):
+        return "formas opcionais fora da DLL; conteúdo MM adiado no RC11"
+    return "componente fora do registro ComponentOf da DLL OoT; não auditado para este perfil"
+
+
+def validate_inputs(profile, bases, mm):
+    if profile != "oot":
+        return
+    if mm:
+        raise ValueError("perfil oot não aceita --mm")
+    names = [os.path.basename(p).lower() for p in bases]
+    if "oot.o2r" not in names:
+        raise ValueError("perfil oot exige --base oot.o2r")
+    if len(set(names)) != len(names) or any(n not in {"oot.o2r", "soh.o2r"} for n in names):
+        raise ValueError("perfil oot aceita somente bases únicas oot.o2r e soh.o2r; MM é proibido")
+
+
+def file_record(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {"archive": os.path.basename(path), "sha256": digest.hexdigest(), "bytes": os.path.getsize(path)}
+
+
+def base_records(paths):
+    return sorted((file_record(p) for p in paths), key=lambda r: r["archive"])
+
+
+def archive_records(path):
+    with zipfile.ZipFile(path) as archive:
+        return [{"path": i.filename, "sha256": hashlib.sha256(archive.read(i)).hexdigest(), "bytes": i.file_size}
+                for i in sorted(archive.infolist(), key=lambda i: i.filename) if not i.is_dir()]
+
+
+def mm_path(path):
+    # Prefixos do fork mais os namespaces usados pelos adapters. A resolução fechada abaixo também
+    # recusa caminhos/hashes MM que não estejam nesta lista (não existem nas bases permitidas).
+    return path.startswith(MM_OPTIONAL_PREFIXES + ("mm/", "mm_assets/", "mm_sources/", "objects/forms/"))
+
+
+def resource_refs(data):
+    """Referências reais de ODLT/XML, inclusive após conversão PNG do packer."""
+    if data.lstrip().startswith(b"<"):
+        try:
+            tree = ET.fromstring(data)
+        except ET.ParseError as error:
+            raise ValueError("XML inválido: " + str(error)) from error
+        return [("path", value.removeprefix("__OTR__")) for node in tree.iter()
+                for key, value in node.attrib.items() if key.endswith("Path") and value
+                and not value.startswith((">", "0x"))]
+    # Não aceitar ODLT truncado como lista sem referências.
+    if len(data) >= 8 and data[4:8] == b"TLDO":
+        if len(data) < 0x50:
+            raise ValueError("display list truncada")
+        offset, ended = 0x48, False
+        while offset + 8 <= len(data):
+            opcode = struct.unpack_from("<I", data, offset)[0] >> 24
+            offset += 8
+            if opcode in HASH_OPCODES or opcode in OTHER_WIDE:
+                if offset + 8 > len(data):
+                    raise ValueError("referência de display list truncada")
+                offset += 8
+            if opcode in END_OPCODES:
+                ended = True
+                break
+        if not ended:
+            raise ValueError("display list sem END")
+    return [("hash", value) for _, value in (dl_references(data) or [])]
+
+
+def verify_archives(directory, manifest, bases):
+    """Gate fechado do perfil oot: todo recurso incluído é raiz; nada é só ocultado do relatório.
+
+    Transitividade: cada aresta sai de own para own/base; arestas das bases são confiadas ao jogo.
+    Não carrega o gerador de modelos nem executa packer/git.
+    """
+    validate_inputs("oot", bases, [])
+    if manifest.get("profile") != "oot" or manifest.get("version") != VERSION:
+        raise ValueError("perfil/versão do manifesto incompatível com oot")
+    if manifest.get("bases") != base_records(bases):
+        raise ValueError("bases/SHA-256 divergem do manifesto")
+    if sorted(manifest.get("game_data", {}).get("checked_against", [])) != sorted(os.path.basename(p) for p in bases):
+        raise ValueError("checked_against diverge das bases OoT")
+    components = manifest.get("components", {})
+    if set(components) != set(OOT_COMPONENTS):
+        raise ValueError("perfil oot exige exatamente core e expansion.ssbb")
+    unexpected = sorted(name for name in os.listdir(directory) if name.startswith("nei-assets-")
+                        and name.endswith(".o2r") and name not in {
+                            "nei-assets-%s.o2r" % c for c in OOT_COMPONENTS})
+    if unexpected:
+        raise ValueError("archives excluídos na pasta oot; use saída limpa: " + repr(unexpected))
+    excluded = manifest.get("excluded_components", [])
+    if not any(e.get("component") == "expansion.sm64" and e.get("reason") for e in excluded):
+        raise ValueError("exclusão SM64 e motivo ausentes")
+    audit = manifest.get("code_audit", {})
+    if audit.get("policy") != "conservative-source-strings/1" or any(
+            audit.get(k, ["ausente"]) for k in ("reachable_mm", "missing", "replaced")):
+        raise ValueError("referências MM/ausentes/trocadas no código incluído ou auditoria ausente")
+    own = {}
+    for component, info in components.items():
+        archive_name = info.get("archive", "")
+        if archive_name != "nei-assets-%s.o2r" % component:
+            raise ValueError("nome de archive inesperado: " + archive_name)
+        path = os.path.join(directory, archive_name)
+        if info.get("sha256") != file_record(path)["sha256"]:
+            raise ValueError("SHA-256 do archive diverge: " + archive_name)
+        if info.get("game_copies") != []:
+            raise ValueError("cópias de jogo ou conferência ausente: " + component)
+        if info.get("packed_files") != archive_records(path):
+            raise ValueError("SHA-256/inventário por recurso diverge: " + component)
+        with zipfile.ZipFile(path) as archive:
+            for entry in archive.infolist():
+                if entry.is_dir():
+                    continue
+                name = entry.filename
+                if name in own or name == "portVersion" or "\\" in name or name.startswith("/") or ".." in name.split("/"):
+                    raise ValueError("recurso duplicado/proibido: " + name)
+                if component_of(name) != component or mm_path(name):
+                    raise ValueError("recurso fora do componente OoT: " + name)
+                own[name] = archive.read(entry)
+    base = base_paths(bases)
+    if set(own) & base:
+        raise ValueError("recursos sobrescrevem as bases: " + repr(sorted(set(own) & base)))
+    # O soh.o2r não é dado da ROM; não pode sombrear a detecção de cópias do oot.o2r.
+    game_index = game_textures([p for p in bases if os.path.basename(p).lower() == "oot.o2r"])
+    all_paths = set(own) | base
+    known = {crc64(p) for p in all_paths if not mm_path(p)}
+    for path, data in own.items():
+        if texture_key(data) in game_index:
+            raise ValueError("cópia de textura do jogo: " + path)
+        for kind, target in resource_refs(data):
+            if (kind == "path" and (mm_path(target) or target not in all_paths)) or (
+                    kind == "hash" and target not in known):
+                raise ValueError("referência MM/não resolvida em %s: %s" % (path, target))
+    for entry in manifest.get("files", []):
+        if entry.get("component") not in components or entry.get("path") not in own:
+            raise ValueError("files descreve recurso fora do pacote")
+    for entry in manifest.get("game_data", {}).get("replaced", []):
+        if entry.get("component") not in components or component_of(entry.get("path", "")) != entry["component"]:
+            raise ValueError("replaced descreve componente excluído")
+        if entry.get("archive", "").lower() not in {os.path.basename(p).lower() for p in bases} or (
+                entry.get("target") not in base or mm_path(entry.get("target", ""))):
+            raise ValueError("replaced aponta MM/base ausente")
+
+
+def verify_assets(directory, profile, bases):
+    if profile != "oot":
+        raise ValueError("--verify-assets implementado somente para oot")
+    with open(os.path.join(directory, "nei-assets-manifest.json"), encoding="utf-8-sig") as stream:
+        manifest = json.load(stream)
+    verify_archives(directory, manifest, bases)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", default=".")
-    parser.add_argument("--packer", required=True)
+    parser.add_argument("--profile", choices=("full", "oot"), default="full")
+    parser.add_argument("--verify-assets", help="verifica archives/manifesto já gerados, sem gerar assets")
+    parser.add_argument("--packer")
     parser.add_argument("--base", action="append", default=[], help="oot.o2r, soh.o2r (conferência)")
     parser.add_argument("--mm", action="append", default=[],
                         help="mm.o2r do usuário: caminhos dele contam como dependência do adapter do MM")
@@ -358,6 +536,23 @@ def main():
                         "<repo>/libultraship/include")
     args = parser.parse_args()
 
+    try:
+        validate_inputs(args.profile, args.base, args.mm)
+        if args.verify_assets:
+            verify_assets(args.verify_assets, args.profile, args.base)
+            print("Assets verificados: " + args.profile)
+            return 0
+    except (ValueError, OSError, zipfile.BadZipFile) as error:
+        parser.error(str(error))
+    if not args.packer:
+        parser.error("geração exige --packer")
+    if args.profile == "oot" and not args.fork_source:
+        parser.error("perfil oot exige --fork-source para conferir referências de código")
+    if args.profile == "oot" and not os.path.isdir(args.fork_source):
+        parser.error("--fork-source não é um diretório existente")
+    global cmodels
+    sys.path.insert(0, os.path.join(os.path.abspath(args.repo), "soh", "native-sdk", "nei-core", "fork"))
+    cmodels = importlib.import_module("cmodels")
     repo = os.path.abspath(args.repo)
     out = os.path.abspath(args.out)
     stage_root = os.path.join(out, "stage")
@@ -371,6 +566,9 @@ def main():
     manifest = {
         "format": "linkspan.nei.assets/1",
         "version": VERSION,
+        "profile": args.profile,
+        "bases": base_records(list(args.base) + list(args.mm)),
+        "excluded_components": [],
         "source": {
             "repository": "https://github.com/skijer/Shipwright/tree/Not-Enough-Items",
             "commit": FORK_COMMIT_FULL,
@@ -384,6 +582,11 @@ def main():
     by_component = {}
     blobs = {}
     stage_of = {}
+    if args.profile == "oot":
+        excluded = sorted({component_of(p[len(PREFIX):]) for p in files} - set(OOT_COMPONENTS))
+        manifest["excluded_components"] = [
+            {"component": c, "reason": exclusion_reason(c)} for c in excluded]
+        files = [p for p in files if component_of(p[len(PREFIX):]) in OOT_COMPONENTS]
     contents = read_blobs(repo, FORK_COMMIT, files)
     packer = os.path.abspath(args.packer)
     for rel_full in files:
@@ -450,14 +653,18 @@ def main():
     replaced = {}
     index = {}
     if game_archives:
-        index = game_textures(game_archives)
+        # No perfil oot, o host não pode sombrear uma cópia da ROM por ordem de --base.
+        index = game_textures(sorted(game_archives, key=lambda a: os.path.basename(a).lower() != "oot.o2r")
+                              if args.profile == "oot" else game_archives)
         for path, data in blobs.items():
             key = texture_key(data)
             if key and key in index:
                 replaced[path] = index[key]
     manifest["game_data"] = {
         "checked_against": sorted({os.path.basename(a) for a in game_archives}),
-        "replaced": [{"path": p, "target": t, "archive": a} for p, (a, t) in sorted(replaced.items())],
+        "replaced": [{"path": p, "target": t, "archive": a,
+                      "component": next(e["component"] for e in manifest["files"] if e["path"] == p)}
+                     for p, (a, t) in sorted(replaced.items())],
     }
     if replaced:
         by_hash = {crc64(p): crc64(t) for p, (_, t) in replaced.items()}
@@ -503,6 +710,7 @@ def main():
             "files": len(entries),
             "optional": component != "core",
             "game_copies": remaining,
+            "packed_files": archive_records(archive),
         }
 
     # Conferências.
@@ -540,12 +748,12 @@ def main():
                 report["dangling"].append({"recurso": path, "componente": component_of(path), "tipo": kind,
                                             "hash": "%016x" % value})
     if args.fork_source:
-        code = code_references(args.fork_source)
+        code = code_references(args.fork_source, include_bare=args.profile == "oot")
         mm = base_paths(args.mm) if args.mm else set()
         report["code_mm"] = []
         report["code_optional"] = []
         for path, users in sorted(code.items()):
-            if path in own or path in base:
+            if (path in own or path in base) and not (args.profile == "oot" and mm_path(path)):
                 continue
             if not re.fullmatch(r"[\w./-]+", path) or path.endswith(("/", "_")) or "..." in path:
                 continue  # prefixo montado em tempo de execução ou texto de exemplo, não caminho
@@ -558,7 +766,8 @@ def main():
             else:
                 report["code_optional"].append(item)
         report["stats"]["code_refs"] = len(code)
-        report["code_replaced"] = sorted(p for p in code if p in replaced)
+        report["code_replaced"] = sorted(p for p in code if p in replaced and (
+            args.profile != "oot" or any(user_component(u) in OOT_COMPONENTS for u in code[p])))
     report["stats"].update({"files": len(own), "display_lists": dl_count, "dl_refs": ref_count,
                             "base_paths": len(base)})
     report["port_version"] = []
@@ -566,6 +775,25 @@ def main():
         with zipfile.ZipFile(os.path.join(out, info["archive"])) as z:
             if "portVersion" in z.namelist():
                 report["port_version"].append(info["archive"])
+
+    if args.profile == "oot":
+        # Conservador: uma string MM em usuário incluído reprova, mesmo que tenha guard em runtime.
+        # Fontes opcionais excluídos continuam no relatório como evidência, sem virar dependência ativa.
+        report["reachable_mm"] = [item for item in report.get("code_mm", [])
+                                  if set(item["componentes"]) & set(OOT_COMPONENTS)]
+        report["included_code_missing"] = [item for item in report.get("code_optional", [])
+                                          if set(item["componentes"]) & set(OOT_COMPONENTS)]
+        manifest["code_audit"] = {"policy": "conservative-source-strings/1",
+                                  "reachable_mm": report["reachable_mm"],
+                                  "missing": report.get("code_missing", []) + report["included_code_missing"],
+                                  "replaced": report.get("code_replaced", [])}
+        if not code:
+            manifest["code_audit"]["missing"].append({"error": "nenhuma referência de código encontrada"})
+        report["profile_errors"] = []
+        try:
+            verify_archives(out, manifest, args.base)
+        except ValueError as error:
+            report["profile_errors"].append(str(error))
 
     shutil.rmtree(stage_root, ignore_errors=True)
     with open(os.path.join(out, "nei-assets-manifest.json"), "w", encoding="utf-8") as f:
@@ -595,7 +823,9 @@ def main():
         print("  o código do fork pede pelo nome uma textura trocada: %s" % path)
     for archive in report["port_version"]:
         print("  portVersion na raiz (encobre o do soh.o2r): %s" % archive)
-    return 1 if (report["overrides"] or core_dangling or report.get("code_missing") or
+    for error in report.get("profile_errors", []):
+        print("perfil oot recusado: " + error)
+    return 1 if (report.get("profile_errors") or report["overrides"] or core_dangling or report.get("code_missing") or
                  report.get("code_replaced") or report["port_version"]) else 0
 
 
