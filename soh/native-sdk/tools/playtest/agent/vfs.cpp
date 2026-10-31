@@ -12,7 +12,7 @@ VfsLayers::~VfsLayers() {
 bool VfsLayers::Init(const ShipOotResourcesV2* resources) {
     // Inicialização única, antes de Start e de qualquer callback de frame.
     if (algorithm_ || !resources || resources->size < sizeof(*resources) || !resources->read_file_layers ||
-        !resources->has_file)
+        !resources->has_file || !resources->list_files)
         return false;
     if (BCryptOpenAlgorithmProvider(&algorithm_, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
         return false;
@@ -83,6 +83,19 @@ ShipNativeStatus SHIP_NATIVE_CALL VfsLayers::Collect(void* user, const ShipOotRe
     ++path.count;
     return SHIP_NATIVE_OK;
 }
+ShipNativeStatus SHIP_NATIVE_CALL VfsLayers::Listed(void* user, const char*, uint32_t) {
+    // Sem metacaractere, o glob do libultraship só casa o próprio caminho: qualquer entrada é presença.
+    *static_cast<bool*>(user) = true;
+    return SHIP_NATIVE_LIMIT;
+}
+bool VfsLayers::CertifyAbsent(const char* path) {
+    // read_file_layers devolve UNSUPPORTED para "sem camada" e para "sem VFS". list_files só devolve OK com o
+    // gerenciador de archives vivo, e has_file falso exclui o arquivo indexado que não carregou.
+    if (std::strpbrk(path, "*?[\\"))
+        return false;
+    bool listed = false;
+    return resources_->list_files(path, Listed, &listed) == SHIP_NATIVE_OK && !listed;
+}
 void VfsLayers::Tick(uint64_t frame) {
     std::lock_guard lock(mutex_);
     if (!pending_)
@@ -98,7 +111,12 @@ void VfsLayers::Tick(uint64_t frame) {
             path.status = resources_->read_file_layers(path.text.data(), Collect, this);
             if (path.status == SHIP_NATIVE_OK && (!path.count || path.count != layers_[path.first].count))
                 path.status = SHIP_NATIVE_FAILURE;
-        } catch (...) { path.status = SHIP_NATIVE_FAILURE; }
+            path.absent = path.status == SHIP_NATIVE_UNSUPPORTED && !path.hasFile && !path.count &&
+                          CertifyAbsent(path.text.data());
+        } catch (...) {
+            path.status = SHIP_NATIVE_FAILURE;
+            path.absent = false;
+        }
         // Retém o status, mas nunca publica um prefixo como se fosse a lista completa.
         if (path.status != SHIP_NATIVE_OK) {
             layerCount_ = path.first;
@@ -130,12 +148,14 @@ Json VfsLayers::Result(uint64_t ticket) const {
             layers.push_back(
                 { { "archive", std::string(layer.archive.data(), layer.archiveLength) }, { "sha256", digest } });
         }
-        complete = complete && path.status == SHIP_NATIVE_OK;
+        const bool pathComplete = path.status == SHIP_NATIVE_OK || path.absent;
+        complete = complete && pathComplete;
         observations.push_back({ { "path", path.text.data() },
                                  { "layers", std::move(layers) },
                                  { "hostStatus", path.status },
                                  { "hasFile", path.hasFile },
-                                 { "complete", path.status == SHIP_NATIVE_OK } });
+                                 { "absent", path.absent },
+                                 { "complete", pathComplete } });
     }
     Json body = { { "status", "observed" },
                   { "complete", complete },
@@ -145,7 +165,7 @@ Json VfsLayers::Result(uint64_t ticket) const {
                   { "instrumentation",
                     { { "observer", "linkspan.tool.playtest/vfs_layers" },
                       { "revision", PLAYTEST_VFS_REVISION },
-                      { "agent_version", "0.2.1" },
+                      { "agent_version", "0.2.2" },
                       { "layout_id", PLAYTEST_LAYOUT_ID },
                       { "resources_version", 2 },
                       { "layer_order", "low-to-high" } } } };

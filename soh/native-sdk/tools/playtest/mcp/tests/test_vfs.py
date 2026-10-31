@@ -12,15 +12,16 @@ from linkspan_playtest.vfs import (MAX_BYTES, query_vfs, save_vfs_snapshot, fina
 from test_agent_client import FakeAgent
 
 
-def observed(paths=("test/layers.json",), status=0):
+def observed(paths=("test/layers.json",), status=0, absent=False):
     layers = [{"archive": "base.o2r", "sha256": hashlib.sha256(b"base\x00").hexdigest()},
               {"archive": "override.shipmod", "sha256": hashlib.sha256(b"override").hexdigest()}]
-    return {"status": "observed", "frame": 17, "bytes_hashed": 13, "complete": status == 0,
+    return {"status": "observed", "frame": 17, "bytes_hashed": 13, "complete": status == 0 or absent,
             "instrumentation": {"observer": "linkspan.tool.playtest/vfs_layers", "revision": "a" * 64,
-                                "agent_version": "0.2.1", "layout_id": "abcd", "resources_version": 2,
+                                "agent_version": "0.2.2", "layout_id": "abcd", "resources_version": 2,
                                 "layer_order": "low-to-high"},
-            "observations": [{"path": p, "hostStatus": status, "hasFile": status == 0,
-                              "complete": status == 0, "layers": copy.deepcopy(layers) if status == 0 else []}
+            "observations": [{"path": p, "hostStatus": status, "hasFile": status == 0, "absent": absent,
+                              "complete": status == 0 or absent,
+                              "layers": copy.deepcopy(layers) if status == 0 else []}
                              for p in paths]}
 
 
@@ -49,6 +50,29 @@ class VfsTests(unittest.TestCase):
         self.assertFalse(result["complete"])
         self.assertEqual(result["observations"][0]["hostStatus"], 2)
         self.assertEqual(result["observations"][0]["layers"], [])
+
+    def test_certified_absence_is_complete(self):
+        self.agent.job_result = observed(status=2, absent=True)
+        result = query_vfs(self.client, ["test/layers.json"])
+        self.assertTrue(result["complete"])
+        self.assertTrue(result["observations"][0]["absent"])
+        self.assertEqual(result["observations"][0]["layers"], [])
+
+    def test_reject_incoherent_absence(self):
+        mutations = [lambda o: o.update(hasFile=True),
+                     lambda o: o.update(hostStatus=4),
+                     lambda o: o.update(complete=False),
+                     lambda o: o.update(absent=None),
+                     lambda o: o.update(layers=[{"archive": "base.o2r", "sha256": "a" * 64}])]
+        for mutate in mutations:
+            result = observed(status=2, absent=True)
+            mutate(result["observations"][0])
+            with self.assertRaises(ValueError):
+                validate_result(result, ["test/layers.json"])
+        result = observed()
+        result["observations"][0]["absent"] = True
+        with self.assertRaises(ValueError):
+            validate_result(result, ["test/layers.json"])
 
     def test_limit_diagnostic_and_no_replay_after_drop(self):
         self.agent.job_result = observed(status=4)

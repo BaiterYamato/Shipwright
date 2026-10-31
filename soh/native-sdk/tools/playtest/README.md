@@ -1,11 +1,11 @@
 # Link-Span OoT playtest tool
 
-## VFS layers and RC11 evidence (0.2.1, protocol v2)
+## VFS layers and RC11 evidence (0.2.2, protocol v2)
 
 `vfs_layers(paths, max_bytes=8388608)` queries `linkspan.oot.resources` v2 on the game thread, at the
 next `oot.input.pad` callback, including the title screen. It returns `frame`, `bytes_hashed`,
 `instrumentation`, `complete`, and `observations`. Each observation contains `path`, `layers`,
-`hostStatus`, `hasFile`, and `complete`; each layer is `{archive, sha256}`. Order is **low to high priority**;
+`hostStatus`, `hasFile`, `absent`, and `complete`; each layer is `{archive, sha256}`. Order is **low to high priority**;
 the last layer has the highest priority. SHA-256 covers the callback bytes, including binary NULs and empty files,
 not the archive container and not the host's 64-bit `content_hash`. Transformed archives expose transformed bytes.
 Archive identifiers are copied verbatim; prefixed mounts may include `#linkspan-mount-N`.
@@ -21,10 +21,13 @@ runs on the TCP thread. No callback-owned pointer survives the call; only the st
 Operations use the existing lease, pending ticket and `result` polling. Cancel, scene destruction, disconnect,
 takeover and shutdown invalidate VFS tickets. Requests are not automatically replayed.
 
-Host status codes: 0 OK, 1 INVALID_ARGUMENT, 2 UNSUPPORTED, 3 FAILURE, 4 LIMIT. **Status 2 conflates a missing file
-and an unavailable VFS**; the observer preserves it with `complete=false`, `layers=[]` and the separate `hasFile`
-probe. An empty list is never advertised as a successful absence proof. `complete=true` means successful callback
-enumeration; the host itself can omit unreadable layers. These diagnostic receipts must not automatically pass a gate.
+Host status codes: 0 OK, 1 INVALID_ARGUMENT, 2 UNSUPPORTED, 3 FAILURE, 4 LIMIT. **Status 2 alone conflates a
+missing file and an unavailable VFS.** Since 0.2.2 the agent certifies absence in the same frame: when
+`read_file_layers` returns 2, `has_file` is false, the path has no glob metacharacter (`* ? [ \`) and
+`list_files(path)` returns OK with no entry (it only returns OK while the archive manager is alive), the observation
+has `absent=true`, `complete=true`, `layers=[]` and keeps `hostStatus=2`. Any other status 2 stays `complete=false`,
+`absent=false`. `complete=true` otherwise means status 0 with at least one layer; the host itself can omit unreadable
+layers. Diagnostic receipts (`complete=false`) must not automatically pass a gate.
 
 Use `game_vfs_snapshot(case, phase, paths, max_bytes=8388608)` to save the gate receipt:
 
@@ -50,8 +53,8 @@ Neither revision is a Git commit or a DLL hash. Rebuild the agent for this opera
 Finalization requires the actual `game-final.log`; it never invents a log hash. Failed finalization preserves drafts.
 For offline recovery, call `linkspan_playtest.vfs.finalize_vfs_snapshots(session)` with an exited session whose
 `directory`, `metadata["closed"]`, and `process.poll()` are available. Repeated finalization verifies the frozen log.
-It rejects a changed frozen log or conflicting final receipt. Missing/unavailable paths remain diagnostics in the final
-receipt, including after unload. Alias A/B queries prove visible origins and bytes; alias rules and owner identities
+It rejects a changed frozen log or conflicting final receipt. Paths without certified absence remain diagnostics in the
+final receipt, including after unload. Alias A/B queries prove visible origins and bytes; alias rules and owner identities
 must be corroborated by the fixture and host log. C++/MSVC and live ready → query → unload → query → close validation
 are still required. Python tests simulate the agent only.
 

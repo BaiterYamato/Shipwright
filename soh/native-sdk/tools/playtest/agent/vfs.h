@@ -25,6 +25,7 @@ class VfsLayers {
         ShipNativeStatus status = SHIP_NATIVE_UNSUPPORTED;
         uint32_t first = 0, count = 0;
         bool hasFile = false;
+        bool absent = false; // ausência certificada: VFS respondeu e nenhum archive indexa o caminho
     };
     struct Layer {
         std::array<char, VfsMaxArchive + 1> archive{};
@@ -32,6 +33,8 @@ class VfsLayers {
         std::array<uint8_t, 32> digest{};
     };
     static ShipNativeStatus SHIP_NATIVE_CALL Collect(void*, const ShipOotResourceLayerV2*, const char*, const uint8_t*);
+    static ShipNativeStatus SHIP_NATIVE_CALL Listed(void*, const char*, uint32_t);
+    bool CertifyAbsent(const char* path);
     mutable std::mutex mutex_;
     const ShipOotResourcesV2* resources_ = nullptr; // tabela estática do serviço, não dados de callback
     BCRYPT_ALG_HANDLE algorithm_ = nullptr;

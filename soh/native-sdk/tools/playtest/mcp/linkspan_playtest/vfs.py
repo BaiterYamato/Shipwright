@@ -1,4 +1,8 @@
-"""Observação do VFS e recibos RC11; nenhum hash é inventado para arquivos ausentes."""
+"""Observação do VFS e recibos RC11; nenhum hash é inventado para arquivos ausentes.
+
+A ausência só conta como completa quando o agente a certifica (`absent`): status 2 sozinho não distingue
+arquivo ausente de VFS indisponível.
+"""
 import hashlib
 import json
 import os
@@ -41,7 +45,7 @@ def validate_result(result, paths, max_bytes=MAX_BYTES):
     if (not isinstance(instrument, dict) or instrument.get("observer") != OBSERVER or not _sha(instrument.get("revision")) or
             instrument.get("layer_order") != "low-to-high" or instrument.get("resources_version") != 2 or
             not isinstance(instrument.get("layout_id"), str) or not instrument["layout_id"] or
-            instrument.get("agent_version") != "0.2.1"):
+            instrument.get("agent_version") != "0.2.2"):
         raise ValueError("identidade/revisão do observador VFS inválida")
     if type(result.get("frame")) is not int or result["frame"] < 0:
         raise ValueError("frame VFS inválido")
@@ -55,11 +59,15 @@ def validate_result(result, paths, max_bytes=MAX_BYTES):
         if not isinstance(observation, dict) or observation.get("path") != path:
             raise ValueError("caminhos VFS divergentes")
         status, complete = observation.get("hostStatus"), observation.get("complete")
+        absent, has_file = observation.get("absent"), observation.get("hasFile")
         if (type(status) is not int or not 0 <= status <= 4 or type(complete) is not bool or
-                complete != (status == 0) or type(observation.get("hasFile")) is not bool):
+                type(absent) is not bool or type(has_file) is not bool or complete != (status == 0 or absent)):
             raise ValueError("status VFS inválido")
+        # Ausência certificada pelo agente: status 2 com VFS vivo e caminho fora de todo índice.
+        if absent and (status != 2 or has_file):
+            raise ValueError("ausência VFS incoerente")
         layers = observation.get("layers")
-        if not isinstance(layers, list) or (complete and not layers) or (not complete and layers):
+        if not isinstance(layers, list) or (status == 0 and not layers) or (status != 0 and layers):
             raise ValueError("camadas VFS parciais ou ausentes")
         count += len(layers)
         for layer in layers:

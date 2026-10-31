@@ -56,7 +56,7 @@ struct Server::Impl {
                 vfs.Cancel();
             }
             return Reply(id, { { "lease", std::to_string(connection) },
-                               { "agent_version", "0.2.1" },
+                               { "agent_version", "0.2.2" },
                                { "layout_id", layout },
                                { "protocol_version", ProtocolVersion },
                                { "capabilities",
