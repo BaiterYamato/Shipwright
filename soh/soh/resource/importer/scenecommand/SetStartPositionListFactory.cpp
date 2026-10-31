@@ -1,4 +1,5 @@
 #include <tinyxml2.h>
+#include "src/code/linkspan_vanilla.h"
 
 #include "soh/resource/importer/scenecommand/SetStartPositionListFactory.h"
 #include "soh/resource/type/scenecommand/SetStartPositionList.h"
@@ -50,9 +51,13 @@ SetStartPositionListFactoryXML::ReadResource(std::shared_ptr<Ship::ResourceInitD
         if (childName == "StartPositionEntry") {
             ActorEntry entry;
             entry.id = child->IntAttribute("Id");
-            entry.pos.x = child->FloatAttribute("PosX");
-            entry.pos.y = child->FloatAttribute("PosY");
-            entry.pos.z = child->FloatAttribute("PosZ");
+            // SOH [Link-Span] HOST-SLIM-001 F4 (V7): XML conserva as conversoes s16 antigas sem mods.
+            entry.pos.x = LinkSpan_EngineExtended() ? child->FloatAttribute("PosX")
+                                                    : static_cast<s16>(child->IntAttribute("PosX"));
+            entry.pos.y = LinkSpan_EngineExtended() ? child->FloatAttribute("PosY")
+                                                    : static_cast<s16>(child->IntAttribute("PosY"));
+            entry.pos.z = LinkSpan_EngineExtended() ? child->FloatAttribute("PosZ")
+                                                    : static_cast<s16>(child->IntAttribute("PosZ"));
             entry.rot.x = child->IntAttribute("RotX");
             entry.rot.y = child->IntAttribute("RotY");
             entry.rot.z = child->IntAttribute("RotZ");

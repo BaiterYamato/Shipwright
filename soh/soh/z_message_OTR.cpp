@@ -2,6 +2,7 @@
 // Ported from the Unbound fork (fd236b9) without its JSON text loader: reading text/<lang>/messages.json is the
 // Unbound framework's job (coremod). The host keeps the tables and exposes OTRMessage_Set/Remove.
 #include "z_message_OTR.h"
+#include "../src/code/linkspan_vanilla.h"
 
 #include <ship/Context.h>
 #include <ship/resource/ResourceManager.h>
@@ -127,6 +128,17 @@ struct MessageTable {
     }
 };
 
+// SOH [Link-Span] HOST-SLIM-001 F4 (V3): sem mods, tabelas fixas com bytes originais e overrides somente de IDs
+// existentes.
+std::array<std::vector<MessageTableEntry>, MSG_LANGUAGE_COUNT> sVanillaTables;
+
+void SetVanillaEntry(MessageTableEntry& entry, const SOH::MessageEntry& msg) {
+    entry.textId = msg.id;
+    entry.typePos = (msg.textboxType << 4) | msg.textboxYPos;
+    entry.segment = msg.msg.c_str();
+    entry.msgSize = static_cast<u32>(msg.msg.size());
+}
+
 std::array<MessageTable, MSG_LANGUAGE_COUNT> sTables;
 bool sInitialized = false;
 
@@ -150,6 +162,43 @@ bool LoadBase(MessageTable& table, const LanguageSpec& spec) {
         SPDLOG_WARN("[Unbound] {} does not start at message {:#06x}", spec.baseFile, spec.firstId);
     }
     return true;
+}
+
+MessageTableEntry* LoadVanillaTable(const LanguageSpec& spec) {
+    auto file = LoadTextResource(spec.baseFile);
+    const bool isNES = spec.language == MSG_NES && file != nullptr;
+    if (file == nullptr && spec.altBaseFile != nullptr) {
+        file = LoadTextResource(spec.altBaseFile);
+    }
+    if (file == nullptr) {
+        return nullptr;
+    }
+    auto& table = sVanillaTables[spec.language];
+    table.resize(file->messages.size());
+    for (size_t i = 0; i < table.size(); i++) {
+        SetVanillaEntry(table[i], file->messages[i]);
+        if (isNES && table[i].textId == 0xFFFC) {
+            _message_0xFFFC_nes = (char*)table[i].segment;
+        }
+    }
+    auto files = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->ListFiles(
+        std::string("override/") + spec.folder + "/*");
+    if (files != nullptr) {
+        for (const auto& path : *files) {
+            auto custom = LoadTextResource(path);
+            if (custom == nullptr) {
+                continue;
+            }
+            for (const auto& msg : custom->messages) {
+                auto entry = std::find_if(table.begin(), table.end(),
+                                          [id = msg.id](const auto& item) { return item.textId == id; });
+                if (entry != table.end()) {
+                    SetVanillaEntry(*entry, msg);
+                }
+            }
+        }
+    }
+    return table.empty() ? nullptr : table.data();
 }
 
 // override/<folder>/* : Text resources whose entries replace OR add ids (vanilla SoH could only replace)
@@ -189,6 +238,15 @@ extern "C" void OTRMessage_Init(void) {
     }
     sInitialized = true;
 
+    if (!LinkSpan_EngineExtended()) {
+        sNesMessageEntryTablePtr = LoadVanillaTable(kLanguages[MSG_NES]);
+        sGerMessageEntryTablePtr = LoadVanillaTable(kLanguages[MSG_GER]);
+        sFraMessageEntryTablePtr = LoadVanillaTable(kLanguages[MSG_FRA]);
+        sJpnMessageEntryTablePtr = LoadVanillaTable(kLanguages[MSG_JPN]);
+        sStaffMessageEntryTablePtr = LoadVanillaTable(kLanguages[MSG_STAFF]);
+        return;
+    }
+
     // Per language: base Text resource + override/ resources, then publish.
     for (const auto& spec : kLanguages) {
         MessageTable& table = sTables[spec.language];
@@ -205,6 +263,22 @@ extern "C" void OTRMessage_Init(void) {
 }
 
 extern "C" MessageTableEntry* OTRMessage_Find(MessageTableEntry* table, u16 textId) {
+    if (!LinkSpan_EngineExtended()) {
+        for (auto& entries : sVanillaTables) {
+            if (!entries.empty() && entries.data() == table) {
+                for (auto& entry : entries) {
+                    if (entry.textId == kTerminatorId) {
+                        break;
+                    }
+                    if (entry.textId == textId) {
+                        return &entry;
+                    }
+                }
+                break;
+            }
+        }
+        return nullptr;
+    }
     for (auto& t : sTables) {
         if (t.loaded && t.entries.data() == table) {
             return t.Find(textId);
@@ -214,6 +288,9 @@ extern "C" MessageTableEntry* OTRMessage_Find(MessageTableEntry* table, u16 text
 }
 
 extern "C" s32 OTRMessage_Set(s32 language, u16 textId, u8 typePos, const char* bytes, u32 size) {
+    if (!LinkSpan_EngineExtended()) {
+        return 0;
+    }
     if (language < 0 || language >= MSG_LANGUAGE_COUNT || textId == kTerminatorId || (bytes == nullptr && size)) {
         return 0;
     }
@@ -227,6 +304,9 @@ extern "C" s32 OTRMessage_Set(s32 language, u16 textId, u8 typePos, const char* 
 }
 
 extern "C" s32 OTRMessage_Remove(s32 language, u16 textId) {
+    if (!LinkSpan_EngineExtended()) {
+        return 0;
+    }
     if (language < 0 || language >= MSG_LANGUAGE_COUNT || !sTables[language].loaded) {
         return 0;
     }
@@ -236,6 +316,9 @@ extern "C" s32 OTRMessage_Remove(s32 language, u16 textId) {
 }
 
 extern "C" s32 OTRMessage_Clear(s32 language) {
+    if (!LinkSpan_EngineExtended()) {
+        return 0;
+    }
     if (language < 0 || language >= MSG_LANGUAGE_COUNT || !sTables[language].loaded) {
         return 0;
     }
@@ -247,6 +330,9 @@ extern "C" s32 OTRMessage_Clear(s32 language) {
 }
 
 extern "C" s32 OTRMessage_Reset(s32 language) {
+    if (!LinkSpan_EngineExtended()) {
+        return 0;
+    }
     if (language < 0 || language >= MSG_LANGUAGE_COUNT || !sInitialized) {
         return 0;
     }
@@ -264,6 +350,9 @@ extern "C" s32 OTRMessage_Reset(s32 language) {
 }
 
 extern "C" s32 OTRMessage_ForEach(s32 language, OTRMessageVisitor visitor, void* user) {
+    if (!LinkSpan_EngineExtended()) {
+        return 0;
+    }
     if (language < 0 || language >= MSG_LANGUAGE_COUNT || !visitor || !sTables[language].loaded) {
         return 0;
     }

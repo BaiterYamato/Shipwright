@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 #include <tinyxml2.h>
+#include "src/code/linkspan_vanilla.h"
 
 #include "soh/resource/importer/scenecommand/SetMeshFactory.h"
 #include "soh/resource/type/scenecommand/SetMesh.h"
@@ -20,9 +21,9 @@ std::shared_ptr<Ship::IResource> SetMeshFactory::ReadResource(std::shared_ptr<Sh
     if (setMesh->meshHeader.base.type != 1) {
         polyNum = reader->ReadUByte(); // SOH [Unbound] binary v0 stores an unsigned u8 count
         if (setMesh->meshHeader.base.type == 0) {
-            setMesh->meshHeader.polygon0.num = polyNum;
+            setMesh->meshHeader.polygon0.num = LinkSpan_EngineExtended() ? polyNum : static_cast<u8>(polyNum);
         } else if (setMesh->meshHeader.base.type == 2) {
-            setMesh->meshHeader.polygon2.num = polyNum;
+            setMesh->meshHeader.polygon2.num = LinkSpan_EngineExtended() ? polyNum : static_cast<u8>(polyNum);
         } else {
             SPDLOG_ERROR("Tried to load mesh in SetMesh scene header with type that doesn't exist: {}",
                          setMesh->meshHeader.base.type);
@@ -164,9 +165,9 @@ std::shared_ptr<Ship::IResource> SetMeshFactoryXML::ReadResource(std::shared_ptr
     if (setMesh->meshHeader.base.type != 1) {
         polyNum = reader->IntAttribute("PolyNum");
         if (setMesh->meshHeader.base.type == 0) {
-            setMesh->meshHeader.polygon0.num = polyNum;
+            setMesh->meshHeader.polygon0.num = LinkSpan_EngineExtended() ? polyNum : static_cast<u8>(polyNum);
         } else if (setMesh->meshHeader.base.type == 2) {
-            setMesh->meshHeader.polygon2.num = polyNum;
+            setMesh->meshHeader.polygon2.num = LinkSpan_EngineExtended() ? polyNum : static_cast<u8>(polyNum);
         } else {
             SPDLOG_ERROR("Tried to load mesh in SetMesh scene header with type that doesn't exist: {}",
                          setMesh->meshHeader.base.type);
@@ -264,10 +265,15 @@ std::shared_ptr<Ship::IResource> SetMeshFactoryXML::ReadResource(std::shared_ptr
             dlist.xlu = nullptr;
 
             int32_t polyType = child->IntAttribute("PolyType"); // Unused
-            dlist.pos.x = child->FloatAttribute("PosX");
-            dlist.pos.y = child->FloatAttribute("PosY");
-            dlist.pos.z = child->FloatAttribute("PosZ");
-            dlist.unk_06 = child->FloatAttribute("Unknown");
+            // SOH [Link-Span] HOST-SLIM-001 F4 (V7): XML conserva as conversoes s16 antigas sem mods.
+            dlist.pos.x = LinkSpan_EngineExtended() ? child->FloatAttribute("PosX")
+                                                    : static_cast<s16>(child->IntAttribute("PosX"));
+            dlist.pos.y = LinkSpan_EngineExtended() ? child->FloatAttribute("PosY")
+                                                    : static_cast<s16>(child->IntAttribute("PosY"));
+            dlist.pos.z = LinkSpan_EngineExtended() ? child->FloatAttribute("PosZ")
+                                                    : static_cast<s16>(child->IntAttribute("PosZ"));
+            dlist.unk_06 = LinkSpan_EngineExtended() ? child->FloatAttribute("Unknown")
+                                                     : static_cast<s16>(child->IntAttribute("Unknown"));
 
             std::string meshOpa = child->Attribute("MeshOpa");
             std::string meshXlu = child->Attribute("MeshXlu");
