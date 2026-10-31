@@ -101,7 +101,7 @@ class FakeAgent:
                                 reply.update(ticket=1, status="pending", result=None)
                             else:
                                 reply.update(ticket=1, status="done", result=self.job_result)
-                        elif op in ("scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to"):
+                        elif op in ("scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to", "vfs_layers"):
                             self.jobs += 1
                             if self.drop_job:
                                 self.owner = None

@@ -1,5 +1,6 @@
 #pragma once
 #include "protocol.h"
+#include "vfs.h"
 #include "oot_hooks.h"
 #include <deque>
 #include <memory>
@@ -89,6 +90,7 @@ class Server {
     void Publish(Snapshot snapshot);
     InputQueue& Queue();
     Mailbox& Commands();
+    VfsLayers& Vfs();
 
   private:
     struct Impl;

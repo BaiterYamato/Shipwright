@@ -36,6 +36,8 @@ ShipNativeStatus SHIP_NATIVE_CALL OnPlayDestroy(void*, const ShipNativeHookCall*
     gGameplay.SceneEnded();
     if (gServer)
         gServer->Queue().Cancel();
+    if (gServer)
+        gServer->Vfs().Cancel();
     return SHIP_NATIVE_OK;
 }
 ShipNativeStatus SHIP_NATIVE_CALL OnPad(void*, const ShipNativeHookCall* call) {
@@ -50,6 +52,7 @@ ShipNativeStatus SHIP_NATIVE_CALL OnPad(void*, const ShipNativeHookCall* call) {
         gPrevious = payload->frame;
         gFirst = false;
         Playtest::Snapshot snapshot;
+        gServer->Vfs().Tick(gFrame);
         auto& j = snapshot.fields;
         j = { { "frame", gFrame }, { "game_state", "other" }, { "sail", gSail }, { "queue_size", 0 } };
         for (const auto* key : { "scene", "room", "entrance", "position", "rotation", "age", "health", "max_health",
@@ -115,6 +118,7 @@ ShipNativeStatus SHIP_NATIVE_CALL OnPad(void*, const ShipNativeHookCall* call) {
         return SHIP_NATIVE_OK;
     } catch (...) {
         gServer->Queue().Cancel();
+        gServer->Vfs().Cancel();
         gServer->Commands().Cancel();
         Log("falha ao atualizar o retrato; entrada cancelada");
         return SHIP_NATIVE_FAILURE;
@@ -166,6 +170,11 @@ ShipNativeStatus SHIP_NATIVE_CALL Init(const ShipNativeRuntime* runtime, void** 
     gSail = sail && std::strcmp(sail, "1") == 0;
     try {
         gServer = std::make_unique<Playtest::Server>(PLAYTEST_LAYOUT_ID);
+        const auto* resources = static_cast<const ShipOotResourcesV2*>(runtime->get_service(
+            runtime->context, LINKSPAN_OOT_RESOURCES_SERVICE, LINKSPAN_OOT_RESOURCES_VERSION_2,
+            sizeof(ShipOotResourcesV2)));
+        if (!gServer->Vfs().Init(resources))
+            Log("VFS v2/SHA-256 indisponível; consultas retornarão complete=false");
     } catch (...) { return SHIP_NATIVE_FAILURE; }
     Playtest::Snapshot initial;
     initial.fields["sail"] = gSail;

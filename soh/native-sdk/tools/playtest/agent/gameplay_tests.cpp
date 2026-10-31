@@ -179,6 +179,17 @@ void WireTest() {
     Check(exchange(a, { { "id", "3" }, { "op", "result" }, { "ticket", ticket } })["status"] == "pending");
     server.Commands().Tick([](Request&) -> std::optional<Json> { return Json{ { "input_yaw", 90 } }; });
     Check(exchange(a, { { "id", "4" }, { "op", "result" }, { "ticket", ticket } })["result"]["input_yaw"] == 90);
+    // Mailbox VFS independente do PlayState: também pode ser atendido no título.
+    auto vfs = exchange(a, { { "id", "v1" }, { "op", "vfs_layers" }, { "paths", { "test/missing" } } });
+    Check(vfs["ok"] == true && vfs["ticket"].get<uint64_t>() >= VfsTicketBase);
+    Check(exchange(a, { { "id", "v2" }, { "op", "camera_state" } })["ok"] == false);
+    Check(exchange(a, { { "id", "v3" }, { "op", "result" }, { "ticket", vfs["ticket"] } })["status"] == "pending");
+    server.Vfs().Tick(17);
+    auto vfsResult = exchange(a, { { "id", "v4" }, { "op", "result" }, { "ticket", vfs["ticket"] } });
+    Check(vfsResult["result"]["frame"] == 17 && vfsResult["result"]["complete"] == false);
+    Check(vfsResult["result"]["observations"][0]["hostStatus"] == SHIP_NATIVE_UNSUPPORTED);
+    exchange(a, { { "id", "v5" }, { "op", "cancel" } });
+    Check(exchange(a, { { "id", "v6" }, { "op", "result" }, { "ticket", vfs["ticket"] } })["ok"] == false);
     Check(exchange(a, { { "id", "5" }, { "op", "scene_map" }, { "limit", 129 } })["ok"] == false);
     // A2: o aceite carimba a mutação com o epoch do snapshot publicado; o cliente não manda o seu.
     Snapshot seen;
@@ -200,6 +211,11 @@ void WireTest() {
     Check(!server.Commands().Busy() && server.Commands().TakeCleanup());
     Check(exchange(a, { { "id", "7" }, { "op", "state" } })["ok"] == false);
     Check(exchange(b, { { "id", "8" }, { "op", "result" }, { "ticket", accepted["ticket"] } })["ok"] == false);
+    vfs = exchange(b, { { "id", "v7" }, { "op", "vfs_layers" }, { "paths", { "test/missing" } } });
+    hello["force"] = true;
+    Check(exchange(a, hello)["ok"] == true && !server.Vfs().Busy());
+    Check(exchange(a, { { "id", "v8" }, { "op", "result" }, { "ticket", vfs["ticket"] } })["ok"] == false);
+    Check(exchange(b, hello)["ok"] == true);
     exchange(b, { { "id", "9" }, { "op", "camera_set" }, { "mode", "normal" } });
     closesocket(b);
     closesocket(a);

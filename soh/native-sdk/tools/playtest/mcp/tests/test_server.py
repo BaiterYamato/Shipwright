@@ -16,17 +16,19 @@ except ModuleNotFoundError as error:
         raise
     raise unittest.SkipTest("pacote mcp ausente") from None
 from linkspan_playtest.capture import png_rgb
+from test_vfs import observed
 
 
 class McpTests(unittest.TestCase):
     def tearDown(self):
         server._session = None
 
-    def test_sixteen_tools_registered(self):
+    def test_eighteen_tools_registered(self):
         tools = asyncio.run(server.mcp.list_tools())
         self.assertEqual({tool.name for tool in tools}, {"game_launch", "game_attach", "game_close", "game_state",
                                                       "input", "wait_for", "screenshot", "console", "log",
-                                                      "scene_overview", "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to"})
+                                                      "scene_overview", "scene_map", "actors", "teleport", "camera_state", "camera_set", "walk_to",
+                                                      "vfs_layers", "game_vfs_snapshot"})
 
     def test_new_tools_forward_arguments_and_record_results(self):
         requests, records = [], []
@@ -49,6 +51,34 @@ class McpTests(unittest.TestCase):
         self.assertEqual(requests[5], ("camera_set", {"mode": "normal"}))
         self.assertEqual(requests[-1], ("walk_to", {"x": 100, "z": 200, "tolerance": 10, "timeout": 30}))
         self.assertEqual(len(records), 2 * len(requests))
+
+    def test_vfs_tools_and_close_finalize_actual_snapshot(self):
+        with tempfile.TemporaryDirectory() as folder:
+            requests, records = [], []
+            directory = Path(folder)
+            session = SimpleNamespace(directory=directory, metadata={"sha256": "b" * 64},
+                                      process=SimpleNamespace(poll=lambda: None),
+                                      record=lambda *a: records.append(a))
+            def execute(op, **args):
+                requests.append((op, args))
+                return observed(args["paths"])
+            session.client = SimpleNamespace(execute=execute)
+            def close():
+                session.metadata["closed"] = True
+                session.process.poll = lambda: 0
+                (directory / "game-final.log").write_bytes(b"ready\nunload\n")
+                return {"exit_code": 0}
+            session.close = close
+            server._session = session
+            self.assertTrue(server.vfs_layers(["test/layers.json"])["complete"])
+            self.assertEqual(server.game_vfs_snapshot("wire", "after-ready", ["test/layers.json"])["status"],
+                             "pending_post_log")
+            result = server.game_close()
+            self.assertEqual(len(result["vfs_snapshots"]), 1)
+            self.assertTrue(Path(result["vfs_snapshots"][0]).exists())
+            self.assertIsNone(server._session)
+            self.assertEqual(requests[0][0], "vfs_layers")
+            self.assertEqual(len(records), 4)
 
     def test_screenshot_mcp_returns_real_image(self):
         png = png_rgb(1, 1, b"\xff\x80\x01")

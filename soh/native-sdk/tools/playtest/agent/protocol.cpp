@@ -111,7 +111,8 @@ bool ParseRequest(std::string_view line, Request& out, std::string& error) {
     out.op = j["op"].get<std::string>();
     if (out.op != "hello" && out.op != "state" && out.op != "input" && out.op != "cancel" && out.op != "release" &&
         out.op != "result" && out.op != "scene_overview" && out.op != "scene_map" && out.op != "actors" &&
-        out.op != "teleport" && out.op != "camera_state" && out.op != "camera_set" && out.op != "walk_to") {
+        out.op != "teleport" && out.op != "camera_state" && out.op != "camera_set" && out.op != "walk_to" &&
+        out.op != "vfs_layers") {
         error = "op desconhecida";
         return false;
     }
@@ -144,7 +145,20 @@ bool ValidateV2(const Request& request, std::string& error) {
         return true;
     };
     bool valid = true;
-    if (op == "result") {
+    if (op == "vfs_layers") {
+        fields({ "paths", "max_bytes" });
+        valid = a.contains("paths") && a["paths"].is_array() && !a["paths"].empty() &&
+                a["paths"].size() <= VfsMaxPaths && number("max_bytes", 1, VfsMaxBytes, false, true);
+        if (valid) {
+            std::set<std::string> unique;
+            for (const auto& item : a["paths"]) {
+                if (!item.is_string()) { valid = false; break; }
+                const auto& path = item.get_ref<const std::string&>();
+                if (path.empty() || path.size() > VfsMaxPath || path.find('\0') != std::string::npos ||
+                    !unique.insert(path).second) { valid = false; break; }
+            }
+        }
+    } else if (op == "result") {
         fields({ "ticket" });
         valid = number("ticket", 1, 9007199254740991.0, true, true);
     } else if (op == "scene_overview") {
