@@ -3785,33 +3785,36 @@ std::vector<ModArchiveCandidate> gModArchiveCandidates;
 
 // Archives de assets ficam sob "mod/<nome>/", sem colidir com o jogo. Quem precisa de um deles com os caminhos
 // originais (as camadas do framework Unbound) monta na raiz pelo oot.mods.archives, depois dos providers
-// (HOST-SLIM-001 F4, RFC 0029).
-void MountModAssetArchives() {
+// (HOST-SLIM-001 F4, RFC 0029). Devolve se havia .o2r/.otr solto em mods/ (sem pasta de mod), montado ou não: o
+// upstream também o lê na raiz.
+bool MountModAssetArchives() {
     gModArchiveCandidates.clear();
     gPrivateModArchives.clear();
     Ship::Context* shipContext = Ship::Context::GetRawInstance();
     if (shipContext == nullptr || shipContext->GetResourceManager() == nullptr) {
-        return;
+        return false;
     }
     const auto archiveManager = shipContext->GetResourceManager()->GetArchiveManager();
     if (archiveManager == nullptr) {
-        return;
+        return false;
     }
 
     std::error_code ec;
     const std::filesystem::path modsRoot =
         Ship::Context::GetPathRelativeToAppDirectory("mods", Ship::Context::GetRawInstance()->GetShortName());
     if (!std::filesystem::is_directory(modsRoot, ec)) {
-        return;
+        return false;
     }
 
     std::vector<std::filesystem::path> archives;
     std::map<std::filesystem::path, std::filesystem::path> archiveModDirectory;
+    bool looseArchive = false;
     for (const auto& entry : std::filesystem::directory_iterator(modsRoot, ec)) {
         if (entry.is_regular_file()) {
             const std::string extension = entry.path().extension().string();
             if (extension == ".o2r" || extension == ".otr") {
                 archives.push_back(entry.path());
+                looseArchive = true;
             }
         } else if (entry.is_directory()) {
             const std::filesystem::path assetsDir = entry.path() / "assets";
@@ -3861,6 +3864,7 @@ void MountModAssetArchives() {
     if (mounted > 0) {
         SPDLOG_INFO("ShipLua: {} pacote(s) de assets de mod montado(s)", mounted);
     }
+    return looseArchive;
 }
 
 // SOH [Link-Span] OOT-VANILLA-001: sem mod no boot, o jogo volta ao comportamento do upstream nos pontos que o
@@ -4526,7 +4530,11 @@ void Initialize() {
     SPDLOG_INFO("Link-Span: providers nativos (ABI {}.{}) e core extensions ativos; serviços linkspan.oot.*; "
                 "pacotes ZIP/SHIPMOD",
                 SHIP_NATIVE_ABI_MAJOR, SHIP_NATIVE_ABI_MINOR);
-    MountModAssetArchives();
+    // Pacote solto em mods/ conta como mod (OOT-VANILLA-001). No SoH 9.3.0 o upstream só lê esses archives na raiz
+    // depois do ShipLua, e o HasModArchive() do começo não os vê: sem isto um .o2r solto sem mod Link-Span travava o
+    // motor do upstream (gate de capability do RC11). Ainda antes do Heaps_Alloc.
+    if (MountModAssetArchives())
+        SetEngineExtended(true);
     LoadModsAndDispatchReady(context);
     SPDLOG_INFO("Link-Span: motor {}", gLinkSpanEngineExtended ? "alargado (ha mod)" : "do upstream (sem mods)");
     SPDLOG_INFO("ShipLua inicializado");
