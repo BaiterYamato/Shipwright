@@ -524,13 +524,15 @@ s32 Camera_GetWaterBoxDataIdx(Camera* camera, f32* waterY) {
     if (!WaterBox_GetSurface1(camera->play, &camera->play->colCtx, playerPosShape.pos.x, playerPosShape.pos.z, waterY,
                               &waterBox)) {
         // player's position is not in a water box.
-        *waterY = BGCHECK_Y_MIN;
+        // SOH [Link-Span] HOST-SLIM-001 F4 (V5): sentinela vanilla sem mods; ampla com mods.
+        *waterY = LINKSPAN_BGCHECK_Y_MIN;
         return -1;
     }
 
     if (!(camera->player->stateFlags1 & PLAYER_STATE1_IN_WATER)) {
         // player is not swimming
-        *waterY = BGCHECK_Y_MIN;
+        // SOH [Link-Span] HOST-SLIM-001 F4 (V5): sentinela vanilla sem mods; ampla com mods.
+        *waterY = LINKSPAN_BGCHECK_Y_MIN;
         return -1;
     }
 

@@ -284,6 +284,14 @@ void LightContext_InitList(PlayState* play, LightContext* lightCtx) {
 }
 
 void LightContext_DestroyList(PlayState* play, LightContext* lightCtx) {
+    // SOH [Link-Span] HOST-SLIM-001 F4 (V4): sem mods, reproduz inclusive o segundo avanco do upstream.
+    if (!LinkSpan_EngineExtended()) {
+        while (lightCtx->listHead != NULL) {
+            LightContext_RemoveLight(play, lightCtx, lightCtx->listHead);
+            lightCtx->listHead = lightCtx->listHead->next;
+        }
+        return;
+    }
     // SOH [Unbound] Owners retain raw nodes: refuse atomically while any owned slot is live.
     for (s32 i = 0; i < LIGHTS_ACTOR_BUFFER_SIZE; i++) {
         if (sLightsBuffer.buf[i].info != NULL) {

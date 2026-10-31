@@ -34,6 +34,10 @@ static inline float LinkSpan_S16F(double value) {
 // Mesmo caso: limite de coordenada das consultas de colisão (era 32760).
 #define LINKSPAN_BGCHECK_XYZ_ABSMAX (gLinkSpanEngineExtended ? BGCHECK_XYZ_ABSMAX : 32760.0f)
 
+// SOH [Link-Span] HOST-SLIM-001 F4 (V3): capacidade efetiva antiga; os arrays fisicos continuam ampliados.
+#define LINKSPAN_MESSAGE_BUF_SIZE (LinkSpan_EngineExtended() ? MESSAGE_BUF_SIZE : 1280)
+#define LINKSPAN_MESSAGE_DECODED_BUF_SIZE (LinkSpan_EngineExtended() ? MESSAGE_DECODED_BUF_SIZE : 200)
+
 // Limites do upstream que o substrato alargou em headers do layout id; valem sem mod.
 #define LINKSPAN_VANILLA_BG_ACTOR_MAX 50
 #define LINKSPAN_VANILLA_ACTOR_NUMBER_MAX 2000
