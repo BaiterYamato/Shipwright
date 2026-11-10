@@ -11,6 +11,8 @@ enum {
     PolicromaSceneDepthInput = -2,
     PolicromaSceneSunShadowInput = -3,
     PolicromaSceneGeometryShadowInput = -4,
+    PolicromaSceneFogShadowInput = -5,
+    PolicromaScenePointShadowInput = -6,
     PolicromaMaxMaterials = 4,
 };
 

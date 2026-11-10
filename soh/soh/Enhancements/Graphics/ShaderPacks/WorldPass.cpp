@@ -12,11 +12,13 @@
 #endif
 #include <windows.h>
 #include "GeometryShadow.h"
+#include "soh/Enhancements/Graphics/WaterRipple/WaterRipple.h"
 #include <wrl/client.h>
 #include <fast/Fast3dWindow.h>
 #include <fast/backends/gfx_direct3d_common.h>
 #include <fast/world_postprocess.h>
 #include <ship/Context.h>
+#include <ship/config/ConsoleVariable.h>
 #include <spdlog/spdlog.h>
 #include <d3d11shader.h>
 
@@ -40,7 +42,9 @@ using Microsoft::WRL::ComPtr;
 using ShaderPacks::MaxPassInputs;
 using ShaderPacks::SceneColorInput;
 using ShaderPacks::SceneDepthInput;
+using ShaderPacks::SceneFogShadowInput;
 using ShaderPacks::SceneGeometryShadowInput;
+using ShaderPacks::ScenePointShadowInput;
 using ShaderPacks::SceneSunShadowInput;
 using ShaderPacks::SunShadowMap;
 using ShaderPacks::SunShadowMesh;
@@ -57,12 +61,22 @@ using SceneVector = std::array<float, 4>;
 constexpr size_t TransmissionTriangleOffset = 1 + 2 * ShaderPacks::MaxTransmissionMaterials;
 using TransmissionConstants =
     std::array<SceneVector, TransmissionTriangleOffset + 3 * Fast::MaxWorldTransmissionTriangles>;
+struct PointShadowConstants {
+    SceneVector source;
+    SceneVector light;
+};
+static_assert(sizeof(PointShadowConstants) == 2 * 16);
+constexpr size_t MaxPointLights = ShaderPacks::GeometryShadow::MaxPointLights;
 constexpr size_t MaxSceneLights = 8;
 constexpr size_t MaxWaterBoxes = 8;
+bool UsesSolarGeometry(uint16_t scene) {
+    return scene == SCENE_KOKIRI_FOREST || scene == SCENE_LOST_WOODS || scene == SCENE_GRAVEYARD;
+}
+
 struct SceneConstants {
     SceneVector info; // Scene, room, render time in seconds, day fraction.
     SceneVector sun;
-    SceneVector counts; // Lights, water boxes.
+    SceneVector counts; // Lights, water boxes, lights selected for point shadows.
     SceneVector sunColor;
     std::array<SceneVector, MaxSceneLights> lightPositions;
     std::array<SceneVector, MaxSceneLights> lightColors;
@@ -71,7 +85,8 @@ struct SceneConstants {
 };
 static_assert(sizeof(SceneConstants) == 36 * 16);
 
-void CaptureScene(const PlayState& play, SceneConstants& scene) {
+void CaptureScene(const PlayState& play, SceneConstants& scene,
+                  const ShaderPacks::TransmissionMaterials* shadowMaterials, size_t pointLightCapacity) {
     scene.info = {static_cast<float>(play.sceneNum), static_cast<float>(play.roomCtx.curRoom.num),
                   static_cast<float>(play.gameplayFrames), gSaveContext.dayTime / 65536.0f};
     scene.sun = {play.envCtx.sunPos.x, play.envCtx.sunPos.y, play.envCtx.sunPos.z, 0.0f};
@@ -82,6 +97,7 @@ void CaptureScene(const PlayState& play, SceneConstants& scene) {
         SceneVector position;
         SceneVector color;
         float score;
+        float shadowScore = 0.8f * 0.8f;
     };
     std::array<PointLight, 64> candidates{};
     size_t count = 0;
@@ -100,13 +116,35 @@ void CaptureScene(const PlayState& play, SceneConstants& scene) {
                                (x * x + y * y + z * z) / (radius * radius)};
     }
     const size_t visible = std::min(count, MaxSceneLights);
-    std::partial_sort(candidates.begin(), candidates.begin() + visible, candidates.begin() + count,
+    size_t reserved = 0;
+    if (shadowMaterials) {
+        constexpr float cutoff = 0.8f * 0.8f;
+        for (size_t i = 0; i < count; ++i) {
+            auto& candidate = candidates[i];
+            const auto& light = candidate.position;
+            if (light[3] <= ShaderPacks::GeometryShadow::PointNear) continue;
+            for (const auto& material : *shadowMaterials) {
+                if (material.scene != play.sceneNum || material.tint[3] <= 0.0f) continue;
+                const auto& anchor = material.light;
+                const float x = light[0] - anchor[0], y = light[1] - anchor[1], z = light[2] - anchor[2];
+                const float score = (x * x + y * y + z * z) / (anchor[3] * anchor[3]);
+                candidate.shadowScore = std::min(candidate.shadowScore, score);
+            }
+        }
+        const auto selectedEnd = candidates.begin() + std::min(visible, pointLightCapacity);
+        std::partial_sort(candidates.begin(), selectedEnd, candidates.begin() + count,
+                          [](const auto& a, const auto& b) { return a.shadowScore < b.shadowScore; });
+        reserved = std::find_if(candidates.begin(), selectedEnd,
+                                [cutoff](const auto& light) { return light.shadowScore >= cutoff; }) - candidates.begin();
+    }
+    std::partial_sort(candidates.begin() + reserved, candidates.begin() + visible, candidates.begin() + count,
                       [](const auto& a, const auto& b) { return a.score < b.score; });
     for (size_t i = 0; i < visible; ++i) {
         scene.lightPositions[i] = candidates[i].position;
         scene.lightColors[i] = candidates[i].color;
     }
     scene.counts[0] = static_cast<float>(visible);
+    scene.counts[2] = static_cast<float>(reserved);
 
     const auto* collision = play.colCtx.colHeader;
     if (!collision || !collision->waterBoxes) return;
@@ -132,6 +170,7 @@ struct WorldSnapshot {
     std::shared_ptr<const SunShadowMesh> shadowMesh;
     std::array<float, 3> geometryFocus{};
     bool hasGeometryFocus = false;
+    int fogSunTest = 0;
 };
 
 // Display lists carry a ticket. Matrix addresses are only lookup keys during replay.
@@ -140,7 +179,8 @@ std::array<WorldSnapshot, 32> worldSnapshots{};
 uint32_t worldTicket = 0;
 
 uint32_t QueueWorldSnapshot(GraphicsContext* gfxCtx, bool captureCamera, bool captureScene, bool captureShadow,
-                            bool captureGeometryShadow) {
+                            bool captureGeometryShadow, bool lightsFog,
+                            const ShaderPacks::TransmissionMaterials* shadowMaterials, size_t pointLightCapacity) {
     auto* play = gPlayState;
     if (!play || play->state.gfxCtx != gfxCtx) return 0;
     const auto& view = play->view;
@@ -158,9 +198,15 @@ uint32_t QueueWorldSnapshot(GraphicsContext* gfxCtx, bool captureCamera, bool ca
         snapshot.camera.info[0] = view.zNear;
         snapshot.camera.info[1] = view.zFar;
     }
-    if (captureScene || captureGeometryShadow) CaptureScene(*play, snapshot.scene);
+    if (captureScene || captureGeometryShadow || shadowMaterials) {
+        CaptureScene(*play, snapshot.scene, shadowMaterials, pointLightCapacity);
+    }
+    if (lightsFog) {
+        snapshot.fogSunTest = Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(
+            CVAR_DEVELOPER_TOOLS("FogSunTest"), 0);
+    }
     if (captureShadow) snapshot.shadowMesh = ShaderPacks::CaptureSunShadowMesh(*play);
-    if (captureGeometryShadow) {
+    if (captureGeometryShadow && UsesSolarGeometry(snapshot.sceneId)) {
         if (const auto* player = play->actorCtx.actorLists[ACTORCAT_PLAYER].head) {
             const auto& position = player->world.pos;
             snapshot.geometryFocus = {position.x, position.y, position.z};
@@ -229,10 +275,13 @@ struct WorldPass {
     ComPtr<ID3D11Buffer> sceneBuffer;
     ComPtr<ID3D11Buffer> sunShadowBuffer;
     ComPtr<ID3D11Buffer> transmissionBuffer;
+    ComPtr<ID3D11Buffer> pointShadowBuffer;
     std::shared_ptr<const ShaderPacks::TransmissionMaterials> transmissionMaterials;
     TransmissionConstants transmissionConstants{};
+    std::array<PointShadowConstants, MaxPointLights> pointShadowConstants{};
     ComPtr<ID3D11ShaderResourceView> sunShadowView;
     std::unique_ptr<ShaderPacks::GeometryShadow> geometryShadow;
+    std::unique_ptr<ShaderPacks::GeometryShadow> pointShadow;
     std::shared_ptr<const SunShadowMesh> shadowMesh;
     SunShadowMap::Constants shadowConstants{};
     std::vector<PixelPass> passes;
@@ -242,17 +291,26 @@ struct WorldPass {
     D3D11_TEXTURE2D_DESC sceneDesc{};
     bool usesDepth = false;
     bool usesSunShadow = false;
+    bool lightsFog = false;
     ComPtr<ID3D11PixelShader> resolveDepth;
     ComPtr<ID3D11DepthStencilView> depthAttachment;
     ComPtr<ID3D11ShaderResourceView> depthSource;
     PassTarget resolvedDepth{};
     std::string name;
+    bool usesWaterRipple = false;
+    ComPtr<ID3D11Texture2D> rippleTexture;
+    ComPtr<ID3D11ShaderResourceView> rippleView;
+    ComPtr<ID3D11Buffer> rippleBuffer;
+    std::vector<uint16_t> rippleTexels;
+    uint64_t rippleVersion = 0;
     bool drawn = false;
     bool reportedInterpolatedCamera = false;
     bool reportedTargetFailure = false;
     bool reportedDepthFailure = false;
     bool reportedGeometryShadow = false;
     bool reportedTransmission = false;
+    size_t pointLightCapacity = 0;
+    size_t reportedPointCount = 0;
 
     void PrepareTransmission(uint16_t sceneId) {
         transmissionConstants = {};
@@ -279,6 +337,29 @@ struct WorldPass {
             SPDLOG_INFO("Shader pack DX11 transmissão: {} (cena {}, {} triângulos, primeiro vértice {:.1f}, {:.1f}, {:.1f})",
                         name, sceneId, triangleCount, vertex[0], vertex[1], vertex[2]);
             reportedTransmission = true;
+        }
+    }
+
+    void PreparePointShadow(ID3D11DeviceContext& ctx, const SceneConstants& world) {
+        pointShadowConstants = {};
+        const auto count = std::min(pointLightCapacity, static_cast<size_t>(world.counts[2]));
+        if (transmissionConstants[0][1] < 1.0f || !count) {
+            reportedPointCount = 0;
+            return;
+        }
+        const std::span sources(world.lightPositions.data(), count);
+        const auto geometry = Fast::ReadWorldGeometry();
+        if (!pointShadow->DrawPoint(ctx, geometry, Fast::ReadWorldCutouts(), sources)) return;
+        using Shadow = ShaderPacks::GeometryShadow;
+        for (size_t i = 0; i < count; ++i) {
+            pointShadowConstants[i] = {sources[i],
+                                       {static_cast<float>(i + 1), Shadow::PointNear,
+                                        Shadow::PointFaceSize, Shadow::PointScale}};
+        }
+        if (reportedPointCount != count) {
+            SPDLOG_INFO("Shader pack DX11 sombras pontuais: {} ({} fontes, {} faces, {} triângulos opacos)",
+                        name, count, 6 * count, geometry.size() / 3);
+            reportedPointCount = count;
         }
     }
 
@@ -392,6 +473,35 @@ struct WorldPass {
         return true;
     }
 
+    // Textura do campo de onda em t4 e constantes em b5, fora dos quatro slots de entrada do manifesto.
+    bool PrepareWaterRipple(ID3D11DeviceContext& ctx) {
+        if (!rippleView) {
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = desc.Height = WaterRipple::Side;
+            desc.ArraySize = desc.MipLevels = desc.SampleDesc.Count = 1;
+            desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            D3D11_BUFFER_DESC buffer{};
+            buffer.ByteWidth = sizeof(WaterRipple::Frame);
+            buffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+            const std::vector<uint16_t> zero(size_t{WaterRipple::Side} * WaterRipple::Side * 4, 0);
+            const D3D11_SUBRESOURCE_DATA initial{zero.data(), WaterRipple::Side * 8, 0};
+            if (FAILED(device->CreateTexture2D(&desc, &initial, rippleTexture.GetAddressOf())) ||
+                FAILED(device->CreateShaderResourceView(rippleTexture.Get(), nullptr, rippleView.GetAddressOf())) ||
+                FAILED(device->CreateBuffer(&buffer, nullptr, rippleBuffer.GetAddressOf()))) {
+                rippleView.Reset();
+                usesWaterRipple = false;
+                return false;
+            }
+        }
+        WaterRipple::Frame frame{};
+        if (WaterRipple::Read(rippleVersion, rippleTexels, frame)) {
+            ctx.UpdateSubresource(rippleTexture.Get(), 0, nullptr, rippleTexels.data(), WaterRipple::Side * 8, 0);
+        }
+        ctx.UpdateSubresource(rippleBuffer.Get(), 0, nullptr, &frame, 0, 0);
+        return true;
+    }
+
     void Draw(ID3D11DeviceContext& ctx, const CameraConstants* camera, const SceneConstants* world) {
         ComPtr<ID3D11RenderTargetView> target;
         ComPtr<ID3D11DepthStencilView> depth;
@@ -430,6 +540,7 @@ struct WorldPass {
         ComPtr<ID3D11Buffer> oldSceneBuffer;
         ComPtr<ID3D11Buffer> oldSunShadowBuffer;
         ComPtr<ID3D11Buffer> oldTransmissionBuffer;
+        ComPtr<ID3D11Buffer> oldPointShadowBuffer;
         ComPtr<ID3D11RasterizerState> oldRaster;
         ComPtr<ID3D11BlendState> oldBlend;
         D3D11_PRIMITIVE_TOPOLOGY oldTopology{};
@@ -461,6 +572,20 @@ struct WorldPass {
             ctx.PSGetConstantBuffers(3, 1, oldTransmissionBuffer.GetAddressOf());
             ctx.UpdateSubresource(transmissionBuffer.Get(), 0, nullptr, transmissionConstants.data(), 0, 0);
             ctx.PSSetConstantBuffers(3, 1, transmissionBuffer.GetAddressOf());
+        }
+        if (pointShadowBuffer) {
+            ctx.PSGetConstantBuffers(4, 1, oldPointShadowBuffer.GetAddressOf());
+            ctx.UpdateSubresource(pointShadowBuffer.Get(), 0, nullptr, pointShadowConstants.data(), 0, 0);
+            ctx.PSSetConstantBuffers(4, 1, pointShadowBuffer.GetAddressOf());
+        }
+        ComPtr<ID3D11Buffer> oldRippleBuffer;
+        ComPtr<ID3D11ShaderResourceView> oldRippleView;
+        const bool ripple = usesWaterRipple && PrepareWaterRipple(ctx);
+        if (ripple) {
+            ctx.PSGetConstantBuffers(5, 1, oldRippleBuffer.GetAddressOf());
+            ctx.PSGetShaderResources(4, 1, oldRippleView.GetAddressOf());
+            ctx.PSSetConstantBuffers(5, 1, rippleBuffer.GetAddressOf());
+            ctx.PSSetShaderResources(4, 1, rippleView.GetAddressOf());
         }
         ctx.RSGetState(oldRaster.GetAddressOf());
         ctx.RSGetViewports(&viewportCount, oldViewports);
@@ -502,7 +627,11 @@ struct WorldPass {
                 if (source == SceneColorInput) inputs[slot] = sceneView.Get();
                 else if (source == SceneDepthInput) inputs[slot] = depthInput;
                 else if (source == SceneSunShadowInput) inputs[slot] = sunShadowView.Get();
-                else if (source == SceneGeometryShadowInput && shadowConstants[3][0] > 0.0f) {
+                else if (source == ScenePointShadowInput && pointShadowConstants[0].light[0] > 0.0f) {
+                    inputs[slot] = pointShadow->View();
+                }
+                else if ((source == SceneGeometryShadowInput || source == SceneFogShadowInput) &&
+                         shadowConstants[3][0] > 0.0f) {
                     inputs[slot] = geometryShadow->View();
                 }
                 else if (source > 0) inputs[slot] = targets[source - 1].view.Get();
@@ -526,6 +655,11 @@ struct WorldPass {
         if (world) ctx.PSSetConstantBuffers(1, 1, oldSceneBuffer.GetAddressOf());
         if (sunShadowBuffer) ctx.PSSetConstantBuffers(2, 1, oldSunShadowBuffer.GetAddressOf());
         if (transmissionBuffer) ctx.PSSetConstantBuffers(3, 1, oldTransmissionBuffer.GetAddressOf());
+        if (pointShadowBuffer) ctx.PSSetConstantBuffers(4, 1, oldPointShadowBuffer.GetAddressOf());
+        if (ripple) {
+            ctx.PSSetConstantBuffers(5, 1, oldRippleBuffer.GetAddressOf());
+            ctx.PSSetShaderResources(4, 1, oldRippleView.GetAddressOf());
+        }
         ctx.PSSetShader(oldPixel.Get(), nullptr, 0);
         ctx.VSSetShader(oldVertex.Get(), nullptr, 0);
         ctx.IASetPrimitiveTopology(oldTopology);
@@ -569,6 +703,7 @@ void DrawWorld(Fast::Interpreter& interpreter, uint32_t ticket) {
         !ReadWorldSnapshot(interpreter, ticket, snapshot)) return;
     if (pass->usesSunShadow) pass->PrepareSunShadow(snapshot.shadowMesh);
     if (pass->transmissionBuffer) pass->PrepareTransmission(snapshot.sceneId);
+    if (pass->pointShadow) pass->PreparePointShadow(*dx11->mContext.Get(), snapshot.scene);
     if (pass->geometryShadow) {
         pass->shadowConstants = {};
         const auto triangles = Fast::ReadWorldGeometry();
@@ -586,6 +721,20 @@ void DrawWorld(Fast::Interpreter& interpreter, uint32_t ticket) {
     }
     pass->Draw(*dx11->mContext.Get(), pass->cameraBuffer ? &snapshot.camera : nullptr,
                pass->sceneBuffer ? &snapshot.scene : nullptr);
+    if (pass->lightsFog && snapshot.fogSunTest != 2 && pass->shadowConstants[3][0] > 0.0f) {
+        const auto day = snapshot.scene.info[3];
+        const auto fade = [](float value) {
+            value = std::clamp(value, 0.0f, 1.0f);
+            return value * value * (3.0f - 2.0f * value);
+        };
+        const float daylight = fade((day - 0.25f) / 0.09f) * fade((0.75f - day) / 0.09f);
+        if (daylight > 0.0f) {
+            auto tint = snapshot.scene.sunColor;
+            tint[3] = 0.58f * daylight;
+            Fast::worldFogSun = {dx11->mContext.Get(), pass->geometryShadow->View(), pass->shadowConstants, tint,
+                                 snapshot.fogSunTest == 1};
+        }
+    }
 }
 
 constexpr std::string_view fullscreenVertex = R"(
@@ -677,8 +826,11 @@ class PackIncludes final : public ID3DInclude {
     size_t expandedBytes = 0;
 };
 
+bool reflectedWaterRipple = false;
+
 bool CheckPassInterface(decltype(&D3DReflect) reflect, ID3DBlob& bytecode, const ShaderPacks::PassSource& pass,
-                        bool& usesCamera, bool& usesScene, bool& usesSunConstants, bool& usesTransmission) {
+                        bool& usesCamera, bool& usesScene, bool& usesSunConstants, bool& usesTransmission,
+                        size_t& pointLightCapacity) {
     ComPtr<ID3D11ShaderReflection> shader;
     if (FAILED(reflect(bytecode.GetBufferPointer(), bytecode.GetBufferSize(), __uuidof(ID3D11ShaderReflection),
                        reinterpret_cast<void**>(shader.GetAddressOf())))) return false;
@@ -725,11 +877,43 @@ bool CheckPassInterface(decltype(&D3DReflect) reflect, ID3DBlob& bytecode, const
             usesTransmission = true;
             continue;
         }
+        if (binding.Type == D3D_SIT_CBUFFER && binding.BindPoint == 4 &&
+            std::string_view(binding.Name) == "LinkSpanPointShadow") {
+            auto* buffer = shader->GetConstantBufferByName(binding.Name);
+            if (std::find(pass.inputs.begin(), pass.inputs.end(), ScenePointShadowInput) == pass.inputs.end()) {
+                return false;
+            }
+            constexpr UINT vectorsPerLight = sizeof(PointShadowConstants) / 16;
+            if (CheckVectorArrayBuffer(*buffer, vectorsPerLight * MaxPointLights)) {
+                pointLightCapacity = MaxPointLights;
+            } else if (CheckVectorArrayBuffer(*buffer, vectorsPerLight)) {
+                pointLightCapacity = std::max<size_t>(pointLightCapacity, 1);
+            } else {
+                return false;
+            }
+            continue;
+        }
+        if (binding.Type == D3D_SIT_CBUFFER && binding.BindPoint == 5 &&
+            std::string_view(binding.Name) == "LinkSpanWaterRipple") {
+            if (!CheckVectorArrayBuffer(*shader->GetConstantBufferByName(binding.Name),
+                                        sizeof(WaterRipple::Frame) / 16)) return false;
+            reflectedWaterRipple = true;
+            continue;
+        }
+        if (binding.Type == D3D_SIT_TEXTURE && binding.BindPoint == 4 &&
+            std::string_view(binding.Name) == "LinkSpanWaterRippleField") {
+            if (binding.Dimension != D3D_SRV_DIMENSION_TEXTURE2D || binding.ReturnType != D3D_RETURN_TYPE_FLOAT) {
+                return false;
+            }
+            reflectedWaterRipple = true;
+            continue;
+        }
         if (binding.Type != D3D_SIT_TEXTURE || binding.Dimension != D3D_SRV_DIMENSION_TEXTURE2D ||
             binding.BindPoint >= pass.inputs.size()) return false;
         const auto input = pass.inputs[binding.BindPoint];
         if (input == UnboundInput ||
-            ((input == SceneDepthInput || input == SceneSunShadowInput || input == SceneGeometryShadowInput) &&
+            ((input == SceneDepthInput || input == SceneSunShadowInput || input == SceneGeometryShadowInput ||
+              input == SceneFogShadowInput || input == ScenePointShadowInput) &&
              binding.ReturnType != D3D_RETURN_TYPE_FLOAT)) {
             return false;
         }
@@ -772,6 +956,7 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
     bool usesTransmission = false;
     bool usesGeometryShadow = false;
     constexpr UINT flags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL2;
+    reflectedWaterRipple = false;
     for (const auto& pass : sources) {
         ComPtr<ID3DBlob> ps, diagnostic;
         PackIncludes includes(pass);
@@ -781,7 +966,8 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
                                : "Falha ao compilar HLSL: " + pass.file;
             return false;
         }
-        if (!CheckPassInterface(reflect, *ps.Get(), pass, usesCamera, usesScene, usesSunConstants, usesTransmission)) {
+        if (!CheckPassInterface(reflect, *ps.Get(), pass, usesCamera, usesScene, usesSunConstants, usesTransmission,
+                                next->pointLightCapacity)) {
             error = "Assinatura ou recursos fora do contrato do passe: " + pass.file;
             return false;
         }
@@ -796,6 +982,7 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
             std::find(pass.inputs.begin(), pass.inputs.end(), SceneSunShadowInput) != pass.inputs.end();
         usesGeometryShadow |=
             std::find(pass.inputs.begin(), pass.inputs.end(), SceneGeometryShadowInput) != pass.inputs.end();
+        next->lightsFog |= std::find(pass.inputs.begin(), pass.inputs.end(), SceneFogShadowInput) != pass.inputs.end();
         next->passes.push_back(std::move(compiled));
     }
     D3D11_RASTERIZER_DESC raster{};
@@ -846,6 +1033,7 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
             return false;
         }
     }
+    usesGeometryShadow |= next->lightsFog;
     if (next->usesSunShadow && usesGeometryShadow) {
         error = "O pack deve escolher um mapa de sombras para o buffer LinkSpanSunShadow.";
         return false;
@@ -877,8 +1065,25 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
         }
         next->transmissionMaterials = sources.front().transmissionMaterials;
     }
+    if (next->pointLightCapacity) {
+        if (!next->transmissionMaterials || next->transmissionMaterials->empty()) {
+            error = "LinkSpanPointShadow exige materiais de transmissão.";
+            return false;
+        }
+        D3D11_BUFFER_DESC desc{};
+        desc.ByteWidth = static_cast<UINT>(sizeof(PointShadowConstants) * next->pointLightCapacity);
+        desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        next->pointShadow = std::make_unique<GeometryShadow>();
+        if (!next->pointShadow->Initialize(*next->device.Get(), compile, static_cast<unsigned>(next->pointLightCapacity)) ||
+            FAILED(next->device->CreateBuffer(&desc, nullptr, next->pointShadowBuffer.GetAddressOf()))) {
+            error = "Falha ao criar o mapa de sombra da luz pontual no DirectX 11.";
+            return false;
+        }
+    }
     Fast::SetWorldMaterialMatcher(MatchWorldMaterial);
     Fast::SetWorldPostProcess(DrawWorld);
+    next->usesWaterRipple = reflectedWaterRipple;
+    WaterRipple::SetWanted(reflectedWaterRipple);
     activePass.store(std::move(next));
     return true;
 #else
@@ -890,6 +1095,7 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
 void DisableWorldPass() {
 #ifdef _WIN32
     activePass.store(nullptr);
+    WaterRipple::SetWanted(false);
 #endif
 }
 
@@ -905,7 +1111,9 @@ extern "C" void ShaderPacks_DrawWorldPass(struct GraphicsContext* gfxCtx) {
         const bool shadow = pass->usesSunShadow;
         const bool geometry = pass->geometryShadow != nullptr;
         command->words.w1 = camera || scene || shadow || geometry || pass->transmissionBuffer
-                                ? QueueWorldSnapshot(gfxCtx, camera, scene, shadow, geometry)
+                                ? QueueWorldSnapshot(gfxCtx, camera, scene, shadow, geometry, pass->lightsFog,
+                                                     pass->pointShadow ? pass->transmissionMaterials.get() : nullptr,
+                                                     pass->pointLightCapacity)
                                 : 0;
     }
 #endif
@@ -917,16 +1125,16 @@ extern "C" void ShaderPacks_CaptureWorldGeometry(struct GraphicsContext* gfxCtx,
     const auto* play = gPlayState;
     if (!pass || !play) return;
     const auto scene = play->sceneNum;
-    if (pass->geometryShadow &&
-        (scene == SCENE_KOKIRI_FOREST || scene == SCENE_LOST_WOODS || scene == SCENE_GRAVEYARD)) {
+    const bool materialScene = pass->transmissionMaterials &&
+        std::any_of(pass->transmissionMaterials->begin(), pass->transmissionMaterials->end(),
+                    [scene](const auto& material) { return material.scene == scene; });
+    if ((pass->pointShadow && materialScene) || (pass->geometryShadow && UsesSolarGeometry(scene))) {
         auto* command = gfxCtx->polyOpa.p++;
         command->words.w0 = (FAST_GFX_WORLD_POSTPROCESS << 24) |
                             (enable ? FAST_WORLD_GEOMETRY_BEGIN : FAST_WORLD_GEOMETRY_END);
         command->words.w1 = 0;
     }
-    if (pass->transmissionMaterials &&
-        std::any_of(pass->transmissionMaterials->begin(), pass->transmissionMaterials->end(),
-                    [scene](const auto& material) { return material.scene == scene; })) {
+    if (materialScene) {
         auto* command = gfxCtx->polyXlu.p++;
         command->words.w0 = (FAST_GFX_WORLD_POSTPROCESS << 24) |
                             (enable ? FAST_WORLD_TRANSMISSION_BEGIN : FAST_WORLD_TRANSMISSION_END);

@@ -76,7 +76,7 @@ bool Activate(const PolicromaProgram* program, char* error, uint32_t capacity) {
                 (pass.divisor != 1 && pass.divisor != 2 && pass.divisor != 4) ||
                 (i + 1 == program->passCount && pass.divisor != 1) ||
                 !std::all_of(std::begin(pass.inputs), std::end(pass.inputs), [i](int32_t input) {
-                    return input >= PolicromaSceneGeometryShadowInput && input <= static_cast<int32_t>(i);
+                    return input >= PolicromaScenePointShadowInput && input <= static_cast<int32_t>(i);
                 })) {
                 WriteError(error, capacity, "Passe HLSL inválido.");
                 return false;

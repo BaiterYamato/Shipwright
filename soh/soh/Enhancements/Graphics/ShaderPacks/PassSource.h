@@ -16,6 +16,8 @@ constexpr int SceneColorInput = PolicromaSceneColorInput;
 constexpr int SceneDepthInput = PolicromaSceneDepthInput;
 constexpr int SceneSunShadowInput = PolicromaSceneSunShadowInput;
 constexpr int SceneGeometryShadowInput = PolicromaSceneGeometryShadowInput;
+constexpr int SceneFogShadowInput = PolicromaSceneFogShadowInput;
+constexpr int ScenePointShadowInput = PolicromaScenePointShadowInput;
 using IncludeFiles = std::map<std::string, std::string>;
 
 inline constexpr size_t MaxTransmissionMaterials = PolicromaMaxMaterials;

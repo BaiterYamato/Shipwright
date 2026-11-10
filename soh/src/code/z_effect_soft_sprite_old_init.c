@@ -461,6 +461,10 @@ void EffectSsBubble_Spawn(PlayState* play, Vec3f* pos, f32 yPosOffset, f32 yPosR
 
 // EffectSsGRipple Spawn Functions
 
+// Link-Span: ondulação interativa da água (soh/Enhancements/Graphics/WaterRipple).
+void WaterRipple_OnRipple(struct PlayState* play, const float* pos, short radius, short radiusMax);
+void WaterRipple_OnSplash(struct PlayState* play, const float* pos, short scale);
+
 void EffectSsGRipple_Spawn(PlayState* play, Vec3f* pos, s16 radius, s16 radiusMax, s16 life) {
     EffectSsGRippleInitParams initParams;
 
@@ -469,6 +473,7 @@ void EffectSsGRipple_Spawn(PlayState* play, Vec3f* pos, s16 radius, s16 radiusMa
     initParams.radiusMax = radiusMax;
     initParams.life = life;
 
+    WaterRipple_OnRipple(play, &pos->x, radius, radiusMax);
     EffectSs_Spawn(play, EFFECT_SS_G_RIPPLE, 128, &initParams);
 }
 
@@ -478,6 +483,7 @@ void EffectSsGSplash_Spawn(PlayState* play, Vec3f* pos, Color_RGBA8* primColor, 
                            s16 scale) {
     EffectSsGSplashInitParams initParams;
 
+    WaterRipple_OnSplash(play, &pos->x, scale);
     Math_Vec3f_Copy(&initParams.pos, pos);
     initParams.type = type;
     initParams.scale = scale;

@@ -17,6 +17,7 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 #include <overlays/misc/ovl_kaleido_scope/z_kaleido_scope.h>
 #include "soh/Enhancements/enhancementTypes.h"
 #include "soh/Enhancements/Graphics/ShaderPacks/WorldPass.h"
+#include "soh/Enhancements/Graphics/WaterRipple/WaterRipple.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
@@ -1706,6 +1707,7 @@ void Play_Draw(PlayState* play) {
             DebugDisplay_DrawObjects(play);
         }
 
+        WaterRipple_Tick(play);
         ShaderPacks_DrawWorldPass(gfxCtx);
         Play_DrawFogVolume(play);
 

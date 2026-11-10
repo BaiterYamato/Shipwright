@@ -21,9 +21,7 @@ constexpr std::string_view VertexShader = R"(
 cbuffer LightSpace : register(b0) { float4 Data[4]; }
 float4 main(float3 position : POSITION) : SV_Position {
     float4 p = float4(position, 1.0);
-    float2 uv = float2(dot(p, Data[0]), dot(p, Data[1]));
-    float z = (dot(p, Data[2]) - Data[3].z) * Data[3].w;
-    return float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), z, 1.0);
+    return float4(dot(p, Data[0]), dot(p, Data[1]), dot(p, Data[2]), dot(p, Data[3]));
 }
 )";
 
@@ -48,7 +46,7 @@ std::array<float, 4> Plane(const Point& axis, const Point& focus) {
 
 } // namespace
 
-bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) compile) {
+bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) compile, unsigned pointLights) {
     ComPtr<ID3DBlob> code;
     if (FAILED(compile(VertexShader.data(), VertexShader.size(), "scene.geometryshadow", nullptr, nullptr, "main",
                        "vs_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, code.GetAddressOf(), nullptr))) return false;
@@ -60,6 +58,7 @@ bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) comp
     rasterDesc.FillMode = D3D11_FILL_SOLID;
     rasterDesc.CullMode = D3D11_CULL_NONE;
     rasterDesc.DepthClipEnable = TRUE;
+    rasterDesc.ScissorEnable = pointLights != 0;
     D3D11_DEPTH_STENCIL_DESC depthDesc{};
     depthDesc.DepthEnable = TRUE;
     depthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -73,7 +72,8 @@ bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) comp
     constantDesc.ByteWidth = sizeof(SunShadowMap::Constants);
     constantDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     D3D11_TEXTURE2D_DESC textureDesc{};
-    textureDesc.Width = textureDesc.Height = SunShadowMap::Size;
+    textureDesc.Width = pointLights ? PointFaceSize * 3 : SunShadowMap::Size;
+    textureDesc.Height = pointLights ? PointFaceSize * 2 * pointLights : SunShadowMap::Size;
     textureDesc.MipLevels = textureDesc.ArraySize = 1;
     textureDesc.Format = DXGI_FORMAT_R32_TYPELESS;
     textureDesc.SampleDesc = {1, 0};
@@ -104,7 +104,7 @@ bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) comp
 }
 
 void GeometryShadow::DrawCutouts(ID3D11DeviceContext& ctx, const Fast::WorldCutoutGeometry& cutouts,
-                                 const SunShadowMap::Constants& constants) {
+                                 const SunShadowMap::Constants& clip) {
     if (cutouts.batches.empty() || cutouts.vertices.size() > Fast::MaxWorldCutoutFloats) return;
     D3D11_MAPPED_SUBRESOURCE mapped{};
     if (FAILED(ctx.Map(cutoutVertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
@@ -113,15 +113,11 @@ void GeometryShadow::DrawCutouts(ID3D11DeviceContext& ctx, const Fast::WorldCuto
     for (const auto& batch : cutouts.batches) {
         for (unsigned i = 0; i < batch.count; ++i) {
             auto* p = data + batch.offset + i * batch.stride;
-            const auto project = [&](unsigned axis) {
-                const auto& a = constants[axis];
-                return p[0] * a[0] + p[1] * a[1] + p[2] * a[2] + a[3];
-            };
-            const float u = project(0), v = project(1), z = project(2);
-            p[0] = 2.0f * u - 1.0f;
-            p[1] = 1.0f - 2.0f * v;
-            p[2] = (z - constants[3][2]) * constants[3][3];
-            p[3] = 1.0f;
+            const Point world{p[0], p[1], p[2]};
+            for (size_t axis = 0; axis < clip.size(); ++axis) {
+                const auto& row = clip[axis];
+                p[axis] = world[0] * row[0] + world[1] * row[1] + world[2] * row[2] + row[3];
+            }
         }
     }
     ctx.Unmap(cutoutVertices.Get(), 0);
@@ -164,21 +160,63 @@ bool GeometryShadow::Draw(ID3D11DeviceContext& ctx, std::span<const Point> trian
                           const Fast::WorldCutoutGeometry& cutouts, const Point& focus,
                           const std::array<float, 4>& sun, SunShadowMap::Constants& constants) {
     constants = {};
-    if ((triangles.empty() && cutouts.batches.empty()) || triangles.size() > Fast::MaxWorldGeometryVertices ||
-        !std::isfinite(sun[0]) || !std::isfinite(sun[1]) || !std::isfinite(sun[2]) || sun[1] < 1.0f ||
+    if (!std::isfinite(sun[0]) || !std::isfinite(sun[1]) || !std::isfinite(sun[2]) || sun[1] < 1.0f ||
         !std::all_of(focus.begin(), focus.end(), [](float x) { return std::isfinite(x); })) return false;
     const Point sunDirection = Normalize({sun[0], sun[1], sun[2]});
     const Point right = Normalize(Cross({0, 0, 1}, sunDirection));
     const Point up = Cross(sunDirection, right);
     const float low = Dot(focus, sunDirection) - DepthSpan * 0.5f;
+    const auto u = Plane(right, focus), v = Plane(up, focus);
+    const SunShadowMap::Constants clip{{
+        {2.0f * u[0], 2.0f * u[1], 2.0f * u[2], 2.0f * u[3] - 1.0f},
+        {-2.0f * v[0], -2.0f * v[1], -2.0f * v[2], 1.0f - 2.0f * v[3]},
+        {sunDirection[0] / DepthSpan, sunDirection[1] / DepthSpan, sunDirection[2] / DepthSpan, -low / DepthSpan},
+        {0.0f, 0.0f, 0.0f, 1.0f},
+    }};
+    const Projection projection{clip, {0, 0, SunShadowMap::Size, SunShadowMap::Size, 0, 1}};
+    if (!DrawProjected(ctx, triangles, cutouts, std::span(&projection, 1))) return false;
+    constants = {u, v, {sunDirection[0], sunDirection[1], sunDirection[2], 0}, {1, Texel, low, 1.0f / DepthSpan}};
+    return true;
+}
+
+bool GeometryShadow::DrawPoint(ID3D11DeviceContext& ctx, std::span<const Point> triangles,
+                               const Fast::WorldCutoutGeometry& cutouts,
+                               std::span<const std::array<float, 4>> sources) {
+    if (sources.empty() || sources.size() > MaxPointLights) return false;
+    constexpr std::array<Point, 6> directions{{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+                                               {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}};
+    std::array<Projection, directions.size() * MaxPointLights> projections{};
+    size_t tile = 0;
+    for (const auto& source : sources) {
+        const Point eye{source[0], source[1], source[2]};
+        const float farPlane = source[3];
+        if (!(farPlane > PointNear)) return false;
+        const auto plane = [&eye](const Point& axis, float scale) -> std::array<float, 4> {
+            return {axis[0] * scale, axis[1] * scale, axis[2] * scale, -Dot(axis, eye) * scale};
+        };
+        const float reverseScale = PointNear / (farPlane - PointNear);
+        for (const auto& forward : directions) {
+            const Point up = forward[1] == 0.0f ? Point{0, 1, 0} : Point{0, 0, 1};
+            const auto right = Cross(up, forward);
+            auto& [clip, viewport] = projections[tile];
+            clip = {plane(right, PointScale), plane(up, PointScale), plane(forward, -reverseScale), plane(forward, 1.0f)};
+            clip[2][3] += farPlane * reverseScale;
+            viewport = {static_cast<float>(tile % 3 * PointFaceSize), static_cast<float>(tile / 3 * PointFaceSize),
+                        PointFaceSize, PointFaceSize, 0, 1};
+            ++tile;
+        }
+    }
+    return DrawProjected(ctx, triangles, cutouts, std::span(projections.data(), tile));
+}
+
+bool GeometryShadow::DrawProjected(ID3D11DeviceContext& ctx, std::span<const Point> triangles,
+                                    const Fast::WorldCutoutGeometry& cutouts,
+                                    std::span<const Projection> projections) {
+    if ((triangles.empty() && cutouts.batches.empty()) || triangles.size() > Fast::MaxWorldGeometryVertices) return false;
     D3D11_MAPPED_SUBRESOURCE mapped{};
     if (FAILED(ctx.Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return false;
     if (!triangles.empty()) std::memcpy(mapped.pData, triangles.data(), triangles.size_bytes());
     ctx.Unmap(vertices.Get(), 0);
-
-    constants = {Plane(right, focus), Plane(up, focus),
-                 {sunDirection[0], sunDirection[1], sunDirection[2], 0}, {1, Texel, low, 1.0f / DepthSpan}};
-    ctx.UpdateSubresource(light.Get(), 0, nullptr, constants.data(), 0, 0);
 
     std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets{};
     ComPtr<ID3D11DepthStencilView> previousDepth;
@@ -190,11 +228,15 @@ bool GeometryShadow::Draw(ID3D11DeviceContext& ctx, std::span<const Point> trian
     ComPtr<ID3D11Buffer> previousLight, previousVertices;
     D3D11_PRIMITIVE_TOPOLOGY topology{};
     D3D11_VIEWPORT viewports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    D3D11_RECT scissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
     UINT count = ARRAYSIZE(viewports), reference = 0, stride = 0, offset = 0;
+    UINT scissorCount = ARRAYSIZE(scissors);
+    const bool atlas = projections.size() > 1;
     ctx.OMGetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), previousDepth.GetAddressOf());
     ctx.OMGetDepthStencilState(previousDepthState.GetAddressOf(), &reference);
     ctx.RSGetState(previousRaster.GetAddressOf());
     ctx.RSGetViewports(&count, viewports);
+    if (atlas) ctx.RSGetScissorRects(&scissorCount, scissors);
     ctx.VSGetShader(previousVS.GetAddressOf(), nullptr, nullptr);
     ctx.PSGetShader(previousPS.GetAddressOf(), nullptr, nullptr);
     ctx.VSGetConstantBuffers(0, 1, previousLight.GetAddressOf());
@@ -202,21 +244,28 @@ bool GeometryShadow::Draw(ID3D11DeviceContext& ctx, std::span<const Point> trian
     ctx.IAGetPrimitiveTopology(&topology);
     ctx.IAGetVertexBuffers(0, 1, previousVertices.GetAddressOf(), &stride, &offset);
 
-    const D3D11_VIEWPORT viewport{0, 0, SunShadowMap::Size, SunShadowMap::Size, 0, 1};
     const UINT vertexStride = sizeof(Point), vertexOffset = 0;
     ctx.OMSetRenderTargets(0, nullptr, depth.Get());
     ctx.OMSetDepthStencilState(depthState.Get(), 0);
     ctx.ClearDepthStencilView(depth.Get(), D3D11_CLEAR_DEPTH, 0, 0);
-    ctx.RSSetViewports(1, &viewport);
     ctx.RSSetState(raster.Get());
-    ctx.VSSetShader(shader.Get(), nullptr, 0);
-    ctx.PSSetShader(nullptr, nullptr, 0);
     ctx.VSSetConstantBuffers(0, 1, light.GetAddressOf());
-    ctx.IASetInputLayout(inputLayout.Get());
     ctx.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx.IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &vertexStride, &vertexOffset);
-    ctx.Draw(static_cast<UINT>(triangles.size()), 0);
-    DrawCutouts(ctx, cutouts, constants);
+    for (const auto& [clip, viewport] : projections) {
+        ctx.UpdateSubresource(light.Get(), 0, nullptr, clip.data(), 0, 0);
+        ctx.RSSetViewports(1, &viewport);
+        if (atlas) {
+            const LONG x = static_cast<LONG>(viewport.TopLeftX), y = static_cast<LONG>(viewport.TopLeftY);
+            const D3D11_RECT rect{x, y, x + static_cast<LONG>(viewport.Width), y + static_cast<LONG>(viewport.Height)};
+            ctx.RSSetScissorRects(1, &rect);
+        }
+        ctx.VSSetShader(shader.Get(), nullptr, 0);
+        ctx.PSSetShader(nullptr, nullptr, 0);
+        ctx.IASetInputLayout(inputLayout.Get());
+        ctx.IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &vertexStride, &vertexOffset);
+        ctx.Draw(static_cast<UINT>(triangles.size()), 0);
+        DrawCutouts(ctx, cutouts, clip);
+    }
 
     ctx.OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), previousDepth.Get());
     for (auto* target : targets) {
@@ -225,6 +274,7 @@ bool GeometryShadow::Draw(ID3D11DeviceContext& ctx, std::span<const Point> trian
     ctx.OMSetDepthStencilState(previousDepthState.Get(), reference);
     ctx.RSSetState(previousRaster.Get());
     ctx.RSSetViewports(count, viewports);
+    if (atlas) ctx.RSSetScissorRects(scissorCount, scissors);
     ctx.VSSetShader(previousVS.Get(), nullptr, 0);
     ctx.PSSetShader(previousPS.Get(), nullptr, 0);
     ctx.VSSetConstantBuffers(0, 1, previousLight.GetAddressOf());

@@ -14,15 +14,27 @@ struct WorldCutoutGeometry;
 namespace ShaderPacks {
 
 struct GeometryShadow {
-    bool Initialize(ID3D11Device& device, decltype(&D3DCompile) compile);
+    static constexpr unsigned MaxPointLights = 2;
+    static constexpr unsigned PointFaceSize = 512;
+    static constexpr float PointNear = 2.0f;
+    static constexpr float PointScale = (PointFaceSize - 2.0f) / PointFaceSize;
+    bool Initialize(ID3D11Device& device, decltype(&D3DCompile) compile, unsigned pointLights = 0);
     bool Draw(ID3D11DeviceContext& ctx, std::span<const std::array<float, 3>> triangles,
               const Fast::WorldCutoutGeometry& cutouts,
               const std::array<float, 3>& focus, const std::array<float, 4>& sun, SunShadowMap::Constants& constants);
+    bool DrawPoint(ID3D11DeviceContext& ctx, std::span<const std::array<float, 3>> triangles,
+                   const Fast::WorldCutoutGeometry& cutouts, std::span<const std::array<float, 4>> sources);
     ID3D11ShaderResourceView* View() const { return view.Get(); }
 
   private:
+    struct Projection {
+        SunShadowMap::Constants clip;
+        D3D11_VIEWPORT viewport;
+    };
+    bool DrawProjected(ID3D11DeviceContext& ctx, std::span<const std::array<float, 3>> triangles,
+                       const Fast::WorldCutoutGeometry& cutouts, std::span<const Projection> projections);
     void DrawCutouts(ID3D11DeviceContext& ctx, const Fast::WorldCutoutGeometry& cutouts,
-                     const SunShadowMap::Constants& constants);
+                     const SunShadowMap::Constants& clip);
 
     Microsoft::WRL::ComPtr<ID3D11VertexShader> shader;
     Microsoft::WRL::ComPtr<ID3D11InputLayout> inputLayout;
