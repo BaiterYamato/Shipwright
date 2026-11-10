@@ -22,6 +22,7 @@
 #include "../../native-sdk/include/oot_scene_query.h"
 #include "oot_layout_id.h"
 #include "oot_ocarina.h"
+#include "soh/OotFogBridge.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -1007,6 +1008,10 @@ ShipLua::NativeProviderPolicy CreateOotNativePolicy() {
     const auto& sceneQuery = GetOotSceneQueryService();
     policy.services.push_back(
         { LINKSPAN_OOT_SCENE_QUERY_SERVICE, LINKSPAN_OOT_SCENE_QUERY_VERSION, sizeof(sceneQuery), &sceneQuery });
+    const auto& fog = GetOotNativeFogService();
+    policy.services.push_back({ LINKSPAN_OOT_FOG_SERVICE, LINKSPAN_OOT_FOG_VERSION, sizeof(fog), &fog });
+    const auto& fogFlow = GetOotNativeFogFlowService();
+    policy.services.push_back({ LINKSPAN_OOT_FOG_SERVICE, LINKSPAN_OOT_FOG_VERSION_2, sizeof(fogFlow), &fogFlow });
     return policy;
 }
 } // namespace ShipLuaHost

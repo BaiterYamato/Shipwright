@@ -3,6 +3,7 @@
 #include "linkspan_vanilla.h"
 #include "soh/unbound/SceneFlagsExt.h"
 #include "vt.h"
+#include "soh/OotFogBridge.h"
 
 #include <string.h>
 extern void LinkSpan_PlayDrawEnd(PlayState* play);
@@ -15,6 +16,7 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 #include <overlays/actors/ovl_En_Niw/z_en_niw.h>
 #include <overlays/misc/ovl_kaleido_scope/z_kaleido_scope.h>
 #include "soh/Enhancements/enhancementTypes.h"
+#include "soh/Enhancements/Graphics/ShaderPacks/WorldPass.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
@@ -405,6 +407,7 @@ void LinkSpan_PlayUpdate(PlayState* play);
 
 void Play_Init(GameState* thisx) {
     PlayState* play = (PlayState*)thisx;
+    LinkSpan_ResetFogScene();
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     uintptr_t zAlloc;
     uintptr_t zAllocAligned;
@@ -1371,6 +1374,60 @@ void Play_DrawOverlayElements(PlayState* play) {
     }
 }
 
+// O marcador é consumido depois de POLY_XLU, antes da cópia da pausa ou do HUD.
+static void Play_DrawFogVolume(PlayState* play) {
+    s32 mode = CVarGetInteger(CVAR_DEVELOPER_TOOLS("FogVolumeProbe"), 0);
+    FastFogVolume volume;
+    const FastFogFlow* flow = NULL;
+    s32 dynamic = LinkSpan_TakeFogGrid(play, &volume, &flow);
+    if ((!dynamic && (mode < 1 || mode > 3 || play->sceneNum != SCENE_HYRULE_FIELD)) || gSaveContext.gameMode != 0 ||
+        CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) || HREG(80) == 11) {
+        return;
+    }
+    if (mode != 2 && mode != 3) {
+        mode = 1;
+    }
+
+    View* view = &play->view;
+    MtxF projection;
+    MtxF viewing;
+    Matrix_MtxToMtxF(&view->projection, &projection);
+    Matrix_MtxToMtxF(&view->viewing, &viewing);
+    if (fabsf(projection.mf[0][0]) < 0.0001f || fabsf(projection.mf[1][1]) < 0.0001f ||
+        projection.mf[2][3] >= 0.0f || view->zFar <= view->zNear) {
+        return;
+    }
+
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    FastFogVolume camera = {
+        .eye = { view->eye.x, view->eye.y, view->eye.z, mode },
+        .forward = { -viewing.mf[0][2], -viewing.mf[1][2], -viewing.mf[2][2], 0.019f },
+        .right = { viewing.mf[0][0], viewing.mf[1][0], viewing.mf[2][0], -projection.mf[2][3] / projection.mf[0][0] },
+        .up = { viewing.mf[0][1], viewing.mf[1][1], viewing.mf[2][1], -projection.mf[2][3] / projection.mf[1][1] },
+        .depth = { projection.mf[2][2], projection.mf[2][3], projection.mf[3][2], view->zFar },
+        .minimum = { -215.0f, -12.0f, 935.0f, 30.0f },
+        .maximum = { 535.0f, 85.0f, 1845.0f, 100.0f },
+        .color = { 0.73f, 0.81f, 0.85f, 0.0f },
+    };
+    if (dynamic) {
+        memcpy(volume.eye, camera.eye, sizeof(volume.eye));
+        memcpy(volume.forward, camera.forward, 3 * sizeof(f32));
+        memcpy(volume.right, camera.right, sizeof(volume.right));
+        memcpy(volume.up, camera.up, sizeof(volume.up));
+        memcpy(volume.depth, camera.depth, sizeof(volume.depth));
+        volume.grid[3] = (f32)CVarGetInteger(CVAR_DEVELOPER_TOOLS("FogVolumeQuality"), 1);
+        volume.audit = flow && CVarGetInteger(CVAR_DEVELOPER_TOOLS("FogFlowAudit"), 0) != 0;
+    } else {
+        volume = camera;
+    }
+
+    OPEN_DISPS(gfxCtx);
+    Gfx* command = OVERLAY_DISP++;
+    command->words.w0 = (u32)FAST_GFX_FOG_VOLUME << 24;
+    command->words.w1 = FastQueueFogVolume(&volume, flow, view->viewingPtr, view->projectionPtr);
+    CLOSE_DISPS(gfxCtx);
+}
+
 void Play_Draw(PlayState* play) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     Lights* sp228;
@@ -1383,6 +1440,10 @@ void Play_Draw(PlayState* play) {
     static bool lastAltAssets;
     static bool hasCapturedPauseBuffer;
     bool recapturePauseBuffer = false;
+
+    if (gSaveContext.gameMode == 0 && HREG(80) != 11) {
+        LinkSpan_BeginFogFrame(play);
+    }
 
     // If the size has changed, alt assets toggled, or dropped frames leading to the buffer not being copied,
     // set the prerender state back to setup to copy a new frame.
@@ -1576,9 +1637,11 @@ void Play_Draw(PlayState* play) {
                 } else {
                     roomDrawFlags = HREG(84);
                 }
+                ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
                 Scene_Draw(play);
                 Room_Draw(play, &play->roomCtx.curRoom, roomDrawFlags & 3);
                 Room_Draw(play, &play->roomCtx.prevRoom, roomDrawFlags & 3);
+                ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
             }
         }
 
@@ -1601,7 +1664,9 @@ void Play_Draw(PlayState* play) {
         }
 
         if ((HREG(80) != 10) || (HREG(85) != 0)) {
+            ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
             Actor_DrawAll(play, &play->actorCtx);
+            ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
         }
 
         if ((HREG(80) != 10) || (HREG(86) != 0)) {
@@ -1640,6 +1705,9 @@ void Play_Draw(PlayState* play) {
         if ((HREG(80) != 10) || (HREG(93) != 0)) {
             DebugDisplay_DrawObjects(play);
         }
+
+        ShaderPacks_DrawWorldPass(gfxCtx);
+        Play_DrawFogVolume(play);
 
         if ((R_PAUSE_MENU_MODE == 1) || (gTrnsnUnkState == 1)) {
             Gfx* gfxP = OVERLAY_DISP;
@@ -1699,6 +1767,7 @@ void Play_Draw(PlayState* play) {
     }
 
 Play_Draw_skip:
+    LinkSpan_EndFogFrame();
 
     if (play->view.unk_124 != 0) {
         Camera_Update(GET_ACTIVE_CAM(play));

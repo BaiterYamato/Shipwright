@@ -1,0 +1,238 @@
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include "GeometryShadow.h"
+#include <fast/world_postprocess.h>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <string_view>
+
+namespace ShaderPacks {
+namespace {
+
+using Microsoft::WRL::ComPtr;
+using Point = std::array<float, 3>;
+constexpr float Span = 2600.0f;
+constexpr float DepthSpan = 6400.0f;
+constexpr float Texel = Span / SunShadowMap::Size;
+constexpr std::string_view VertexShader = R"(
+cbuffer LightSpace : register(b0) { float4 Data[4]; }
+float4 main(float3 position : POSITION) : SV_Position {
+    float4 p = float4(position, 1.0);
+    float2 uv = float2(dot(p, Data[0]), dot(p, Data[1]));
+    float z = (dot(p, Data[2]) - Data[3].z) * Data[3].w;
+    return float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), z, 1.0);
+}
+)";
+
+float Dot(const Point& a, const Point& b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+Point Normalize(Point v) {
+    const float length = std::sqrt(Dot(v, v));
+    for (auto& coordinate : v) coordinate /= length;
+    return v;
+}
+
+Point Cross(const Point& a, const Point& b) {
+    return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+}
+
+std::array<float, 4> Plane(const Point& axis, const Point& focus) {
+    const float snapped = std::round(Dot(axis, focus) / Texel) * Texel;
+    return {axis[0] / Span, axis[1] / Span, axis[2] / Span, 0.5f - snapped / Span};
+}
+
+} // namespace
+
+bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) compile) {
+    ComPtr<ID3DBlob> code;
+    if (FAILED(compile(VertexShader.data(), VertexShader.size(), "scene.geometryshadow", nullptr, nullptr, "main",
+                       "vs_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, code.GetAddressOf(), nullptr))) return false;
+    const auto* bytecode = code->GetBufferPointer();
+    const auto size = code->GetBufferSize();
+    const D3D11_INPUT_ELEMENT_DESC input{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+                                         D3D11_INPUT_PER_VERTEX_DATA, 0};
+    D3D11_RASTERIZER_DESC rasterDesc{};
+    rasterDesc.FillMode = D3D11_FILL_SOLID;
+    rasterDesc.CullMode = D3D11_CULL_NONE;
+    rasterDesc.DepthClipEnable = TRUE;
+    D3D11_DEPTH_STENCIL_DESC depthDesc{};
+    depthDesc.DepthEnable = TRUE;
+    depthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depthDesc.DepthFunc = D3D11_COMPARISON_GREATER;
+    D3D11_BUFFER_DESC vertexDesc{};
+    vertexDesc.ByteWidth = Fast::MaxWorldGeometryVertices * sizeof(Point);
+    vertexDesc.Usage = D3D11_USAGE_DYNAMIC;
+    vertexDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    vertexDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    D3D11_BUFFER_DESC constantDesc{};
+    constantDesc.ByteWidth = sizeof(SunShadowMap::Constants);
+    constantDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    D3D11_TEXTURE2D_DESC textureDesc{};
+    textureDesc.Width = textureDesc.Height = SunShadowMap::Size;
+    textureDesc.MipLevels = textureDesc.ArraySize = 1;
+    textureDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    textureDesc.SampleDesc = {1, 0};
+    textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsv{};
+    dsv.Format = DXGI_FORMAT_D32_FLOAT;
+    dsv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Format = DXGI_FORMAT_R32_FLOAT;
+    srv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srv.Texture2D.MipLevels = 1;
+    ComPtr<ID3D11Texture2D> texture;
+    D3D11_BUFFER_DESC cutoutDesc = vertexDesc;
+    cutoutDesc.ByteWidth = Fast::MaxWorldCutoutFloats * sizeof(float);
+    D3D11_BUFFER_DESC filterDesc = constantDesc;
+    filterDesc.ByteWidth = sizeof(Fast::WorldCutoutBatch::filter);
+    return SUCCEEDED(device.CreateVertexShader(bytecode, size, nullptr, shader.GetAddressOf())) &&
+           SUCCEEDED(device.CreateInputLayout(&input, 1, bytecode, size, inputLayout.GetAddressOf())) &&
+           SUCCEEDED(device.CreateRasterizerState(&rasterDesc, raster.GetAddressOf())) &&
+           SUCCEEDED(device.CreateDepthStencilState(&depthDesc, depthState.GetAddressOf())) &&
+           SUCCEEDED(device.CreateBuffer(&vertexDesc, nullptr, vertices.GetAddressOf())) &&
+           SUCCEEDED(device.CreateBuffer(&constantDesc, nullptr, light.GetAddressOf())) &&
+           SUCCEEDED(device.CreateBuffer(&cutoutDesc, nullptr, cutoutVertices.GetAddressOf())) &&
+           SUCCEEDED(device.CreateBuffer(&filterDesc, nullptr, cutoutFilter.GetAddressOf())) &&
+           SUCCEEDED(device.CreateTexture2D(&textureDesc, nullptr, texture.GetAddressOf())) &&
+           SUCCEEDED(device.CreateDepthStencilView(texture.Get(), &dsv, depth.GetAddressOf())) &&
+           SUCCEEDED(device.CreateShaderResourceView(texture.Get(), &srv, view.GetAddressOf()));
+}
+
+void GeometryShadow::DrawCutouts(ID3D11DeviceContext& ctx, const Fast::WorldCutoutGeometry& cutouts,
+                                 const SunShadowMap::Constants& constants) {
+    if (cutouts.batches.empty() || cutouts.vertices.size() > Fast::MaxWorldCutoutFloats) return;
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(ctx.Map(cutoutVertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
+    auto* data = static_cast<float*>(mapped.pData);
+    std::memcpy(data, cutouts.vertices.data(), cutouts.vertices.size_bytes());
+    for (const auto& batch : cutouts.batches) {
+        for (unsigned i = 0; i < batch.count; ++i) {
+            auto* p = data + batch.offset + i * batch.stride;
+            const auto project = [&](unsigned axis) {
+                const auto& a = constants[axis];
+                return p[0] * a[0] + p[1] * a[1] + p[2] * a[2] + a[3];
+            };
+            const float u = project(0), v = project(1), z = project(2);
+            p[0] = 2.0f * u - 1.0f;
+            p[1] = 1.0f - 2.0f * v;
+            p[2] = (z - constants[3][2]) * constants[3][3];
+            p[3] = 1.0f;
+        }
+    }
+    ctx.Unmap(cutoutVertices.Get(), 0);
+
+    std::array<ID3D11ShaderResourceView*, Fast::WorldCutoutTextureSlots> previousViews{};
+    std::array<ID3D11SamplerState*, Fast::WorldCutoutTextureSlots> previousSamplers{};
+    ComPtr<ID3D11Buffer> previousFilter;
+    const auto slots = static_cast<UINT>(previousViews.size());
+    ctx.PSGetShaderResources(0, slots, previousViews.data());
+    ctx.PSGetSamplers(0, slots, previousSamplers.data());
+    ctx.PSGetConstantBuffers(1, 1, previousFilter.GetAddressOf());
+    ctx.PSSetConstantBuffers(1, 1, cutoutFilter.GetAddressOf());
+    for (const auto& batch : cutouts.batches) {
+        std::array<ID3D11ShaderResourceView*, Fast::WorldCutoutTextureSlots> views{};
+        std::array<ID3D11SamplerState*, Fast::WorldCutoutTextureSlots> samplers{};
+        for (unsigned i = 0; i < slots; ++i) {
+            views[i] = batch.views[i].Get();
+            samplers[i] = batch.samplers[i].Get();
+        }
+        const UINT stride = batch.stride * sizeof(float), offset = batch.offset * sizeof(float);
+        ctx.IASetVertexBuffers(0, 1, cutoutVertices.GetAddressOf(), &stride, &offset);
+        ctx.IASetInputLayout(batch.layout.Get());
+        ctx.VSSetShader(batch.vertex.Get(), nullptr, 0);
+        ctx.PSSetShader(batch.pixel.Get(), nullptr, 0);
+        ctx.PSSetShaderResources(0, slots, views.data());
+        ctx.PSSetSamplers(0, slots, samplers.data());
+        ctx.UpdateSubresource(cutoutFilter.Get(), 0, nullptr, batch.filter.data(), 0, 0);
+        ctx.Draw(batch.count, 0);
+    }
+    ctx.PSSetConstantBuffers(1, 1, previousFilter.GetAddressOf());
+    ctx.PSSetShaderResources(0, slots, previousViews.data());
+    ctx.PSSetSamplers(0, slots, previousSamplers.data());
+    for (unsigned i = 0; i < slots; ++i) {
+        if (previousViews[i]) previousViews[i]->Release();
+        if (previousSamplers[i]) previousSamplers[i]->Release();
+    }
+}
+
+bool GeometryShadow::Draw(ID3D11DeviceContext& ctx, std::span<const Point> triangles,
+                          const Fast::WorldCutoutGeometry& cutouts, const Point& focus,
+                          const std::array<float, 4>& sun, SunShadowMap::Constants& constants) {
+    constants = {};
+    if ((triangles.empty() && cutouts.batches.empty()) || triangles.size() > Fast::MaxWorldGeometryVertices ||
+        !std::isfinite(sun[0]) || !std::isfinite(sun[1]) || !std::isfinite(sun[2]) || sun[1] < 1.0f ||
+        !std::all_of(focus.begin(), focus.end(), [](float x) { return std::isfinite(x); })) return false;
+    const Point sunDirection = Normalize({sun[0], sun[1], sun[2]});
+    const Point right = Normalize(Cross({0, 0, 1}, sunDirection));
+    const Point up = Cross(sunDirection, right);
+    const float low = Dot(focus, sunDirection) - DepthSpan * 0.5f;
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(ctx.Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return false;
+    if (!triangles.empty()) std::memcpy(mapped.pData, triangles.data(), triangles.size_bytes());
+    ctx.Unmap(vertices.Get(), 0);
+
+    constants = {Plane(right, focus), Plane(up, focus),
+                 {sunDirection[0], sunDirection[1], sunDirection[2], 0}, {1, Texel, low, 1.0f / DepthSpan}};
+    ctx.UpdateSubresource(light.Get(), 0, nullptr, constants.data(), 0, 0);
+
+    std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets{};
+    ComPtr<ID3D11DepthStencilView> previousDepth;
+    ComPtr<ID3D11DepthStencilState> previousDepthState;
+    ComPtr<ID3D11RasterizerState> previousRaster;
+    ComPtr<ID3D11VertexShader> previousVS;
+    ComPtr<ID3D11PixelShader> previousPS;
+    ComPtr<ID3D11InputLayout> previousLayout;
+    ComPtr<ID3D11Buffer> previousLight, previousVertices;
+    D3D11_PRIMITIVE_TOPOLOGY topology{};
+    D3D11_VIEWPORT viewports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    UINT count = ARRAYSIZE(viewports), reference = 0, stride = 0, offset = 0;
+    ctx.OMGetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), previousDepth.GetAddressOf());
+    ctx.OMGetDepthStencilState(previousDepthState.GetAddressOf(), &reference);
+    ctx.RSGetState(previousRaster.GetAddressOf());
+    ctx.RSGetViewports(&count, viewports);
+    ctx.VSGetShader(previousVS.GetAddressOf(), nullptr, nullptr);
+    ctx.PSGetShader(previousPS.GetAddressOf(), nullptr, nullptr);
+    ctx.VSGetConstantBuffers(0, 1, previousLight.GetAddressOf());
+    ctx.IAGetInputLayout(previousLayout.GetAddressOf());
+    ctx.IAGetPrimitiveTopology(&topology);
+    ctx.IAGetVertexBuffers(0, 1, previousVertices.GetAddressOf(), &stride, &offset);
+
+    const D3D11_VIEWPORT viewport{0, 0, SunShadowMap::Size, SunShadowMap::Size, 0, 1};
+    const UINT vertexStride = sizeof(Point), vertexOffset = 0;
+    ctx.OMSetRenderTargets(0, nullptr, depth.Get());
+    ctx.OMSetDepthStencilState(depthState.Get(), 0);
+    ctx.ClearDepthStencilView(depth.Get(), D3D11_CLEAR_DEPTH, 0, 0);
+    ctx.RSSetViewports(1, &viewport);
+    ctx.RSSetState(raster.Get());
+    ctx.VSSetShader(shader.Get(), nullptr, 0);
+    ctx.PSSetShader(nullptr, nullptr, 0);
+    ctx.VSSetConstantBuffers(0, 1, light.GetAddressOf());
+    ctx.IASetInputLayout(inputLayout.Get());
+    ctx.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx.IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &vertexStride, &vertexOffset);
+    ctx.Draw(static_cast<UINT>(triangles.size()), 0);
+    DrawCutouts(ctx, cutouts, constants);
+
+    ctx.OMSetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), previousDepth.Get());
+    for (auto* target : targets) {
+        if (target) target->Release();
+    }
+    ctx.OMSetDepthStencilState(previousDepthState.Get(), reference);
+    ctx.RSSetState(previousRaster.Get());
+    ctx.RSSetViewports(count, viewports);
+    ctx.VSSetShader(previousVS.Get(), nullptr, 0);
+    ctx.PSSetShader(previousPS.Get(), nullptr, 0);
+    ctx.VSSetConstantBuffers(0, 1, previousLight.GetAddressOf());
+    ctx.IASetInputLayout(previousLayout.Get());
+    ctx.IASetPrimitiveTopology(topology);
+    ctx.IASetVertexBuffers(0, 1, previousVertices.GetAddressOf(), &stride, &offset);
+    return true;
+}
+
+} // namespace ShaderPacks
+#endif

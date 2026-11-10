@@ -6,12 +6,20 @@
 #include <fast/interpreter.h>
 #include <ship/Context.h>
 #include <fast/toon_shading.h>
+#include <ship/config/ConsoleVariable.h>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstring>
 
 #include "OotNativeHooks.h"
 #include "oot_hooks.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/frame_interpolation.h"
+#include "soh/OotFogBridge.h"
+#include "soh/cvar_prefixes.h"
 
 #include "z64.h"
 #include "macros.h"
@@ -179,6 +187,277 @@ std::shared_ptr<Fast::Interpreter> CurrentInterpreter() {
     return wnd ? wnd->GetInterpreterWeak().lock() : nullptr;
 }
 
+struct FogFrame {
+    void* play = nullptr;
+    bool submitted = false;
+    bool hasFlow = false;
+    void* sourcePlay = nullptr;
+    uint32_t generation = 0;
+    uint64_t stream = 0;
+    FastFogVolume volume{};
+    FastFogFlow flow{};
+};
+
+thread_local FogFrame gFogFrame;
+static_assert(LINKSPAN_OOT_FOG_MAX_SIDE == FAST_FOG_GRID_SIDE);
+static_assert(LINKSPAN_OOT_FOG_FLOW_PARTICLES == FAST_FOG_FLOW_PARTICLES);
+static_assert(LINKSPAN_OOT_FOG_FLOW_VORTICES == FAST_FOG_FLOW_VORTICES);
+static_assert(LINKSPAN_OOT_FOG_FLOW_LIFT == FAST_FOG_FLOW_LIFT);
+static_assert(LINKSPAN_OOT_FOG_FLOW_VERTICAL_COMPUTE == FAST_FOG_FLOW_VERTICAL_COMPUTE);
+static_assert(LINKSPAN_OOT_FOG_FLOW_CPU_FIELD == FAST_FOG_FLOW_CPU_FIELD);
+static_assert(LINKSPAN_OOT_FOG_VORTEX_REST_DENSITY == FAST_FOG_VORTEX_REST_DENSITY);
+
+bool ValidFogGridShape(const ShipOotFogGridV1* grid) {
+    return grid && grid->size >= sizeof(*grid) && grid->cells && grid->width >= 2 && grid->depth >= 2 &&
+           grid->width <= LINKSPAN_OOT_FOG_MAX_SIDE && grid->depth <= LINKSPAN_OOT_FOG_MAX_SIDE;
+}
+
+bool FogValueInRange(float value, float minimum, float maximum) {
+    return std::isfinite(value) && value >= minimum && value <= maximum;
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SubmitFogGrid(void* play, const ShipOotFogGridV1* grid) {
+    if (!play || play != gFogFrame.play) return SHIP_NATIVE_UNSUPPORTED;
+    if (gFogFrame.submitted) return SHIP_NATIVE_LIMIT;
+    if (!ValidFogGridShape(grid)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    auto interpreter = CurrentInterpreter();
+    auto* renderer = interpreter ? interpreter->GetCurrentRenderingAPI() : nullptr;
+    if (!renderer || !renderer->SupportsFogVolume() ||
+        Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) != 0) {
+        return SHIP_NATIVE_UNSUPPORTED;
+    }
+    const auto bounded = FogValueInRange;
+    if (!bounded(grid->x_min, -1000000.0f, 1000000.0f) || !bounded(grid->x_max, -1000000.0f, 1000000.0f) ||
+        !bounded(grid->z_min, -1000000.0f, 1000000.0f) || !bounded(grid->z_max, -1000000.0f, 1000000.0f) ||
+        grid->x_max <= grid->x_min || grid->z_max <= grid->z_min ||
+        !bounded(grid->layer_height, 1.0f, 512.0f) || !bounded(grid->falloff, 1.0f, 512.0f) ||
+        !bounded(grid->extinction, 0.0f, 1.0f) || !bounded(grid->edge_feather, 1.0f, 512.0f)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    for (float channel : grid->color) {
+        if (!bounded(channel, 0.0f, 1.0f)) return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    float bottom = 1000000.0f;
+    float top = -1000000.0f;
+    auto& volume = gFogFrame.volume;
+    volume.lightCount = 0;
+    volume.upperCount = 0;
+    volume.atmosphere[3] = 0.0f;
+    for (uint32_t i = 0; i < grid->width * grid->depth; ++i) {
+        const auto& cell = grid->cells[i];
+        if (!bounded(cell.density, 0.0f, 1.0f) || !bounded(cell.floor_y, -1000000.0f, 1000000.0f)) {
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+        }
+        volume.cells[i][0] = cell.density;
+        volume.cells[i][1] = cell.floor_y * cell.density;
+        if (cell.density > 0.0f) {
+            bottom = std::min(bottom, cell.floor_y);
+            top = std::max(top, cell.floor_y);
+        }
+    }
+    gFogFrame.submitted = true;
+    volume.grid[0] = 0.0f;
+    if (top < bottom) return SHIP_NATIVE_OK;
+    volume.minimum[0] = grid->x_min;
+    volume.minimum[1] = bottom;
+    volume.minimum[2] = grid->z_min;
+    volume.minimum[3] = grid->falloff;
+    volume.maximum[0] = grid->x_max;
+    volume.maximum[1] = top + grid->layer_height;
+    volume.maximum[2] = grid->z_max;
+    volume.maximum[3] = grid->edge_feather;
+    volume.forward[3] = grid->extinction;
+    std::copy_n(grid->color, 3, volume.color);
+    volume.grid[0] = static_cast<float>(grid->width);
+    volume.grid[1] = static_cast<float>(grid->depth);
+    volume.grid[2] = grid->layer_height;
+    return SHIP_NATIVE_OK;
+}
+
+bool CopyFogImpulse(const ShipOotFogImpulseV2& input, FastFogImpulse& output) {
+    constexpr float limit = 180.0f;
+    const auto bounded = FogValueInRange;
+    if (!bounded(input.density_scale, 0.0f, 1.0f) ||
+        !bounded(input.velocity_x, -1000000.0f, 1000000.0f) ||
+        !bounded(input.velocity_z, -1000000.0f, 1000000.0f) ||
+        !bounded(input.min_x, -limit, input.max_x) || !bounded(input.max_x, input.min_x, limit) ||
+        !bounded(input.min_z, -limit, input.max_z) || !bounded(input.max_z, input.min_z, limit)) {
+        return false;
+    }
+    output = {input.density_scale, input.velocity_x, input.velocity_z, input.min_x, input.max_x,
+              input.min_z, input.max_z};
+    return true;
+}
+
+void CopyFogLights(const PlayState& play, FastFogVolume& volume) {
+    std::array<float, FAST_FOG_LIGHT_COUNT> distance{};
+    const auto* node = play.lightCtx.listHead;
+    for (int visited = 0; node && visited < 64; ++visited, node = node->next) {
+        if (!node->info || node->info->type != LIGHT_POINT_GLOW) continue;
+        const auto& light = node->info->params.point;
+        if (light.radius <= 0 || !(light.color[0] || light.color[1] || light.color[2]) ||
+            !std::isfinite(light.x) || !std::isfinite(light.y) || !std::isfinite(light.z)) {
+            continue;
+        }
+        const float position[]{light.x, light.y, light.z};
+        const float radius = std::min<float>(light.radius, 512.0f);
+        float distanceToBox = 0.0f, distanceToCenter = 0.0f;
+        for (int axis = 0; axis < 3; ++axis) {
+            const float min = volume.minimum[axis], max = volume.maximum[axis];
+            const float outside = position[axis] - std::clamp(position[axis], min, max);
+            const float center = position[axis] - 0.5f * (min + max);
+            distanceToBox += outside * outside;
+            distanceToCenter += center * center;
+        }
+        if (distanceToBox >= radius * radius) continue;
+        const auto last = distance.begin() + volume.lightCount;
+        const auto next = std::upper_bound(distance.begin(), last, distanceToCenter);
+        const auto index = static_cast<uint32_t>(next - distance.begin());
+        if (index >= FAST_FOG_LIGHT_COUNT) continue;
+        volume.lightCount = std::min<uint32_t>(volume.lightCount + 1, FAST_FOG_LIGHT_COUNT);
+        for (auto i = volume.lightCount - 1; i > index; --i) {
+            volume.lights[i] = volume.lights[i - 1];
+            distance[i] = distance[i - 1];
+        }
+        distance[index] = distanceToCenter;
+        volume.lights[index] = {{light.x, light.y, light.z, radius},
+                               {light.color[0] / 255.0f, light.color[1] / 255.0f, light.color[2] / 255.0f, 0.0f}};
+    }
+}
+
+ShipNativeStatus SHIP_NATIVE_CALL SubmitFogFlow(void* play, const ShipOotFogGridV1* grid, const ShipOotFogFlowV2* flow) {
+    if (!play || play != gFogFrame.play) return SHIP_NATIVE_UNSUPPORTED;
+    if (gFogFrame.submitted) return SHIP_NATIVE_LIMIT;
+    constexpr auto flagsOffset = offsetof(ShipOotFogFlowV2, flags);
+    constexpr auto edgesOffset = offsetof(ShipOotFogFlowV2, blocked_edges);
+    constexpr auto raisedOffset = offsetof(ShipOotFogFlowV2, raised_fraction);
+    constexpr auto upperOffset = offsetof(ShipOotFogFlowV2, upper_cells);
+    constexpr auto upperRaisedOffset = offsetof(ShipOotFogFlowV2, upper_raised_fraction);
+    constexpr auto verticalOffset = offsetof(ShipOotFogFlowV2, vertical_cells);
+    if (!ValidFogGridShape(grid) || !flow || flow->size < flagsOffset || !flow->cells ||
+        !FogValueInRange(flow->step_seconds, 0.001f, 0.1f)) {
+        return SHIP_NATIVE_INVALID_ARGUMENT;
+    }
+    auto interpreter = CurrentInterpreter();
+    auto* renderer = interpreter ? interpreter->GetCurrentRenderingAPI() : nullptr;
+    if (!renderer || !renderer->SupportsFogFlow()) return SHIP_NATIVE_UNSUPPORTED;
+    const auto* edges = flow->size >= edgesOffset + sizeof(flow->blocked_edges) ? flow->blocked_edges : nullptr;
+    const auto flags = flow->size >= flagsOffset + sizeof(flow->flags) ? flow->flags : 0u;
+    const float* raised = nullptr;
+    if (flags & LINKSPAN_OOT_FOG_FLOW_LIFT) {
+        if (flow->size < raisedOffset + sizeof(flow->raised_fraction) || !flow->raised_fraction) {
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+        }
+        raised = flow->raised_fraction;
+    }
+    const ShipOotFogCellV1* upper = nullptr;
+    if (flags & LINKSPAN_OOT_FOG_FLOW_STACKED_SUPPORTS) {
+        if (flow->size < upperOffset + sizeof(flow->upper_cells) || !flow->upper_cells) {
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+        }
+        upper = flow->upper_cells;
+    }
+    const auto* upperRaised = upper && raised && flow->size >= upperRaisedOffset + sizeof(flow->upper_raised_fraction)
+                                  ? flow->upper_raised_fraction : nullptr;
+    const ShipOotFogVerticalCell* vertical = nullptr;
+    if (flags & LINKSPAN_OOT_FOG_FLOW_VERTICAL_COMPUTE) {
+        if (!raised || !(flags & LINKSPAN_OOT_FOG_FLOW_VORTICES) || (flags & LINKSPAN_OOT_FOG_FLOW_CPU_FIELD) ||
+            flow->size < verticalOffset + sizeof(flow->vertical_cells) || !flow->vertical_cells) {
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+        }
+        vertical = flow->vertical_cells;
+    }
+    auto& snapshot = gFogFrame.flow;
+    snapshot.maxRaisedFraction = 0.0f;
+    for (uint32_t i = 0; i < grid->width * grid->depth; ++i) {
+        const auto& cell = flow->cells[i];
+        const uint32_t blocked = edges ? edges[i] : 0u;
+        auto& dest = snapshot.cells[i];
+        if (blocked > 15u || cell.open > 1 || (!cell.open && grid->cells[i].density != 0.0f) ||
+            !FogValueInRange(cell.velocity_x, -180.0f, 180.0f) ||
+            !FogValueInRange(cell.velocity_z, -180.0f, 180.0f) ||
+            !CopyFogImpulse(cell.before_step, dest.before) || !CopyFogImpulse(cell.after_step, dest.after)) {
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+        }
+        dest.initial[0] = grid->cells[i].density;
+        dest.initial[1] = grid->cells[i].floor_y;
+        dest.initial[2] = cell.velocity_x;
+        dest.initial[3] = cell.velocity_z;
+        dest.open = cell.open | (blocked << 1u);
+        const auto motion = vertical ? vertical[i] : ShipOotFogVerticalCell{};
+        if (vertical && (!FogValueInRange(motion.raised_density, 0.0f,
+                                          grid->cells[i].density * LINKSPAN_OOT_FOG_MAX_RAISED_FRACTION + 0.00001f) ||
+                         !FogValueInRange(motion.vertical_speed, -84.0f, 84.0f) ||
+                         !FogValueInRange(motion.before_step_lift, -32.0f, 32.0f) ||
+                         (!cell.open && (motion.raised_density != 0.0f || motion.vertical_speed != 0.0f ||
+                                         motion.before_step_lift != 0.0f)))) {
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+        }
+        dest.vertical[0] = motion.raised_density;
+        dest.vertical[1] = motion.vertical_speed;
+        dest.vertical[2] = motion.before_step_lift;
+        if (raised) {
+            const float fraction = raised[i];
+            if (!FogValueInRange(fraction, 0.0f, LINKSPAN_OOT_FOG_MAX_RAISED_FRACTION) ||
+                (!cell.open && fraction != 0.0f)) {
+                return SHIP_NATIVE_INVALID_ARGUMENT;
+            }
+            snapshot.raisedFraction[i] = fraction;
+            snapshot.maxRaisedFraction = std::max(snapshot.maxRaisedFraction, fraction);
+        }
+        if (upper) {
+            const auto& deck = upper[i];
+            const float minDeck = grid->cells[i].floor_y + 0.5f * grid->layer_height;
+            if (!FogValueInRange(deck.density, 0.0f, 1.0f) ||
+                !FogValueInRange(deck.floor_y, -1000000.0f, 1000000.0f) ||
+                (deck.density > 0.0f && (!cell.open || deck.floor_y < minDeck))) {
+                return SHIP_NATIVE_INVALID_ARGUMENT;
+            }
+        }
+        const float fraction = upperRaised ? upperRaised[i] : 0.0f;
+        if (upperRaised && (!FogValueInRange(fraction, 0.0f, LINKSPAN_OOT_FOG_MAX_RAISED_FRACTION) ||
+                            (upper[i].density <= 0.0f && fraction != 0.0f))) {
+            return SHIP_NATIVE_INVALID_ARGUMENT;
+        }
+        snapshot.upperRaisedFraction[i] = fraction;
+        snapshot.maxRaisedFraction = std::max(snapshot.maxRaisedFraction, fraction);
+    }
+    const auto result = SubmitFogGrid(play, grid);
+    if (result != SHIP_NATIVE_OK || gFogFrame.volume.grid[0] == 0.0f) return result;
+    if (upper) {
+        auto& volume = gFogFrame.volume;
+        for (uint32_t i = 0; i < grid->width * grid->depth; ++i) {
+            volume.upperCells[i][0] = upper[i].density;
+            volume.upperCells[i][1] = upper[i].floor_y * upper[i].density;
+            if (upper[i].density <= 0.0f) continue;
+            ++volume.upperCount;
+            volume.maximum[1] = std::max(volume.maximum[1], upper[i].floor_y + grid->layer_height);
+        }
+    }
+    if (flags & LINKSPAN_OOT_FOG_FLOW_LOCAL_LIGHTS) CopyFogLights(*static_cast<PlayState*>(play), gFogFrame.volume);
+    if (flags & LINKSPAN_OOT_FOG_FLOW_ATMOSPHERE) {
+        const auto& lights = static_cast<PlayState*>(play)->lightCtx;
+        for (int channel = 0; channel < 3; ++channel) {
+            gFogFrame.volume.atmosphere[channel] = lights.fogColor[channel] / 255.0f;
+        }
+        gFogFrame.volume.atmosphere[3] = 0.70f;
+    }
+    if (gFogFrame.sourcePlay != play || gFogFrame.generation != flow->generation) {
+        ++gFogFrame.stream;
+        gFogFrame.sourcePlay = play;
+        gFogFrame.generation = flow->generation;
+    }
+    snapshot.stream = gFogFrame.stream;
+    snapshot.tick = flow->tick;
+    snapshot.dt = flow->step_seconds;
+    snapshot.flags = flags & (FAST_FOG_FLOW_PARTICLES | FAST_FOG_FLOW_VORTICES | FAST_FOG_FLOW_LIFT |
+                              FAST_FOG_FLOW_VERTICAL_COMPUTE | FAST_FOG_FLOW_CPU_FIELD);
+    gFogFrame.hasFlow = true;
+    return SHIP_NATIVE_OK;
+}
+
 void SetToonRamp(float center, float softness, float highlight, float shadow, bool debugBands) {
     if (auto interpreter = CurrentInterpreter()) {
         if (auto* rapi = interpreter->GetCurrentRenderingAPI()) {
@@ -308,6 +587,48 @@ extern "C" void LinkSpan_PlayerLimbDraw(PlayState* play, s32 limbIndex, Actor* a
 // HOST-SLIM-001 (RFC 0029): Play_ClearCamera avisa antes de liberar o slot.
 extern "C" void LinkSpan_CameraCleared(PlayState* play, s16 camId) {
     ShipLuaHost::NotifyOotCameraCleared(play, camId);
+}
+
+const ShipOotFogV1& ShipLuaHost::GetOotNativeFogService() {
+    static const ShipOotFogV1 service{ sizeof(ShipOotFogV1), SubmitFogGrid };
+    return service;
+}
+
+const ShipOotFogV2& ShipLuaHost::GetOotNativeFogFlowService() {
+    static const ShipOotFogV2 service{ sizeof(ShipOotFogV2), SubmitFogFlow,
+                                      LINKSPAN_OOT_FOG_FLOW_BLOCKED_EDGES | LINKSPAN_OOT_FOG_FLOW_VORTICES |
+                                          LINKSPAN_OOT_FOG_FLOW_LIFT | LINKSPAN_OOT_FOG_FLOW_DOMAIN_SHIFT |
+                                          LINKSPAN_OOT_FOG_FLOW_LOCAL_LIGHTS | LINKSPAN_OOT_FOG_FLOW_STACKED_SUPPORTS |
+                                          LINKSPAN_OOT_FOG_FLOW_ATMOSPHERE | LINKSPAN_OOT_FOG_FLOW_VERTICAL_COMPUTE |
+                                          LINKSPAN_OOT_FOG_FLOW_CPU_FIELD };
+    return service;
+}
+
+extern "C" void LinkSpan_BeginFogFrame(void* play) {
+    gFogFrame.play = play;
+    gFogFrame.submitted = false;
+    gFogFrame.hasFlow = false;
+}
+
+extern "C" void LinkSpan_EndFogFrame(void) {
+    gFogFrame.play = nullptr;
+    gFogFrame.submitted = false;
+}
+
+extern "C" void LinkSpan_ResetFogScene(void) {
+    gFogFrame.sourcePlay = nullptr;
+    LinkSpan_EndFogFrame();
+}
+
+extern "C" int LinkSpan_TakeFogGrid(void* play, FastFogVolume* volume, const FastFogFlow** flow) {
+    if (!volume || !play || play != gFogFrame.play || !gFogFrame.submitted) return 0;
+    const bool drawable = gFogFrame.volume.grid[0] != 0.0f;
+    if (drawable) {
+        *volume = gFogFrame.volume;
+        *flow = gFogFrame.hasFlow ? &gFogFrame.flow : nullptr;
+    }
+    LinkSpan_EndFogFrame();
+    return drawable;
 }
 
 // O roll do lease V2 entra depois da função de câmera do jogo e antes do vetor up
