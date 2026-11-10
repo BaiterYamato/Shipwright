@@ -1,3 +1,4 @@
+#include "soh/Enhancements/Graphics/Debris/PersistentDebris.h"
 #include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
 #include "global.h"
 #include "overlays/effects/ovl_Effect_Ss_Dust/z_eff_ss_dust.h"
@@ -300,6 +301,8 @@ void EffectSsBomb2_SpawnFade(PlayState* play, Vec3f* pos, Vec3f* velocity, Vec3f
     initParams.drawMode = 0;
 
     ImpactDecals_OnExplosion(play, &pos->x);
+    // R057/R058: o mesmo evento Bomb2 impulsiona os destroços persistentes.
+    PersistentDebris_OnExplosion(play, &pos->x);
     EffectSs_Spawn(play, EFFECT_SS_BOMB2, 10, &initParams);
 }
 
@@ -314,6 +317,8 @@ void EffectSsBomb2_SpawnLayered(PlayState* play, Vec3f* pos, Vec3f* velocity, Ve
     initParams.drawMode = 1;
 
     ImpactDecals_OnExplosion(play, &pos->x);
+    // R057/R058: o mesmo evento Bomb2 impulsiona os destroços persistentes.
+    PersistentDebris_OnExplosion(play, &pos->x);
     EffectSs_Spawn(play, EFFECT_SS_BOMB2, 10, &initParams);
 }
 
@@ -808,6 +813,11 @@ void EffectSsKakera_Spawn(PlayState* play, Vec3f* pos, Vec3f* velocity, Vec3f* a
                           s16 arg7, s16 arg8, s16 scale, s16 arg10, s16 arg11, s32 life, s16 colorIdx, s16 objId,
                           Gfx* dList) {
     EffectSsKakeraInitParams initParams;
+
+    // R058: suprime o Kakera vanilla somente quando o pool assumiu um caco permitido.
+    if (PersistentDebris_TrySpawnShard(play, &pos->x, &velocity->x, arg5, scale, colorIdx, objId, dList)) {
+        return;
+    }
 
     Math_Vec3f_Copy(&initParams.pos, pos);
     Math_Vec3f_Copy(&initParams.velocity, velocity);

@@ -15,6 +15,7 @@
 #include "soh/Enhancements/Graphics/WaterRipple/WaterRipple.h"
 #include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
 #include "soh/Enhancements/Graphics/Weather/WetSurface.h"
+#include "soh/Enhancements/Graphics/Weather/WindField.h"
 #include <wrl/client.h>
 #include <fast/Fast3dWindow.h>
 #include <fast/backends/gfx_direct3d_common.h>
@@ -59,6 +60,13 @@ struct CameraConstants {
     float info[4]; // Near, far, interpolation fraction, replaced-matrix flags.
 };
 static_assert(sizeof(CameraConstants) == 9 * 16);
+
+// b6: molhado (2 vetores, packs antigos) seguido do campo de vento (mais 2, R054).
+struct WeatherConstants {
+    WetSurface::Frame wet;
+    WindField::Frame wind;
+};
+static_assert(sizeof(WeatherConstants) == 64);
 
 using SceneVector = std::array<float, 4>;
 constexpr size_t TransmissionTriangleOffset = 1 + 2 * ShaderPacks::MaxTransmissionMaterials;
@@ -681,7 +689,8 @@ struct WorldPass {
             ctx.PSSetConstantBuffers(4, 1, pointShadowBuffer.GetAddressOf());
         }
         if (weatherBuffer) {
-            const auto weather = WetSurface::Read();
+            // Pack de 2 vetores lê só o molhado; o de 4 lê também o campo de vento (R054).
+            const WeatherConstants weather{ WetSurface::Read(), WindField::Read() };
             ctx.PSGetConstantBuffers(6, 1, oldWeatherBuffer.GetAddressOf());
             ctx.UpdateSubresource(weatherBuffer.Get(), 0, nullptr, &weather, 0, 0);
             ctx.PSSetConstantBuffers(6, 1, weatherBuffer.GetAddressOf());
@@ -1088,7 +1097,9 @@ bool CheckPassInterface(decltype(&D3DReflect) reflect, ID3DBlob& bytecode, const
         }
         if (binding.Type == D3D_SIT_CBUFFER && binding.BindPoint == 6 &&
             std::string_view(binding.Name) == "LinkSpanWeather") {
-            if (!CheckVectorArrayBuffer(*shader->GetConstantBufferByName(binding.Name), sizeof(WetSurface::Frame) / 16))
+            auto& weather = *shader->GetConstantBufferByName(binding.Name);
+            if (!CheckVectorArrayBuffer(weather, sizeof(WetSurface::Frame) / 16) &&
+                !CheckVectorArrayBuffer(weather, sizeof(WeatherConstants) / 16))
                 return false;
             usesWeather = true;
             continue;
@@ -1165,6 +1176,7 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
     bool usesDecals = false;
     const D3D_SHADER_MACRO capabilities[] = { { "LINKSPAN_HAS_WEATHER", "1" },
                                               { "LINKSPAN_HAS_DECALS", "1" },
+                                              { "LINKSPAN_HAS_WIND_FIELD", "1" },
                                               { nullptr, nullptr } };
     constexpr UINT flags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL2;
     reflectedWaterRipple = false;
@@ -1311,7 +1323,7 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
     }
     if (usesWeather) {
         D3D11_BUFFER_DESC desc{};
-        desc.ByteWidth = sizeof(WetSurface::Frame);
+        desc.ByteWidth = sizeof(WeatherConstants);
         desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         if (FAILED(next->device->CreateBuffer(&desc, nullptr, next->weatherBuffer.GetAddressOf()))) {
             error = "Falha ao criar LinkSpanWeather no DirectX 11.";

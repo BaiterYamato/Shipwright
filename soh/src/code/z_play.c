@@ -19,7 +19,10 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 #include "soh/Enhancements/Graphics/ShaderPacks/WorldPass.h"
 #include "soh/Enhancements/Graphics/WaterRipple/WaterRipple.h"
 #include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
+#include "soh/Enhancements/Graphics/Debris/PersistentDebris.h"
+#include "soh/Enhancements/Graphics/Leaves/DetachedLeaves.h"
 #include "soh/Enhancements/Graphics/Weather/WetSurface.h"
+#include "soh/Enhancements/Graphics/Weather/WindField.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
 #include <fast/world_postprocess.h>
@@ -245,6 +248,9 @@ Gfx* Play_SetFog(PlayState* play, Gfx* gfx) {
 
 void Play_Destroy(GameState* thisx) {
     ImpactDecals_Reset();
+    // R058/R050: nenhum destroço, folha ou segmento atravessa a troca de cena.
+    PersistentDebris_Reset();
+    DetachedLeaves_Reset();
     PlayState* play = (PlayState*)thisx;
     Player* player = GET_PLAYER(play);
 
@@ -414,6 +420,9 @@ void LinkSpan_PlayUpdate(PlayState* play);
 
 void Play_Init(GameState* thisx) {
     ImpactDecals_Reset();
+    // R058/R050: nenhum destroço, folha ou segmento atravessa a troca de cena.
+    PersistentDebris_Reset();
+    DetachedLeaves_Reset();
     PlayState* play = (PlayState*)thisx;
     LinkSpan_ResetFogScene();
     GraphicsContext* gfxCtx = play->state.gfxCtx;
@@ -1724,6 +1733,19 @@ void Play_Draw(PlayState* play) {
         if ((HREG(80) != 10) || (HREG(93) != 0)) {
             DebugDisplay_DrawObjects(play);
         }
+
+        // R054: vento compartilhado (pack, poeira, folhas, gorro); um passo por tick de jogo,
+        // antes de quem o amostra neste tick.
+        WindField_Tick(play);
+        // R057/R050: passo fixo de 20 Hz, protegido contra draws repetidos e pausa. As folhas
+        // avançam antes do WaterRipple_Tick para o toque na água entrar no mesmo tick.
+        PersistentDebris_Tick(play);
+        DetachedLeaves_Tick(play);
+        // R058/R050: OPA/XLU capturados como geometria do mundo, antes do shaderpack e do HUD.
+        ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
+        PersistentDebris_Draw(play);
+        DetachedLeaves_Draw(play);
+        ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
 
         WaterRipple_Tick(play);
         ImpactDecals_Tick(play);
