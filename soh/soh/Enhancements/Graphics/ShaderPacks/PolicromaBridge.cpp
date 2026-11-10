@@ -1,6 +1,7 @@
 #include "PolicromaBridge.h"
 #include "PassSource.h"
 #include "WorldPass.h"
+#include "PackManifest.h"
 
 #ifdef _WIN32
 #include <ship/Context.h>
@@ -11,7 +12,8 @@
 namespace {
 
 void WriteError(char* output, uint32_t capacity, std::string_view message) {
-    if (!output || !capacity) return;
+    if (!output || !capacity)
+        return;
     const size_t length = std::min<size_t>(message.size(), capacity - 1);
     std::memcpy(output, message.data(), length);
     output[length] = '\0';
@@ -20,13 +22,13 @@ void WriteError(char* output, uint32_t capacity, std::string_view message) {
 uint32_t AppDirectory(char* output, uint32_t capacity) {
     try {
         const auto path = Ship::Context::GetAppDirectoryPath();
-        if (path.empty() || path.size() >= 32768) return 0;
+        if (path.empty() || path.size() >= 32768)
+            return 0;
         const auto size = static_cast<uint32_t>(path.size() + 1);
-        if (output && capacity >= size) std::memcpy(output, path.c_str(), size);
+        if (output && capacity >= size)
+            std::memcpy(output, path.c_str(), size);
         return size;
-    } catch (...) {
-        return 0;
-    }
+    } catch (...) { return 0; }
 }
 
 bool ValidText(PolicromaText text, uint32_t limit) {
@@ -37,11 +39,10 @@ std::string Copy(PolicromaText text) {
     return std::string(text.data, text.size);
 }
 
-bool Activate(const PolicromaProgram* program, char* error, uint32_t capacity) {
+bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, char* error, uint32_t capacity) {
     try {
-        if (!program || !ValidText(program->name, 1024) || !program->passes ||
-            program->passCount == 0 || program->passCount > 8 ||
-            program->includeCount > 32 || (program->includeCount && !program->includes) ||
+        if (!program || !ValidText(program->name, 1024) || !program->passes || program->passCount == 0 ||
+            program->passCount > 8 || program->includeCount > 32 || (program->includeCount && !program->includes) ||
             program->materialCount > PolicromaMaxMaterials || (program->materialCount && !program->materials)) {
             WriteError(error, capacity, "Programa Policroma incompatível.");
             return false;
@@ -72,12 +73,14 @@ bool Activate(const PolicromaProgram* program, char* error, uint32_t capacity) {
         std::vector<ShaderPacks::PassSource> sources;
         for (uint32_t i = 0; i < program->passCount; ++i) {
             const auto& pass = program->passes[i];
-            if (!ValidText(pass.source.path, 160) || !ValidText(pass.source.text, 128 * 1024) ||
-                (pass.divisor != 1 && pass.divisor != 2 && pass.divisor != 4) ||
-                (i + 1 == program->passCount && pass.divisor != 1) ||
-                !std::all_of(std::begin(pass.inputs), std::end(pass.inputs), [i](int32_t input) {
+            const bool validLegacy =
+                (pass.divisor == 1 || pass.divisor == 2 || pass.divisor == 4) &&
+                (i + 1 != program->passCount || pass.divisor == 1) &&
+                std::all_of(std::begin(pass.inputs), std::end(pass.inputs), [i](int32_t input) {
                     return input >= PolicromaScenePointShadowInput && input <= static_cast<int32_t>(i);
-                })) {
+                });
+            if (!ValidText(pass.source.path, 160) || !ValidText(pass.source.text, 128 * 1024) ||
+                (!manifest.data && !validLegacy)) {
                 WriteError(error, capacity, "Passe HLSL inválido.");
                 return false;
             }
@@ -86,24 +89,55 @@ bool Activate(const PolicromaProgram* program, char* error, uint32_t capacity) {
             source.source = Copy(pass.source.text);
             source.divisor = pass.divisor;
             std::copy_n(pass.inputs, PolicromaMaxInputs, source.inputs.begin());
-            if (!includes->empty()) source.includes = includes;
-            if (!materials->empty()) source.transmissionMaterials = materials;
+            if (!includes->empty())
+                source.includes = includes;
+            if (!materials->empty())
+                source.transmissionMaterials = materials;
             sources.push_back(std::move(source));
         }
+        if (manifest.data) {
+            if (!ValidText(manifest, 128 * 1024)) {
+                WriteError(error, capacity, "Manifesto v2 inválido.");
+                return false;
+            }
+            ShaderPacks::ApplyPackManifest(std::string_view(manifest.data, manifest.size), sources);
+        }
+        if (!ShaderPacks::ValidPassSources(sources)) {
+            WriteError(error, capacity, "Grafo de passes inválido.");
+            return false;
+        }
         std::string diagnostic;
-        if (ShaderPacks::ActivateWorldPass(sources, Copy(program->name), diagnostic)) return true;
+        if (ShaderPacks::ActivateWorldPass(sources, Copy(program->name), diagnostic))
+            return true;
         WriteError(error, capacity, diagnostic);
-    } catch (...) {
+    } catch (const std::exception& exception) { WriteError(error, capacity, exception.what()); } catch (...) {
         WriteError(error, capacity, "Falha ao preparar o programa DirectX 11.");
     }
     return false;
 }
 
+bool Activate(const PolicromaProgram* program, char* error, uint32_t capacity) {
+    return ActivateProgram(program, {}, error, capacity);
+}
+
+bool ActivateV2(const PolicromaProgram* program, PolicromaText manifest, char* error, uint32_t capacity) {
+    if (!ValidText(manifest, 128 * 1024)) {
+        WriteError(error, capacity, "Manifesto v2 obrigatório.");
+        return false;
+    }
+    return ActivateProgram(program, manifest, error, capacity);
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) const PolicromaBridgeV1* LinkSpan_GetPolicromaBridgeV1() {
-    static const PolicromaBridgeV1 bridge{sizeof(PolicromaBridgeV1), AppDirectory, Activate,
-                                         ShaderPacks::DisableWorldPass};
+    static const PolicromaBridgeV1 bridge{ sizeof(PolicromaBridgeV1), AppDirectory, Activate,
+                                           ShaderPacks::DisableWorldPass };
+    return &bridge;
+}
+extern "C" __declspec(dllexport) const PolicromaBridgeV2* LinkSpan_GetPolicromaBridgeV2() {
+    static const PolicromaBridgeV2 bridge{ sizeof(PolicromaBridgeV2), AppDirectory, ActivateV2,
+                                           ShaderPacks::DisableWorldPass };
     return &bridge;
 }
 #endif

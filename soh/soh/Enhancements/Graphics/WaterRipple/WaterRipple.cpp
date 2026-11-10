@@ -6,6 +6,11 @@
 #include <cmath>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
+
+#include <ship/Context.h>
+#include <ship/config/ConsoleVariable.h>
+#include "soh/cvar_prefixes.h"
 
 extern "C" {
 #include "z64.h"
@@ -30,13 +35,20 @@ bool hasPlane = false;
 int quiet = QuietTicks;
 int lastScene = -1;
 const void* lastPlay = nullptr;
+water::Config simulationConfig{};
+bool publishFlow = false;
+water::FlowComponent flowComponent = water::FlowComponent::X;
 
 void Publish(bool active) {
     const auto uv = field->WorldToUV();
     current.worldToUV = { uv[0], uv[1], uv[2], uv[3] };
     current.info = { planeY, Strength, 1.0f / WaterRipple::Side, active ? 1.0f : 0.0f };
     if (active) {
-        field->PackTextureRGBA16(packed);
+        if (publishFlow) {
+            field->PackTextureRGBA16Flow(packed, flowComponent);
+        } else {
+            field->PackTextureRGBA16(packed);
+        }
     } else {
         std::fill(packed.begin(), packed.end(), uint16_t{ 0 });
     }
@@ -49,9 +61,7 @@ bool Prepare(PlayState* play, float y) {
         return false;
     }
     if (!field) {
-        water::Config config;
-        config.side = WaterRipple::Side;
-        field = std::make_unique<water::Field>(config);
+        field = std::make_unique<water::Field>(simulationConfig);
         packed.assign(size_t{ WaterRipple::Side } * WaterRipple::Side * 4, 0);
     }
     if (!hasPlane || std::fabs(y - planeY) > PlaneTolerance) {
@@ -66,6 +76,34 @@ bool Prepare(PlayState* play, float y) {
 } // namespace
 
 namespace WaterRipple {
+
+bool Configure(const water::Config& config, bool flow, water::FlowComponent component) {
+    if (config.side != Side || config.stepSeconds != 1.0f / 60.0f ||
+        (component != water::FlowComponent::X && component != water::FlowComponent::Z))
+        return false;
+    std::unique_ptr<water::Field> next;
+    try {
+        next = std::make_unique<water::Field>(config);
+    } catch (const std::invalid_argument&) { return false; }
+    // Todas as alocações potencialmente falíveis precedem a troca do estado.
+    std::vector<uint16_t> nextPacked(size_t{ Side } * Side * 4, 0);
+    std::lock_guard lock(mutex);
+    simulationConfig = config;
+    publishFlow = flow;
+    flowComponent = component;
+    if (wanted.load(std::memory_order_relaxed)) {
+        field.swap(next);
+        packed.swap(nextPacked);
+    } else {
+        field.reset();
+        packed.clear();
+    }
+    current = {};
+    hasPlane = false;
+    quiet = QuietTicks;
+    ++currentVersion;
+    return true;
+}
 
 void SetWanted(bool value) {
     wanted.store(value);
@@ -119,10 +157,31 @@ extern "C" void WaterRipple_OnSplash(PlayState* play, const float* pos, short sc
                   -std::clamp(120.0f + size * 0.1f, 120.0f, 220.0f));
 }
 
+namespace {
+// gDeveloperTools.WaterSolver: 0 = onda amortecida (R034), 1 = águas rasas (R035).
+int appliedSolver = 0;
+
+void ApplySolverCVar() {
+    const int solver = std::clamp(
+        Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_DEVELOPER_TOOLS("WaterSolver"), 0), 0,
+        1);
+    if (solver == appliedSolver) {
+        return;
+    }
+    water::Config config;
+    config.side = WaterRipple::Side;
+    config.solver = solver == 1 ? water::Solver::ShallowWater : water::Solver::DampedWave;
+    if (WaterRipple::Configure(config)) {
+        appliedSolver = solver;
+    }
+}
+} // namespace
+
 extern "C" void WaterRipple_Tick(PlayState* play) {
     if (!wanted.load(std::memory_order_relaxed) || !play) {
         return;
     }
+    ApplySolverCVar();
     std::lock_guard lock(mutex);
     if (!field) {
         return;

@@ -2,12 +2,14 @@
 
 // Ondulação interativa da água (R034). O jogo alimenta um height field com os
 // mesmos eventos que geram anéis e respingos; um shaderpack DX11 pode ler o
-// resultado. Sem pack que declare LinkSpanWaterRipple, nada é alocado nem simulado.
+// resultado. Sem pack que declare LinkSpanWaterRipple, não há grade persistente
+// nem simulação. Configure valida usando uma instância temporária.
 
 #ifdef __cplusplus
 #include <array>
 #include <cstdint>
 #include <vector>
+#include "water_ripple_field.h"
 
 namespace WaterRipple {
 
@@ -19,6 +21,12 @@ struct Frame {
 };
 
 void SetWanted(bool wanted);
+// Configuração explícita, fora do tick. Mantém padrão R034 e A=0.
+// Exige side=Side e stepSeconds=1/60 s; valida antes de substituir o estado.
+// Retorna false se inválida; sucesso limpa ondas e aguarda novo evento.
+// Pode alocar; Read também pode realocar o vetor do consumidor, como antes.
+bool Configure(const water::Config& config, bool publishFlow = false,
+               water::FlowComponent component = water::FlowComponent::X);
 // Sempre preenche frame. Devolve true quando texels (Side*Side*4 halfs, RGBA16F)
 // foi atualizado; version guarda a última versão lida por quem chama.
 bool Read(uint64_t& version, std::vector<uint16_t>& texels, Frame& frame);

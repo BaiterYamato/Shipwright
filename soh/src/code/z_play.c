@@ -18,8 +18,13 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 #include "soh/Enhancements/enhancementTypes.h"
 #include "soh/Enhancements/Graphics/ShaderPacks/WorldPass.h"
 #include "soh/Enhancements/Graphics/WaterRipple/WaterRipple.h"
+#include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
+#include "soh/Enhancements/Graphics/Weather/WetSurface.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
+#include <fast/world_postprocess.h>
+#include <fast/world_presentation.h>
+#include <libultraship/bridge/gfxdebuggerbridge.h>
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/SaveManager.h"
 #include "soh/framebuffer_effects.h"
@@ -239,6 +244,7 @@ Gfx* Play_SetFog(PlayState* play, Gfx* gfx) {
 }
 
 void Play_Destroy(GameState* thisx) {
+    ImpactDecals_Reset();
     PlayState* play = (PlayState*)thisx;
     Player* player = GET_PLAYER(play);
 
@@ -407,6 +413,7 @@ SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum);
 void LinkSpan_PlayUpdate(PlayState* play);
 
 void Play_Init(GameState* thisx) {
+    ImpactDecals_Reset();
     PlayState* play = (PlayState*)thisx;
     LinkSpan_ResetFogScene();
     GraphicsContext* gfxCtx = play->state.gfxCtx;
@@ -1394,8 +1401,8 @@ static void Play_DrawFogVolume(PlayState* play) {
     MtxF viewing;
     Matrix_MtxToMtxF(&view->projection, &projection);
     Matrix_MtxToMtxF(&view->viewing, &viewing);
-    if (fabsf(projection.mf[0][0]) < 0.0001f || fabsf(projection.mf[1][1]) < 0.0001f ||
-        projection.mf[2][3] >= 0.0f || view->zFar <= view->zNear) {
+    if (fabsf(projection.mf[0][0]) < 0.0001f || fabsf(projection.mf[1][1]) < 0.0001f || projection.mf[2][3] >= 0.0f ||
+        view->zFar <= view->zNear) {
         return;
     }
 
@@ -1433,6 +1440,17 @@ void Play_Draw(PlayState* play) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     Lights* sp228;
     Vec3f sp21C;
+
+    // Capturar antes de R_PAUSE_MENU_MODE ser alterado pelo prerender abaixo.
+    // Debug pode emitir HUD em OPA ou antes de Play_Draw; barras de Gfx_SetupFrame
+    // também precedem o fog. Esses caminhos conservam a apresentação anterior.
+    const bool allowWorldPresentation =
+        gSaveContext.gameMode == GAMEMODE_NORMAL && play->pauseCtx.state == 0 && play->pauseCtx.debugState == 0 &&
+        play->gameOverCtx.state == GAMEOVER_INACTIVE && R_PAUSE_MENU_MODE == 0 && gTrnsnUnkState == 0 &&
+        HREG(80) == 0 && SREG(0) == 0 && CREG(2) == 0 && R_ENABLE_ARENA_DBG == 0 && ShrinkWindow_GetCurrentVal() == 0 &&
+        !CVarGetInteger(CVAR_DEVELOPER_TOOLS("DebugEnabled"), 0) &&
+        !CVarGetInteger(CVAR_DEVELOPER_TOOLS("RegEditEnabled"), 0) && !GfxDebuggerIsDebugging() &&
+        !GfxDebuggerIsDebuggingRequested();
 
     // #region SOH [Port] Frame buffer effects for pause menu
     // Track render size when paused and that a copy was performed
@@ -1708,6 +1726,8 @@ void Play_Draw(PlayState* play) {
         }
 
         WaterRipple_Tick(play);
+        ImpactDecals_Tick(play);
+        WetSurface_Tick(play);
         ShaderPacks_DrawWorldPass(gfxCtx);
         Play_DrawFogVolume(play);
 
@@ -1749,6 +1769,17 @@ void Play_Draw(PlayState* play) {
             if (gTrnsnUnkState == 2) {
                 goto Play_Draw_skip;
             }
+        }
+
+        // graph.c executa WORK -> OPA -> XLU -> OVERLAY. Geometria acrescentada
+        // pelos hooks abaixo a OPA/XLU ainda executa ANTES do shaderpack/fog.
+        // Seu OVERLAY (incluindo ShipLua HUD) executa DEPOIS desta fronteira.
+        // Os gotos de pausa/transição especial não passam por este ponto.
+        if (allowWorldPresentation) {
+            Gfx* marker = OVERLAY_DISP++;
+            marker->words.w0 = ((u32)FAST_GFX_WORLD_POSTPROCESS << 24) | FAST_WORLD_PRESENT_COMMAND;
+            marker->words.w1 = 0;
+            FastSetWorldPresentationBoundary(gfxCtx->workBuffer, marker);
         }
 
         // Draw Enhancements that need to be placed in the world. This happens before the PostWorldDraw

@@ -1,3 +1,4 @@
+#include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
 /*
  * File: z_player.c
  * Overlay: ovl_player_actor
@@ -9271,6 +9272,13 @@ s32 func_80842DF4(PlayState* play, Player* this) {
                     sp68.x = this->meleeWeaponInfo[0].tip.x + (sp50.x * phi_f2);
                     sp68.y = this->meleeWeaponInfo[0].tip.y + (sp50.y * phi_f2);
                     sp68.z = this->meleeWeaponInfo[0].tip.z + (sp50.z * phi_f2);
+
+                    // R063: visual-only decal probe (also hits floors); does not change the sword collision.
+                    if (this->heldItemAction == PLAYER_IA_SWORD_KOKIRI ||
+                        this->heldItemAction == PLAYER_IA_SWORD_MASTER ||
+                        this->heldItemAction == PLAYER_IA_SWORD_BIGGORON) {
+                        ImpactDecals_OnSwordSweep(play, &sp68.x, &this->meleeWeaponInfo[0].tip.x);
+                    }
 
                     if (BgCheck_EntityLineTest1(&play->colCtx, &sp68, &this->meleeWeaponInfo[0].tip, &sp5C, &sp78, true,
                                                 false, false, true, &sp74) &&

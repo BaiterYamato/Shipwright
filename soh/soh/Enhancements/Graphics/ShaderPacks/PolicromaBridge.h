@@ -57,4 +57,13 @@ struct PolicromaBridgeV1 {
     void (*off)();
 };
 
+// Export separado: não altera layout, stride ou semântica de V1.
+struct PolicromaBridgeV2 {
+    uint32_t size;
+    uint32_t (*appDirectory)(char* output, uint32_t capacity);
+    bool (*activate)(const PolicromaProgram* program, PolicromaText manifest, char* error, uint32_t capacity);
+    void (*off)();
+};
+using GetPolicromaBridgeV2 = const PolicromaBridgeV2* (*)();
+
 using GetPolicromaBridgeV1 = const PolicromaBridgeV1* (*)();

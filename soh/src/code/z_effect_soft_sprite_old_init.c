@@ -1,3 +1,4 @@
+#include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
 #include "global.h"
 #include "overlays/effects/ovl_Effect_Ss_Dust/z_eff_ss_dust.h"
 #include "overlays/effects/ovl_Effect_Ss_KiraKira/z_eff_ss_kirakira.h"
@@ -298,6 +299,7 @@ void EffectSsBomb2_SpawnFade(PlayState* play, Vec3f* pos, Vec3f* velocity, Vec3f
     initParams.scaleStep = 0;
     initParams.drawMode = 0;
 
+    ImpactDecals_OnExplosion(play, &pos->x);
     EffectSs_Spawn(play, EFFECT_SS_BOMB2, 10, &initParams);
 }
 
@@ -311,6 +313,7 @@ void EffectSsBomb2_SpawnLayered(PlayState* play, Vec3f* pos, Vec3f* velocity, Ve
     initParams.scaleStep = scaleStep;
     initParams.drawMode = 1;
 
+    ImpactDecals_OnExplosion(play, &pos->x);
     EffectSs_Spawn(play, EFFECT_SS_BOMB2, 10, &initParams);
 }
 
