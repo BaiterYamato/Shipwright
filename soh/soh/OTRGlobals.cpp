@@ -2497,16 +2497,34 @@ extern "C" GetItemEntry GetItemMystery() {
     return GET_ITEM_MYSTERY;
 }
 
+// Link-Span: a seleção de arquivo pode rodar um quadro com o contexto do randomizer ainda nulo
+// (crash 0xc0000005 em SetSpoilerLoaded, 21/11/2026); os wrappers C passam a tolerar isso.
+static Rando::Context* RandomizerContextOrNull() {
+    if (OTRGlobals::Instance == nullptr || !OTRGlobals::Instance->gRandoContext) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            SPDLOG_WARN("Randomizer: contexto nulo num wrapper C; chamada ignorada");
+        }
+        return nullptr;
+    }
+    return OTRGlobals::Instance->gRandoContext.get();
+}
+
 extern "C" uint8_t Randomizer_IsSeedGenerated() {
-    return OTRGlobals::Instance->gRandoContext->IsSeedGenerated() ? 1 : 0;
+    Rando::Context* ctx = RandomizerContextOrNull();
+    return ctx != nullptr && ctx->IsSeedGenerated() ? 1 : 0;
 }
 
 extern "C" uint8_t Randomizer_IsSpoilerLoaded() {
-    return OTRGlobals::Instance->gRandoContext->IsSpoilerLoaded() ? 1 : 0;
+    Rando::Context* ctx = RandomizerContextOrNull();
+    return ctx != nullptr && ctx->IsSpoilerLoaded() ? 1 : 0;
 }
 
 extern "C" void Randomizer_SetSpoilerLoaded(bool spoilerLoaded) {
-    OTRGlobals::Instance->gRandoContext->SetSpoilerLoaded(spoilerLoaded);
+    if (Rando::Context* ctx = RandomizerContextOrNull()) {
+        ctx->SetSpoilerLoaded(spoilerLoaded);
+    }
 }
 
 extern "C" uint8_t Randomizer_GenerateRandomizer() {

@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstdint>
@@ -112,6 +113,7 @@ void Player_Action_Roll(Player* player, PlayState* play);
 void func_8083FB7C(Player* player, PlayState* play);
 void Player_Action_80845EF8(Player* player, PlayState* play);
 void FileChoose_LoadGame(GameState* gameState);
+void FileChoose_Main(GameState* thisx);
 
 static void ShipLuaEmitDisplayList(PlayState* play, const char* path) {
     OPEN_DISPS(play->state.gfxCtx);
@@ -593,6 +595,44 @@ int32_t NativeGetSettingInt(const char* name, int32_t fallback) {
 // registrar um hook no mesmo mapa durante o despacho dele invalidaria o iterador. Antes do InitAll não roda frame;
 // a primeira volta só reaplica o que o InitAll acabou de registrar.
 std::vector<std::string> gPendingShipInit;
+
+// Os comandos de console do Sail rodam na thread de rede; FileChoose_LoadGame (Save_LoadFile troca o Context do
+// randomizer) e a troca de GameState só são seguras na thread do jogo. Os comandos só validam e gravam o pedido aqui;
+// RunPendingFileRequest executa em LinkSpan_ApplyPendingSettings (início do GameState_Update). Último pedido vence.
+constexpr int32_t FILE_REQUEST_NONE = -1;
+constexpr int32_t FILE_REQUEST_GOTO_FILE_SELECT = -2;
+// Valores >= 0 são o slot (0..2) a abrir.
+std::atomic<int32_t> gPendingFileRequest{ FILE_REQUEST_NONE };
+
+void RunPendingFileRequest() {
+    const int32_t request = gPendingFileRequest.exchange(FILE_REQUEST_NONE);
+    if (request == FILE_REQUEST_NONE) {
+        return;
+    }
+    // O estado pode ter mudado entre o comando e este quadro: revalida na thread do jogo.
+    if (request == FILE_REQUEST_GOTO_FILE_SELECT) {
+        if (gGameState == nullptr || gSaveContext.gameMode != GAMEMODE_TITLE_SCREEN) {
+            SPDLOG_WARN("shiplua_goto_file_select descartado: fora da tela de titulo");
+            return;
+        }
+        gSaveContext.gameMode = GAMEMODE_FILE_SELECT;
+        gGameState->running = false;
+        SET_NEXT_GAMESTATE(gGameState, FileChoose_Init, FileChooseContext);
+        return;
+    }
+    // gameMode FILE_SELECT vale ainda durante o fade do título (TitleContext/PlayState ativos); só o main do
+    // GameState prova que ele é um FileChooseContext.
+#pragma push_macro("main")
+#undef main // SDL redefine main como SDL_main; aqui é o campo GameState::main
+    const bool isFileChoose = gGameState != nullptr && gGameState->main == FileChoose_Main;
+#pragma pop_macro("main")
+    if (!isFileChoose || gSaveContext.gameMode != GAMEMODE_FILE_SELECT) {
+        SPDLOG_WARN("shiplua_open_file descartado: fora da tela de selecao de arquivo");
+        return;
+    }
+    reinterpret_cast<FileChooseContext*>(gGameState)->buttonIndex = static_cast<s16>(request);
+    FileChoose_LoadGame(gGameState);
+}
 
 void SetSohCVarInt(const char* name, int32_t value) {
     const bool changed = CVarGetInteger(name, ~value) != value;
@@ -4077,6 +4117,7 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
 // Sobra uma janela: gravação feita em callback de ator antes do update do jogador só vale no frame seguinte.
 // Sem mod nada grava, e a fila fica vazia.
 extern "C" void LinkSpan_ApplyPendingSettings(void) {
+    RunPendingFileRequest();
     ShipLuaHost::PumpOotAudioMix();
     if (gPendingShipInit.empty()) {
         return;
@@ -4116,9 +4157,7 @@ void Initialize() {
                                  }
                                  return 1;
                              }
-                             gSaveContext.gameMode = GAMEMODE_FILE_SELECT;
-                             gGameState->running = false;
-                             SET_NEXT_GAMESTATE(gGameState, FileChoose_Init, FileChooseContext);
+                             gPendingFileRequest.store(FILE_REQUEST_GOTO_FILE_SELECT);
                              if (output != nullptr) {
                                  *output = "selecao de arquivo solicitada";
                              }
@@ -4158,9 +4197,7 @@ void Initialize() {
                  }
                  return 1;
              }
-             auto* fileChoose = reinterpret_cast<FileChooseContext*>(gGameState);
-             fileChoose->buttonIndex = slot;
-             FileChoose_LoadGame(gGameState);
+             gPendingFileRequest.store(slot);
              if (output != nullptr) {
                  *output = "arquivo solicitado";
              }
