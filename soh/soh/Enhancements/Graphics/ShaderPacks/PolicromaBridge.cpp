@@ -39,10 +39,15 @@ std::string Copy(PolicromaText text) {
     return std::string(text.data, text.size);
 }
 
-bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, char* error, uint32_t capacity) {
+bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, char* error, uint32_t capacity,
+                     unsigned maxVersion = 2) {
     try {
+        const uint32_t maxPasses = maxVersion >= 3 ? PolicromaV3MaxPasses : 8;
+        const uint32_t maxSource = maxVersion >= 3 ? 1024 * 1024 : 128 * 1024;
+        // A V3 entrega também os vertex shaders dos passes como includes.
+        const uint32_t maxIncludes = maxVersion >= 3 ? 64 : 32;
         if (!program || !ValidText(program->name, 1024) || !program->passes || program->passCount == 0 ||
-            program->passCount > 8 || program->includeCount > 32 || (program->includeCount && !program->includes) ||
+            program->passCount > maxPasses || program->includeCount > maxIncludes || (program->includeCount && !program->includes) ||
             program->materialCount > PolicromaMaxMaterials || (program->materialCount && !program->materials)) {
             WriteError(error, capacity, "Programa Policroma incompatível.");
             return false;
@@ -50,7 +55,7 @@ bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, ch
         auto includes = std::make_shared<ShaderPacks::IncludeFiles>();
         for (uint32_t i = 0; i < program->includeCount; ++i) {
             const auto& source = program->includes[i];
-            if (!ValidText(source.path, 160) || !ValidText(source.text, 128 * 1024)) {
+            if (!ValidText(source.path, 160) || !ValidText(source.text, maxSource)) {
                 WriteError(error, capacity, "Include HLSL inválido.");
                 return false;
             }
@@ -79,7 +84,7 @@ bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, ch
                 std::all_of(std::begin(pass.inputs), std::end(pass.inputs), [i](int32_t input) {
                     return input >= PolicromaScenePointShadowInput && input <= static_cast<int32_t>(i);
                 });
-            if (!ValidText(pass.source.path, 160) || !ValidText(pass.source.text, 128 * 1024) ||
+            if (!ValidText(pass.source.path, 160) || !ValidText(pass.source.text, maxSource) ||
                 (!manifest.data && !validLegacy)) {
                 WriteError(error, capacity, "Passe HLSL inválido.");
                 return false;
@@ -88,7 +93,7 @@ bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, ch
             source.file = Copy(pass.source.path);
             source.source = Copy(pass.source.text);
             source.divisor = pass.divisor;
-            std::copy_n(pass.inputs, PolicromaMaxInputs, source.inputs.begin());
+            std::copy_n(pass.inputs, PolicromaMaxInputs, source.inputs.begin()); // 4..7 só pelo manifesto v3.
             if (!includes->empty())
                 source.includes = includes;
             if (!materials->empty())
@@ -100,7 +105,17 @@ bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, ch
                 WriteError(error, capacity, "Manifesto v2 inválido.");
                 return false;
             }
-            ShaderPacks::ApplyPackManifest(std::string_view(manifest.data, manifest.size), sources);
+            ShaderPacks::ApplyPackManifest(std::string_view(manifest.data, manifest.size), sources, maxVersion);
+            for (auto& source : sources) {
+                if (source.vertexFile.empty())
+                    continue;
+                const auto vertex = includes->find(source.vertexFile);
+                if (vertex == includes->end()) {
+                    WriteError(error, capacity, "Vertex shader ausente nos includes: " + source.vertexFile);
+                    return false;
+                }
+                source.vertexSource = vertex->second;
+            }
         }
         if (!ShaderPacks::ValidPassSources(sources)) {
             WriteError(error, capacity, "Grafo de passes inválido.");
@@ -116,6 +131,10 @@ bool ActivateProgram(const PolicromaProgram* program, PolicromaText manifest, ch
     return false;
 }
 
+void SetParameters(const float* values, uint32_t count) {
+    ShaderPacks::SetProviderParameters(values, count);
+}
+
 bool Activate(const PolicromaProgram* program, char* error, uint32_t capacity) {
     return ActivateProgram(program, {}, error, capacity);
 }
@@ -128,6 +147,14 @@ bool ActivateV2(const PolicromaProgram* program, PolicromaText manifest, char* e
     return ActivateProgram(program, manifest, error, capacity);
 }
 
+bool ActivateV3(const PolicromaProgram* program, PolicromaText manifest, char* error, uint32_t capacity) {
+    if (!ValidText(manifest, 128 * 1024)) {
+        WriteError(error, capacity, "Manifesto v2/v3 obrigatório.");
+        return false;
+    }
+    return ActivateProgram(program, manifest, error, capacity, 3);
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) const PolicromaBridgeV1* LinkSpan_GetPolicromaBridgeV1() {
@@ -138,6 +165,16 @@ extern "C" __declspec(dllexport) const PolicromaBridgeV1* LinkSpan_GetPolicromaB
 extern "C" __declspec(dllexport) const PolicromaBridgeV2* LinkSpan_GetPolicromaBridgeV2() {
     static const PolicromaBridgeV2 bridge{ sizeof(PolicromaBridgeV2), AppDirectory, ActivateV2,
                                            ShaderPacks::DisableWorldPass };
+    return &bridge;
+}
+extern "C" __declspec(dllexport) const PolicromaBridgeV3* LinkSpan_GetPolicromaBridgeV3() {
+    static const PolicromaBridgeV3 bridge{ sizeof(PolicromaBridgeV3), AppDirectory, ActivateV3,
+                                           ShaderPacks::DisableWorldPass, PolicromaV3MaxPasses,
+                                           PolicromaV3MaxInputs, PolicromaV3MaxOutputs,
+                                           PolicromaFeatureShaderModel5 | PolicromaFeatureIrisConstants |
+                                           PolicromaFeaturePackTextures | PolicromaFeatureProviderParameters |
+                                           PolicromaFeatureFogRamp | PolicromaFeatureSkyExposure,
+                                           SetParameters };
     return &bridge;
 }
 #endif

@@ -20,7 +20,12 @@ struct GeometryShadow {
     static constexpr float PointNear = 2.0f;
     static constexpr float PointScale = (PointFaceSize - 2.0f) / PointFaceSize;
     bool Initialize(ID3D11Device& device, decltype(&D3DCompile) compile, unsigned pointLights = 0,
-                    unsigned solarCapacity = 1);
+                    unsigned solarCapacity = 1, unsigned solarTileSize = SunShadowMap::Size);
+    // Troca o lado de cada cascata (512–4096). Recria só a textura; em falha mantém a anterior.
+    bool ResizeSolar(ID3D11Device& device, unsigned tileSize);
+    unsigned SolarTileSize() const {
+        return solarTile;
+    }
     bool Draw(ID3D11DeviceContext& ctx, std::span<const std::array<float, 3>> triangles,
               const Fast::WorldCutoutGeometry& cutouts, const std::array<float, 3>& focus,
               const std::array<float, 4>& sun, SunShadowMap::Constants& constants);
@@ -36,9 +41,14 @@ struct GeometryShadow {
     ID3D11ShaderResourceView* View() const {
         return view.Get();
     }
+    // Motivo da última recusa de Draw/DrawCascades/DrawPoint, para o log de diagnóstico.
+    const char* lastFailure = "";
 
   private:
     unsigned solarCapacity = 1;
+    unsigned solarTile = SunShadowMap::Size;
+    bool pointMode = false;
+    bool CreateTarget(ID3D11Device& device, UINT width, UINT height);
     struct Projection {
         SunShadowMap::Constants clip;
         D3D11_VIEWPORT viewport;

@@ -22,6 +22,8 @@
 #define LINKSPAN_OOT_FOG_FLOW_VERTICAL_COMPUTE 256u
 /* Render the submitted CPU field with the V2 volume and optional GPU particles. */
 #define LINKSPAN_OOT_FOG_FLOW_CPU_FIELD 512u
+/* RFC 0034 (draft): the flow carries a finer density/velocity grid nested inside the main one. */
+#define LINKSPAN_OOT_FOG_FLOW_DETAIL_GRID 1024u
 #define LINKSPAN_OOT_FOG_MAX_RAISED_FRACTION 0.70f
 #define LINKSPAN_OOT_FOG_VORTEX_REST_DENSITY 0.60f
 #define LINKSPAN_OOT_FOG_EDGE_NEGATIVE_X 1u
@@ -70,6 +72,21 @@ typedef struct ShipOotFogVerticalCell {
     float before_step_lift;
 } ShipOotFogVerticalCell;
 
+typedef struct ShipOotFogDetailCellV1 {
+    float density;                /* same unit as ShipOotFogCellV1.density */
+    float velocity_x, velocity_z; /* u/s, drives the flow map */
+} ShipOotFogDetailCellV1;
+
+/* RFC 0034 (draft). Density and velocity only: floor, thickness and color still come from the main grid.
+   The bounds must lie inside the main grid. Requires LINKSPAN_OOT_FOG_FLOW_CPU_FIELD. */
+typedef struct ShipOotFogDetailV1 {
+    uint32_t size;
+    uint32_t width, depth; /* 2..LINKSPAN_OOT_FOG_MAX_SIDE */
+    float x_min, x_max, z_min, z_max;
+    float blend; /* u: band inside the bounds that fades to the main grid */
+    const ShipOotFogDetailCellV1* cells; /* row-major [z][x] */
+} ShipOotFogDetailV1;
+
 typedef struct ShipOotFogFlowV2 {
     uint32_t size;
     uint32_t generation; /* change on reset or when switching simulation modes */
@@ -90,6 +107,8 @@ typedef struct ShipOotFogFlowV2 {
     /* Final base-band seed state and one tick of vertical forcing, in grid order.
        The CPU fractions remain available to hosts without vertical compute. */
     const ShipOotFogVerticalCell* vertical_cells;
+    /* Read only with LINKSPAN_OOT_FOG_FLOW_DETAIL_GRID. */
+    const ShipOotFogDetailV1* detail;
 } ShipOotFogFlowV2;
 
 typedef struct ShipOotFogV2 {

@@ -25,6 +25,7 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 #include "soh/Enhancements/Graphics/Weather/WindField.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
+#include <fast/labpbr_kokiri.h>
 #include <fast/world_postprocess.h>
 #include <fast/world_presentation.h>
 #include <libultraship/bridge/gfxdebuggerbridge.h>
@@ -37,9 +38,12 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 void LinkSpan_RenderSkyGradient(PlayState* play);
 void LinkSpan_RenderSky(PlayState* play);
 void LinkSpan_RenderSkyClouds(PlayState* play);
+// z_actor.c; declarado aqui para não mexer em soh/include (layout id).
+void TitleCard_Draw(PlayState* play, TitleCardContext* titleCtx);
 
 #include <time.h>
 #include <assert.h>
+#include <math.h>
 
 TransitionUnk sTrnsnUnk;
 s32 gTrnsnUnkState;
@@ -1445,6 +1449,11 @@ static void Play_DrawFogVolume(PlayState* play) {
     CLOSE_DISPS(gfxCtx);
 }
 
+static u32 Play_EncodeKokiriLabPbrSunComponent(f32 component) {
+    f32 scaled = fminf(511.0f, fmaxf(-512.0f, component / 6.0f));
+    return (u32)(s32)roundf(scaled) & 0x3FFu;
+}
+
 void Play_Draw(PlayState* play) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     Lights* sp228;
@@ -1659,6 +1668,7 @@ void Play_Draw(PlayState* play) {
         if ((HREG(80) != 10) || (HREG(84) != 0)) {
             if (VREG(94) == 0) {
                 s32 roomDrawFlags;
+                s32 kokiriLabPbr = play->sceneNum == SCENE_KOKIRI_FOREST && CVarGetInteger(FAST_KOKIRI_LABPBR_CVAR, 0);
 
                 if (HREG(80) != 10) {
                     roomDrawFlags = 3;
@@ -1666,9 +1676,26 @@ void Play_Draw(PlayState* play) {
                     roomDrawFlags = HREG(84);
                 }
                 ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
+                ShaderPacks_CaptureWaterSurface(gfxCtx, 1);
                 Scene_Draw(play);
+                if (kokiriLabPbr) {
+                    Gfx* marker = POLY_OPA_DISP++;
+                    u32 sunX = Play_EncodeKokiriLabPbrSunComponent(play->envCtx.sunPos.x);
+                    u32 sunY = Play_EncodeKokiriLabPbrSunComponent(play->envCtx.sunPos.y);
+                    u32 sunZ = Play_EncodeKokiriLabPbrSunComponent(play->envCtx.sunPos.z);
+
+                    marker->words.w0 = ((u32)FAST_GFX_WORLD_POSTPROCESS << 24) | FAST_WORLD_KOKIRI_LABPBR_BEGIN;
+                    marker->words.w1 = sunX | (sunY << 10) | (sunZ << 20);
+                }
                 Room_Draw(play, &play->roomCtx.curRoom, roomDrawFlags & 3);
                 Room_Draw(play, &play->roomCtx.prevRoom, roomDrawFlags & 3);
+                if (kokiriLabPbr) {
+                    Gfx* marker = POLY_OPA_DISP++;
+
+                    marker->words.w0 = ((u32)FAST_GFX_WORLD_POSTPROCESS << 24) | FAST_WORLD_KOKIRI_LABPBR_END;
+                    marker->words.w1 = 0;
+                }
+                ShaderPacks_CaptureWaterSurface(gfxCtx, 0);
                 ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
             }
         }
@@ -1691,10 +1718,20 @@ void Play_Draw(PlayState* play) {
             Environment_FillScreen(gfxCtx, 0, 0, 0, play->bgCoverAlpha, FILL_SCREEN_OPA);
         }
 
+        // O cartão de título vai para o OVERLAY dentro do Actor_DrawAll, antes dos comandos do
+        // passe do mundo no mesmo buffer: o pack o tratava como mundo (névoa, histórico,
+        // tonemap) e ele saía fantasmado. Com pack ativo, ele é desenhado depois da composição.
+        // O TitleCard_Draw é o único leitor do alpha na fase de desenho.
+        const bool deferTitleCard = ((HREG(80) != 10) || (HREG(85) != 0)) && ShaderPacks_WorldPassActive();
         if ((HREG(80) != 10) || (HREG(85) != 0)) {
+            const s16 titleAlpha = play->actorCtx.titleCtx.alpha;
+            if (deferTitleCard) {
+                play->actorCtx.titleCtx.alpha = 0;
+            }
             ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
             Actor_DrawAll(play, &play->actorCtx);
             ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
+            play->actorCtx.titleCtx.alpha = titleAlpha;
         }
 
         if ((HREG(80) != 10) || (HREG(86) != 0)) {
@@ -1750,8 +1787,13 @@ void Play_Draw(PlayState* play) {
         WaterRipple_Tick(play);
         ImpactDecals_Tick(play);
         WetSurface_Tick(play);
-        ShaderPacks_DrawWorldPass(gfxCtx);
+        // Um snapshot por display list; ambas as fases usam matrizes interpoladas no replay.
+        const u32 worldPassTicket = ShaderPacks_PrepareWorldPass(gfxCtx);
         Play_DrawFogVolume(play);
+        ShaderPacks_ComposeWorldPass(gfxCtx, worldPassTicket);
+        if (deferTitleCard && ((HREG(64) != 1) || (HREG(75) != 0))) {
+            TitleCard_Draw(play, &play->actorCtx.titleCtx);
+        }
 
         if ((R_PAUSE_MENU_MODE == 1) || (gTrnsnUnkState == 1)) {
             Gfx* gfxP = OVERLAY_DISP;

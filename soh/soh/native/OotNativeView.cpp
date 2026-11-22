@@ -819,8 +819,10 @@ extern "C" int32_t LinkSpan_RenderToonActorsEnabled(void) {
     return enabled ? 1 : 0;
 }
 
+extern "C" int32_t ShaderPacks_ReplacesVanillaShadows(void);
+
 extern "C" int32_t LinkSpan_RenderSuppressVanillaShadows(void) {
-    return ShipLuaHost::OotRenderVanillaShadowsSuppressed() ? 1 : 0;
+    return ShipLuaHost::OotRenderVanillaShadowsSuppressed() || ShaderPacks_ReplacesVanillaShadows() ? 1 : 0;
 }
 
 extern "C" int32_t LinkSpan_RenderHideVanillaPointGlow(void) {

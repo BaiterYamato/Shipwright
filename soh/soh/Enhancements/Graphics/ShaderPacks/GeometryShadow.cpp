@@ -17,7 +17,6 @@ using Point = std::array<float, 3>;
 static_assert(SunShadowMap::Size == SolarCascades::TileSize);
 constexpr float Span = 2600.0f;
 constexpr float DepthSpan = 6400.0f;
-constexpr float Texel = Span / SunShadowMap::Size;
 constexpr std::string_view VertexShader = R"(
 cbuffer LightSpace : register(b0) { float4 Data[4]; }
 float4 main(float3 position : POSITION) : SV_Position {
@@ -41,19 +40,60 @@ Point Cross(const Point& a, const Point& b) {
     return { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
 }
 
-std::array<float, 4> Plane(const Point& axis, const Point& focus) {
-    const float snapped = std::round(Dot(axis, focus) / Texel) * Texel;
+std::array<float, 4> Plane(const Point& axis, const Point& focus, float texel) {
+    const float snapped = std::round(Dot(axis, focus) / texel) * texel;
     return { axis[0] / Span, axis[1] / Span, axis[2] / Span, 0.5f - snapped / Span };
 }
 
 } // namespace
 
+bool GeometryShadow::CreateTarget(ID3D11Device& device, UINT width, UINT height) {
+    D3D11_TEXTURE2D_DESC textureDesc{};
+    textureDesc.Width = width;
+    textureDesc.Height = height;
+    textureDesc.MipLevels = textureDesc.ArraySize = 1;
+    textureDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    textureDesc.SampleDesc = { 1, 0 };
+    textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsv{};
+    dsv.Format = DXGI_FORMAT_D32_FLOAT;
+    dsv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Format = DXGI_FORMAT_R32_FLOAT;
+    srv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srv.Texture2D.MipLevels = 1;
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11DepthStencilView> nextDepth;
+    ComPtr<ID3D11ShaderResourceView> nextView;
+    if (FAILED(device.CreateTexture2D(&textureDesc, nullptr, texture.GetAddressOf())) ||
+        FAILED(device.CreateDepthStencilView(texture.Get(), &dsv, nextDepth.GetAddressOf())) ||
+        FAILED(device.CreateShaderResourceView(texture.Get(), &srv, nextView.GetAddressOf())))
+        return false;
+    depth = std::move(nextDepth);
+    view = std::move(nextView);
+    return true;
+}
+
+bool GeometryShadow::ResizeSolar(ID3D11Device& device, unsigned tileSize) {
+    tileSize = SolarCascades::ClampTileSize(tileSize);
+    if (pointMode || !shader)
+        return false;
+    if (tileSize == solarTile)
+        return true;
+    if (!CreateTarget(device, tileSize * solarCapacity, tileSize))
+        return false;
+    solarTile = tileSize;
+    return true;
+}
+
 bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) compile, unsigned pointLights,
-                                unsigned requestedSolarCapacity) {
+                                unsigned requestedSolarCapacity, unsigned requestedTileSize) {
     if (pointLights > MaxPointLights ||
         (requestedSolarCapacity != 1 && requestedSolarCapacity != SolarCascades::MaxCascades))
         return false;
     solarCapacity = pointLights ? 1 : requestedSolarCapacity;
+    pointMode = pointLights != 0;
+    solarTile = pointMode ? SunShadowMap::Size : SolarCascades::ClampTileSize(requestedTileSize);
     ComPtr<ID3DBlob> code;
     if (FAILED(compile(VertexShader.data(), VertexShader.size(), "scene.geometryshadow", nullptr, nullptr, "main",
                        "vs_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, code.GetAddressOf(), nullptr)))
@@ -79,21 +119,8 @@ bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) comp
     D3D11_BUFFER_DESC constantDesc{};
     constantDesc.ByteWidth = sizeof(SunShadowMap::Constants);
     constantDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    D3D11_TEXTURE2D_DESC textureDesc{};
-    textureDesc.Width = pointLights ? PointFaceSize * 3 : SunShadowMap::Size * solarCapacity;
-    textureDesc.Height = pointLights ? PointFaceSize * 2 * pointLights : SunShadowMap::Size;
-    textureDesc.MipLevels = textureDesc.ArraySize = 1;
-    textureDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-    textureDesc.SampleDesc = { 1, 0 };
-    textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-    D3D11_DEPTH_STENCIL_VIEW_DESC dsv{};
-    dsv.Format = DXGI_FORMAT_D32_FLOAT;
-    dsv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-    D3D11_SHADER_RESOURCE_VIEW_DESC srv{};
-    srv.Format = DXGI_FORMAT_R32_FLOAT;
-    srv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srv.Texture2D.MipLevels = 1;
-    ComPtr<ID3D11Texture2D> texture;
+    const UINT targetWidth = pointLights ? PointFaceSize * 3 : solarTile * solarCapacity;
+    const UINT targetHeight = pointLights ? PointFaceSize * 2 * pointLights : solarTile;
     D3D11_BUFFER_DESC cutoutDesc = vertexDesc;
     cutoutDesc.ByteWidth = Fast::MaxWorldCutoutFloats * sizeof(float);
     D3D11_BUFFER_DESC filterDesc = constantDesc;
@@ -106,9 +133,7 @@ bool GeometryShadow::Initialize(ID3D11Device& device, decltype(&D3DCompile) comp
            SUCCEEDED(device.CreateBuffer(&constantDesc, nullptr, light.GetAddressOf())) &&
            SUCCEEDED(device.CreateBuffer(&cutoutDesc, nullptr, cutoutVertices.GetAddressOf())) &&
            SUCCEEDED(device.CreateBuffer(&filterDesc, nullptr, cutoutFilter.GetAddressOf())) &&
-           SUCCEEDED(device.CreateTexture2D(&textureDesc, nullptr, texture.GetAddressOf())) &&
-           SUCCEEDED(device.CreateDepthStencilView(texture.Get(), &dsv, depth.GetAddressOf())) &&
-           SUCCEEDED(device.CreateShaderResourceView(texture.Get(), &srv, view.GetAddressOf()));
+           CreateTarget(device, targetWidth, targetHeight);
 }
 
 void GeometryShadow::DrawCutouts(ID3D11DeviceContext& ctx, const Fast::WorldCutoutGeometry& cutouts,
@@ -155,7 +180,22 @@ void GeometryShadow::DrawCutouts(ID3D11DeviceContext& ctx, const Fast::WorldCuto
         ctx.PSSetShaderResources(0, slots, views.data());
         ctx.PSSetSamplers(0, slots, samplers.data());
         ctx.UpdateSubresource(cutoutFilter.Get(), 0, nullptr, batch.filter.data(), 0, 0);
+        // Foliage uses the game's three-point sampler at s8/s9. Restore these immediately
+        // so existing cutout batches and the main pipeline retain their original bindings.
+        std::array<ID3D11SamplerState*, 2> previousPoints{};
+        if (batch.foliage) {
+            ctx.PSGetSamplers(8, 2, previousPoints.data());
+            const std::array<ID3D11SamplerState*, 2> points{ batch.pointSamplers[0].Get(), batch.pointSamplers[1].Get() };
+            ctx.PSSetSamplers(8, 2, points.data());
+        }
         ctx.Draw(batch.count, 0);
+        if (batch.foliage) {
+            ctx.PSSetSamplers(8, 2, previousPoints.data());
+            for (auto* sampler : previousPoints) {
+                if (sampler)
+                    sampler->Release();
+            }
+        }
     }
     ctx.PSSetConstantBuffers(1, 1, previousFilter.GetAddressOf());
     ctx.PSSetShaderResources(0, slots, previousViews.data());
@@ -179,17 +219,19 @@ bool GeometryShadow::Draw(ID3D11DeviceContext& ctx, std::span<const Point> trian
     const Point right = Normalize(Cross({ 0, 0, 1 }, sunDirection));
     const Point up = Cross(sunDirection, right);
     const float low = Dot(focus, sunDirection) - DepthSpan * 0.5f;
-    const auto u = Plane(right, focus), v = Plane(up, focus);
+    const float texel = Span / solarTile;
+    const auto u = Plane(right, focus, texel), v = Plane(up, focus, texel);
     const SunShadowMap::Constants clip{ {
         { 2.0f * u[0], 2.0f * u[1], 2.0f * u[2], 2.0f * u[3] - 1.0f },
         { -2.0f * v[0], -2.0f * v[1], -2.0f * v[2], 1.0f - 2.0f * v[3] },
         { sunDirection[0] / DepthSpan, sunDirection[1] / DepthSpan, sunDirection[2] / DepthSpan, -low / DepthSpan },
         { 0.0f, 0.0f, 0.0f, 1.0f },
     } };
-    const Projection projection{ clip, { 0, 0, SunShadowMap::Size, SunShadowMap::Size, 0, 1 } };
+    const auto tile = static_cast<float>(solarTile);
+    const Projection projection{ clip, { 0, 0, tile, tile, 0, 1 } };
     if (!DrawProjected(ctx, triangles, cutouts, std::span(&projection, 1)))
         return false;
-    constants = { u, v, { sunDirection[0], sunDirection[1], sunDirection[2], 0 }, { 1, Texel, low, 1.0f / DepthSpan } };
+    constants = { u, v, { sunDirection[0], sunDirection[1], sunDirection[2], 0 }, { 1, texel, low, 1.0f / DepthSpan } };
     return true;
 }
 
@@ -207,17 +249,19 @@ bool GeometryShadow::DrawCascades(ID3D11DeviceContext& ctx, std::span<const Poin
         constants[14] = { 1, static_cast<float>(solarCapacity), 0, 0 };
         return true;
     }
-    if (!std::isfinite(sun[0]) || !std::isfinite(sun[1]) || !std::isfinite(sun[2]) || sun[1] < 1)
+    if (!std::isfinite(sun[0]) || !std::isfinite(sun[1]) || !std::isfinite(sun[2]) || sun[1] < 1) {
+        lastFailure = "sol abaixo do horizonte ou inválido";
         return false;
-    const auto fitted = SolarCascades::Build(camera, { sun[0], sun[1], sun[2] }, count);
-    if (fitted.count != count)
-        return false;
-    std::array<Projection, SolarCascades::MaxCascades> projections{};
-    for (unsigned i = 0; i < count; ++i) {
-        projections[i] = { fitted.cascades[i].clip,
-                           { static_cast<float>(i * SunShadowMap::Size), 0, SunShadowMap::Size, SunShadowMap::Size, 0,
-                             1 } };
     }
+    const auto fitted = SolarCascades::Build(camera, { sun[0], sun[1], sun[2] }, count, solarTile);
+    if (fitted.count != count) {
+        lastFailure = "cascatas não ajustaram à câmera";
+        return false;
+    }
+    std::array<Projection, SolarCascades::MaxCascades> projections{};
+    const auto tile = static_cast<float>(solarTile);
+    for (unsigned i = 0; i < count; ++i)
+        projections[i] = { fitted.cascades[i].clip, { i * tile, 0, tile, tile, 0, 1 } };
     if (!DrawProjected(ctx, triangles, cutouts, std::span(projections.data(), count)))
         return false;
     for (unsigned i = 0; i < count; ++i) {
@@ -270,11 +314,20 @@ bool GeometryShadow::DrawPoint(ID3D11DeviceContext& ctx, std::span<const Point> 
 
 bool GeometryShadow::DrawProjected(ID3D11DeviceContext& ctx, std::span<const Point> triangles,
                                    const Fast::WorldCutoutGeometry& cutouts, std::span<const Projection> projections) {
-    if ((triangles.empty() && cutouts.batches.empty()) || triangles.size() > Fast::MaxWorldGeometryVertices)
+    if (triangles.empty() && cutouts.batches.empty()) {
+        lastFailure = "sem geometria capturada";
         return false;
+    }
+    if (triangles.size() > Fast::MaxWorldGeometryVertices) {
+        lastFailure = "geometria acima do limite";
+        return false;
+    }
     D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (FAILED(ctx.Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    if (FAILED(ctx.Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        lastFailure = "Map do buffer de vértices falhou";
         return false;
+    }
+    lastFailure = "";
     if (!triangles.empty())
         std::memcpy(mapped.pData, triangles.data(), triangles.size_bytes());
     ctx.Unmap(vertices.Get(), 0);

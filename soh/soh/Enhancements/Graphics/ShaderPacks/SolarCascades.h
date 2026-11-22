@@ -9,7 +9,18 @@
 namespace ShaderPacks::SolarCascades {
 
 constexpr unsigned MaxCascades = 3;
+// Lado de cada cascata no atlas. O padrão é 1024; o jogador escolhe entre 512 e 4096 (GFX-UNIFY-001, 11/11).
 constexpr unsigned TileSize = 1024;
+constexpr unsigned MinTileSize = 512;
+constexpr unsigned MaxTileSize = 4096; // 3 cascatas = 12288 de largura, dentro do limite de 16384 do DX11.
+
+// Potência de dois mais próxima por baixo, dentro de [MinTileSize, MaxTileSize].
+inline unsigned ClampTileSize(long long requested) {
+    unsigned size = MinTileSize;
+    while (size < MaxTileSize && static_cast<long long>(size) * 2 <= requested)
+        size *= 2;
+    return size;
+}
 constexpr unsigned ConstantVectors = 15;
 constexpr double BlendFraction = 0.10;
 using Vec3 = std::array<double, 3>;
@@ -146,8 +157,10 @@ struct Result {
     unsigned count = 0;
 };
 
-inline Result Build(const Camera& camera, Vec3 light, unsigned count) {
+inline Result Build(const Camera& camera, Vec3 light, unsigned count, unsigned tileSize = TileSize) {
     Result result;
+    if (tileSize < MinTileSize || tileSize > MaxTileSize)
+        return {};
     result.ends = SplitDepths(camera.nearDepth, camera.farDepth, count);
     Frame frame;
     const double length = std::sqrt(Dot(light, light));
@@ -176,8 +189,8 @@ inline Result Build(const Camera& camera, Vec3 light, unsigned count) {
         // Esfera calculada no espaço da câmera: raio independe de yaw/pitch/roll.
         // Quantização + margem para snap de meio texel e kernel PCF de 4x4.
         radius = std::ceil(radius * frame.stretch * 16) / 16;
-        cascade.radius = radius / (1 - 6.0 / TileSize);
-        const double span = 2 * cascade.radius, texel = span / TileSize;
+        cascade.radius = radius / (1 - 6.0 / tileSize);
+        const double span = 2 * cascade.radius, texel = span / tileSize;
         const auto center = Transform(localCenter, frame);
         if (!Finite(center) || !std::isfinite(span) || span <= 0)
             return {};
