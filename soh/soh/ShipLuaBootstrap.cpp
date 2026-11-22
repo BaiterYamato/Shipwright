@@ -38,6 +38,7 @@
 #include <exception>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -603,6 +604,36 @@ constexpr int32_t FILE_REQUEST_NONE = -1;
 constexpr int32_t FILE_REQUEST_GOTO_FILE_SELECT = -2;
 // Valores >= 0 são o slot (0..2) a abrir.
 std::atomic<int32_t> gPendingFileRequest{ FILE_REQUEST_NONE };
+
+// shiplua_fire_hotkey também roda na thread de rede do Sail, mas o callback Lua chama ship.native.call, que só vale na
+// thread do jogo (NativeProvider). O comando enfileira {mod, atalho}; RunPendingHotkeys drena no mesmo ponto.
+struct PendingHotkey {
+    std::string modId;
+    std::string hotkeyId;
+};
+std::mutex gPendingHotkeysMutex;
+std::vector<PendingHotkey> gPendingHotkeys;
+
+void RunPendingHotkeys() {
+    std::vector<PendingHotkey> pending;
+    {
+        std::lock_guard<std::mutex> lock(gPendingHotkeysMutex);
+        pending.swap(gPendingHotkeys);
+    }
+    for (const PendingHotkey& hotkey : pending) {
+        const auto registered = gHotkeys ? gHotkeys->Registered() : std::vector<ShipLua::HotkeyBinding>{};
+        const bool found = std::any_of(registered.begin(), registered.end(), [&](const ShipLua::HotkeyBinding& binding) {
+            return binding.modId == hotkey.modId && binding.id == hotkey.hotkeyId;
+        });
+        if (!found) {
+            SPDLOG_WARN("shiplua_fire_hotkey mod={} atalho={}: atalho nao registrado", hotkey.modId, hotkey.hotkeyId);
+            continue;
+        }
+        gHotkeys->Fire(hotkey.modId, hotkey.hotkeyId);
+        SPDLOG_INFO("shiplua_fire_hotkey mod={} atalho={}: callback executado na thread do jogo", hotkey.modId,
+                    hotkey.hotkeyId);
+    }
+}
 
 void RunPendingFileRequest() {
     const int32_t request = gPendingFileRequest.exchange(FILE_REQUEST_NONE);
@@ -4118,6 +4149,7 @@ void LoadModsAndDispatchReady(const ShipLua::LuaApiHostContext& context) {
 // Sem mod nada grava, e a fila fica vazia.
 extern "C" void LinkSpan_ApplyPendingSettings(void) {
     RunPendingFileRequest();
+    RunPendingHotkeys();
     ShipLuaHost::PumpOotAudioMix();
     if (gPendingShipInit.empty()) {
         return;
@@ -4214,9 +4246,12 @@ void Initialize() {
                  }
                  return 1;
              }
-             gHotkeys->Fire(args[1], args[2]);
+             {
+                 std::lock_guard<std::mutex> lock(gPendingHotkeysMutex);
+                 gPendingHotkeys.push_back({ args[1], args[2] });
+             }
              if (output != nullptr) {
-                 *output = "callback solicitado";
+                 *output = "enfileirado; o resultado vai para o log";
              }
              return 0;
          },
