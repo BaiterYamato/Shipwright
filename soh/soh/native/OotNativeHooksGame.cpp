@@ -252,6 +252,15 @@ extern "C" void LinkSpan_FairyLights(PlayState* play, Actor* actor, u16 fairyFla
     payload.outer_color[2] = outerColor->b;
     CopyFairyLight(payload.no_glow, noGlow);
     CopyFairyLight(payload.glow, glow);
+    // Só a Navi passa por EnElf_UpdateLights; nas outras fadas as luzes ficam no ponto de spawn com raio 0. A posição
+    // chega com a do ator para que um mod que dê raio à luz a veja acompanhar a fada (sem mod, raio 0 = nada muda).
+    if (actor->params != LINKSPAN_OOT_FAIRY_NAVI) {
+        for (ShipOotFairyLightV1* light : { &payload.no_glow, &payload.glow }) {
+            light->position[0] = actor->world.pos.x;
+            light->position[1] = actor->world.pos.y;
+            light->position[2] = actor->world.pos.z;
+        }
+    }
     registry->Dispatch(point, &payload, sizeof(payload), nullptr, nullptr);
     ApplyFairyLight(payload.no_glow, noGlow);
     ApplyFairyLight(payload.glow, glow);
