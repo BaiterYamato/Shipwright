@@ -1,8 +1,17 @@
+#include <algorithm>
+#include <fast/FlyCameraInput.h>
 #include <ship/Context.h>
 #include <ship/window/Window.h>
+#include <ship/window/gui/Gui.h>
 #include <libultraship/bridge/consolevariablebridge.h>
 
+#include <chrono>
+#include <imgui.h>
+#include <spdlog/spdlog.h>
+
+#include "FlyCamera.h"
 #include "Mouse.h"
+#include "soh/native/OotNativeView.h"
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
@@ -11,6 +20,8 @@ extern "C" {
 #include "z64player.h"
 #include "functions.h"
 #include "macros.h"
+extern PlayState* gPlayState;
+s32 Camera_GetDbgCamEnabled(void);
 }
 
 static Ship::Coords mouseCoord = {};
@@ -19,11 +30,191 @@ static Ship::Coords mouseCoordRel = {};
 #define CVAR_ENABLE_MOUSE_NAME CVAR_SETTING("EnableMouse")
 #define CVAR_ENABLE_MOUSE_DEFAULT 0
 #define CVAR_ENABLE_MOUSE_VALUE CVarGetInteger(CVAR_ENABLE_MOUSE_NAME, CVAR_ENABLE_MOUSE_DEFAULT)
-#define MOUSE_ENABLED (CVAR_ENABLE_MOUSE_VALUE && GetWindow()->IsMouseCaptured())
+#define MOUSE_ENABLED (CVAR_ENABLE_MOUSE_VALUE && GetWindow()->IsMouseCaptured() && flyCameraToken == 0)
 
 std::shared_ptr<Ship::Window> GetWindow() {
     return OTRGlobals::Instance->context->GetWindow();
 }
+
+
+namespace {
+
+using FlyClock = std::chrono::steady_clock;
+
+uint64_t flyCameraToken = 0;
+ShipFlyCamera::Pose flyPose;
+ShipOotCameraViewV1 flyView{};
+FlyClock::time_point lastFlyFrame;
+bool flyChangedMouseCapture = false;
+bool flyExitAwaitingKeys = false;
+
+const ShipOotCameraV1& FlyCameraService() {
+    return ShipLuaHost::GetOotNativeCameraService();
+}
+
+void StopFlyCamera() {
+    if (flyChangedMouseCapture) {
+        const auto window = GetWindow();
+        if (window->IsMouseCaptured()) {
+            window->SetMouseCapture(false);
+        }
+        flyChangedMouseCapture = false;
+    }
+    if (flyCameraToken != 0) {
+        FlyCameraService().release(flyCameraToken);
+        flyCameraToken = 0;
+    }
+}
+
+void DestroyFlyCamera() {
+    StopFlyCamera();
+    flyExitAwaitingKeys = false;
+}
+
+void ClearFlyCameraPlayerInput(PlayState* play) {
+    // This hook runs after GameState_ReqPadData and before gameState->main().
+    Input& input = play->state.input[0];
+    Input neutral{};
+    neutral.cur.err_no = input.cur.err_no;
+    neutral.prev.err_no = input.prev.err_no;
+    input = neutral;
+}
+
+ShipFlyCamera::FrameInput ReadFlyCameraInput(uint32_t keys) {
+    return {
+        mouseCoordRel.x,
+        mouseCoordRel.y,
+        !!(keys & Fast::FlyForward) - !!(keys & Fast::FlyBackward),
+        !!(keys & Fast::FlyRight) - !!(keys & Fast::FlyLeft),
+        !!(keys & Fast::FlyUp) - !!(keys & (Fast::FlyDownLeft | Fast::FlyDownRight)),
+        (keys & (Fast::FlyBoostLeft | Fast::FlyBoostRight)) != 0,
+    };
+}
+
+const char* FlyCameraBlocked(PlayState* play, Player* player) {
+    if (!play || !player) {
+        return "gameplay/player unavailable";
+    }
+    if (!CVarGetInteger(CVAR_DEVELOPER_TOOLS("DebugEnabled"), 0) || !CVAR_ENABLE_MOUSE_VALUE) {
+        return "debug mode or mouse input disabled";
+    }
+    if (GetWindow()->GetGui()->GetMenuOrMenubarVisible() || ImGui::GetIO().WantTextInput) {
+        return "menu/text input open";
+    }
+    if (ImGui::GetIO().AppFocusLost) {
+        return "game window unfocused";
+    }
+    if (Camera_GetDbgCamEnabled() || play->pauseCtx.state != 0 || play->csCtx.state != CS_STATE_IDLE ||
+        play->transitionMode != TRANS_MODE_OFF || Player_InCsMode(play)) {
+        return "debug camera, pause, cutscene, or transition";
+    }
+    return nullptr;
+}
+
+bool StartFlyCamera(PlayState* play, Player* player) {
+    if (!(player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || std::abs(player->linearVelocity) >= 0.01f) {
+        SPDLOG_INFO("[FlyCamera] refused: Link is moving or airborne (velocity {}, bg flags {})",
+                    player->linearVelocity, player->actor.bgCheckFlags);
+        return false;
+    }
+
+    flyView = {};
+    flyView.size = sizeof(flyView);
+    const auto readStatus = FlyCameraService().get_view(&flyView);
+    if (readStatus != SHIP_NATIVE_OK || !ShipFlyCamera::Seed(flyPose, flyView.eye, flyView.at)) {
+        SPDLOG_INFO("[FlyCamera] refused: current view unavailable (status {})", static_cast<int>(readStatus));
+        return false;
+    }
+    const auto acquireStatus = FlyCameraService().acquire("soh.debug.fly-camera", &flyCameraToken);
+    if (acquireStatus != SHIP_NATIVE_OK) {
+        SPDLOG_INFO("[FlyCamera] refused: camera lease (status {})", static_cast<int>(acquireStatus));
+        return false;
+    }
+    const auto writeStatus = FlyCameraService().set_view(flyCameraToken, &flyView);
+    if (writeStatus != SHIP_NATIVE_OK) {
+        SPDLOG_INFO("[FlyCamera] refused: initial view (status {})", static_cast<int>(writeStatus));
+        StopFlyCamera();
+        return false;
+    }
+
+    const auto window = GetWindow();
+    flyChangedMouseCapture = !window->IsMouseCaptured();
+    if (flyChangedMouseCapture) {
+        window->SetMouseCapture(true);
+    }
+    if (!window->IsMouseCaptured()) {
+        SPDLOG_INFO("[FlyCamera] refused: backend did not capture the mouse");
+        StopFlyCamera();
+        return false;
+    }
+
+    lastFlyFrame = FlyClock::now();
+    ClearFlyCameraPlayerInput(play);
+    SPDLOG_INFO("[FlyCamera] enabled (mouse capture {})", flyChangedMouseCapture ? "acquired" : "existing");
+    return true;
+}
+
+void TickFlyCamera() {
+    const bool keyboardToggle = Fast::TakeFlyCameraToggle();
+    const uint32_t flightKeys = Fast::TakeFlyCameraKeys();
+    const char* requestCvar = CVAR_DEVELOPER_TOOLS("FlyCameraToggle");
+    const bool consoleToggle = CVarGetInteger(requestCvar, 0) != 0;
+    if (consoleToggle)
+        CVarClear(requestCvar);
+    const bool togglePressed = keyboardToggle || consoleToggle;
+    if (!togglePressed && flyCameraToken == 0 && !flyExitAwaitingKeys) {
+        return;
+    }
+    if (!ImGui::GetCurrentContext()) {
+        SPDLOG_INFO("[FlyCamera] unavailable: no UI input context");
+        DestroyFlyCamera();
+        return;
+    }
+
+    PlayState* play = gPlayState;
+    Player* player = play ? GET_PLAYER(play) : nullptr;
+    const char* blocked = FlyCameraBlocked(play, player);
+    if (flyCameraToken != 0) {
+        if (togglePressed || blocked || !GetWindow()->IsMouseCaptured() || !FlyCameraService().is_owned(flyCameraToken)) {
+            SPDLOG_INFO("[FlyCamera] disabled ({})", togglePressed ? "toggle" : (blocked ? blocked : "capture/lease lost"));
+            StopFlyCamera();
+            flyExitAwaitingKeys = player && Fast::FlyCameraKeysHeld();
+        } else {
+            const auto now = FlyClock::now();
+            // Capped so a hitch does not teleport the camera.
+            constexpr float kMaxFlyStepSeconds = 0.1f;
+            const float seconds = std::min(std::chrono::duration<float>(now - lastFlyFrame).count(), kMaxFlyStepSeconds);
+            lastFlyFrame = now;
+            ShipFlyCamera::Update(flyPose, ReadFlyCameraInput(flightKeys), seconds,
+                                  CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) != 0, flyView.at);
+            std::copy(flyPose.eye.begin(), flyPose.eye.end(), flyView.eye);
+            const auto status = FlyCameraService().set_view(flyCameraToken, &flyView);
+            if (status == SHIP_NATIVE_OK) {
+                ClearFlyCameraPlayerInput(play);
+                return;
+            }
+            SPDLOG_INFO("[FlyCamera] disabled: view update (status {})", static_cast<int>(status));
+            StopFlyCamera();
+            flyExitAwaitingKeys = Fast::FlyCameraKeysHeld();
+        }
+    } else if (togglePressed) {
+        SPDLOG_INFO("[FlyCamera] toggle requested by {}", keyboardToggle ? "F8" : "console");
+        if (blocked) {
+            SPDLOG_INFO("[FlyCamera] refused: {}", blocked);
+        } else if (StartFlyCamera(play, player)) {
+            return;
+        }
+    }
+
+    // A held flight key must not become a movement or action on exit.
+    flyExitAwaitingKeys = flyExitAwaitingKeys && player && Fast::FlyCameraKeysHeld();
+    if (flyExitAwaitingKeys) {
+        ClearFlyCameraPlayerInput(play);
+    }
+}
+
+
+} // namespace
 
 extern "C" {
 void Mouse_UpdatePos() {
@@ -154,6 +345,12 @@ void Mouse_RegisterUpdateQuickspinCount() {
 void Mouse_RegisterHandleQuickspin() {
     REGISTER_VB_SHOULD(VB_SHOULD_QUICKSPIN, { Mouse_HandleQuickspin(should, va_arg(args, s8*), va_arg(args, s8*)); });
 }
+
+static RegisterShipInitFunc registerFlyCamera([] {
+    SPDLOG_INFO("[FlyCamera] F8 hook installed");
+    COND_HOOK(OnGameStateMainStart, true, TickFlyCamera);
+    COND_HOOK(OnPlayDestroy, true, DestroyFlyCamera);
+});
 
 static RegisterShipInitFunc registerShieldRecenter(Mouse_RegisterRecenterCursorOnShield, { CVAR_ENABLE_MOUSE_NAME });
 static RegisterShipInitFunc registerFirstPerson(Mouse_RegisterHandleFirstPerson, { CVAR_ENABLE_MOUSE_NAME });
