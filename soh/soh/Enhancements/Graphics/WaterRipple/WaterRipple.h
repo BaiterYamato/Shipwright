@@ -17,7 +17,7 @@ constexpr unsigned Side = 128;
 
 struct Frame {
     std::array<float, 4> worldToUV{}; // uv = worldXZ * xy + zw
-    std::array<float, 4> info{};      // planeY, força, 1/Side, ativo (0 ou 1)
+    std::array<float, 4> info{};      // planeY, força, 1/Side, inativo (0), legado (1), fluxo XZ M05 (2)
 };
 
 void SetWanted(bool wanted);

@@ -18,6 +18,12 @@ struct Velocity {
     float x{}, z{};
 };
 
+// A numerico em binary16: dois inteiros de 6 bits, passo 16 unidades/s.
+// Todos os codigos [-2048,2047] sao EXATOS em half; nao filtrar antes de decodificar.
+// Faixa por eixo [-512,496], erro <=8 sem saturacao. Zero e exato.
+std::uint16_t EncodeFlowXZ(Velocity velocity) noexcept;
+Velocity DecodeFlowXZ(float alpha) noexcept;
+
 enum class Solver { DampedWave, ShallowWater };
 enum class FlowComponent { X, Z };
 
@@ -59,6 +65,8 @@ class Field {
     // o fluxo normal). Recorte/teleporte não conservam volume da janela.
     bool Follow(float focusX, float focusZ) noexcept;
     void Reset() noexcept; // zera tempos; mantém origem e configuração
+    // Atualiza somente a base, sem reset/alocacao; rejeita nao finitos/CFL/legado.
+    bool SetBackgroundCurrent(Point current) noexcept;
     void Step() noexcept;  // exatamente um passo fixo
 
     // Impulso é delta de velocidade vertical (unidades/segundo), com kernel
@@ -89,6 +97,9 @@ class Field {
     // Legado continua A=0. O chamador/pack deve combinar a componente escolhida.
     bool PackTextureRGBA16Flow(std::span<std::uint16_t> rgba,
                                FlowComponent component = FlowComponent::X) const noexcept;
+    // RGB identico; A contem X e Z codificados por EncodeFlowXZ.
+    // Legado continua A=0. O host sinaliza este contrato com info.w=2.
+    bool PackTextureRGBA16FlowXZ(std::span<std::uint16_t> rgba) const noexcept;
     // uv = worldXZ * xy + zw; nós coincidem com centros de texel (meio texel).
     std::array<float, 4> WorldToUV() const noexcept;
 
@@ -130,7 +141,7 @@ class Field {
                 std::size_t rows) noexcept;
     float DampingAt(int x, int z) const noexcept;
     Velocity VelocityAt(std::size_t x, std::size_t z) const noexcept;
-    bool PackRGBA16(std::span<std::uint16_t> rgba, bool flow, FlowComponent component) const noexcept;
+    bool PackRGBA16(std::span<std::uint16_t> rgba, bool flow, FlowComponent component, bool flowXZ = false) const noexcept;
 
     Config config_;
     std::vector<float> height_, previous_;

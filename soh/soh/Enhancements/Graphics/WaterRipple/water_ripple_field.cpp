@@ -60,6 +60,30 @@ std::uint16_t Half(float value) noexcept {
 }
 } // namespace
 
+std::uint16_t EncodeFlowXZ(Velocity velocity) noexcept {
+    const auto quantize = [](float v) {
+        if (!std::isfinite(v)) v = 0.0f;
+        return int(std::round(std::clamp(v, -512.0f, 496.0f) / 16.0f)) + 32;
+    };
+    return Half(float(quantize(velocity.x) + 64 * quantize(velocity.z) - 2048));
+}
+
+Velocity DecodeFlowXZ(float alpha) noexcept {
+    if (!std::isfinite(alpha)) return {};
+    const int code = int(std::round(std::clamp(alpha, -2048.0f, 2047.0f))) + 2048;
+    return { float((code % 64) - 32) * 16.0f, float((code / 64) - 32) * 16.0f };
+}
+
+bool Field::SetBackgroundCurrent(Point current) noexcept {
+    const double cfl = (std::sqrt(2.0 * config_.gravity * config_.restDepth) +
+                        std::abs(double(current.x)) + std::abs(double(current.z))) *
+                       config_.stepSeconds / config_.cellSize;
+    if (config_.solver != Solver::ShallowWater || !std::isfinite(current.x) ||
+        !std::isfinite(current.z) || !std::isfinite(cfl) || cfl > 0.9) return false;
+    config_.backgroundCurrent = current;
+    return true;
+}
+
 Field::Field(Config config, Point focus)
     : config_(Validate(config, focus)), height_(config_.side * config_.side, 0.0f), previous_(height_.size(), 0.0f),
       velocityX_(config_.solver == Solver::ShallowWater ? config_.side * (config_.side + 1) : 0, 0.0f),
@@ -397,7 +421,11 @@ bool Field::PackTextureRGBA16Flow(std::span<std::uint16_t> rgba, FlowComponent c
     return PackRGBA16(rgba, true, component);
 }
 
-bool Field::PackRGBA16(std::span<std::uint16_t> rgba, bool flow, FlowComponent component) const noexcept {
+bool Field::PackTextureRGBA16FlowXZ(std::span<std::uint16_t> rgba) const noexcept {
+    return PackRGBA16(rgba, true, FlowComponent::X, true);
+}
+
+bool Field::PackRGBA16(std::span<std::uint16_t> rgba, bool flow, FlowComponent component, bool flowXZ) const noexcept {
     if (rgba.size() < height_.size() * 4)
         return false;
     for (std::size_t z = 0; z < config_.side; ++z) {
@@ -408,7 +436,8 @@ bool Field::PackRGBA16(std::span<std::uint16_t> rgba, bool flow, FlowComponent c
             rgba[4 * i + 1] = Half(g.x);
             rgba[4 * i + 2] = Half(g.z);
             const auto velocity = flow ? VelocityAt(x, z) : Velocity{};
-            rgba[4 * i + 3] = flow ? Half(component == FlowComponent::X ? velocity.x : velocity.z) : 0;
+            rgba[4 * i + 3] = flowXZ && config_.solver == Solver::ShallowWater ? EncodeFlowXZ(velocity) :
+                              flow ? Half(component == FlowComponent::X ? velocity.x : velocity.z) : 0;
         }
     }
     return true;
