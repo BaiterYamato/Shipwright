@@ -741,6 +741,9 @@ struct WorldPass {
     bool reportedMaterialTargetFailure = false;
     bool usesSunShadow = false;
     bool lightsFog = false;
+    // Escurecimento de interior (céu automático): multiplica a saída final do pack por um ganho via blend.
+    ComPtr<ID3D11PixelShader> sceneGainShader;
+    ComPtr<ID3D11BlendState> sceneGainBlend;
     ComPtr<ID3D11PixelShader> resolveDepth;
     ComPtr<ID3D11DepthStencilView> depthAttachment;
     ComPtr<ID3D11ShaderResourceView> depthSource;
@@ -1529,6 +1532,28 @@ struct WorldPass {
             }
         }
 
+        // Interior com céu automático: o Complementary quase não escurece a cena (a luz das paredes vem
+        // pintada na geometria), então o host multiplica a imagem final por um ganho. Suavizado pela
+        // mesma abertura do b10 (Market e céu visível contam como abertos). CVar gShaderPack.IndoorSceneScale (padrão 0,75: −24% medido em 22/11 na casa do Link, Deku Tree e gruta).
+        if (irisBuffer && sceneGainShader && sceneGainBlend && smoothedSkyOpenness >= 0.0f &&
+            smoothedSkyOpenness < 1.0f && providerParameters[3].load(std::memory_order_relaxed) < 0.0f) {
+            const float requested = Ship::Context::GetRawInstance()->GetConsoleVariables()->GetFloat(
+                "gShaderPack.IndoorSceneScale", 0.75f);
+            const float scale = std::isfinite(requested) ? std::clamp(requested, 0.0f, 1.0f) : 1.0f;
+            const float gain = scale + (1.0f - scale) * std::clamp(smoothedSkyOpenness, 0.0f, 1.0f);
+            if (gain < 0.999f) {
+                const D3D11_VIEWPORT full{ 0, 0, static_cast<float>(desc.Width), static_cast<float>(desc.Height), 0, 1 };
+                const float factor[4]{ gain, gain, gain, 1.0f };
+                ctx.OMSetRenderTargets(1, target.GetAddressOf(), nullptr);
+                ctx.RSSetViewports(1, &full);
+                ctx.VSSetShader(vertex.Get(), nullptr, 0);
+                ctx.PSSetShader(sceneGainShader.Get(), nullptr, 0);
+                ctx.OMSetBlendState(sceneGainBlend.Get(), factor, ~0u);
+                ctx.Draw(3, 0);
+                ctx.OMSetBlendState(nullptr, nullptr, ~0u);
+            }
+        }
+
         if (usesTemporal) {
             // Nunca copiar o backbuffer: a entrada linear do final precede HUD e falsos-cores.
             ID3D11ShaderResourceView* empty[3]{};
@@ -1830,6 +1855,13 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
     return 0.0;
 #endif
     return fog;
+}
+)";
+
+// A cor sai pelo blend (destino * fator); o valor do shader é descartado (SrcBlend = ZERO).
+constexpr std::string_view sceneGainShaderSource = R"(
+float4 main(float4 position : SV_Position) : SV_Target {
+    return float4(0.0, 0.0, 0.0, 0.0);
 }
 )";
 
@@ -2640,6 +2672,27 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
             return false;
         }
     }
+    {
+        ComPtr<ID3DBlob> gain;
+        D3D11_BLEND_DESC gainBlend{};
+        gainBlend.RenderTarget[0].BlendEnable = TRUE;
+        gainBlend.RenderTarget[0].SrcBlend = D3D11_BLEND_ZERO;
+        gainBlend.RenderTarget[0].DestBlend = D3D11_BLEND_BLEND_FACTOR;
+        gainBlend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        gainBlend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+        gainBlend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+        gainBlend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        gainBlend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        if (FAILED(compile(sceneGainShaderSource.data(), sceneGainShaderSource.size(), "scene.gain", nullptr, nullptr,
+                           "main", "ps_4_0", flags, 0, gain.GetAddressOf(), nullptr)) ||
+            FAILED(next->device->CreatePixelShader(gain->GetBufferPointer(), gain->GetBufferSize(), nullptr,
+                                                   next->sceneGainShader.GetAddressOf())) ||
+            FAILED(next->device->CreateBlendState(&gainBlend, next->sceneGainBlend.GetAddressOf()))) {
+            // Opcional: sem ele o interior só não escurece.
+            next->sceneGainShader.Reset();
+            next->sceneGainBlend.Reset();
+        }
+    }
     if (next->usesDepth && dx11->mFeatureLevel >= D3D_FEATURE_LEVEL_10_1) {
         ComPtr<ID3DBlob> resolve;
         if (FAILED(compile(resolveDepthShader.data(), resolveDepthShader.size(), "scene.depth", nullptr, nullptr,
@@ -2965,6 +3018,27 @@ extern "C" int ShaderPacks_WorldPassActive(void) {
     return pass && !pass->passes.empty() ? 1 : 0;
 #else
     return 0;
+#endif
+}
+
+// Ganho da parcela ambiente nativa (LightContext_NewLights) nos interiores: o Complementary escurece
+// a luz ambiente pelo lmCoord.y, que a luz do céu automática não alcança. Só com pack ativo, céu
+// automático (provider manda sky_light < 0) e cena fechada (abertura 0, mesma regra do b10, que
+// já trata o Market como aberto). CVar gShaderPack.IndoorAmbientScale (0..1, padrão 1 = sem efeito).
+extern "C" float ShaderPacks_NativeAmbientScale(void) {
+#ifdef _WIN32
+    if (!gPlayState || providerParameters[3].load(std::memory_order_relaxed) >= 0.0f)
+        return 1.0f;
+    const auto pass = activePass.load();
+    if (!pass || pass->passes.empty())
+        return 1.0f;
+    if (NativeSkyFacts(*gPlayState)[0] > SkyOpennessClosed)
+        return 1.0f;
+    const float scale = Ship::Context::GetRawInstance()->GetConsoleVariables()->GetFloat(
+        "gShaderPack.IndoorAmbientScale", 1.0f);
+    return std::isfinite(scale) ? std::clamp(scale, 0.0f, 1.0f) : 1.0f;
+#else
+    return 1.0f;
 #endif
 }
 

@@ -31,6 +31,8 @@ void ShaderPacks_CaptureWaterSurface(struct GraphicsContext* gfxCtx, int enable)
 // Não zero com pack de passe do mundo ativo: elementos 2D de tela que o jogo põe no
 // OVERLAY antes da composição (cartão de título) devem ir para depois dela.
 int ShaderPacks_WorldPassActive(void);
+// Ganho (0..1) da luz ambiente nativa em interior com pack e céu automático; 1 fora disso.
+float ShaderPacks_NativeAmbientScale(void);
 
 #ifdef __cplusplus
 }
