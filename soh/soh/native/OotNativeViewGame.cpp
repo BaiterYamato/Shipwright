@@ -4,6 +4,7 @@
 
 #include <fast/Fast3dWindow.h>
 #include <fast/fog_air_profile.h>
+#include <fast/fog_detail.h>
 #include <fast/interpreter.h>
 #include <ship/Context.h>
 #include <fast/toon_shading.h>
@@ -208,6 +209,7 @@ static_assert(LINKSPAN_OOT_FOG_FLOW_LIFT == FAST_FOG_FLOW_LIFT);
 static_assert(LINKSPAN_OOT_FOG_FLOW_VERTICAL_COMPUTE == FAST_FOG_FLOW_VERTICAL_COMPUTE);
 static_assert(LINKSPAN_OOT_FOG_FLOW_CPU_FIELD == FAST_FOG_FLOW_CPU_FIELD);
 static_assert(LINKSPAN_OOT_FOG_FLOW_DETAIL_GRID == FAST_FOG_FLOW_DETAIL_GRID);
+static_assert(LINKSPAN_OOT_FOG_DETAIL_MAX_SIDE == FAST_FOG_DETAIL_SIDE);
 static_assert(LINKSPAN_OOT_FOG_VORTEX_REST_DENSITY == FAST_FOG_VORTEX_REST_DENSITY);
 
 bool ValidFogGridShape(const ShipOotFogGridV1* grid) {
@@ -394,7 +396,7 @@ ShipNativeStatus SHIP_NATIVE_CALL SubmitFogFlow(void* play, const ShipOotFogGrid
         }
         detail = flow->detail;
         if (detail->size < sizeof(*detail) || !detail->cells || detail->width < 2 || detail->depth < 2 ||
-            detail->width > LINKSPAN_OOT_FOG_MAX_SIDE || detail->depth > LINKSPAN_OOT_FOG_MAX_SIDE ||
+            detail->width > LINKSPAN_OOT_FOG_DETAIL_MAX_SIDE || detail->depth > LINKSPAN_OOT_FOG_DETAIL_MAX_SIDE ||
             !FogValueInRange(detail->x_min, grid->x_min, grid->x_max) ||
             !FogValueInRange(detail->x_max, grid->x_min, grid->x_max) ||
             !FogValueInRange(detail->z_min, grid->z_min, grid->z_max) ||
@@ -404,6 +406,13 @@ ShipNativeStatus SHIP_NATIVE_CALL SubmitFogFlow(void* play, const ShipOotFogGrid
                              0.5f * std::min(detail->x_max - detail->x_min, detail->z_max - detail->z_min))) {
             return SHIP_NATIVE_INVALID_ARGUMENT;
         }
+        // O piso e a espessura vêm da grade principal: sem nenhuma célula principal com densidade, o volume não
+        // é desenhado, então um detalhe nesse caso é recusado em vez de aceito e omitido.
+        bool mainHasDensity = false;
+        for (uint32_t i = 0; i < grid->width * grid->depth && !mainHasDensity; ++i) {
+            mainHasDensity = grid->cells[i].density > 0.0f;
+        }
+        if (!mainHasDensity) return SHIP_NATIVE_INVALID_ARGUMENT;
         for (uint32_t i = 0; i < detail->width * detail->depth; ++i) {
             const auto& cell = detail->cells[i];
             if (!FogValueInRange(cell.density, 0.0f, kFogDetailDensityMax) ||
@@ -501,12 +510,16 @@ ShipNativeStatus SHIP_NATIVE_CALL SubmitFogFlow(void* play, const ShipOotFogGrid
         volume.detailGrid[1] = static_cast<float>(detail->depth);
         volume.detailGrid[2] = detail->blend;
         volume.detailGrid[3] = 0.0f;
+        // As células vão pelo canal de fog_detail.h (até 128 por lado); volume.detailCells (32x32) fica sem uso.
+        auto& fine = gFastFogDetailCells;
+        fine.width = detail->width;
+        fine.height = detail->depth;
         for (uint32_t i = 0; i < detail->width * detail->depth; ++i) {
             const auto& cell = detail->cells[i];
-            volume.detailCells[i][0] = cell.density;
-            volume.detailCells[i][1] = cell.velocity_x;
-            volume.detailCells[i][2] = cell.velocity_z;
-            volume.detailCells[i][3] = 0.0f;
+            fine.cells[i][0] = cell.density;
+            fine.cells[i][1] = cell.velocity_x;
+            fine.cells[i][2] = cell.velocity_z;
+            fine.cells[i][3] = 0.0f;
         }
     }
     if (flags & LINKSPAN_OOT_FOG_FLOW_LOCAL_LIGHTS) CopyFogLights(*static_cast<PlayState*>(play), gFogFrame.volume);
@@ -677,7 +690,8 @@ const ShipOotFogV2& ShipLuaHost::GetOotNativeFogFlowService() {
                                           LINKSPAN_OOT_FOG_FLOW_LIFT | LINKSPAN_OOT_FOG_FLOW_DOMAIN_SHIFT |
                                           LINKSPAN_OOT_FOG_FLOW_LOCAL_LIGHTS | LINKSPAN_OOT_FOG_FLOW_STACKED_SUPPORTS |
                                           LINKSPAN_OOT_FOG_FLOW_ATMOSPHERE | LINKSPAN_OOT_FOG_FLOW_VERTICAL_COMPUTE |
-                                          LINKSPAN_OOT_FOG_FLOW_CPU_FIELD | LINKSPAN_OOT_FOG_FLOW_DETAIL_GRID };
+                                          LINKSPAN_OOT_FOG_FLOW_CPU_FIELD | LINKSPAN_OOT_FOG_FLOW_DETAIL_GRID |
+                                          LINKSPAN_OOT_FOG_FLOW_DETAIL_WIDE };
     return service;
 }
 

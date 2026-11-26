@@ -7,6 +7,8 @@
 #define LINKSPAN_OOT_FOG_VERSION 1u
 #define LINKSPAN_OOT_FOG_VERSION_2 2u
 #define LINKSPAN_OOT_FOG_MAX_SIDE 32u
+/* RFC 0034 amendment: the nested detail grid may be finer than the main grid (fine solvers in the mod). */
+#define LINKSPAN_OOT_FOG_DETAIL_MAX_SIDE 128u
 #define LINKSPAN_OOT_FOG_FLOW_PARTICLES 1u
 #define LINKSPAN_OOT_FOG_FLOW_BLOCKED_EDGES 2u
 #define LINKSPAN_OOT_FOG_FLOW_VORTICES 4u
@@ -24,6 +26,9 @@
 #define LINKSPAN_OOT_FOG_FLOW_CPU_FIELD 512u
 /* RFC 0034 (draft): the flow carries a finer density/velocity grid nested inside the main one. */
 #define LINKSPAN_OOT_FOG_FLOW_DETAIL_GRID 1024u
+/* RFC 0034 amendment: the host accepts detail grids up to LINKSPAN_OOT_FOG_DETAIL_MAX_SIDE per side.
+   Without it, keep detail width/depth <= LINKSPAN_OOT_FOG_MAX_SIDE. */
+#define LINKSPAN_OOT_FOG_FLOW_DETAIL_WIDE 2048u
 #define LINKSPAN_OOT_FOG_MAX_RAISED_FRACTION 0.70f
 #define LINKSPAN_OOT_FOG_VORTEX_REST_DENSITY 0.60f
 #define LINKSPAN_OOT_FOG_EDGE_NEGATIVE_X 1u
@@ -78,10 +83,11 @@ typedef struct ShipOotFogDetailCellV1 {
 } ShipOotFogDetailCellV1;
 
 /* RFC 0034 (draft). Density and velocity only: floor, thickness and color still come from the main grid.
-   The bounds must lie inside the main grid. Requires LINKSPAN_OOT_FOG_FLOW_CPU_FIELD. */
+   The bounds must lie inside the main grid, and at least one main cell must have density > 0
+   (the floor comes from the main grid; otherwise the submit is rejected). Requires LINKSPAN_OOT_FOG_FLOW_CPU_FIELD. */
 typedef struct ShipOotFogDetailV1 {
     uint32_t size;
-    uint32_t width, depth; /* 2..LINKSPAN_OOT_FOG_MAX_SIDE */
+    uint32_t width, depth; /* 2..LINKSPAN_OOT_FOG_DETAIL_MAX_SIDE */
     float x_min, x_max, z_min, z_max;
     float blend; /* u: band inside the bounds that fades to the main grid */
     const ShipOotFogDetailCellV1* cells; /* row-major [z][x] */
