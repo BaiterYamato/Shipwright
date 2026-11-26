@@ -87,6 +87,9 @@ const ShipOotFogV2& GetOotNativeFogFlowService() {
 } // namespace ShipLuaHost
 extern "C" {
 #include "functions.h"
+int32_t ShaderPacks_ReplacesVanillaShadows(void) {
+    return 0;
+}
 PlayState* gPlayState = nullptr;
 SaveContext gSaveContext{};
 u8 gItemAgeReqs[ITEM_NONE]{};

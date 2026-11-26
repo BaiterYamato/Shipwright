@@ -196,6 +196,12 @@ if(MSVC)
     set_source_files_properties(${soh_hookable_sources} PROPERTIES
         VS_SETTINGS "WholeProgramOptimization=false;InlineFunctionExpansion=Disabled"
     )
+    # Preserve compiland and line information used by symdump for the NEI escape hatch.
+    set_property(SOURCE
+        src/code/z_player_lib.c
+        src/code/z_lights.c
+        src/overlays/actors/ovl_En_Wood02/z_en_wood02.c
+        APPEND PROPERTY VS_SETTINGS "DebugInformationFormat=OldStyle")
 endif()
 
 list(APPEND src__ ${CMAKE_CURRENT_SOURCE_DIR}/Resource.rc)
@@ -848,8 +854,13 @@ INSTALL(FILES $<TARGET_PDB_FILE:soh> DESTINATION debug COMPONENT ship)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION . COMPONENT ship)
 endif()
 
-find_program(CURL NAMES curl DOC "Path to the curl program.  Used to download files.")
-execute_process(COMMAND ${CURL} -sSfL https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt -o ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt OUTPUT_VARIABLE RESULT)
+set(SOH_GAMECONTROLLERDB_FILE "" CACHE FILEPATH "Local gamecontrollerdb.txt for offline builds")
+if(SOH_GAMECONTROLLERDB_FILE)
+    configure_file("${SOH_GAMECONTROLLERDB_FILE}" "${CMAKE_BINARY_DIR}/gamecontrollerdb.txt" COPYONLY)
+else()
+    find_program(CURL NAMES curl DOC "Path to the curl program.  Used to download files.")
+    execute_process(COMMAND ${CURL} -sSfL https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt -o ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt OUTPUT_VARIABLE RESULT)
+endif()
 
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
 configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/macosx/Info.plist.in ${CMAKE_BINARY_DIR}/macosx/Info.plist @ONLY)
