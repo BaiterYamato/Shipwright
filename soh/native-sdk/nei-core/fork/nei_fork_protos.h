@@ -6,6 +6,13 @@
 // nei_host_overrides.h. Os tipos de ator ficam como struct, porque o global.h não traz os headers de overlay.
 #pragma once
 
+// Declarações C do host GFX-UNIFY usadas pelas sobreposições do fork.
+void LinkSpan_ActorSettleDamage(Actor* actor);
+int DetachedLeaves_OnTreeLeaf(struct PlayState* play, const float* pos, float yaw, int yellow);
+void DetachedLeaves_Reset(void);
+void ImpactDecals_Reset(void);
+void PersistentDebris_Reset(void);
+
 s32 BgCheck_PosErrorCheck(Vec3f* pos, char* file, s32 line);
 void BossRemains_DrawOdolwaShield(PlayState* play, Player* player);
 void BossRemains_DrawOdolwaSword(PlayState* play, Player* player);

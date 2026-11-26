@@ -9,6 +9,26 @@ if(NOT EXISTS "${OOT_NATIVE_SDK}")
 endif()
 include("${OOT_NATIVE_SDK}")
 
+# The portable SDK defines the ABI. Host overlays also need private source and
+# dependency headers that the SDK deliberately does not distribute.
+set(NEI_HOST_BUILD_SDK "" CACHE FILEPATH "Matching host build's generated OotNativeSdk.cmake")
+if(NEI_HOST_BUILD_SDK)
+    set(nei_portable_layout "${OOT_NATIVE_LAYOUT_ID}")
+    if(NOT nei_portable_layout)
+        set(nei_portable_layout "${LinkSpanOotSdk_LAYOUT_ID}")
+    endif()
+    set(nei_portable_includes "${OOT_NATIVE_INCLUDE_DIRS}")
+    set(nei_portable_definitions "${OOT_NATIVE_COMPILE_DEFINITIONS}")
+    include("${NEI_HOST_BUILD_SDK}")
+    if(NOT "${nei_portable_layout}" STREQUAL "${OOT_NATIVE_LAYOUT_ID}" OR
+       NOT "${nei_portable_definitions}" STREQUAL "${OOT_NATIVE_COMPILE_DEFINITIONS}")
+        message(FATAL_ERROR "SDK portatil e SDK local do host divergem")
+    endif()
+    # Keep only the host build's single canonical include set so #pragma once never
+    # sees both sdk-portable copies and src/soh originals simultaneously.
+    list(REMOVE_DUPLICATES OOT_NATIVE_INCLUDE_DIRS)
+endif()
+
 # Código de itens do fork NEI (fase F): sai do commit fixo pelo fork/sync.py e chama o host pelo escape hatch.
 get_filename_component(host_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 set(NEI_HOST_SYMBOLS "${host_root}/x64/Release/soh.symbols" CACHE FILEPATH "soh.symbols do host alvo")
@@ -65,7 +85,7 @@ target_compile_definitions(nei_fork PRIVATE ${OOT_NATIVE_COMPILE_DEFINITIONS})
 # C4047/C4024/C4090/C4133: o jogo passa caminhos de asset como ponteiros de recurso e Player* como Actor*.
 # C4013 é erro: função sem protótipo volta como int e trunca ponteiro ou perde f32 (nei_fork_protos.h).
 target_compile_options(nei_fork PRIVATE /utf-8 /W3 /wd4047 /wd4024 /wd4090 /wd4133 /wd4244 /wd4005 /bigobj
-    /we4013 /Zc:preprocessor /std:c17 /FI${fork_src}/fork_cpp_compat.h)
+    /we4013 /Zc:preprocessor "$<$<COMPILE_LANGUAGE:C>:/std:c17>" /FI${fork_src}/fork_cpp_compat.h)
 
 # Thunks das funções e ponteiros das variáveis do host que os objetos do fork pedem (gen_imports.py).
 # O .asm fica na raiz do build: o ml64 do MSBuild não cria a subpasta do objeto (nei-fork/) como o cl cria.
