@@ -12,6 +12,7 @@
 #endif
 #include <windows.h>
 #include "GeometryShadow.h"
+#include "FairyLightCap.h"
 #include "soh/Enhancements/Graphics/WaterRipple/WaterRipple.h"
 #include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
 #include "soh/Enhancements/Graphics/Weather/WetSurface.h"
@@ -44,6 +45,7 @@
 
 extern "C" {
 #include "z64.h"
+#include "overlays/actors/ovl_En_Elf/z_en_elf.h"
 extern PlayState* gPlayState;
 extern SaveContext gSaveContext;
 void Matrix_MtxToMtxF(Mtx* source, MtxF* destination);
@@ -306,6 +308,20 @@ struct SceneConstants {
 };
 static_assert(sizeof(SceneConstants) == 36 * 16);
 
+// Identidade obtida do ator vivo, sem cache de ponteiros que sobreviva a destruição, reload ou troca de cena.
+ShaderPacks::FairyLightCap::Owner ClassifyFairyLightOwner(const PlayState& play, const LightInfo* info) {
+    using Owner = ShaderPacks::FairyLightCap::Owner;
+    for (const auto* actor = play.actorCtx.actorLists[ACTORCAT_ITEMACTION].head; actor; actor = actor->next) {
+        if (actor->id != ACTOR_EN_ELF)
+            continue;
+        const auto* fairy = reinterpret_cast<const EnElf*>(actor);
+        if (info != &fairy->lightInfoGlow && info != &fairy->lightInfoNoGlow)
+            continue;
+        return actor->params == FAIRY_NAVI ? Owner::Navi : Owner::Fairy;
+    }
+    return Owner::Other;
+}
+
 void CaptureScene(const PlayState& play, SceneConstants& scene,
                   const ShaderPacks::TransmissionMaterials* shadowMaterials, size_t pointLightCapacity) {
     scene.info = { static_cast<float>(play.sceneNum), static_cast<float>(play.roomCtx.curRoom.num),
@@ -319,8 +335,11 @@ void CaptureScene(const PlayState& play, SceneConstants& scene,
         SceneVector color;
         float score;
         float shadowScore = 0.8f * 0.8f;
+        ShaderPacks::FairyLightCap::Owner owner = ShaderPacks::FairyLightCap::Owner::Other;
     };
-    std::array<PointLight, 64> candidates{};
+    const int fairyLightCap = Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(
+        ShaderPacks::FairyLightCap::CVar, ShaderPacks::FairyLightCap::NoLimit);
+    std::array<PointLight, ShaderPacks::FairyLightCap::MaxCandidates> candidates{};
     size_t count = 0;
     const auto* node = play.lightCtx.listHead;
     for (size_t visited = 0; node && visited < candidates.size(); ++visited, node = node->next) {
@@ -334,9 +353,24 @@ void CaptureScene(const PlayState& play, SceneConstants& scene,
         const float y = light.y - play.view.eye.y;
         const float z = light.z - play.view.eye.z;
         const float radius = std::min<float>(light.radius, 1024.0f);
-        candidates[count++] = { { light.x, light.y, light.z, radius },
+        candidates[count] = { { light.x, light.y, light.z, radius },
                                 { light.color[0] / 255.0f, light.color[1] / 255.0f, light.color[2] / 255.0f, 0.0f },
-                                (x * x + y * y + z * z) / (radius * radius) };
+                                 (x * x + y * y + z * z) / (radius * radius) };
+        if (fairyLightCap > ShaderPacks::FairyLightCap::NoLimit)
+            candidates[count].owner = ClassifyFairyLightOwner(play, node->info);
+        ++count;
+    }
+    if (fairyLightCap > ShaderPacks::FairyLightCap::NoLimit) {
+        std::array<ShaderPacks::FairyLightCap::Candidate, ShaderPacks::FairyLightCap::MaxCandidates> owners{};
+        for (size_t i = 0; i < count; ++i)
+            owners[i] = { candidates[i].owner, candidates[i].score };
+        const auto admission = ShaderPacks::FairyLightCap::Admit(owners, count, MaxSceneLights, fairyLightCap);
+        size_t retained = 0;
+        for (size_t i = 0; i < count; ++i) {
+            if (admission.accepted[i])
+                candidates[retained++] = candidates[i];
+        }
+        count = retained;
     }
     const size_t visible = std::min(count, MaxSceneLights);
     size_t reserved = 0;
@@ -365,6 +399,22 @@ void CaptureScene(const PlayState& play, SceneConstants& scene,
     }
     std::partial_sort(candidates.begin() + reserved, candidates.begin() + visible, candidates.begin() + count,
                       [](const auto& a, const auto& b) { return a.score < b.score; });
+    if (fairyLightCap > ShaderPacks::FairyLightCap::NoLimit) {
+        // A reserva de sombras e a distância continuam escolhendo as outras luzes. Reponha só a Navi omitida.
+        for (size_t i = visible; i < count; ++i) {
+            if (candidates[i].owner != ShaderPacks::FairyLightCap::Owner::Navi)
+                continue;
+            // Nunca recua para dentro do prefixo reservado às sombras.
+            size_t replacement = visible;
+            while (replacement > reserved &&
+                   candidates[replacement - 1].owner == ShaderPacks::FairyLightCap::Owner::Navi)
+                --replacement;
+            if (replacement <= reserved)
+                break;
+            --replacement;
+            std::swap(candidates[replacement], candidates[i]);
+        }
+    }
     for (size_t i = 0; i < visible; ++i) {
         scene.lightPositions[i] = candidates[i].position;
         scene.lightColors[i] = candidates[i].color;
