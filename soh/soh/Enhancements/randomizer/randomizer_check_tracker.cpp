@@ -201,6 +201,7 @@ void DrawLocation(RandomizerCheck);
 void LoadSettings();
 void RainbowTick();
 void UpdateAreas(RandomizerCheckArea area);
+static bool ApplyInventoryChecks(bool saveImmediately);
 void UpdateInventoryChecks();
 void UpdateOrdering(RandomizerCheckArea);
 int sectionId;
@@ -804,6 +805,7 @@ void CheckTrackerLoadGame(int32_t fileNum) {
             }
         }
     }
+    const u32 areasSpoiledBeforeDefaults = areasSpoiled;
     for (int i = RCAREA_KOKIRI_FOREST; i < RCAREA_INVALID; i++) {
         if (!IsAreaSpoiled(static_cast<RandomizerCheckArea>(i)) &&
 
@@ -820,7 +822,7 @@ void CheckTrackerLoadGame(int32_t fileNum) {
                   RO_MQ_DUNGEONS_SET_NUMBER &&
               (OTRGlobals::Instance->gRandomizer->GetRandoSettingValue(RSK_MQ_DUNGEON_COUNT) == MAX_MQ_DUNGEON_COUNT ||
                OTRGlobals::Instance->gRandomizer->GetRandoSettingValue(RSK_MQ_DUNGEON_COUNT) == 0)))) {
-            SetAreaSpoiled(static_cast<RandomizerCheckArea>(i));
+            areasSpoiled |= 1u << i;
         }
     }
     if (OTRGlobals::Instance->gRandomizer->GetRandoSettingValue(RSK_LINKS_POCKET) != RO_LINKS_POCKET_NOTHING &&
@@ -851,12 +853,18 @@ void CheckTrackerLoadGame(int32_t fileNum) {
           OTRGlobals::Instance->gRandomizer->GetRandoSettingValue(RSK_MQ_DUNGEON_COUNT) < MAX_MQ_DUNGEON_COUNT));
     initialized = true;
     UpdateAllOrdering();
-    UpdateInventoryChecks();
+    const bool hasDungeonMaps = ApplyInventoryChecks(false);
     UpdateFilters();
 
     RegionTable_Init();
 
     Rando::Context::GetInstance()->GetEntranceShuffler()->ApplyEntranceOverrides();
+
+    // Persist the initialized tracker once. Map ownership historically requests a save even if the area was known.
+    if (areasSpoiled != areasSpoiledBeforeDefaults || hasDungeonMaps) {
+        SaveManager::Instance->SaveSection(gSaveContext.fileNum, sectionId, true);
+        RefreshItemTrackerMainWindow();
+    }
 
     recalculateAvailable = true;
 }
@@ -1998,13 +2006,24 @@ bool IsVisibleInCheckTracker(RandomizerCheck rc) {
     }
 }
 
-void UpdateInventoryChecks() {
-    // For all the areas with maps, if you have one, spoil the area
+static bool ApplyInventoryChecks(bool saveImmediately) {
+    bool hasDungeonMaps = false;
     for (auto [scene, area] : DungeonRCAreasBySceneID) {
-        if (CHECK_DUNGEON_ITEM(DUNGEON_MAP, scene)) {
+        if (!CHECK_DUNGEON_ITEM(DUNGEON_MAP, scene)) {
+            continue;
+        }
+        hasDungeonMaps = true;
+        if (saveImmediately) {
             SetAreaSpoiled(area);
+        } else {
+            areasSpoiled |= 1u << area;
         }
     }
+    return hasDungeonMaps;
+}
+
+void UpdateInventoryChecks() {
+    ApplyInventoryChecks(true);
 }
 
 void UpdateAreaFullyChecked(RandomizerCheckArea area) {

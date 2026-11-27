@@ -13,6 +13,8 @@ namespace ShaderPacks {
 struct PassSource;
 bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view name, std::string& error);
 void DisableWorldPass();
+// Called after a frame has been rendered and passed through the swap path.
+void RecordPresentedWorldFrame();
 // Vetor 11 do LinkSpanIris (RFC 0035): parâmetros do provider, como a altura das nuvens de um pack Iris.
 void SetProviderParameters(const float* values, uint32_t count);
 } // namespace ShaderPacks

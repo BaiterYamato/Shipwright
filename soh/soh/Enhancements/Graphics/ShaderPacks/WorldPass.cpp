@@ -36,10 +36,13 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <numeric>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -799,6 +802,10 @@ struct WorldPass {
     ComPtr<ID3D11ShaderResourceView> depthSource;
     PassTarget resolvedDepth{};
     std::string name;
+    std::chrono::steady_clock::time_point activationStart, activatedAt;
+    std::atomic<bool> firstDrawSubmitted{ false };
+    std::atomic<bool> firstFrameLogged{ false };
+    std::atomic<bool> firstPackFrameLogged{ false };
     bool usesWaterRipple = false;
     ComPtr<ID3D11Texture2D> rippleTexture;
     ComPtr<ID3D11ShaderResourceView> rippleView;
@@ -1749,6 +1756,8 @@ void DrawWorld(Fast::Interpreter& interpreter, uint32_t ticket, Fast::WorldPostP
         pass->PrepareIris(interpreter, snapshot);
         const bool drawn = pass->Draw(*dx11->mContext.Get(), pass->cameraBuffer ? &snapshot.camera : nullptr,
                                       pass->sceneBuffer ? &snapshot.scene : nullptr, snapshot.sceneId);
+        if (drawn && !pass->firstDrawSubmitted.load(std::memory_order_relaxed))
+            pass->firstDrawSubmitted.store(true, std::memory_order_relaxed);
         pass->FinishGpuTimings(drawn);
         pass->fogLayerPrepared = false;
         return;
@@ -1870,6 +1879,8 @@ void DrawWorld(Fast::Interpreter& interpreter, uint32_t ticket, Fast::WorldPostP
         pass->PrepareIris(interpreter, snapshot);
         const bool drawn = pass->Draw(*dx11->mContext.Get(), pass->cameraBuffer ? &snapshot.camera : nullptr,
                                       pass->sceneBuffer ? &snapshot.scene : nullptr, snapshot.sceneId);
+        if (drawn && !pass->firstDrawSubmitted.load(std::memory_order_relaxed))
+            pass->firstDrawSubmitted.store(true, std::memory_order_relaxed);
         pass->FinishGpuTimings(drawn);
     }
 }
@@ -2024,7 +2035,7 @@ class PackIncludes final : public ID3DInclude {
     explicit PackIncludes(const ShaderPacks::PassSource& pass) : pass(pass) {
     }
 
-    HRESULT STDMETHODCALLTYPE Open(D3D_INCLUDE_TYPE, LPCSTR file, LPCVOID parent, LPCVOID* data, UINT* bytes) override {
+    HRESULT STDMETHODCALLTYPE Open(D3D_INCLUDE_TYPE, LPCSTR file, LPCVOID parent, LPCVOID* data, UINT* bytes) override try {
         if (!pass.includes || open.size() >= 16)
             return E_FAIL;
         const std::string_view name(file);
@@ -2052,11 +2063,15 @@ class PackIncludes final : public ID3DInclude {
             expandedBytes + source->second.size() > 1024u * 1024u)
             return E_FAIL;
 
+        open.emplace(source->second.data(), source->first);
         *data = source->second.data();
         *bytes = static_cast<UINT>(source->second.size());
         expandedBytes += *bytes;
-        open.emplace(*data, source->first);
         return S_OK;
+    } catch (const std::bad_alloc&) {
+        return E_OUTOFMEMORY;
+    } catch (...) {
+        return E_FAIL;
     }
 
     HRESULT STDMETHODCALLTYPE Close(LPCVOID data) override {
@@ -2075,7 +2090,8 @@ class PackIncludes final : public ID3DInclude {
 // The CheckPassInterface validation still runs on every load.
 using CompileFunction = decltype(&D3DCompile);
 using CreateBlobFunction = decltype(&D3DCreateBlob);
-constexpr char ShaderCacheMagic[8] = { 'L', 'S', 'P', 'C', 'S', 'O', '0', '1' };
+constexpr char ShaderCacheMagic[8] = { 'L', 'S', 'P', 'C', 'S', 'O', '0', '2' };
+std::mutex shaderCacheMutex;
 constexpr size_t ShaderCacheMaxBytes = 16u * 1024u * 1024u;
 constexpr size_t ShaderCacheMaxFiles = 256;
 
@@ -2114,18 +2130,34 @@ std::filesystem::path ShaderCacheDirectory() {
     } catch (...) { return {}; }
 }
 
-ShaderCacheKey MakeShaderCacheKey(std::string_view source, const char* file, const D3D_SHADER_MACRO* macros,
-                                  const ShaderPacks::IncludeFiles* includes, const char* target, UINT flags) {
+std::string_view ShaderCompilerVersion(HMODULE compiler) {
+    // The compiler remains loaded for the lifetime of the DX11 backend.
+    const auto resource = FindResourceW(compiler, MAKEINTRESOURCEW(1), MAKEINTRESOURCEW(16)); // VS_VERSION_INFO
+    if (!resource)
+        return {};
+    const DWORD size = SizeofResource(compiler, resource);
+    const auto loaded = LoadResource(compiler, resource);
+    const auto* bytes = loaded ? static_cast<const char*>(LockResource(loaded)) : nullptr;
+    return bytes && size ? std::string_view(bytes, size) : std::string_view{};
+}
+
+ShaderCacheKey MakeShaderCacheKey(std::string_view compilerVersion, std::string_view source, const char* file,
+                                  const D3D_SHADER_MACRO* macros, const ShaderPacks::IncludeFiles* includes,
+                                  const char* target, UINT flags) {
     ShaderCacheKey key;
-    key.Add("d3dcompiler_47/main");
+    key.Add("d3dcompiler_47/main/cache-2");
+    key.Add(compilerVersion);
     key.Add(source);
     key.Add(file ? file : "");
     for (auto* macro = macros; macro && macro->Name; ++macro) {
+        key.Add("macro");
         key.Add(macro->Name);
+        key.Add(macro->Definition ? "text" : "null");
         key.Add(macro->Definition ? macro->Definition : "");
     }
     if (includes) {
         for (const auto& [name, text] : *includes) {
+            key.Add("include");
             key.Add(name);
             key.Add(text);
         }
@@ -2161,7 +2193,7 @@ void StoreCachedShader(const std::filesystem::path& path, const ShaderCacheKey& 
     if (error || code.GetBufferSize() == 0 || code.GetBufferSize() > ShaderCacheMaxBytes)
         return;
     auto temporary = path;
-    temporary += ".tmp" + std::to_string(GetCurrentThreadId());
+    temporary += ".tmp-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetCurrentThreadId());
     {
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
         const uint64_t stored[2] = { key.a, key.b };
@@ -2170,19 +2202,19 @@ void StoreCachedShader(const std::filesystem::path& path, const ShaderCacheKey& 
         file.write(reinterpret_cast<const char*>(stored), sizeof(stored));
         file.write(reinterpret_cast<const char*>(&size), sizeof(size));
         file.write(static_cast<const char*>(code.GetBufferPointer()), size);
-        if (!file.good()) {
-            file.close();
+        file.close();
+        if (!file) {
             std::filesystem::remove(temporary, error);
             return;
         }
     }
-    std::filesystem::rename(temporary, path, error);
-    if (error)
+    if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING))
         std::filesystem::remove(temporary, error);
 }
 
 // Keeps the cache bounded: drops the oldest entries past ShaderCacheMaxFiles.
 void PruneShaderCache(const std::filesystem::path& directory) {
+    const std::lock_guard lock(shaderCacheMutex);
     std::error_code error;
     std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> entries;
     for (std::filesystem::directory_iterator it(directory, error), end; !error && it != end; it.increment(error)) {
@@ -2198,39 +2230,52 @@ void PruneShaderCache(const std::filesystem::path& directory) {
 
 // D3DCompile with the disk cache. Diagnostics only exist on a real compile.
 HRESULT CompileCached(CompileFunction compile, CreateBlobFunction createBlob, const std::filesystem::path& directory,
-                      std::string_view source, const char* file, const D3D_SHADER_MACRO* macros,
-                      const ShaderPacks::IncludeFiles* includes, ID3DInclude* include, const char* target, UINT flags,
-                      ID3DBlob** code, ID3DBlob** diagnostic, bool& cached) {
+                      std::string_view compilerVersion, std::string_view source, const char* file,
+                      const D3D_SHADER_MACRO* macros, const ShaderPacks::IncludeFiles* includes, ID3DInclude* include,
+                      const char* target, UINT flags, ID3DBlob** code, ID3DBlob** diagnostic, bool& cached) {
     cached = false;
-    const auto key = MakeShaderCacheKey(source, file, macros, includes, target, flags);
-    const auto path = directory.empty() ? std::filesystem::path{} : directory / (key.Hex() + ".cso");
-    if (createBlob && !path.empty() && LoadCachedShader(path, key, createBlob, code)) {
-        cached = true;
-        return S_OK;
+    const auto runCompiler = [&] {
+        return compile(source.data(), source.size(), file, macros, include, "main", target, flags, 0, code, diagnostic);
+    };
+    if (!createBlob || directory.empty())
+        return runCompiler();
+
+    const auto key = MakeShaderCacheKey(compilerVersion, source, file, macros, includes, target, flags);
+    const auto path = directory / (key.Hex() + ".cso");
+    {
+        const std::lock_guard lock(shaderCacheMutex);
+        if (LoadCachedShader(path, key, createBlob, code)) {
+            cached = true;
+            return S_OK;
+        }
     }
-    const auto result =
-        compile(source.data(), source.size(), file, macros, include, "main", target, flags, 0, code, diagnostic);
-    if (SUCCEEDED(result) && *code && !path.empty())
+    const HRESULT result = runCompiler();
+    if (SUCCEEDED(result) && *code) {
+        const std::lock_guard lock(shaderCacheMutex);
         StoreCachedShader(path, key, **code);
+    }
     return result;
 }
 
-// Same signature as D3DCompile, for host shaders compiled through a function pointer (GeometryShadow and the
-// fixed passes). Set by ActivateWorldPass before use; anything with an include handler or another entry point
-// goes straight to the compiler.
-CompileFunction gCacheRawCompile = nullptr;
-CreateBlobFunction gCacheCreateBlob = nullptr;
-std::filesystem::path gCacheDirectory;
+// Host-owned shaders use this function pointer synchronously on the activation thread.
+struct HostCompileCache {
+    CompileFunction compile;
+    CreateBlobFunction createBlob;
+    std::filesystem::path directory;
+    std::string_view compilerVersion;
+};
+thread_local HostCompileCache hostCompileCache{};
 
 HRESULT WINAPI CachedHostCompile(LPCVOID data, SIZE_T size, LPCSTR name, const D3D_SHADER_MACRO* macros,
                                  ID3DInclude* include, LPCSTR entry, LPCSTR target, UINT flags, UINT effectFlags,
                                  ID3DBlob** code, ID3DBlob** diagnostic) {
+    const auto& cache = hostCompileCache;
     if (include || effectFlags || !entry || std::strcmp(entry, "main") != 0 || !target || !data)
-        return gCacheRawCompile(data, size, name, macros, include, entry, target, flags, effectFlags, code, diagnostic);
+        return cache.compile(data, size, name, macros, include, entry, target, flags, effectFlags, code, diagnostic);
     bool cached = false;
-    return CompileCached(gCacheRawCompile, gCacheCreateBlob, gCacheDirectory,
-                         std::string_view(static_cast<const char*>(data), size), name, macros, nullptr, nullptr, target,
-                         flags, code, diagnostic, cached);
+    return CompileCached(cache.compile, cache.createBlob, cache.directory, cache.compilerVersion,
+                         std::string_view(static_cast<const char*>(data), size), name, macros, nullptr, nullptr,
+                         target, flags, code, diagnostic, cached);
 }
 
 bool reflectedWaterRipple = false;
@@ -2487,6 +2532,8 @@ void SetProviderParameters(const float* values, uint32_t count) {
 
 bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view name, std::string& error) {
 #ifdef _WIN32
+    using Clock = std::chrono::steady_clock;
+    const auto activationStart = Clock::now();
     auto window = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
     auto interpreter = window ? window->GetInterpreterWeak().lock() : nullptr;
     auto* renderer = interpreter ? interpreter->GetCurrentRenderingAPI() : nullptr;
@@ -2508,11 +2555,11 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
         return false;
     }
     // Host-owned shaders (fullscreen vertex, fog variants, depth resolve, shadow maps) go through the same cache.
-    const auto cacheDirectory = ShaderCacheDirectory();
-    gCacheRawCompile = rawCompile;
-    gCacheCreateBlob = createBlob;
-    gCacheDirectory = cacheDirectory;
-    const CompileFunction compile = createBlob && !cacheDirectory.empty() ? CachedHostCompile : rawCompile;
+    const auto compilerVersion = ShaderCompilerVersion(compiler);
+    const auto cacheDirectory = createBlob && !compilerVersion.empty() ? ShaderCacheDirectory()
+                                                                       : std::filesystem::path{};
+    hostCompileCache = { rawCompile, createBlob, cacheDirectory, compilerVersion };
+    const CompileFunction compile = cacheDirectory.empty() ? rawCompile : CachedHostCompile;
 
     if (!ValidPassSources(sources)) {
         error = "Grafo de passes inválido.";
@@ -2546,63 +2593,108 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
                                               { nullptr, nullptr } };
     constexpr UINT flags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL2;
     reflectedWaterRipple = false;
-    // Passes compile in parallel (D3DCompile is thread-safe) through the disk cache; validation stays in order.
-    const auto compileStart = std::chrono::steady_clock::now();
-    std::vector<ComPtr<ID3DBlob>> pixelCode(sources.size()), pixelDiagnostics(sources.size());
-    std::vector<HRESULT> pixelResults(sources.size(), E_FAIL);
-    std::vector<char> pixelCached(sources.size(), 0);
-    std::vector<ComPtr<ID3DBlob>> vertexCode(sources.size()), vertexDiagnostics(sources.size());
-    std::vector<HRESULT> vertexResults(sources.size(), S_OK);
+    struct ShaderBuild {
+        ComPtr<ID3DBlob> code, diagnostic;
+        HRESULT status = E_FAIL;
+        bool cached = false;
+        double milliseconds = 0.0;
+    };
+    struct PassBuild {
+        ShaderBuild pixel, vertex;
+        std::exception_ptr exception;
+    };
+    std::vector<PassBuild> builds(sources.size());
+    std::vector<size_t> order(sources.size());
+    std::iota(order.begin(), order.end(), size_t{ 0 });
+    const auto size = [&](size_t i) { return sources[i].source.size() + sources[i].vertexSource.size(); };
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return size(a) > size(b); });
+
+    constexpr unsigned maxWorkers = 8;
+    const auto concurrency = std::clamp(std::thread::hardware_concurrency(), 1u, maxWorkers);
+    const auto workerCount = std::min<size_t>(sources.size(), concurrency);
     const char* const vertexProfile = shaderModel5 ? "vs_5_0" : "vs_4_0";
-    {
-        const auto compilePass = [&](size_t index) {
+    const auto elapsedMs = [](auto start, auto end) {
+        return std::chrono::duration<double, std::milli>(end - start).count();
+    };
+    const auto compileShader = [&](ShaderBuild& out, std::string_view source, const char* file,
+                                   const IncludeFiles* files, ID3DInclude* includes, const char* profile) {
+        const auto start = Clock::now();
+        out.status = CompileCached(rawCompile, createBlob, cacheDirectory, compilerVersion, source, file, capabilities,
+                                   files, includes, profile, flags, out.code.GetAddressOf(),
+                                   out.diagnostic.GetAddressOf(), out.cached);
+        out.milliseconds = elapsedMs(start, Clock::now());
+    };
+    std::atomic<size_t> nextJob{ 0 };
+    const auto compileWorker = [&] {
+        // Each result slot and include resolver belongs to exactly one CPU job.
+        for (size_t job = nextJob.fetch_add(1, std::memory_order_relaxed); job < order.size();
+             job = nextJob.fetch_add(1, std::memory_order_relaxed)) {
+            const size_t index = order[job];
             const auto& pass = sources[index];
-            PackIncludes includes(pass);
-            bool cached = false;
-            pixelResults[index] =
-                CompileCached(rawCompile, createBlob, cacheDirectory, pass.source, pass.file.c_str(), capabilities,
-                              pass.includes.get(), &includes, pixelProfile, flags, pixelCode[index].GetAddressOf(),
-                              pixelDiagnostics[index].GetAddressOf(), cached);
-            pixelCached[index] = cached;
-            if (!pass.vertexSource.empty()) {
-                bool vertexCached = false;
-                vertexResults[index] = CompileCached(rawCompile, createBlob, cacheDirectory, pass.vertexSource,
-                                                     pass.vertexFile.c_str(), capabilities, nullptr, nullptr,
-                                                     vertexProfile, flags, vertexCode[index].GetAddressOf(),
-                                                     vertexDiagnostics[index].GetAddressOf(), vertexCached);
+            auto& result = builds[index];
+            try {
+                PackIncludes includes(pass);
+                compileShader(result.pixel, pass.source, pass.file.c_str(), pass.includes.get(), &includes,
+                              pixelProfile);
+                if (!pass.vertexSource.empty())
+                    compileShader(result.vertex, pass.vertexSource, pass.vertexFile.c_str(), nullptr, nullptr,
+                                  vertexProfile);
+            } catch (...) {
+                result.exception = std::current_exception();
             }
-        };
-        std::vector<std::thread> workers;
-        try {
-            for (size_t i = 1; i < sources.size(); ++i)
-                workers.emplace_back(compilePass, i);
-        } catch (const std::system_error&) {
-            // No thread available: whatever did not start compiles here.
-            for (size_t i = workers.size() + 1; i < sources.size(); ++i)
-                compilePass(i);
         }
-        compilePass(0);
-        for (auto& worker : workers)
-            worker.join();
+    };
+    SPDLOG_INFO("Shader pack DX11 compilação início: {} passes={} workers={} flags={:#x} cache={}", name,
+                sources.size(), workerCount, flags, !cacheDirectory.empty());
+    const auto compileStart = Clock::now();
+    size_t workersUsed = 1;
+    {
+        std::vector<std::jthread> workers;
+        workers.reserve(workerCount - 1);
+        try {
+            for (size_t i = 1; i < workerCount; ++i)
+                workers.emplace_back(compileWorker);
+        } catch (const std::system_error&) {
+            // The caller and any workers already started continue draining the same queue.
+        }
+        workersUsed += workers.size();
+        compileWorker();
+    } // Join before reflection, D3D11 object creation or any use of the results.
+    const auto compiledAt = Clock::now();
+    size_t pixelHits = 0, vertexHits = 0, vertexCount = 0;
+    for (size_t i = 0; i < sources.size(); ++i) {
+        const auto& pass = sources[i];
+        const auto& result = builds[i];
+        pixelHits += result.pixel.cached;
+        vertexHits += result.vertex.cached;
+        vertexCount += !pass.vertexSource.empty();
+        SPDLOG_INFO("Shader pack DX11 passe {}/{}: {} ps_ms={:.2f} ps_hit={} ps_hr={:#x} "
+                    "vs={} vs_ms={:.2f} vs_hit={} vs_hr={:#x} exceção={}",
+                    i + 1, sources.size(), pass.file, result.pixel.milliseconds, result.pixel.cached,
+                    static_cast<unsigned>(result.pixel.status), pass.vertexFile, result.vertex.milliseconds,
+                    result.vertex.cached, static_cast<unsigned>(pass.vertexSource.empty() ? S_OK : result.vertex.status),
+                    bool(result.exception));
     }
-    const auto cachedPasses = std::count(pixelCached.begin(), pixelCached.end(), 1);
-    if (!cacheDirectory.empty() && cachedPasses != static_cast<std::ptrdiff_t>(sources.size()))
+    if (!cacheDirectory.empty() && (pixelHits != sources.size() || vertexHits != vertexCount))
         PruneShaderCache(cacheDirectory);
-    SPDLOG_INFO("Shader pack DX11 compilação: {} ({} passes, {} do cache, {} ms)", name, sources.size(), cachedPasses,
-                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - compileStart)
-                    .count());
+    SPDLOG_INFO("Shader pack DX11 compilação fim: {} ps_hits={}/{} vs_hits={}/{} workers={} wall_ms={:.2f}",
+                name, pixelHits, sources.size(), vertexHits, vertexCount, workersUsed,
+                elapsedMs(compileStart, compiledAt));
     for (const auto& pass : sources) {
         const auto index = static_cast<size_t>(&pass - sources.data());
-        ComPtr<ID3DBlob> ps = pixelCode[index];
-        if (FAILED(pixelResults[index]) || !ps) {
-            const auto& diagnostic = pixelDiagnostics[index];
+        const auto& result = builds[index];
+        if (result.exception)
+            std::rethrow_exception(result.exception);
+        const auto& ps = result.pixel.code;
+        if (FAILED(result.pixel.status) || !ps) {
+            const auto& diagnostic = result.pixel.diagnostic;
             error = diagnostic ? static_cast<const char*>(diagnostic->GetBufferPointer())
                                : "Falha ao compilar HLSL: " + pass.file;
             return false;
         }
         const bool packVertex = !pass.vertexSource.empty();
-        if (packVertex && (FAILED(vertexResults[index]) || !vertexCode[index])) {
-            const auto& diagnostic = vertexDiagnostics[index];
+        if (packVertex && (FAILED(result.vertex.status) || !result.vertex.code)) {
+            const auto& diagnostic = result.vertex.diagnostic;
             error = diagnostic ? static_cast<const char*>(diagnostic->GetBufferPointer())
                                : "Falha ao compilar o vertex shader: " + pass.vertexFile;
             return false;
@@ -2611,7 +2703,7 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
         if (!CheckPassInterface(reflect, *ps.Get(), pass, usesCamera, usesScene, usesSunConstants, usesTransmission,
                                 next->pointLightCapacity, next->sunCascadeCapacity, usesWeather, usesDecals, temporal,
                                 usesIris, packVertex) ||
-            (packVertex && !CheckVertexInterface(reflect, *vertexCode[index].Get(), *ps.Get(), pass, usesCamera,
+            (packVertex && !CheckVertexInterface(reflect, *result.vertex.code.Get(), *ps.Get(), pass, usesCamera,
                                                  usesScene, usesIris))) {
             error = "Assinatura ou recursos fora do contrato do passe: " + pass.file;
             return false;
@@ -2634,8 +2726,8 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
                             pass.persistent, pass.fogOver, pass.file,   pass.outputs,
                             wide ? static_cast<UINT>(MaxPassInputs) : LegacyPassInputs };
         usesNoise |= std::find(pass.inputs.begin(), pass.inputs.end(), SceneNoiseInput) != pass.inputs.end();
-        if (packVertex && FAILED(next->device->CreateVertexShader(vertexCode[index]->GetBufferPointer(),
-                                                                  vertexCode[index]->GetBufferSize(), nullptr,
+        if (packVertex && FAILED(next->device->CreateVertexShader(result.vertex.code->GetBufferPointer(),
+                                                                  result.vertex.code->GetBufferSize(), nullptr,
                                                                   compiled.vertexShader.GetAddressOf()))) {
             error = "Falha ao criar o vertex shader DirectX 11: " + pass.vertexFile;
             return false;
@@ -2981,11 +3073,13 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
     next->usesWaterRipple = reflectedWaterRipple;
     WaterRipple::SetWanted(reflectedWaterRipple);
     ImpactDecals::SetWanted(usesDecals);
+    const auto done = Clock::now();
+    next->activationStart = activationStart;
+    next->activatedAt = done;
     activePass.store(std::move(next));
     const auto milliseconds = [](auto from, auto to) {
         return std::chrono::duration_cast<std::chrono::milliseconds>(to - from).count();
     };
-    const auto done = std::chrono::steady_clock::now();
     // Phases: pack shaders (compile/cache + driver creation), fixed shaders and buffers, shadow maps and the rest.
     SPDLOG_INFO("Shader pack DX11 ativação: {} ({} ms: passes {}, fixos {}, sombras e buffers {})", name,
                 milliseconds(compileStart, done), milliseconds(compileStart, passesReady),
@@ -2994,6 +3088,27 @@ bool ActivateWorldPass(std::span<const PassSource> sources, std::string_view nam
 #else
     error = "Este build não inclui DirectX 11.";
     return false;
+#endif
+}
+
+void RecordPresentedWorldFrame() {
+#ifdef _WIN32
+    const auto pass = activePass.load();
+    if (!pass)
+        return;
+    const bool firstFrame = !pass->firstFrameLogged.load(std::memory_order_relaxed) &&
+                            !pass->firstFrameLogged.exchange(true, std::memory_order_relaxed);
+    const bool firstPackFrame = pass->firstDrawSubmitted.load(std::memory_order_relaxed) &&
+                                !pass->firstPackFrameLogged.load(std::memory_order_relaxed) &&
+                                !pass->firstPackFrameLogged.exchange(true, std::memory_order_relaxed);
+    if (firstFrame || firstPackFrame) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto total = std::chrono::duration<double, std::milli>(now - pass->activationStart).count();
+        const auto after = std::chrono::duration<double, std::milli>(now - pass->activatedAt).count();
+        SPDLOG_INFO("Shader pack DX11 apresentação: {} primeiro_frame={} primeiro_frame_com_pack={} "
+                    "desde_inicio_ativacao_ms={:.2f} apos_ativacao_ms={:.2f}",
+                    pass->name, firstFrame, firstPackFrame, total, after);
+    }
 #endif
 }
 

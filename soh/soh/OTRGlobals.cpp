@@ -131,6 +131,7 @@
 #include "soh/native/OotNativeWorld.h"
 #include "soh/native/OotNativeSkeletons.h"
 #include "soh/OotHotkeyRegistry.h"
+#include "soh/Enhancements/Graphics/ShaderPacks/WorldPass.h"
 #include "../src/code/linkspan_vanilla.h"
 #include "soh/SohGui/SohModals.h"
 
@@ -1873,7 +1874,8 @@ void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
         std::unordered_map<Mtx*, MtxF> mtx_replacements =
             (time == denom) ? std::unordered_map<Mtx*, MtxF>() : FrameInterpolation_Interpolate((float)time / denom);
         intp->mInterpolationT = (float)time / denom;
-        wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements);
+        if (wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements))
+            ShaderPacks::RecordPresentedWorldFrame();
         intp->mInterpolationIndex++;
     }
     ImGui::PopStyleColor();
