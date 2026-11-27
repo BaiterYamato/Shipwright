@@ -22,6 +22,7 @@
 #include <fast/backends/gfx_direct3d_common.h>
 #include "PackGpuTimingsDX11.h"
 #include <fast/labpbr_kokiri.h>
+#include <fast/screen_projection.h>
 #include <fast/world_postprocess.h>
 #include <ship/Context.h>
 #include <ship/config/ConsoleVariable.h>
@@ -596,6 +597,7 @@ bool ReadWorldSnapshot(const Fast::Interpreter& interpreter, uint32_t ticket, Wo
         auto& camera = snapshot.camera;
         const bool projected = Fast::TryReadInterpolatedMatrix(interpreter, snapshot.projectionKey, camera.projection);
         const bool viewed = Fast::TryReadInterpolatedMatrix(interpreter, snapshot.viewKey, camera.view);
+        Fast::ScaleProjectionAspectX(camera.projection, interpreter.AdjXForAspectRatio(1.0f));
         camera.info[2] = interpreter.mInterpolationT;
         camera.info[3] = (viewed ? 1.0f : 0.0f) + (projected ? 2.0f : 0.0f);
     }
@@ -927,7 +929,7 @@ struct WorldPass {
         if (usesTemporal)
             bytes += static_cast<uint64_t>(desc.Width) * desc.Height * 16; // Cor FP16 + depth ate 64 bits.
         if (hasFog)
-            bytes += static_cast<uint64_t>(desc.Width) * desc.Height * 8;
+            bytes += static_cast<uint64_t>(desc.Width) * desc.Height * 16;
         // O mapa em cascata tem alocação e recusa próprias (ResizeSolar mantém o tamanho anterior sem memória).
         // Somado aqui, 3 x 4096² em float (201 MB) estourava os 256 MB e desligava o pack inteiro ao recriar os
         // alvos, por exemplo ao redimensionar a janela (playtest 12/11, Shadow Map Resolution 4096 em 1793x1009).
@@ -965,7 +967,7 @@ struct WorldPass {
         PassTarget nextFog = fogLayer;
         if (hasFog && (!nextFog.target || nextFog.width != desc.Width || nextFog.height != desc.Height)) {
             nextFog = { {}, {}, desc.Width, desc.Height };
-            if (!CreatePassTarget(*device.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, nextFog))
+            if (!CreatePassTarget(*device.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, nextFog))
                 return false;
         }
 
@@ -1432,13 +1434,13 @@ struct WorldPass {
                 temporalAspect == previousTemporalAspect && !TemporalCameraCut(*camera, previousTemporalCamera);
             TemporalConstants constants{};
             std::memcpy(constants.projection, previousTemporalCamera.projection, sizeof(constants.projection));
-            for (auto& row : constants.projection) row[0] *= previousTemporalAspect;
             std::memcpy(constants.view, previousTemporalCamera.view, sizeof(constants.view));
             std::memcpy(constants.info, previousTemporalCamera.info, sizeof(constants.info));
             constants.state[0] = valid ? 1.0f : 0.0f;
             constants.state[1] = history.Delta();
             constants.state[2] = static_cast<float>(temporalSerial & 65535u);
-            constants.state[3] = temporalAspect;
+            // camera.projection ja inclui AdjXForAspectRatio; 1.0 mantem shaders temporais retrocompativeis.
+            constants.state[3] = 1.0f;
             ctx.PSGetConstantBuffers(9, 1, oldTemporalBuffer.GetAddressOf());
             ctx.PSGetShaderResources(5, 3, oldTemporalSources.data());
             ctx.UpdateSubresource(temporalBuffer.Get(), 0, nullptr, &constants, 0, 0);
@@ -1470,18 +1472,18 @@ struct WorldPass {
         ComPtr<ID3D11Buffer> oldIrisBuffer;
         if (irisBuffer) {
             // Primeiro quadro, troca de cena ou pausa: o quadro anterior é o atual, como no Iris.
-            const bool valid = irisInitialized && camera && irisScene == sceneId && seconds >= irisTime &&
+            const bool valid = irisInitialized && camera && irisScene == sceneId &&
+                               irisAspect == previousIrisAspect && seconds >= irisTime &&
                                seconds - irisTime <= 0.25;
             const CameraConstants& previous = valid || !camera ? previousIrisCamera : *camera;
-            const float previousAspect = valid || !camera ? previousIrisAspect : irisAspect;
             IrisConstants constants{};
             std::memcpy(constants.previousProjection, previous.projection, sizeof(constants.previousProjection));
-            for (auto& row : constants.previousProjection) row[0] *= previousAspect;
             std::memcpy(constants.previousView, previous.view, sizeof(constants.previousView));
             std::copy(irisFog.begin(), irisFog.end(), constants.fog);
             constants.info[0] = valid ? 1.0f : 0.0f;
             constants.info[1] = valid ? static_cast<float>(seconds - irisTime) : 0.0f;
-            constants.info[2] = irisAspect;
+            // camera.projection ja inclui AdjXForAspectRatio; 1.0 mantem IrisPack.cpp retrocompativel.
+            constants.info[2] = 1.0f;
             constants.info[3] = irisFogEnd;
             irisFrame = (irisFrame + 1) % 720720u;
             irisClock = std::fmod(irisClock + constants.info[1], 3600.0);
@@ -1904,7 +1906,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
     fog.rgb *= 0.5;
 #elif FOG_LAYER_MODE >= 2 && FOG_LAYER_MODE <= 4
     // Reescala a espessura optica agregada, preservando a cor reta.
-    // a==1 continua opaco: FP16 ja perdeu a transmitancia nesse extremo.
+    // Camada FP32 preserva a transmitancia perto de a==1 para evitar degraus de quantizacao.
     float a = saturate(fog.a);
     if (a <= 0.0) return 0.0;
     const float scale = FOG_LAYER_MODE == 2 ? 0.5 : (FOG_LAYER_MODE == 3 ? 0.25 : 0.125);

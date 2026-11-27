@@ -192,6 +192,15 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         target_link_libraries(linkspan_spatial_upscale_warp_tests PRIVATE d3d11 d3dcompiler)
         add_test(NAME linkspan_spatial_upscale_warp_tests COMMAND linkspan_spatial_upscale_warp_tests)
     endif()
+
+    set(screen_projection_test_src "${CMAKE_SOURCE_DIR}/libultraship/tests/fast/screen_projection_test.cpp")
+    if(EXISTS "${screen_projection_test_src}" AND NOT TARGET screen_projection_test)
+        add_executable(screen_projection_test "${screen_projection_test_src}")
+        target_compile_features(screen_projection_test PRIVATE cxx_std_17)
+        target_include_directories(screen_projection_test PRIVATE
+            "${CMAKE_SOURCE_DIR}/libultraship/include")
+        add_test(NAME screen_projection_test COMMAND screen_projection_test)
+    endif()
 endif()
 
 # RFC 0029: gerador do catálogo público e da retenção; o sync falha quando functions.h/variables.h mudam sem
