@@ -2918,14 +2918,16 @@ extern "C" void Save_SaveGlobal(void) {
 }
 
 extern "C" void Save_LoadFile(void) {
-    // Handle vanilla context reset
-    OTRGlobals::Instance->gRandoContext->GetLogic()->SetContext(nullptr);
-    Rando::Settings::GetInstance()->ClearContext();
-    OTRGlobals::Instance->gRandoContext.reset();
-    OTRGlobals::Instance->gRandoContext = Rando::Context::CreateInstance();
-    OTRGlobals::Instance->gRandoContext->GetLogic()->SetSaveContext(&gSaveContext);
-    Rando::Settings::GetInstance()->AssignContext(OTRGlobals::Instance->gRandoContext);
-    OTRGlobals::Instance->gRandoContext->AddExcludedOptions();
+    // Handle vanilla context reset. O novo Context nasce numa local e entra de uma vez: nunca há janela com
+    // gRandoContext nulo para outra thread ler (FileChoose_UpdateRandomizer, trackers).
+    auto freshContext = Rando::Context::CreateInstance();
+    freshContext->GetLogic()->SetSaveContext(&gSaveContext);
+    Rando::Settings::GetInstance()->AssignContext(freshContext);
+    freshContext->AddExcludedOptions();
+    auto previousContext = std::move(OTRGlobals::Instance->gRandoContext);
+    OTRGlobals::Instance->gRandoContext = std::move(freshContext);
+    // Solta a referência Logic -> Context do anterior para ele poder morrer.
+    previousContext->GetLogic()->SetContext(nullptr);
     SaveManager::Instance->LoadFile(gSaveContext.fileNum);
 }
 

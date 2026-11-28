@@ -180,6 +180,27 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         "${CMAKE_SOURCE_DIR}/tools/check-public-symbols.py"
         --exe "$<TARGET_FILE:soh>" --symbols "$<TARGET_FILE_DIR:soh>/soh.symbols")
     set_tests_properties(linkspan_public_symbols_pe PROPERTIES SKIP_RETURN_CODE 77)
+
+    # The software rasterizer exercises the embedded shader without starting the game.
+    set(spatial_upscale_test "${CMAKE_SOURCE_DIR}/libultraship/tests/fast/spatial_upscale_test.cpp")
+    if(EXISTS "${spatial_upscale_test}")
+        add_executable(linkspan_spatial_upscale_warp_tests "${spatial_upscale_test}")
+        target_compile_features(linkspan_spatial_upscale_warp_tests PRIVATE cxx_std_17)
+        target_compile_options(linkspan_spatial_upscale_warp_tests PRIVATE $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/UNDEBUG>)
+        target_include_directories(linkspan_spatial_upscale_warp_tests PRIVATE
+            "${CMAKE_SOURCE_DIR}/libultraship/src/fast/backends")
+        target_link_libraries(linkspan_spatial_upscale_warp_tests PRIVATE d3d11 d3dcompiler)
+        add_test(NAME linkspan_spatial_upscale_warp_tests COMMAND linkspan_spatial_upscale_warp_tests)
+    endif()
+
+    set(screen_projection_test_src "${CMAKE_SOURCE_DIR}/libultraship/tests/fast/screen_projection_test.cpp")
+    if(EXISTS "${screen_projection_test_src}" AND NOT TARGET screen_projection_test)
+        add_executable(screen_projection_test "${screen_projection_test_src}")
+        target_compile_features(screen_projection_test PRIVATE cxx_std_17)
+        target_include_directories(screen_projection_test PRIVATE
+            "${CMAKE_SOURCE_DIR}/libultraship/include")
+        add_test(NAME screen_projection_test COMMAND screen_projection_test)
+    endif()
 endif()
 
 # RFC 0029: gerador do catálogo público e da retenção; o sync falha quando functions.h/variables.h mudam sem

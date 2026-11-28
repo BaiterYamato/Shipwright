@@ -33,10 +33,10 @@ struct NativeAsset {
 };
 
 constexpr std::array<NativeAsset, 3> kNativeAssets = {
-    NativeAsset{ "oot.player.sword.kokiri", "__OTR__objects/object_link_child/gLinkChildLeftFistAndKokiriSwordNearDL" },
+    NativeAsset{ "oot.player.sword.kokiri", "objects/object_link_child/gLinkChildLeftFistAndKokiriSwordNearDL" },
     NativeAsset{ "oot.player.sword.master",
-                 "__OTR__objects/object_link_boy/gLinkAdultLeftHandHoldingMasterSwordNearDL" },
-    NativeAsset{ "oot.player.sword.biggoron", "__OTR__objects/object_gi_longsword/gGiBiggoronSwordDL" },
+                 "objects/object_link_boy/gLinkAdultLeftHandHoldingMasterSwordNearDL" },
+    NativeAsset{ "oot.player.sword.biggoron", "objects/object_gi_longsword/gGiBiggoronSwordDL" },
 };
 
 ShipLua::WorldAssetCatalog ProbeNativeAssets() {
@@ -54,7 +54,7 @@ ShipLua::WorldAssetCatalog ProbeNativeAssets() {
                 archive != nullptr && archive->IsLoaded() &&
                 (!archive->HasGameVersion() || archiveManager->IsGameVersionValid(archive->GetGameVersion()));
             if (archiveValidated) {
-                bundleLoaded = resourceManager->LoadResource(native.resourcePath) != nullptr;
+                bundleLoaded = resourceManager->LoadResource(native.resourcePath, /*loadExact=*/true) != nullptr;
             }
         }
 

@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "passes": [
+    { "name": "bright", "file": "shaders/bright.hlsl", "divisor": 2, "inputs": ["scene"] },
+    { "name": "near-x", "file": "shaders/blur-x.hlsl", "divisor": 2, "inputs": ["bright"] },
+    { "name": "near", "file": "shaders/blur-y.hlsl", "divisor": 2, "inputs": ["near-x"] },
+    { "name": "downsample", "file": "shaders/downsample.hlsl", "divisor": 4, "inputs": ["near"] },
+    { "name": "wide-x", "file": "shaders/blur-x.hlsl", "divisor": 4, "inputs": ["downsample"] },
+    { "name": "wide", "file": "shaders/blur-y.hlsl", "divisor": 4, "inputs": ["wide-x"] },
+    { "name": "final", "file": "shaders/composite.hlsl", "divisor": 1, "inputs": ["scene", "near", "wide"] }
+  ]
+}

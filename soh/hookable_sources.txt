@@ -19,6 +19,7 @@ src/code/z_lib.c
 src/code/z_message_PAL.c
 src/code/z_parameter.c
 src/code/z_play.c
+src/code/z_lights.c
 src/code/z_player_lib.c
 src/code/z_room.c
 src/code/z_sram.c

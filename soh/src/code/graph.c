@@ -8,6 +8,7 @@
 
 #include <libultraship/bridge/gfxdebuggerbridge.h>
 #include <libultraship/bridge/windowbridge.h>
+#include <fast/world_presentation.h>
 #include "soh/Enhancements/gameconsole.h"
 #include "soh/OTRGlobals.h"
 
@@ -277,12 +278,15 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 
     // Skip game frame updates while gfx debugger is active, and execute with the last frame's DL buffer
     if (GfxDebuggerIsDebugging()) {
+        FastEndWorldPresentationFrame();
         Graph_ProcessGfxCommands(runFrameContext.gfxCtx.workBuffer);
         return;
     }
 
     gameState->unk_A0 = 0;
     Graph_InitTHGA(gfxCtx);
+    // Limpar antes de qualquer GameState: menus podem reutilizar o mesmo pool/endereço.
+    FastBeginWorldPresentationFrame(gfxCtx->workBuffer);
 
     OPEN_DISPS(gfxCtx);
 
@@ -485,6 +489,8 @@ static void RunFrame() {
             }
 
             Graph_ProcessGfxCommands(runFrameContext.gfxCtx.workBuffer);
+            // OTRGlobals::RunCommands já concluiu todos os replays desta lista.
+            FastEndWorldPresentationFrame();
 
             // uint64_t diff = (ticksB - ticksA) / (freq / 1000);
             // printf("Frame simulated in %ims\n", diff);

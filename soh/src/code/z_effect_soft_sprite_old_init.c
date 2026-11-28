@@ -1,3 +1,5 @@
+#include "soh/Enhancements/Graphics/Debris/PersistentDebris.h"
+#include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
 #include "global.h"
 #include "overlays/effects/ovl_Effect_Ss_Dust/z_eff_ss_dust.h"
 #include "overlays/effects/ovl_Effect_Ss_KiraKira/z_eff_ss_kirakira.h"
@@ -298,6 +300,9 @@ void EffectSsBomb2_SpawnFade(PlayState* play, Vec3f* pos, Vec3f* velocity, Vec3f
     initParams.scaleStep = 0;
     initParams.drawMode = 0;
 
+    ImpactDecals_OnExplosion(play, &pos->x);
+    // R057/R058: o mesmo evento Bomb2 impulsiona os destroços persistentes.
+    PersistentDebris_OnExplosion(play, &pos->x);
     EffectSs_Spawn(play, EFFECT_SS_BOMB2, 10, &initParams);
 }
 
@@ -311,6 +316,9 @@ void EffectSsBomb2_SpawnLayered(PlayState* play, Vec3f* pos, Vec3f* velocity, Ve
     initParams.scaleStep = scaleStep;
     initParams.drawMode = 1;
 
+    ImpactDecals_OnExplosion(play, &pos->x);
+    // R057/R058: o mesmo evento Bomb2 impulsiona os destroços persistentes.
+    PersistentDebris_OnExplosion(play, &pos->x);
     EffectSs_Spawn(play, EFFECT_SS_BOMB2, 10, &initParams);
 }
 
@@ -461,6 +469,10 @@ void EffectSsBubble_Spawn(PlayState* play, Vec3f* pos, f32 yPosOffset, f32 yPosR
 
 // EffectSsGRipple Spawn Functions
 
+// Link-Span: ondulação interativa da água (soh/Enhancements/Graphics/WaterRipple).
+void WaterRipple_OnRipple(struct PlayState* play, const float* pos, short radius, short radiusMax);
+void WaterRipple_OnSplash(struct PlayState* play, const float* pos, short scale);
+
 void EffectSsGRipple_Spawn(PlayState* play, Vec3f* pos, s16 radius, s16 radiusMax, s16 life) {
     EffectSsGRippleInitParams initParams;
 
@@ -469,6 +481,7 @@ void EffectSsGRipple_Spawn(PlayState* play, Vec3f* pos, s16 radius, s16 radiusMa
     initParams.radiusMax = radiusMax;
     initParams.life = life;
 
+    WaterRipple_OnRipple(play, &pos->x, radius, radiusMax);
     EffectSs_Spawn(play, EFFECT_SS_G_RIPPLE, 128, &initParams);
 }
 
@@ -478,6 +491,7 @@ void EffectSsGSplash_Spawn(PlayState* play, Vec3f* pos, Color_RGBA8* primColor, 
                            s16 scale) {
     EffectSsGSplashInitParams initParams;
 
+    WaterRipple_OnSplash(play, &pos->x, scale);
     Math_Vec3f_Copy(&initParams.pos, pos);
     initParams.type = type;
     initParams.scale = scale;
@@ -799,6 +813,11 @@ void EffectSsKakera_Spawn(PlayState* play, Vec3f* pos, Vec3f* velocity, Vec3f* a
                           s16 arg7, s16 arg8, s16 scale, s16 arg10, s16 arg11, s32 life, s16 colorIdx, s16 objId,
                           Gfx* dList) {
     EffectSsKakeraInitParams initParams;
+
+    // R058: suprime o Kakera vanilla somente quando o pool assumiu um caco permitido.
+    if (PersistentDebris_TrySpawnShard(play, &pos->x, &velocity->x, arg5, scale, colorIdx, objId, dList)) {
+        return;
+    }
 
     Math_Vec3f_Copy(&initParams.pos, pos);
     Math_Vec3f_Copy(&initParams.velocity, velocity);

@@ -1,7 +1,10 @@
-/* overlay-merge 2d24df1ca871 f8ac85e6787f 2c2690a66ccf */
+/* overlay-merge dc7d29499dc3 f8ac85e6787f 2c2690a66ccf */
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* thisx) {
     Player* this = (Player*)thisx;
 
+    // R059/R060: captura UPPER para os colisores; HEAD avança uma única vez por gameplayFrames.
+    // O post da cabeça ocorre antes do filho HAT: a correção já está pronta no mesmo draw.
+    HatPhysics_OnLimb(play, this, limbIndex);
     LinkSpan_PlayerLimbDraw(play, limbIndex, &this->actor);
 
     if (*dList != NULL) {

@@ -5,6 +5,7 @@
  */
 
 #include "z_en_wood02.h"
+#include "soh/Enhancements/Graphics/Leaves/DetachedLeaves.h"
 #include "objects/object_wood02/object_wood02.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "../../../code/linkspan_vanilla.h"
@@ -254,6 +255,14 @@ void EnWood02_Init(Actor* thisx, PlayState* play2) {
             break;
         case WOOD_LEAF_GREEN:
         case WOOD_LEAF_YELLOW:
+            // R050: transfere uma vez na Init, sem alterar árvores, drops ou structs.
+            // Kill é seguro: Destroy só destrói collider para os tipos de árvore.
+            if (DetachedLeaves_OnTreeLeaf(play, &this->actor.world.pos.x,
+                                          this->actor.shape.rot.y * (3.14159265358979323846f / 32768.0f),
+                                          this->actor.params == WOOD_LEAF_YELLOW)) {
+                Actor_Kill(&this->actor);
+                return;
+            }
             this->unk_14E[0] = 0x4B;
             actorScale = 0.02f;
             this->actor.velocity.x = Rand_CenteredFloat(6.0f);

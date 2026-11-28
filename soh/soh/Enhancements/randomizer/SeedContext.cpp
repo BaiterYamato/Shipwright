@@ -66,14 +66,14 @@ void Context::InitStaticData() {
     StaticData::InitLocationTable();
 }
 
+// Sempre cria um Context novo e o publica em mContext, mesmo com o anterior ainda vivo: Save_LoadFile troca o Context
+// de uma vez, sem deixar gRandoContext nulo (o anterior morre quando o último dono o solta). Os dois chamadores
+// (init do OTRGlobals e Save_LoadFile) já queriam uma instância nova.
 std::shared_ptr<Context> Context::CreateInstance() {
-    if (mContext.expired()) {
-        auto instance = std::make_shared<Context>();
-        mContext = instance;
-        GetInstance()->GetLogic()->SetContext(GetInstance());
-        return instance;
-    }
-    return GetInstance();
+    auto instance = std::make_shared<Context>();
+    mContext = instance;
+    instance->GetLogic()->SetContext(instance);
+    return instance;
 }
 
 std::shared_ptr<Context> Context::GetInstance() {

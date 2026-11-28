@@ -10,6 +10,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/randomizer/draw.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/Enhancements/Graphics/Cloth/HatPhysics.h"
 
 #include <stdlib.h>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -1100,7 +1101,12 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
 
     sDListsLodOffset = lod * 2;
 
+    // R059/R060: delimita o draw gameplay normal; inventário/primeira pessoa/outros caminhos ficam fora.
+    HatPhysics_BeginDraw(play, data,
+                         overrideLimbDraw == Player_OverrideLimbDrawGameplayDefault &&
+                             postLimbDraw == Player_PostLimbDrawGameplay);
     SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, data, lod);
+    HatPhysics_EndDraw();
 
     if (!GameInteractor_InvisibleLinkActive() &&
         ((CVarGetInteger(CVAR_ENHANCEMENT("FirstPersonGauntlets"), 0) && LINK_IS_ADULT) ||
@@ -1385,6 +1391,10 @@ s32 Player_OverrideLimbDrawGameplayDefault(PlayState* play, s32 limbIndex, Gfx**
     Player* this = (Player*)thisx;
 
     if (!Player_OverrideLimbDrawGameplayCommon(play, limbIndex, dList, pos, rot, thisx)) {
+        // R059/R060: compõe a correção limitada sobre a pose animada; com CVar=0 não altera nada.
+        if (limbIndex == PLAYER_LIMB_HAT) {
+            HatPhysics_Apply(play, this, pos, rot);
+        }
         if (limbIndex == PLAYER_LIMB_L_HAND) {
             Gfx** dLists = this->leftHandDLists;
 
@@ -1805,6 +1815,9 @@ void LinkSpan_PlayerLimbDraw(PlayState* play, s32 limbIndex, Actor* actor);
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* thisx) {
     Player* this = (Player*)thisx;
 
+    // R059/R060: captura UPPER para os colisores; HEAD avança uma única vez por gameplayFrames.
+    // O post da cabeça ocorre antes do filho HAT: a correção já está pronta no mesmo draw.
+    HatPhysics_OnLimb(play, this, limbIndex);
     LinkSpan_PlayerLimbDraw(play, limbIndex, &this->actor);
 
     if (*dList != NULL) {

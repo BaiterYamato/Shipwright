@@ -41,6 +41,11 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "backend_unit.h"
+#include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
+
+// Prototipos do host GFX-UNIFY usados pelos corpos mesclados do Player.
+extern u8 LinkSpan_PlayerQuadOwned(void* collider);
+s32 LinkSpan_IsSyntheticGetItem(u16 modIndex);
 
 // Declared up here because the .c files pasted in below use them before their definitions further
 // down this same translation unit.

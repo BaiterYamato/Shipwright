@@ -131,6 +131,7 @@
 #include "soh/native/OotNativeWorld.h"
 #include "soh/native/OotNativeSkeletons.h"
 #include "soh/OotHotkeyRegistry.h"
+#include "soh/Enhancements/Graphics/ShaderPacks/WorldPass.h"
 #include "../src/code/linkspan_vanilla.h"
 #include "soh/SohGui/SohModals.h"
 
@@ -1873,7 +1874,8 @@ void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
         std::unordered_map<Mtx*, MtxF> mtx_replacements =
             (time == denom) ? std::unordered_map<Mtx*, MtxF>() : FrameInterpolation_Interpolate((float)time / denom);
         intp->mInterpolationT = (float)time / denom;
-        wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements);
+        if (wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements))
+            ShaderPacks::RecordPresentedWorldFrame();
         intp->mInterpolationIndex++;
     }
     ImGui::PopStyleColor();
@@ -2497,16 +2499,34 @@ extern "C" GetItemEntry GetItemMystery() {
     return GET_ITEM_MYSTERY;
 }
 
+// Link-Span: a seleção de arquivo pode rodar um quadro com o contexto do randomizer ainda nulo
+// (crash 0xc0000005 em SetSpoilerLoaded, 21/11/2026); os wrappers C passam a tolerar isso.
+static Rando::Context* RandomizerContextOrNull() {
+    if (OTRGlobals::Instance == nullptr || !OTRGlobals::Instance->gRandoContext) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            SPDLOG_WARN("Randomizer: contexto nulo num wrapper C; chamada ignorada");
+        }
+        return nullptr;
+    }
+    return OTRGlobals::Instance->gRandoContext.get();
+}
+
 extern "C" uint8_t Randomizer_IsSeedGenerated() {
-    return OTRGlobals::Instance->gRandoContext->IsSeedGenerated() ? 1 : 0;
+    Rando::Context* ctx = RandomizerContextOrNull();
+    return ctx != nullptr && ctx->IsSeedGenerated() ? 1 : 0;
 }
 
 extern "C" uint8_t Randomizer_IsSpoilerLoaded() {
-    return OTRGlobals::Instance->gRandoContext->IsSpoilerLoaded() ? 1 : 0;
+    Rando::Context* ctx = RandomizerContextOrNull();
+    return ctx != nullptr && ctx->IsSpoilerLoaded() ? 1 : 0;
 }
 
 extern "C" void Randomizer_SetSpoilerLoaded(bool spoilerLoaded) {
-    OTRGlobals::Instance->gRandoContext->SetSpoilerLoaded(spoilerLoaded);
+    if (Rando::Context* ctx = RandomizerContextOrNull()) {
+        ctx->SetSpoilerLoaded(spoilerLoaded);
+    }
 }
 
 extern "C" uint8_t Randomizer_GenerateRandomizer() {

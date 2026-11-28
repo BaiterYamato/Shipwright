@@ -1,5 +1,6 @@
 #include "OotNativeEngine.h"
 #include "OotNativeActorModels.h"
+#include "soh/OotFogBridge.h"
 #include "oot_engine.h"
 #include "oot_hooks.h"
 #include "oot_save.h"
@@ -74,9 +75,21 @@ const ShipOotActorModelsV1& GetOotNativeActorModelsService() {
 }
 void ReleaseOotActorModelOwner(std::string_view) {
 }
+const ShipOotFogV1& GetOotNativeFogService() {
+    static const ShipOotFogV1 service{ sizeof(ShipOotFogV1), nullptr };
+    return service;
+}
+const ShipOotFogV2& GetOotNativeFogFlowService() {
+    static const ShipOotFogV2 service{ sizeof(ShipOotFogV2), nullptr,
+                                      LINKSPAN_OOT_FOG_FLOW_BLOCKED_EDGES | LINKSPAN_OOT_FOG_FLOW_VORTICES };
+    return service;
+}
 } // namespace ShipLuaHost
 extern "C" {
 #include "functions.h"
+int32_t ShaderPacks_ReplacesVanillaShadows(void) {
+    return 0;
+}
 PlayState* gPlayState = nullptr;
 SaveContext gSaveContext{};
 u8 gItemAgeReqs[ITEM_NONE]{};
@@ -2163,7 +2176,7 @@ int main(int argc, char** argv) {
         Check(refused, "randomizer queries run only on the owner thread");
         ShipLuaHost::BindOotRandoQueryBackend({});
     }
-    Check(policy.services.size() == 37 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
+    Check(policy.services.size() == 39 && policy.services[0].version == LINKSPAN_OOT_ENGINE_VERSION &&
               policy.services[1].version == LINKSPAN_OOT_MOVEMENT_VERSION &&
               policy.services[2].version == LINKSPAN_OOT_MOVEMENT_VERSION_2 &&
               policy.services[3].version == LINKSPAN_OOT_RESOURCES_VERSION &&
@@ -2236,7 +2249,13 @@ int main(int argc, char** argv) {
               policy.services[27].size == sizeof(ShipOotRegistryV2) &&
               std::string(policy.services[28].name) == LINKSPAN_OOT_ACTOR_MODELS_SERVICE &&
               policy.services[28].version == LINKSPAN_OOT_ACTOR_MODELS_VERSION &&
-              policy.services[28].size == sizeof(ShipOotActorModelsV1) && policy.onProviderUnload,
+              policy.services[28].size == sizeof(ShipOotActorModelsV1) &&
+              policy.services[37].name == LINKSPAN_OOT_FOG_SERVICE &&
+              policy.services[37].version == LINKSPAN_OOT_FOG_VERSION &&
+              policy.services[37].size == sizeof(ShipOotFogV1) &&
+              policy.services[38].name == LINKSPAN_OOT_FOG_SERVICE &&
+              policy.services[38].version == LINKSPAN_OOT_FOG_VERSION_2 &&
+              policy.services[38].size == sizeof(ShipOotFogV2) && policy.onProviderUnload,
           "host deve publicar engine, movement V1/V2, resources V1/V2/V3, registry V1/V2, ocarina V1, scenes V1/V2/V3, "
           "save V1, items V1/V2/V3, actors V1, camera V1, render V1/V2, world V1, colliders V1, skeletons V1, "
           "text V1, randomizer V1 e anchor V1, com as versões novas no fim");

@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "passes": [
+    { "name": "contact", "file": "shaders/contact.hlsl", "divisor": 2, "inputs": ["scene", "scene.depth"] },
+    { "name": "world", "file": "shaders/unbound.hlsl", "divisor": 1, "inputs": ["scene", "scene.depth", "contact"] }
+  ]
+}

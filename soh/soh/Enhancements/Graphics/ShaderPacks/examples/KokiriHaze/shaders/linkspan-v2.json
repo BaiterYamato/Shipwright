@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "passes": [
+    { "name": "haze", "file": "shaders/haze.hlsl", "divisor": 1, "inputs": ["scene", "scene.depth"] }
+  ]
+}

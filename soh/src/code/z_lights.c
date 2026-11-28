@@ -275,7 +275,15 @@ void LightContext_SetFog(LightContext* lightCtx, u8 r, u8 g, u8 b, s16 fogNear, 
 /**
  * Allocate a new Lights group and initilize the ambient color with that provided by LightContext
  */
+float ShaderPacks_NativeAmbientScale(void);
+
 Lights* LightContext_NewLights(LightContext* lightCtx, GraphicsContext* gfxCtx) {
+    // Interior com pack e céu automático: escala só a cópia do ambiente (lightCtx fica intacto).
+    const float scale = ShaderPacks_NativeAmbientScale();
+    if (scale < 1.0f) {
+        return Lights_New(gfxCtx, (u8)(lightCtx->ambientColor[0] * scale), (u8)(lightCtx->ambientColor[1] * scale),
+                          (u8)(lightCtx->ambientColor[2] * scale));
+    }
     return Lights_New(gfxCtx, lightCtx->ambientColor[0], lightCtx->ambientColor[1], lightCtx->ambientColor[2]);
 }
 

@@ -5,6 +5,7 @@
  */
 
 #include "z_en_kusa.h"
+#include "soh/Enhancements/Graphics/Leaves/DetachedLeaves.h"
 #include "overlays/effects/ovl_Effect_Ss_Kakera/z_eff_ss_kakera.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/gameplay_field_keep/gameplay_field_keep.h"
@@ -184,7 +185,10 @@ void EnKusa_SpawnFragments(EnKusa* this, PlayState* play) {
     s32 scaleIndex;
     Vec3f* dir;
     s32 pad;
+    s32 detached;
 
+    // R049/R050: só as pontas migram ao pool; caules e RNG vanilla são preservados.
+    detached = DetachedLeaves_OnBushCut(play, &this->actor.world.pos.x, this->actor.scale.x);
     for (i = 0; i < ARRAY_COUNT(sUnitDirections); i++) {
         dir = &sUnitDirections[i];
 
@@ -211,8 +215,11 @@ void EnKusa_SpawnFragments(EnKusa* this, PlayState* play) {
 
         scaleIndex = (s32)(Rand_ZeroOne() * 111.1f) % 7;
 
-        EffectSsKakera_Spawn(play, &pos, &velocity, &pos, -100, 64, 40, 3, 0, sFragmentScales[scaleIndex], 0, 0, 80,
-                             KAKERA_COLOR_NONE, OBJECT_GAMEPLAY_KEEP, gCuttableShrubTipDL);
+        // R050: CVar 0 (ou emissão recusada) mantém a ponta vanilla.
+        if (!detached) {
+            EffectSsKakera_Spawn(play, &pos, &velocity, &pos, -100, 64, 40, 3, 0, sFragmentScales[scaleIndex], 0, 0, 80,
+                                 KAKERA_COLOR_NONE, OBJECT_GAMEPLAY_KEEP, gCuttableShrubTipDL);
+        }
     }
 }
 

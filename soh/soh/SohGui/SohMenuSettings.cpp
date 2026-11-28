@@ -50,6 +50,14 @@ static const std::map<int32_t, const char*> textureFilteringMap = {
     { Fast::FILTER_NONE, "None" },
 };
 
+// GFX-UNIFY-001: lado de cada cascata do mapa de sombra solar dos shader packs (3 cascatas por atlas).
+static const std::map<int32_t, const char*> shadowMapResolutionMap = {
+    { 512, "Low (512)" },
+    { 1024, "Medium (1024)" },
+    { 2048, "High (2048)" },
+    { 4096, "Ultra (4096)" },
+};
+
 static const std::map<int32_t, const char*> notificationPosition = {
     { 0, "Top Left" }, { 1, "Top Right" }, { 2, "Bottom Left" }, { 3, "Bottom Right" }, { 4, "Hidden" },
 };
@@ -431,6 +439,16 @@ void SohMenu::AddMenuSettings() {
 
     path.column = SECTION_COLUMN_2;
     AddWidget(path, "Advanced Graphics Options", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "Shadow Map Resolution", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("ShadowMapResolution"))
+        .RaceDisable(false)
+        .Options(ComboboxOptions()
+                     .Tooltip("Resolution of each sun shadow cascade used by shader packs (DirectX 11). Higher values "
+                              "give sharper, more detailed shadows but use more video memory and GPU time.\n"
+                              "Low: 3 MB, Medium: 12 MB, High: 48 MB, Ultra: 192 MB.\n"
+                              "Applies immediately; no effect without a shader pack that uses sun shadows.")
+                     .ComboMap(shadowMapResolutionMap)
+                     .DefaultIndex(1024));
 
     // Controls
     path.sidebarName = "Controls";

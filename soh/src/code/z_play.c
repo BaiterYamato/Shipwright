@@ -3,6 +3,7 @@
 #include "linkspan_vanilla.h"
 #include "soh/unbound/SceneFlagsExt.h"
 #include "vt.h"
+#include "soh/OotFogBridge.h"
 
 #include <string.h>
 extern void LinkSpan_PlayDrawEnd(PlayState* play);
@@ -15,8 +16,19 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 #include <overlays/actors/ovl_En_Niw/z_en_niw.h>
 #include <overlays/misc/ovl_kaleido_scope/z_kaleido_scope.h>
 #include "soh/Enhancements/enhancementTypes.h"
+#include "soh/Enhancements/Graphics/ShaderPacks/WorldPass.h"
+#include "soh/Enhancements/Graphics/WaterRipple/WaterRipple.h"
+#include "soh/Enhancements/Graphics/Decals/ImpactDecals.h"
+#include "soh/Enhancements/Graphics/Debris/PersistentDebris.h"
+#include "soh/Enhancements/Graphics/Leaves/DetachedLeaves.h"
+#include "soh/Enhancements/Graphics/Weather/WetSurface.h"
+#include "soh/Enhancements/Graphics/Weather/WindField.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
+#include <fast/labpbr_kokiri.h>
+#include <fast/world_postprocess.h>
+#include <fast/world_presentation.h>
+#include <libultraship/bridge/gfxdebuggerbridge.h>
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/SaveManager.h"
 #include "soh/framebuffer_effects.h"
@@ -26,9 +38,12 @@ extern void LinkSpan_CameraCleared(PlayState* play, s16 camId);
 void LinkSpan_RenderSkyGradient(PlayState* play);
 void LinkSpan_RenderSky(PlayState* play);
 void LinkSpan_RenderSkyClouds(PlayState* play);
+// z_actor.c; declarado aqui para não mexer em soh/include (layout id).
+void TitleCard_Draw(PlayState* play, TitleCardContext* titleCtx);
 
 #include <time.h>
 #include <assert.h>
+#include <math.h>
 
 TransitionUnk sTrnsnUnk;
 s32 gTrnsnUnkState;
@@ -236,6 +251,10 @@ Gfx* Play_SetFog(PlayState* play, Gfx* gfx) {
 }
 
 void Play_Destroy(GameState* thisx) {
+    ImpactDecals_Reset();
+    // R058/R050: nenhum destroço, folha ou segmento atravessa a troca de cena.
+    PersistentDebris_Reset();
+    DetachedLeaves_Reset();
     PlayState* play = (PlayState*)thisx;
     Player* player = GET_PLAYER(play);
 
@@ -404,7 +423,12 @@ SavedSceneFlags* LinkSpan_SceneFlags(s32 sceneNum);
 void LinkSpan_PlayUpdate(PlayState* play);
 
 void Play_Init(GameState* thisx) {
+    ImpactDecals_Reset();
+    // R058/R050: nenhum destroço, folha ou segmento atravessa a troca de cena.
+    PersistentDebris_Reset();
+    DetachedLeaves_Reset();
     PlayState* play = (PlayState*)thisx;
+    LinkSpan_ResetFogScene();
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     uintptr_t zAlloc;
     uintptr_t zAllocAligned;
@@ -1371,10 +1395,80 @@ void Play_DrawOverlayElements(PlayState* play) {
     }
 }
 
+// O marcador é consumido depois de POLY_XLU, antes da cópia da pausa ou do HUD.
+static void Play_DrawFogVolume(PlayState* play) {
+    s32 mode = CVarGetInteger(CVAR_DEVELOPER_TOOLS("FogVolumeProbe"), 0);
+    FastFogVolume volume;
+    const FastFogFlow* flow = NULL;
+    s32 dynamic = LinkSpan_TakeFogGrid(play, &volume, &flow);
+    if ((!dynamic && (mode < 1 || mode > 3 || play->sceneNum != SCENE_HYRULE_FIELD)) || gSaveContext.gameMode != 0 ||
+        CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0) || HREG(80) == 11) {
+        return;
+    }
+    if (mode != 2 && mode != 3) {
+        mode = 1;
+    }
+
+    View* view = &play->view;
+    MtxF projection;
+    MtxF viewing;
+    Matrix_MtxToMtxF(&view->projection, &projection);
+    Matrix_MtxToMtxF(&view->viewing, &viewing);
+    if (fabsf(projection.mf[0][0]) < 0.0001f || fabsf(projection.mf[1][1]) < 0.0001f || projection.mf[2][3] >= 0.0f ||
+        view->zFar <= view->zNear) {
+        return;
+    }
+
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    FastFogVolume camera = {
+        .eye = { view->eye.x, view->eye.y, view->eye.z, mode },
+        .forward = { -viewing.mf[0][2], -viewing.mf[1][2], -viewing.mf[2][2], 0.019f },
+        .right = { viewing.mf[0][0], viewing.mf[1][0], viewing.mf[2][0], -projection.mf[2][3] / projection.mf[0][0] },
+        .up = { viewing.mf[0][1], viewing.mf[1][1], viewing.mf[2][1], -projection.mf[2][3] / projection.mf[1][1] },
+        .depth = { projection.mf[2][2], projection.mf[2][3], projection.mf[3][2], view->zFar },
+        .minimum = { -215.0f, -12.0f, 935.0f, 30.0f },
+        .maximum = { 535.0f, 85.0f, 1845.0f, 100.0f },
+        .color = { 0.73f, 0.81f, 0.85f, 0.0f },
+    };
+    if (dynamic) {
+        memcpy(volume.eye, camera.eye, sizeof(volume.eye));
+        memcpy(volume.forward, camera.forward, 3 * sizeof(f32));
+        memcpy(volume.right, camera.right, sizeof(volume.right));
+        memcpy(volume.up, camera.up, sizeof(volume.up));
+        memcpy(volume.depth, camera.depth, sizeof(volume.depth));
+        volume.grid[3] = (f32)CVarGetInteger(CVAR_DEVELOPER_TOOLS("FogVolumeQuality"), 1);
+        volume.audit = flow && CVarGetInteger(CVAR_DEVELOPER_TOOLS("FogFlowAudit"), 0) != 0;
+    } else {
+        volume = camera;
+    }
+
+    OPEN_DISPS(gfxCtx);
+    Gfx* command = OVERLAY_DISP++;
+    command->words.w0 = (u32)FAST_GFX_FOG_VOLUME << 24;
+    command->words.w1 = FastQueueFogVolume(&volume, flow, view->viewingPtr, view->projectionPtr);
+    CLOSE_DISPS(gfxCtx);
+}
+
+static u32 Play_EncodeKokiriLabPbrSunComponent(f32 component) {
+    f32 scaled = fminf(511.0f, fmaxf(-512.0f, component / 6.0f));
+    return (u32)(s32)roundf(scaled) & 0x3FFu;
+}
+
 void Play_Draw(PlayState* play) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     Lights* sp228;
     Vec3f sp21C;
+
+    // Capturar antes de R_PAUSE_MENU_MODE ser alterado pelo prerender abaixo.
+    // Debug pode emitir HUD em OPA ou antes de Play_Draw; barras de Gfx_SetupFrame
+    // também precedem o fog. Esses caminhos conservam a apresentação anterior.
+    const bool allowWorldPresentation =
+        gSaveContext.gameMode == GAMEMODE_NORMAL && play->pauseCtx.state == 0 && play->pauseCtx.debugState == 0 &&
+        play->gameOverCtx.state == GAMEOVER_INACTIVE && R_PAUSE_MENU_MODE == 0 && gTrnsnUnkState == 0 &&
+        HREG(80) == 0 && SREG(0) == 0 && CREG(2) == 0 && R_ENABLE_ARENA_DBG == 0 && ShrinkWindow_GetCurrentVal() == 0 &&
+        !CVarGetInteger(CVAR_DEVELOPER_TOOLS("DebugEnabled"), 0) &&
+        !CVarGetInteger(CVAR_DEVELOPER_TOOLS("RegEditEnabled"), 0) && !GfxDebuggerIsDebugging() &&
+        !GfxDebuggerIsDebuggingRequested();
 
     // #region SOH [Port] Frame buffer effects for pause menu
     // Track render size when paused and that a copy was performed
@@ -1383,6 +1477,10 @@ void Play_Draw(PlayState* play) {
     static bool lastAltAssets;
     static bool hasCapturedPauseBuffer;
     bool recapturePauseBuffer = false;
+
+    if (gSaveContext.gameMode == 0 && HREG(80) != 11) {
+        LinkSpan_BeginFogFrame(play);
+    }
 
     // If the size has changed, alt assets toggled, or dropped frames leading to the buffer not being copied,
     // set the prerender state back to setup to copy a new frame.
@@ -1570,15 +1668,35 @@ void Play_Draw(PlayState* play) {
         if ((HREG(80) != 10) || (HREG(84) != 0)) {
             if (VREG(94) == 0) {
                 s32 roomDrawFlags;
+                s32 kokiriLabPbr = play->sceneNum == SCENE_KOKIRI_FOREST && CVarGetInteger(FAST_KOKIRI_LABPBR_CVAR, 0);
 
                 if (HREG(80) != 10) {
                     roomDrawFlags = 3;
                 } else {
                     roomDrawFlags = HREG(84);
                 }
+                ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
+                ShaderPacks_CaptureWaterSurface(gfxCtx, 1);
                 Scene_Draw(play);
+                if (kokiriLabPbr) {
+                    Gfx* marker = POLY_OPA_DISP++;
+                    u32 sunX = Play_EncodeKokiriLabPbrSunComponent(play->envCtx.sunPos.x);
+                    u32 sunY = Play_EncodeKokiriLabPbrSunComponent(play->envCtx.sunPos.y);
+                    u32 sunZ = Play_EncodeKokiriLabPbrSunComponent(play->envCtx.sunPos.z);
+
+                    marker->words.w0 = ((u32)FAST_GFX_WORLD_POSTPROCESS << 24) | FAST_WORLD_KOKIRI_LABPBR_BEGIN;
+                    marker->words.w1 = sunX | (sunY << 10) | (sunZ << 20);
+                }
                 Room_Draw(play, &play->roomCtx.curRoom, roomDrawFlags & 3);
                 Room_Draw(play, &play->roomCtx.prevRoom, roomDrawFlags & 3);
+                if (kokiriLabPbr) {
+                    Gfx* marker = POLY_OPA_DISP++;
+
+                    marker->words.w0 = ((u32)FAST_GFX_WORLD_POSTPROCESS << 24) | FAST_WORLD_KOKIRI_LABPBR_END;
+                    marker->words.w1 = 0;
+                }
+                ShaderPacks_CaptureWaterSurface(gfxCtx, 0);
+                ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
             }
         }
 
@@ -1600,8 +1718,20 @@ void Play_Draw(PlayState* play) {
             Environment_FillScreen(gfxCtx, 0, 0, 0, play->bgCoverAlpha, FILL_SCREEN_OPA);
         }
 
+        // O cartão de título vai para o OVERLAY dentro do Actor_DrawAll, antes dos comandos do
+        // passe do mundo no mesmo buffer: o pack o tratava como mundo (névoa, histórico,
+        // tonemap) e ele saía fantasmado. Com pack ativo, ele é desenhado depois da composição.
+        // O TitleCard_Draw é o único leitor do alpha na fase de desenho.
+        const bool deferTitleCard = ((HREG(80) != 10) || (HREG(85) != 0)) && ShaderPacks_WorldPassActive();
         if ((HREG(80) != 10) || (HREG(85) != 0)) {
+            const s16 titleAlpha = play->actorCtx.titleCtx.alpha;
+            if (deferTitleCard) {
+                play->actorCtx.titleCtx.alpha = 0;
+            }
+            ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
             Actor_DrawAll(play, &play->actorCtx);
+            ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
+            play->actorCtx.titleCtx.alpha = titleAlpha;
         }
 
         if ((HREG(80) != 10) || (HREG(86) != 0)) {
@@ -1639,6 +1769,30 @@ void Play_Draw(PlayState* play) {
 
         if ((HREG(80) != 10) || (HREG(93) != 0)) {
             DebugDisplay_DrawObjects(play);
+        }
+
+        // R054: vento compartilhado (pack, poeira, folhas, gorro); um passo por tick de jogo,
+        // antes de quem o amostra neste tick.
+        WindField_Tick(play);
+        // R057/R050: passo fixo de 20 Hz, protegido contra draws repetidos e pausa. As folhas
+        // avançam antes do WaterRipple_Tick para o toque na água entrar no mesmo tick.
+        PersistentDebris_Tick(play);
+        DetachedLeaves_Tick(play);
+        // R058/R050: OPA/XLU capturados como geometria do mundo, antes do shaderpack e do HUD.
+        ShaderPacks_CaptureWorldGeometry(gfxCtx, 1);
+        PersistentDebris_Draw(play);
+        DetachedLeaves_Draw(play);
+        ShaderPacks_CaptureWorldGeometry(gfxCtx, 0);
+
+        WaterRipple_Tick(play);
+        ImpactDecals_Tick(play);
+        WetSurface_Tick(play);
+        // Um snapshot por display list; ambas as fases usam matrizes interpoladas no replay.
+        const u32 worldPassTicket = ShaderPacks_PrepareWorldPass(gfxCtx);
+        Play_DrawFogVolume(play);
+        ShaderPacks_ComposeWorldPass(gfxCtx, worldPassTicket);
+        if (deferTitleCard && ((HREG(64) != 1) || (HREG(75) != 0))) {
+            TitleCard_Draw(play, &play->actorCtx.titleCtx);
         }
 
         if ((R_PAUSE_MENU_MODE == 1) || (gTrnsnUnkState == 1)) {
@@ -1681,6 +1835,17 @@ void Play_Draw(PlayState* play) {
             }
         }
 
+        // graph.c executa WORK -> OPA -> XLU -> OVERLAY. Geometria acrescentada
+        // pelos hooks abaixo a OPA/XLU ainda executa ANTES do shaderpack/fog.
+        // Seu OVERLAY (incluindo ShipLua HUD) executa DEPOIS desta fronteira.
+        // Os gotos de pausa/transição especial não passam por este ponto.
+        if (allowWorldPresentation) {
+            Gfx* marker = OVERLAY_DISP++;
+            marker->words.w0 = ((u32)FAST_GFX_WORLD_POSTPROCESS << 24) | FAST_WORLD_PRESENT_COMMAND;
+            marker->words.w1 = 0;
+            FastSetWorldPresentationBoundary(gfxCtx->workBuffer, marker);
+        }
+
         // Draw Enhancements that need to be placed in the world. This happens before the PostWorldDraw
         // so that they aren't drawn when the pause menu is up (e.g. collision viewer, actor name tags)
         GameInteractor_ExecuteOnPlayDrawEnd();
@@ -1699,6 +1864,7 @@ void Play_Draw(PlayState* play) {
     }
 
 Play_Draw_skip:
+    LinkSpan_EndFogFrame();
 
     if (play->view.unk_124 != 0) {
         Camera_Update(GET_ACTIVE_CAM(play));
