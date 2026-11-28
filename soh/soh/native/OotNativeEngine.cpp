@@ -23,6 +23,7 @@
 #include "oot_layout_id.h"
 #include "oot_ocarina.h"
 #include "soh/OotFogBridge.h"
+#include <fast/render_overrides.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -203,6 +204,15 @@ CapturedDpadBackground dpadBackground{};
 // Seletor do pause (RFC 0028): A sobre um item abre as molduras dos botões C. Independe do D-pad do HUD.
 constexpr const char* PAUSE_EQUIP_SELECTOR_SETTING = "linkspan.pause.equip_selector";
 bool pauseEquipSelector = false;
+// Overrides de sessão de parâmetros genéricos do renderer: "linkspan.render." + nome do parâmetro. Ficam só em
+// memória na libultraship (fast/render_overrides.h), que recusa parâmetros sem suporte; nunca chegam ao bridge, então
+// CVarSave não os grava e o valor base da config fica intocado. 0 limpa; a troca da ponte limpa todos.
+constexpr std::string_view RENDER_OVERRIDE_PREFIX = "linkspan.render.";
+const char* RenderOverrideParam(const char* name) {
+    return std::string_view(name).substr(0, RENDER_OVERRIDE_PREFIX.size()) == RENDER_OVERRIDE_PREFIX
+               ? name + RENDER_OVERRIDE_PREFIX.size()
+               : nullptr;
+}
 int HiddenItemButtonIndex(const char* name) {
     for (int button = 1; button <= 3; ++button) {
         if (std::strcmp(name, HIDDEN_ITEM_BUTTON_SETTINGS[button]) == 0)
@@ -224,6 +234,12 @@ int32_t SHIP_NATIVE_CALL GetSettingInt(const char* name, int32_t fallback) {
         return dpadHudOwned ? 1 : 0;
     if (std::strcmp(name, PAUSE_EQUIP_SELECTOR_SETTING) == 0)
         return pauseEquipSelector ? 1 : 0;
+    if (const char* param = RenderOverrideParam(name)) {
+        int32_t value = 0;
+        if (!Fast::IsRenderIntOverridable(param))
+            return fallback;
+        return Fast::GetRenderIntOverride(param, value) ? value : 0;
+    }
     return gamepadBridge.getSettingInt ? gamepadBridge.getSettingInt(name, fallback) : fallback;
 }
 ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value) {
@@ -248,6 +264,8 @@ ShipNativeStatus SHIP_NATIVE_CALL SetSettingInt(const char* name, int32_t value)
         pauseEquipSelector = value != 0;
         return SHIP_NATIVE_OK;
     }
+    if (const char* param = RenderOverrideParam(name))
+        return Fast::SetRenderIntOverride(param, value) ? SHIP_NATIVE_OK : SHIP_NATIVE_INVALID_ARGUMENT;
     return gamepadBridge.setSettingInt ? gamepadBridge.setSettingInt(name, value) : SHIP_NATIVE_UNSUPPORTED;
 }
 uint8_t SHIP_NATIVE_CALL Grounded() {
@@ -860,6 +878,7 @@ void SetOotNativeGamepadBridge(OotNativeGamepadBridge bridge) {
     dpadHudOwned = false;
     pauseEquipSelector = false;
     dpadBackground = {};
+    Fast::ClearRenderIntOverrides();
 }
 
 void SetOotNativeResourceBridge(OotNativeResourceBridge bridge) {

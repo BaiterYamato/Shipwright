@@ -1593,11 +1593,13 @@ struct WorldPass {
 
         // Interior com céu automático: o Complementary quase não escurece a cena (a luz das paredes vem
         // pintada na geometria), então o host multiplica a imagem final por um ganho. Suavizado pela
-        // mesma abertura do b10 (Market e céu visível contam como abertos). CVar gShaderPack.IndoorSceneScale (padrão 0,75: −24% medido em 22/11 na casa do Link, Deku Tree e gruta).
+        // mesma abertura do b10 (Market e céu visível contam como abertos). Serviço genérico: o host não escolhe o
+        // visual, então o padrão é 1,0 (neutro). O pack que quiser escurecer declara o ganho na CVar
+        // gShaderPack.IndoorSceneScale (o Complementary/Policroma usava 0,75: −24% medido em 22/11).
         if (irisBuffer && sceneGainShader && sceneGainBlend && smoothedSkyOpenness >= 0.0f &&
             smoothedSkyOpenness < 1.0f && providerParameters[3].load(std::memory_order_relaxed) < 0.0f) {
-            const float requested = Ship::Context::GetRawInstance()->GetConsoleVariables()->GetFloat(
-                "gShaderPack.IndoorSceneScale", 0.75f);
+            const float requested =
+                Ship::Context::GetRawInstance()->GetConsoleVariables()->GetFloat("gShaderPack.IndoorSceneScale", 1.0f);
             const float scale = std::isfinite(requested) ? std::clamp(requested, 0.0f, 1.0f) : 1.0f;
             const float gain = scale + (1.0f - scale) * std::clamp(smoothedSkyOpenness, 0.0f, 1.0f);
             if (gain < 0.999f) {
